@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
-import { ApiService } from '../services/api.service';
+import { ApiService, SubscriptionOrder } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
 
@@ -98,6 +98,37 @@ import { environment } from '../environments/environment';
             </section>
           }
 
+          <!-- Commande en cours : le client a commandé, la plateforme valide à
+               réception du règlement. Une seule commande en attente à la fois. -->
+          @if (pendingOrder) {
+            <section class="card order-pending">
+              <div class="order-head">
+                <span class="order-dot"></span>
+                <div>
+                  <h3 class="card-title tight">Commande en attente de validation</h3>
+                  <p class="order-line">
+                    {{ pendingOrder.planName }} — {{ cycleLabel(pendingOrder.billingCycle) }} —
+                    <strong>{{ pendingOrder.amount | appCurrency }}</strong>
+                    <span class="order-date">passée le {{ pendingOrder.createdAt | date:'dd/MM/yyyy' }}</span>
+                  </p>
+                  <p class="order-hint">
+                    Nous activerons votre abonnement dès réception du règlement, sous 24&nbsp;h ouvrées.
+                    Vous serez averti dans l'application.
+                  </p>
+                </div>
+                <button class="btn-cancel-order" [disabled]="busy" (click)="cancelPending()">Annuler</button>
+              </div>
+            </section>
+          }
+
+          <!-- Dernier rejet : le client doit savoir pourquoi, sinon il recommande. -->
+          @if (lastRejection) {
+            <section class="card order-rejected">
+              <strong>Votre dernière commande a été refusée.</strong>
+              <p>{{ lastRejection.note }}</p>
+            </section>
+          }
+
           <!-- Grille des offres -->
           <section class="card">
             <h3 class="card-title">Nos formules</h3>
@@ -120,19 +151,60 @@ import { environment } from '../environments/environment';
                     <li>{{ p.maxUsers }} utilisateurs</li>
                     @if (p.gpsTracking) { <li>Suivi GPS temps réel</li> } @else { <li>Gestion sans boîtier GPS</li> }
                   </ul>
-                  <button class="btn-plan" disabled>Choisir</button>
+
+                  <!-- Seule l'offre GPA (sans matériel) s'achète en ligne : les
+                       offres GPS impliquent des boîtiers, et pour l'installation
+                       une intervention — elles se vendent avec un humain au bout
+                       du fil. Le serveur refuse de toute façon les autres. -->
+                  @if (isPurchasable(p)) {
+                    <button class="btn-plan buy" [disabled]="busy || !!pendingOrder"
+                            (click)="openPurchase(p)">
+                      {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                    </button>
+                  } @else {
+                    <button class="btn-plan" disabled title="Offre avec matériel GPS — contactez-nous">Nous contacter</button>
+                  }
                 </article>
               }
             </div>
 
-            <!-- Le seul message honnête tant qu'aucun prestataire n'est branché. -->
+            <!-- Panneau d'achat : choix du cycle, montant calculé par le serveur
+                 à la commande — l'affichage ici n'est qu'un aperçu. -->
+            @if (purchasePlan) {
+              <div class="purchase-panel">
+                <h4>Commander « {{ purchasePlan.name }} »</h4>
+                <div class="cycle-choices">
+                  @for (c of availableCycles(purchasePlan); track c.value) {
+                    <label class="cycle" [class.active]="selectedCycle === c.value">
+                      <input type="radio" name="cycle" [value]="c.value"
+                             [checked]="selectedCycle === c.value"
+                             (change)="selectedCycle = c.value" />
+                      <span class="cycle-name">{{ c.label }}</span>
+                      <span class="cycle-price">{{ c.price | appCurrency }}</span>
+                    </label>
+                  }
+                </div>
+                <div class="purchase-actions">
+                  <button class="btn-plan buy" [disabled]="busy" (click)="confirmPurchase()">
+                    {{ busy ? 'Envoi…' : 'Confirmer ma commande' }}
+                  </button>
+                  <button class="btn-cancel-order" [disabled]="busy" (click)="purchasePlan = null">Retour</button>
+                </div>
+                <p class="order-hint">
+                  Après votre commande, nous vous contactons pour le règlement
+                  (virement ou autre) et activons l'abonnement dès réception.
+                </p>
+                @if (purchaseError) { <p class="purchase-error">{{ purchaseError }}</p> }
+              </div>
+            }
+
             <div class="notice">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
               </svg>
               <div>
-                <strong>Le paiement en ligne n'est pas encore ouvert.</strong>
-                <p>Pour changer de formule ou régler votre abonnement, contactez-nous&nbsp;: nous activons votre offre sous 24&nbsp;h ouvrées.</p>
+                <strong>Le règlement se fait hors ligne pour l'instant.</strong>
+                <p>Votre commande est enregistrée immédiatement&nbsp;; l'abonnement est activé dès réception du règlement, sous 24&nbsp;h ouvrées.</p>
               </div>
             </div>
           </section>
@@ -203,6 +275,56 @@ import { environment } from '../environments/environment';
       font-size: 13.5px; font-weight: 600; cursor: not-allowed;
     }
 
+    .btn-plan.buy {
+      background: #4f46e5; color: #fff; border-color: #4f46e5; cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-plan.buy:hover:not(:disabled) { background: #4338ca; }
+    .btn-plan.buy:disabled { opacity: .6; cursor: default; }
+
+    .order-pending { border-color: #f59e0b; }
+    .order-head { display: flex; gap: 14px; align-items: flex-start; }
+    .order-dot {
+      width: 10px; height: 10px; border-radius: 50%; margin-top: 6px;
+      background: #f59e0b; flex-shrink: 0;
+      box-shadow: 0 0 0 4px rgba(245,158,11,.15);
+    }
+    .card-title.tight { margin-bottom: 6px; }
+    .order-line { margin: 0 0 4px; font-size: 14px; color: var(--text-primary, #0f172a); }
+    .order-date { color: var(--text-secondary, #64748b); font-size: 12.5px; margin-left: 8px; }
+    .order-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--text-secondary, #64748b); line-height: 1.5; }
+    .btn-cancel-order {
+      margin-left: auto; padding: 8px 16px; border-radius: 9px;
+      background: transparent; border: 1px solid var(--border-color, #e6eaf2);
+      color: #b91c1c; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-cancel-order:disabled { opacity: .5; cursor: default; }
+
+    .order-rejected {
+      border-color: #fca5a5; font-size: 13.5px; color: var(--text-primary, #0f172a);
+    }
+    .order-rejected p { margin: 6px 0 0; color: var(--text-secondary, #64748b); }
+
+    .purchase-panel {
+      margin-top: 18px; padding: 18px;
+      border: 1px solid #c7d2fe; border-radius: 12px;
+      background: rgba(79,70,229,.04);
+    }
+    .purchase-panel h4 { margin: 0 0 14px; font-size: 15px; font-weight: 700; color: var(--text-primary, #0f172a); }
+    .cycle-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+    .cycle {
+      display: flex; flex-direction: column; gap: 4px;
+      padding: 12px 14px; border: 1px solid var(--border-color, #e6eaf2);
+      border-radius: 10px; cursor: pointer; background: var(--bg-card, #fff);
+    }
+    .cycle.active { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+    .cycle input { display: none; }
+    .cycle-name { font-size: 13px; font-weight: 600; color: var(--text-secondary, #64748b); }
+    .cycle-price { font-size: 16px; font-weight: 800; color: var(--text-primary, #0f172a); }
+    .purchase-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .purchase-actions .btn-plan { margin-top: 0; width: auto; padding: 10px 22px; }
+    .purchase-error { margin: 10px 0 0; font-size: 13px; color: #b91c1c; }
+
     .notice {
       display: flex; gap: 12px; align-items: flex-start;
       margin-top: 20px; padding: 14px 16px;
@@ -231,6 +353,18 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   nextPaymentAmount: number | null = null;
   billingCycle: string | null = null;
 
+  // ── Achat en libre-service ──
+  orders: SubscriptionOrder[] = [];
+  purchasePlan: any = null;
+  selectedCycle: 'monthly' | 'quarterly' | 'yearly' = 'yearly';
+  busy = false;
+  purchaseError: string | null = null;
+
+  // Miroir de CreateSubscriptionOrderCommand.SelfPurchasablePlanCodes : seule
+  // l'offre GPA (sans matériel) s'achète sans humain. Le serveur fait foi ;
+  // ici on évite juste d'afficher un bouton qui échouera.
+  private static readonly SELF_PURCHASABLE_CODES = ['plan-basique'];
+
   brand = (environment as any).brandName || 'Calypso';
 
   constructor(
@@ -257,6 +391,90 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
       next: (res: any) => { this.plans = res ?? []; this.cdr.detectChanges(); },
       error: () => { this.plans = []; }
     });
+
+    this.loadOrders();
+  }
+
+  private loadOrders(): void {
+    this.apiService.getMySubscriptionOrders().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => { this.orders = res ?? []; this.cdr.detectChanges(); },
+      error: () => { this.orders = []; }
+    });
+  }
+
+  /** La commande en attente, s'il y en a une (le serveur n'en autorise qu'une). */
+  get pendingOrder(): SubscriptionOrder | null {
+    return this.orders.find(o => o.status === 'pending') ?? null;
+  }
+
+  /** Le dernier rejet, montré seulement s'il est plus récent que toute autre issue. */
+  get lastRejection(): SubscriptionOrder | null {
+    const latest = this.orders[0]; // le serveur renvoie les plus récentes en tête
+    return latest?.status === 'rejected' && latest.note ? latest : null;
+  }
+
+  isPurchasable(plan: any): boolean {
+    return SubscriptionComponent.SELF_PURCHASABLE_CODES.includes(plan?.code)
+      && plan?.isActive !== false;
+  }
+
+  cycleLabel(cycle: string): string {
+    switch (cycle) {
+      case 'monthly': return 'mensuel';
+      case 'quarterly': return 'trimestriel';
+      case 'yearly': return 'annuel';
+      default: return cycle;
+    }
+  }
+
+  /** Les cycles proposables pour un plan : un cycle à 0 n'est pas vendable. */
+  availableCycles(plan: any): Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> {
+    const all: Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> = [
+      { value: 'monthly', label: 'Mensuel', price: plan?.monthlyPrice ?? 0 },
+      { value: 'quarterly', label: 'Trimestriel', price: plan?.quarterlyPrice ?? 0 },
+      { value: 'yearly', label: 'Annuel', price: plan?.yearlyPrice ?? 0 }
+    ];
+    return all.filter(c => c.price > 0);
+  }
+
+  openPurchase(plan: any): void {
+    this.purchasePlan = plan;
+    this.purchaseError = null;
+    const cycles = this.availableCycles(plan);
+    // Par défaut l'annuel (le moins cher au mois), sinon le premier disponible.
+    this.selectedCycle = cycles.some(c => c.value === 'yearly') ? 'yearly' : (cycles[0]?.value ?? 'yearly');
+  }
+
+  confirmPurchase(): void {
+    if (!this.purchasePlan || this.busy) return;
+    this.busy = true;
+    this.purchaseError = null;
+    this.apiService.createSubscriptionOrder(this.purchasePlan.id, this.selectedCycle)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.busy = false;
+          this.purchasePlan = null;
+          this.loadOrders();
+        },
+        error: (err) => {
+          this.busy = false;
+          this.purchaseError = err?.error?.message || err?.error?.error
+            || 'La commande n\'a pas pu être enregistrée. Réessayez ou contactez-nous.';
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  cancelPending(): void {
+    const order = this.pendingOrder;
+    if (!order || this.busy) return;
+    if (!confirm('Annuler cette commande ?')) return;
+    this.busy = true;
+    this.apiService.cancelSubscriptionOrder(order.id)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => { this.busy = false; this.loadOrders(); },
+        error: () => { this.busy = false; this.loadOrders(); }
+      });
   }
 
   ngOnDestroy(): void {

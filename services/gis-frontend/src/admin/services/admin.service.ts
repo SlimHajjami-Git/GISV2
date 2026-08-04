@@ -339,6 +339,22 @@ export interface SubscriptionType {
   updatedAt: Date;
 }
 
+/** Commande d'abonnement passée en libre-service (miroir de SubscriptionOrderDto côté API). */
+export interface SubscriptionOrderAdmin {
+  id: number;
+  companyId: number;
+  companyName: string;
+  subscriptionTypeId: number;
+  planName: string;
+  planCode: string;
+  billingCycle: string;
+  amount: number;
+  status: string;   // pending | confirmed | cancelled | rejected
+  note?: string;
+  createdAt: string;
+  processedAt?: string;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -885,6 +901,32 @@ export class AdminService {
 
   deleteSubscriptionType(id: number): Observable<void> {
     return this.http.delete<void>(`${this.apiUrl}/admin/subscription-types/${id}`, { headers: this.getHeaders() });
+  }
+
+  // ==================== SUBSCRIPTION ORDERS ====================
+  // Commandes passées par les clients en libre-service (offre GPA).
+  // Confirmer = le règlement a été reçu HORS application ; l'abonnement est
+  // alors activé/prolongé côté serveur via le même chemin que mark-paid.
+
+  getSubscriptionOrders(status?: string): Observable<SubscriptionOrderAdmin[]> {
+    let url = `${this.apiUrl}/admin/subscription-orders`;
+    if (status && status !== 'all') url += `?status=${encodeURIComponent(status)}`;
+    return this.http.get<SubscriptionOrderAdmin[]>(url, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching subscription orders:', err);
+        return of([]);
+      })
+    );
+  }
+
+  confirmSubscriptionOrder(orderId: number): Observable<SubscriptionOrderAdmin> {
+    return this.http.post<SubscriptionOrderAdmin>(
+      `${this.apiUrl}/admin/subscription-orders/${orderId}/confirm`, {}, { headers: this.getHeaders() });
+  }
+
+  rejectSubscriptionOrder(orderId: number, reason?: string): Observable<void> {
+    return this.http.post<void>(
+      `${this.apiUrl}/admin/subscription-orders/${orderId}/reject`, { reason }, { headers: this.getHeaders() });
   }
 
   // ==================== ROLES MANAGEMENT ====================

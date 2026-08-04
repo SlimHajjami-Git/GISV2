@@ -26,7 +26,11 @@ public class SubscriptionExpirationMiddleware
         "/api/health",
         "/api/subscription/status",
         "/api/subscription/renew",
-        "/api/subscriptions/banner",
+        // TOUT /api/subscriptions reste joignable une fois bloqué — bannière,
+        // abonnement courant, grille des offres et COMMANDES. C'est le chemin de
+        // régularisation : un client dont l'essai a expiré doit pouvoir acheter,
+        // sinon le blocage est une impasse au lieu d'une invitation à payer.
+        "/api/subscriptions",
         "/swagger",
         "/hub"
     };

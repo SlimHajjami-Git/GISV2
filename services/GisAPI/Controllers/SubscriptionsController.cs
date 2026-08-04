@@ -117,6 +117,41 @@ public class SubscriptionsController : ControllerBase
         });
     }
 
+    // ── Commandes d'abonnement (libre-service, offre GPA) ──
+    //
+    // Le client COMMANDE ; la plateforme confirme depuis /api/admin une fois le
+    // règlement reçu hors application. Le montant est calculé côté serveur.
+
+    /// <summary>Passe une commande pour l'offre en libre-service.</summary>
+    [HttpPost("orders")]
+    public async Task<ActionResult> CreateOrder(
+        [FromBody] CreateOrderRequest request,
+        [FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.CreateSubscriptionOrderCommand(
+                request.SubscriptionTypeId, request.BillingCycle));
+        return Ok(result);
+    }
+
+    /// <summary>Les commandes de ma société, plus récentes en tête.</summary>
+    [HttpGet("orders/mine")]
+    public async Task<ActionResult> GetMyOrders([FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.GetMySubscriptionOrdersQuery());
+        return Ok(result);
+    }
+
+    /// <summary>Annule ma commande, tant qu'elle est en attente.</summary>
+    [HttpDelete("orders/{id}")]
+    public async Task<ActionResult> CancelOrder(int id, [FromServices] MediatR.IMediator mediator)
+    {
+        await mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.CancelMySubscriptionOrderCommand(id));
+        return Ok(new { message = "Commande annulée." });
+    }
+
     // SUPPRIMÉ — POST /api/subscriptions/upgrade
     //
     // Cette action changeait le plan de la société et repoussait la date
@@ -135,3 +170,6 @@ public class SubscriptionsController : ControllerBase
     // sys_admin, qui applique les durées et les prix du plan. C'est vers lui que
     // devra converger un futur encaissement en ligne.
 }
+
+/// <summary>Corps de commande : AUCUN montant — il est calculé côté serveur.</summary>
+public record CreateOrderRequest(int SubscriptionTypeId, string BillingCycle);

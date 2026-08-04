@@ -1857,16 +1857,18 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.router.navigate([path]);
   }
 
-  /** L'entrée « Abonnement » n'est proposée qu'aux sociétés qui gèrent le leur. */
+  /**
+   * L'entrée « Abonnement » n'est proposée qu'aux sociétés qui gèrent le leur —
+   * la règle serveur : offre GPA en libre-service (plan-basique) uniquement.
+   * Les sociétés installées, facturées à la main, ne la voient pas.
+   *
+   * (Le masquage global temporaire du 04/08 est levé : il datait d'avant la
+   * correction de la règle, quand toutes les sociétés voyaient l'entrée. La
+   * règle corrigée est vérifiée — société installée : masqué ; compte GPA :
+   * visible — et l'achat en ligne existe désormais derrière.)
+   */
   canManageOwnSubscription(): boolean {
-    // MASQUÉ TEMPORAIREMENT, à la demande de l'exploitant (04/08/2026) : l'entrée
-    // ne doit être visible pour PERSONNE tant que l'offre en libre-service n'est
-    // pas prête à être montrée. Ce court-circuit est délibérément côté écran :
-    // il s'applique immédiatement, y compris aux sessions déjà ouvertes qui
-    // portent encore l'ancien drapeau en cache. Pour réactiver, supprimer cette
-    // ligne — la règle serveur (plan-basique uniquement) reprend la main.
-    return false;
-    // return this.permissionService.canManageOwnSubscription();
+    return this.permissionService.canManageOwnSubscription();
   }
 
   hasModule(moduleName: string): boolean {

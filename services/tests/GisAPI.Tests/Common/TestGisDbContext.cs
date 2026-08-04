@@ -25,6 +25,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     }
 
     public DbSet<SubscriptionType> SubscriptionTypes => Set<SubscriptionType>();
+    public DbSet<SubscriptionOrder> SubscriptionOrders => Set<SubscriptionOrder>();
     public DbSet<Societe> Societes => Set<Societe>();
     public DbSet<Company> Companies => Set<Company>();
     public DbSet<Role> Roles => Set<Role>();

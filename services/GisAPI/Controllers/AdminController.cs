@@ -236,6 +236,41 @@ public class AdminController : ControllerBase
         return Ok(result);
     }
 
+    // ── Commandes d'abonnement du libre-service (offre GPA) ──
+    //
+    // Le client commande depuis son écran Abonnement ; ici la plateforme constate
+    // le règlement (reçu hors application) et confirme — la confirmation active
+    // l'abonnement par le même chemin que mark-paid (RenewSubscriptionCommand).
+
+    /// <summary>Toutes les commandes, en attente d'abord.</summary>
+    [HttpGet("subscription-orders")]
+    public async Task<ActionResult> GetSubscriptionOrders([FromQuery] string? status)
+    {
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.GetSubscriptionOrdersQuery(status));
+        return Ok(result);
+    }
+
+    /// <summary>Le règlement est reçu : confirme la commande et active l'abonnement.</summary>
+    [HttpPost("subscription-orders/{id}/confirm")]
+    public async Task<ActionResult> ConfirmSubscriptionOrder(int id)
+    {
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.ConfirmSubscriptionOrderCommand(id));
+
+        try { await _gpsHub.SendSubscriptionChangedAsync(result.CompanyId, "active"); } catch { /* best effort */ }
+        return Ok(result);
+    }
+
+    /// <summary>Rejette la commande, avec un motif montré au client.</summary>
+    [HttpPost("subscription-orders/{id}/reject")]
+    public async Task<ActionResult> RejectSubscriptionOrder(int id, [FromBody] RejectOrderRequest? request)
+    {
+        await _mediator.Send(
+            new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.RejectSubscriptionOrderCommand(id, request?.Reason));
+        return Ok(new { message = "Commande rejetée." });
+    }
+
     /// <summary>
     /// Interrupteur PAR SOCIÉTÉ de la suspension automatique à l'expiration.
     /// enabled=false : la société expirée n'est jamais bloquée automatiquement
@@ -1387,6 +1422,8 @@ public class CreateAdminCompanyRequest
 }
 
 public record SetAutoSuspendRequest(bool Enabled);
+
+public record RejectOrderRequest(string? Reason);
 
 public record SetSubscriptionExpiryRequest(DateTime ExpiresAt);
 

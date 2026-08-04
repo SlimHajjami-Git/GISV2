@@ -98,6 +98,7 @@ public class GisDbContext : DbContext, IGisDbContext
     // Standalone tow detection (engine-off + speed + displacement), independent
     // of accidents — surfaced on the dedicated /remorquages page.
     public DbSet<TowEvent> TowEvents => Set<TowEvent>();
+    public DbSet<SubscriptionOrder> SubscriptionOrders => Set<SubscriptionOrder>();
 
     // "Argus tunisien" — GLOBAL reference data (no tenant filter): curated car
     // market knowledge (prices, defects, parts, resale) for the AI assistant.
@@ -183,6 +184,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<FuelRecord>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<AccidentEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<TowEvent>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<SubscriptionOrder>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<MaintenanceTemplate>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<GpsAlert>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<VehicleMaintenanceSchedule>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);

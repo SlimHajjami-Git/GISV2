@@ -1238,6 +1238,26 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/subscriptions/current`, { headers: this.getHeaders() });
   }
 
+  // ── Commandes d'abonnement (achat en libre-service, offre GPA) ──
+  //
+  // Le client COMMANDE ; la plateforme confirme une fois le règlement reçu hors
+  // application. AUCUN montant ne part de l'écran : il est calculé côté serveur
+  // depuis le plan et le cycle — un montant venu du client serait un prix
+  // libre-service.
+
+  createSubscriptionOrder(subscriptionTypeId: number, billingCycle: 'monthly' | 'quarterly' | 'yearly'): Observable<SubscriptionOrder> {
+    return this.http.post<SubscriptionOrder>(`${this.API_URL}/subscriptions/orders`,
+      { subscriptionTypeId, billingCycle }, { headers: this.getHeaders() });
+  }
+
+  getMySubscriptionOrders(): Observable<SubscriptionOrder[]> {
+    return this.http.get<SubscriptionOrder[]>(`${this.API_URL}/subscriptions/orders/mine`, { headers: this.getHeaders() });
+  }
+
+  cancelSubscriptionOrder(orderId: number): Observable<any> {
+    return this.http.delete<any>(`${this.API_URL}/subscriptions/orders/${orderId}`, { headers: this.getHeaders() });
+  }
+
   // upgradeSubscription() supprimée en même temps que l'endpoint serveur
   // POST /api/subscriptions/upgrade : il changeait le plan et repoussait
   // l'expiration sans contrôle de rôle ni preuve de paiement. Elle n'était
@@ -3939,6 +3959,23 @@ export interface CreateFuelEntryRequest {
   notes?: string;
   driverId?: number;
   odometerKm?: number;
+}
+
+/** Une commande d'abonnement du libre-service, telle que le serveur la renvoie. */
+export interface SubscriptionOrder {
+  id: number;
+  companyId: number;
+  companyName: string;
+  subscriptionTypeId: number;
+  planName: string;
+  planCode: string;
+  billingCycle: 'monthly' | 'quarterly' | 'yearly';
+  amount: number;
+  // cancelled = annulée par le client ; rejected = refusée par la plateforme (motif dans note).
+  status: 'pending' | 'confirmed' | 'cancelled' | 'rejected';
+  note?: string;
+  createdAt: string;
+  processedAt?: string;
 }
 
 export interface PaginatedFuelEntriesResult {

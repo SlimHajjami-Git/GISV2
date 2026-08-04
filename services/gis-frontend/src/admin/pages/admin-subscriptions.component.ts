@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { AdminService, SubscriptionType } from '../services/admin.service';
+import { AdminService, SubscriptionType, SubscriptionOrderAdmin } from '../services/admin.service';
 import { environment } from '../../environments/environment';
 
 @Component({
@@ -15,6 +15,65 @@ import { environment } from '../../environments/environment';
   template: `
     <admin-layout pageTitle="Gestion des Abonnements">
       <div class="subscriptions-container">
+
+        <!-- Commandes en libre-service : les clients GPA commandent depuis leur
+             écran Abonnement ; on confirme ici une fois le règlement reçu. -->
+        <div class="orders-section" *ngIf="orders.length > 0 || ordersFilter !== 'pending'">
+          <div class="page-header">
+            <div class="header-left">
+              <h2>Commandes clients</h2>
+              <span class="count" [class.hot]="pendingOrdersCount > 0">{{ pendingOrdersCount }} en attente</span>
+            </div>
+            <select class="orders-filter" [(ngModel)]="ordersFilter" (change)="loadOrders()">
+              <option value="pending">En attente</option>
+              <option value="all">Toutes</option>
+              <option value="confirmed">Confirmées</option>
+              <option value="cancelled">Annulées</option>
+              <option value="rejected">Rejetées</option>
+            </select>
+          </div>
+
+          <div class="orders-table-wrap" *ngIf="orders.length > 0; else noOrders">
+            <table class="orders-table">
+              <thead>
+                <tr>
+                  <th>Société</th>
+                  <th>Offre</th>
+                  <th>Cycle</th>
+                  <th>Montant</th>
+                  <th>Date</th>
+                  <th>Statut</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let o of orders">
+                  <td class="cell-company">{{ o.companyName }}</td>
+                  <td>{{ o.planName }}</td>
+                  <td>{{ cycleLabel(o.billingCycle) }}</td>
+                  <td class="cell-amount">{{ o.amount | number:'1.0-2' }} {{ currencyCode }}</td>
+                  <td>{{ o.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+                  <td>
+                    <span class="badge" [ngClass]="'st-' + o.status">{{ statusLabel(o.status) }}</span>
+                    <div class="order-note" *ngIf="o.note">{{ o.note }}</div>
+                  </td>
+                  <td class="cell-actions">
+                    <ng-container *ngIf="o.status === 'pending'">
+                      <button class="btn-confirm" [disabled]="processingOrderId === o.id" (click)="confirmOrder(o)">
+                        {{ processingOrderId === o.id ? '…' : 'Confirmer' }}
+                      </button>
+                      <button class="btn-reject" [disabled]="processingOrderId === o.id" (click)="openReject(o)">Rejeter</button>
+                    </ng-container>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <ng-template #noOrders>
+            <p class="orders-empty">Aucune commande {{ ordersFilter === 'pending' ? 'en attente' : '' }}.</p>
+          </ng-template>
+        </div>
+
         <!-- Header -->
         <div class="page-header">
           <div class="header-left">
@@ -261,6 +320,28 @@ import { environment } from '../../environments/environment';
           </div>
         </div>
 
+        <!-- Reject Order -->
+        <div class="modal-overlay" *ngIf="orderToReject" (click)="orderToReject = null">
+          <div class="modal modal-sm" (click)="$event.stopPropagation()">
+            <div class="modal-header">
+              <h3>Rejeter la commande</h3>
+            </div>
+            <div class="modal-body" style="padding: 20px 24px;">
+              <p>Commande de <strong>{{ orderToReject?.companyName }}</strong> —
+                 {{ orderToReject?.planName }} ({{ cycleLabel(orderToReject?.billingCycle || '') }}).</p>
+              <div class="form-group">
+                <label>Motif (montré au client)</label>
+                <textarea [(ngModel)]="rejectReason" rows="3"
+                          placeholder="Ex : règlement non reçu, coordonnées invalides…"></textarea>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button class="btn-secondary" (click)="orderToReject = null">Annuler</button>
+              <button class="btn-danger" [disabled]="processingOrderId !== null" (click)="rejectOrder()">Rejeter</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Delete Confirmation -->
         <div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="showDeleteConfirm = false">
           <div class="modal modal-sm" (click)="$event.stopPropagation()">
@@ -341,6 +422,82 @@ import { environment } from '../../environments/environment';
     }
     .btn-primary:hover { background: var(--adm-indigo-ink); transform: translateY(-1px); box-shadow: var(--adm-shadow-hover); }
     .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    /* ── Commandes clients ── */
+    .orders-section { margin-bottom: 32px; }
+    .count.hot { background: rgba(217, 119, 6, .14); color: var(--adm-amber-ink); }
+    .orders-filter {
+      padding: 8px 12px;
+      border: 1px solid var(--adm-border);
+      border-radius: 10px;
+      background: #fff;
+      color: var(--adm-ink);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .orders-table-wrap {
+      background: var(--adm-card);
+      border: 1px solid var(--adm-border);
+      border-radius: 16px;
+      box-shadow: var(--adm-shadow);
+      overflow-x: auto;
+      animation: rise .3s ease both;
+    }
+    .orders-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .orders-table th {
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--adm-sub);
+      border-bottom: 1px solid var(--adm-border);
+      white-space: nowrap;
+    }
+    .orders-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--adm-track);
+      color: var(--adm-ink);
+      vertical-align: top;
+    }
+    .orders-table tr:last-child td { border-bottom: none; }
+    .cell-company { font-weight: 700; }
+    .cell-amount { font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .badge.st-pending { background: rgba(217, 119, 6, .12); color: var(--adm-amber-ink); }
+    .badge.st-confirmed { background: rgba(5, 150, 105, .10); color: var(--adm-green-ink); }
+    .badge.st-cancelled { background: rgba(100, 116, 139, .12); color: var(--adm-slate-ink); }
+    .badge.st-rejected { background: rgba(220, 38, 38, .10); color: var(--adm-red-ink); }
+    .order-note { margin-top: 4px; font-size: 12px; color: var(--adm-sub); max-width: 220px; }
+    .cell-actions { white-space: nowrap; text-align: right; }
+    .btn-confirm {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 9px;
+      background: var(--adm-green);
+      color: #fff;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .btn-confirm:hover:not(:disabled) { background: var(--adm-green-ink); }
+    .btn-reject {
+      margin-left: 8px;
+      padding: 7px 14px;
+      border: 1px solid var(--adm-border);
+      border-radius: 9px;
+      background: #fff;
+      color: var(--adm-red-ink);
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-reject:hover:not(:disabled) { border-color: var(--adm-red); background: rgba(220, 38, 38, .06); }
+    .btn-confirm:disabled, .btn-reject:disabled { opacity: .55; cursor: default; }
+    .orders-empty { color: var(--adm-sub); font-size: 13px; margin: 8px 0 0; }
 
     .types-grid {
       display: grid;
@@ -743,6 +900,13 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
   typeToDelete: SubscriptionType | null = null;
   activeTab: 'general' | 'limits' | 'modules' | 'reports' | 'features' = 'general';
 
+  // ── Commandes clients (libre-service GPA) ──
+  orders: SubscriptionOrderAdmin[] = [];
+  ordersFilter = 'pending';
+  processingOrderId: number | null = null;
+  orderToReject: SubscriptionOrderAdmin | null = null;
+  rejectReason = '';
+
   get currencyCode(): string { return (environment as { defaultCurrency?: string }).defaultCurrency || 'TND'; }
 
   formData = this.getEmptyForm();
@@ -814,6 +978,74 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
         this.subscriptionTypes = types;
       },
       error: (err) => console.error('Error loading subscription types:', err)
+    });
+    this.loadOrders();
+  }
+
+  // ── Commandes clients ──
+
+  loadOrders() {
+    const status = this.ordersFilter === 'all' ? undefined : this.ordersFilter;
+    this.adminService.getSubscriptionOrders(status).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (orders) => { this.orders = orders; }
+    });
+  }
+
+  get pendingOrdersCount(): number {
+    return this.orders.filter(o => o.status === 'pending').length;
+  }
+
+  cycleLabel(cycle: string): string {
+    switch (cycle) {
+      case 'monthly': return 'Mensuel';
+      case 'quarterly': return 'Trimestriel';
+      case 'yearly': return 'Annuel';
+      default: return cycle;
+    }
+  }
+
+  statusLabel(status: string): string {
+    switch (status) {
+      case 'pending': return 'En attente';
+      case 'confirmed': return 'Confirmée';
+      case 'cancelled': return 'Annulée';
+      case 'rejected': return 'Rejetée';
+      default: return status;
+    }
+  }
+
+  confirmOrder(order: SubscriptionOrderAdmin) {
+    if (!confirm(`Confirmer la commande de ${order.companyName} (${order.amount} ${this.currencyCode}) ?\n\nLe règlement a bien été reçu ? L'abonnement sera activé immédiatement.`)) return;
+    this.processingOrderId = order.id;
+    this.adminService.confirmSubscriptionOrder(order.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => { this.processingOrderId = null; this.loadOrders(); },
+      error: (err) => {
+        this.processingOrderId = null;
+        alert(err.error?.message || 'Erreur lors de la confirmation');
+        this.loadOrders();
+      }
+    });
+  }
+
+  openReject(order: SubscriptionOrderAdmin) {
+    this.orderToReject = order;
+    this.rejectReason = '';
+  }
+
+  rejectOrder() {
+    const order = this.orderToReject;
+    if (!order) return;
+    this.processingOrderId = order.id;
+    this.adminService.rejectSubscriptionOrder(order.id, this.rejectReason || undefined).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.processingOrderId = null;
+        this.orderToReject = null;
+        this.loadOrders();
+      },
+      error: (err) => {
+        this.processingOrderId = null;
+        alert(err.error?.message || 'Erreur lors du rejet');
+      }
     });
   }
 
