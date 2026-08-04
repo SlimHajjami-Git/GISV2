@@ -23,17 +23,12 @@ public class SelfServiceSubscriptionTests
     };
 
     [Fact]
-    public void Une_societe_qui_n_a_jamais_regle_est_en_essai()
+    public void L_offre_en_libre_service_voit_l_ecran_avec_ou_sans_paiement()
     {
-        // C'est le cas de tout compte issu de l'inscription libre : c'est
-        // précisément à lui qu'il faut montrer les offres.
-        LoginCommandHandler.IsSelfServiceSubscription(Societe("plan-pro", null))
+        // Les comptes issus de l'inscription libre atterrissent tous sur ce plan :
+        // la période d'essai est couverte par le même critère.
+        LoginCommandHandler.IsSelfServiceSubscription(Societe("plan-basique", null))
             .Should().BeTrue();
-    }
-
-    [Fact]
-    public void L_offre_de_gestion_de_parc_reste_en_libre_service_apres_paiement()
-    {
         LoginCommandHandler.IsSelfServiceSubscription(Societe("plan-basique", new DateTime(2026, 6, 1)))
             .Should().BeTrue();
     }
@@ -43,10 +38,14 @@ public class SelfServiceSubscriptionTests
     [InlineData("plan-standard")]
     [InlineData("plan-premium")]
     [InlineData("gpa")]
-    public void Un_client_installe_qui_a_regle_ne_voit_pas_l_ecran(string planCode)
+    public void Un_client_installe_ne_voit_pas_l_ecran_meme_sans_paiement_enregistre(string planCode)
     {
-        // Abonnement négocié puis facturé à la main : une grille tarifaire et un
-        // bouton de paiement inactif ne feraient que susciter des questions.
+        // LE cas qui a fait échouer la première règle : les règlements des clients
+        // installés se font HORS application, last_payment_at est vide pour toutes
+        // les sociétés de production. « Jamais réglé » ne veut donc pas dire
+        // « en essai » — sur ce critère, tout le monde voyait l'écran de paiement.
+        LoginCommandHandler.IsSelfServiceSubscription(Societe(planCode, null))
+            .Should().BeFalse();
         LoginCommandHandler.IsSelfServiceSubscription(Societe(planCode, new DateTime(2026, 6, 1)))
             .Should().BeFalse();
     }

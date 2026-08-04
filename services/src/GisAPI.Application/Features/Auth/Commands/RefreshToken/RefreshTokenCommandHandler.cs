@@ -223,29 +223,14 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
             CanReportMonthlyCosts: user.CanReportMonthlyCosts
         );
 
+        // Même constructeur que la connexion : ce DTO était reconstruit à la main
+        // ici, champ par champ, et chaque champ ajouté au login (la devise hier,
+        // le drapeau d'abonnement en libre-service aujourd'hui) manquait au
+        // renouvellement — l'utilisateur perdait l'information au premier refresh.
         return new LoginResponse(
             newJwt,
             newRefreshTokenStr,
-            new UserDto(
-                user.Id,
-                user.FirstName,
-                user.LastName,
-                user.Email,
-                user.Phone,
-                user.PermitNumber,
-                user.RoleId,
-                user.Role?.Name ?? "",
-                user.Role?.IsCompanyAdmin ?? false,
-                user.Role?.IsSystemAdmin ?? false,
-                user.CompanyId,
-                user.Societe?.Name ?? "",
-                user.Societe?.Type,
-                user.Role?.Permissions,
-                subscriptionFeatures,
-                assignedVehicleIds,
-                userPermissions,
-                Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default
-            )
+            LoginCommandHandler.BuildUserDto(user, subscriptionFeatures, assignedVehicleIds, userPermissions)
         );
     }
 }

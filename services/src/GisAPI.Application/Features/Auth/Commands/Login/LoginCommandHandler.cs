@@ -169,26 +169,25 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
     /// <summary>
     /// La société gère-t-elle son abonnement elle-même ?
     ///
-    /// Deux cas, et deux seulement :
-    ///  - elle est en ESSAI : aucun règlement n'a jamais été encaissé
-    ///    (last_payment_at nul). C'est le cas de tout compte issu de
-    ///    l'inscription libre, à qui l'on doit précisément montrer les offres.
-    ///  - elle est sur l'offre de GESTION DE PARC en libre-service
-    ///    (plan-basique), vendue sans négociation.
+    /// UN SEUL critère : être sur l'offre de gestion de parc en libre-service
+    /// (plan-basique). Les comptes issus de l'inscription libre y atterrissent
+    /// tous (Registration:DefaultPlanCode) — la période d'essai est donc couverte
+    /// par le même critère, sans en avoir besoin d'un second.
     ///
-    /// Tous les autres — les clients installés, dont l'abonnement est négocié puis
-    /// facturé à la main — n'ont rien à faire sur un écran de paiement en ligne :
-    /// il est inactif, et leur laisser croire qu'ils peuvent changer de formule
-    /// d'un clic ne ferait que créer des appels au support.
+    /// La première version ajoutait « jamais réglé = en essai »
+    /// (last_payment_at nul). Faux en pratique : les règlements des clients
+    /// installés se font HORS application — virement, chèque, espèces — et
+    /// last_payment_at n'est renseigné pour AUCUNE des 13 sociétés de la
+    /// production. Le critère rendait donc l'écran de paiement visible à tout le
+    /// monde, exactement ce qu'il devait empêcher.
+    ///
+    /// Tous les autres plans — abonnement négocié puis facturé à la main — ne
+    /// voient pas l'écran : il est inactif, et laisser croire qu'on peut changer
+    /// de formule d'un clic ne ferait que créer des appels au support.
     /// </summary>
     public static bool IsSelfServiceSubscription(GisAPI.Domain.Entities.Societe? societe)
     {
-        if (societe == null) return false;
-
-        // Jamais réglé → en essai.
-        if (societe.LastPaymentAt == null) return true;
-
-        return societe.SubscriptionType?.Code == "plan-basique";
+        return societe?.SubscriptionType?.Code == "plan-basique";
     }
 
     /// <summary>Map les permissions utilisateur (réutilisé par l'impersonation).</summary>
