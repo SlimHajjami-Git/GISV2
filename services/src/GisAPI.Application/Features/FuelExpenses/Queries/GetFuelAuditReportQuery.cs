@@ -21,14 +21,24 @@ public record CardFillDto(
     string? Station
 );
 
-/// <summary>Result of matching one card fill against the GPS-detected refills.</summary>
+/// <summary>
+/// Result of matching one card fill against the GPS-detected refills.
+/// DetectedLiters est un CENTRE de fourchette (Low/High), jamais une vérité au
+/// litre : la jauge mesure des points (~1 % de cuve) et la conversion en litres
+/// porte l'incertitude de la géométrie du réservoir. Afficher le chiffre sec
+/// a déjà fait accuser un chauffeur à tort (Scania 001 : 438 L pompe « détecté
+/// 390 L » — capacité de fiche fausse, pas de gazole manquant).
+/// </summary>
 public record FillCheckDto(
     DateTime? FillDate,         // null = aucun plein declare (remplissage detecte mais non saisi)
     decimal BilledLiters,
     DateTime? MatchedRefillDate,
     decimal? DetectedLiters,
     double? GapHours,
-    string Verdict   // "confirme" | "ecart" | "non_detecte" | "non_declare"
+    string Verdict,  // "confirme" | "ecart" | "non_detecte" | "non_declare" | "volume_non_saisi"
+    decimal? DetectedLitersLow = null,
+    decimal? DetectedLitersHigh = null,
+    int? DeltaPoints = null
 );
 
 public record FuelAuditReportDto(
@@ -45,5 +55,15 @@ public record FuelAuditReportDto(
     List<FillCheckDto> FillChecks,
     int ConfirmedCount,
     int NotDetectedCount,
-    int UndeclaredCount
+    int UndeclaredCount,
+    // ── Synthèse : LE chiffre que le gestionnaire cherche, en tête de rapport ──
+    decimal TotalBilledLiters = 0,
+    decimal TotalDetectedLiters = 0,
+    decimal UndeclaredLiters = 0,
+    decimal? CoveragePercent = null,        // facturé / détecté ; null sans détection
+    decimal? EstimatedUndeclaredCost = null, // au prix moyen des factures de la période
+    // ── Étalonnage : d'où vient la conversion points→litres ──
+    bool IsCalibrated = false,
+    int CalibrationPointCount = 0,
+    int? EffectiveTankLiters = null
 );

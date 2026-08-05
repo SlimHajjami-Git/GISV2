@@ -1,3 +1,4 @@
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Features.FuelExpenses;
 using GisAPI.Domain.Entities;
 
@@ -50,5 +51,15 @@ public interface IFuelCalculationService
         Vehicle vehicle,
         DateTime startDate,
         DateTime endDate,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Étalonnage points-de-jauge → litres du véhicule, appris de ses pleins
+    /// FACTURÉS rapprochés des montées de jauge (12 derniers mois). Tant que
+    /// moins de 4 pleins cohérents existent, retourne la conversion nominale
+    /// (capacité/100) avec une incertitude large — jamais une fausse précision.
+    /// </summary>
+    Task<TankCalibrationResult> GetTankCalibrationAsync(
+        Vehicle vehicle,
         CancellationToken cancellationToken = default);
 }

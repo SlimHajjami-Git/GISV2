@@ -3792,6 +3792,11 @@ export interface FuelFillCheck {
   detectedLiters: number | null;    // litres detected at the matched refill, or null
   gapHours: number | null;          // hours between billed fill and detected refill
   verdict: 'confirme' | 'ecart' | 'non_detecte' | 'non_declare' | 'volume_non_saisi';
+  // Fourchette honnête : la jauge mesure des points, pas des litres —
+  // detectedLiters n'est que le centre de [low, high]
+  detectedLitersLow: number | null;
+  detectedLitersHigh: number | null;
+  deltaPoints: number | null;       // montée de jauge brute, en points de %
 }
 
 export interface FuelAuditReport {
@@ -3809,6 +3814,16 @@ export interface FuelAuditReport {
   confirmedCount: number;
   notDetectedCount: number;
   undeclaredCount: number;
+  // Synthèse : litres facturés vs litres entrés dans la cuve (vus par la jauge)
+  totalBilledLiters: number;
+  totalDetectedLiters: number;
+  undeclaredLiters: number;
+  coveragePercent: number | null;
+  estimatedUndeclaredCost: number | null;
+  // Étalonnage points→litres appris des pleins facturés
+  isCalibrated: boolean;
+  calibrationPointCount: number;
+  effectiveTankLiters: number | null;
 }
 
 export interface VehicleFuelExpenseDto {

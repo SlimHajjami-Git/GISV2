@@ -98,11 +98,21 @@ public record FuelLevelPointDto(
     decimal Liters
 );
 
-/// <summary>A refill detected from the fuel sensor (a level jump >= 10%).</summary>
+/// <summary>
+/// A refill detected from the fuel sensor (a level jump >= 10%).
+/// FromPercent/ToPercent portent la mesure BRUTE de la jauge : les litres ne
+/// sont qu'une conversion (étalonnable par véhicule) — c'est la montée en
+/// points qui fait foi, jamais le chiffre en litres.
+/// </summary>
 public record DetectedRefillDto(
     DateTime T,
-    decimal Liters
-);
+    decimal Liters,
+    int FromPercent = 0,
+    int ToPercent = 0
+)
+{
+    public int DeltaPoints => ToPercent - FromPercent;
+}
 
 /// <summary>GPS-side fuel audit for one vehicle: the level curve + the detected refills.</summary>
 public record FuelLevelAuditDto(

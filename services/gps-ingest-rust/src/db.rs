@@ -944,6 +944,62 @@ impl TelemetryStore for Database {
     }
 
     async fn insert_trip(&self, trip: &crate::services::trip_detector::CompletedTrip) -> Result<i64> {
+        // La distance cumulée par le TripDetector est fausse par construction :
+        // il additionne les trames dans l'ordre d'ARRIVÉE, or les boîtiers NEMS
+        // émettent des rafales dont la tête est la position la plus récente,
+        // suivie du replay chronologique du tampon. Chaque rafale ajoute donc un
+        // aller-retour fantôme (~2× la corde) : trip 618 stocké 40,36 km pour
+        // 17,7 km réels — reproduit à <1 % en simulant l'ordre d'insertion.
+        // À la clôture, TOUTES les positions du trajet sont en base, dédoublonnées
+        // par les contraintes uniques : on recalcule en ordre chronologique
+        // (même patron que daily_statistics), segments plafonnés à 5 km contre
+        // les sauts GPS résiduels.
+        let corrected_km: Option<f64> = sqlx::query_scalar(
+            r#"
+            WITH ordered AS (
+                SELECT latitude, longitude, speed_kph, ignition_on,
+                       LAG(latitude)  OVER (ORDER BY recorded_at) AS prev_lat,
+                       LAG(longitude) OVER (ORDER BY recorded_at) AS prev_lng
+                FROM gps_positions
+                WHERE device_id = $1
+                  AND recorded_at BETWEEN $2 AND $3
+            )
+            SELECT COALESCE(SUM(
+                CASE WHEN prev_lat IS NOT NULL
+                          AND speed_kph >= 5
+                          AND COALESCE(ignition_on, TRUE) THEN
+                    LEAST(
+                        111.0 * SQRT(
+                            POWER(latitude - prev_lat, 2) +
+                            POWER((longitude - prev_lng) * COS(RADIANS(latitude)), 2)
+                        ),
+                        5.0
+                    )
+                ELSE 0 END
+            ), 0)::FLOAT8
+            FROM ordered
+            "#,
+        )
+        .bind(trip.device_id)
+        .bind(trip.start_time)
+        .bind(trip.end_time)
+        .fetch_one(&self.pool)
+        .await
+        .ok();
+
+        // Repli sur la valeur du détecteur si la base n'a rien rendu (fenêtre
+        // vide = positions pas encore visibles, cas dégradé) — mieux vaut un
+        // chiffre gonflé qu'un zéro qui ferait disparaître le trajet.
+        let distance_km = match corrected_km {
+            Some(d) if d > 0.05 => d,
+            _ => trip.distance_km,
+        };
+        let avg_speed_kph = if trip.duration_minutes > 0 {
+            (distance_km / (trip.duration_minutes as f64 / 60.0)).min(trip.max_speed_kph.max(1.0))
+        } else {
+            trip.avg_speed_kph
+        };
+
         let row = sqlx::query(
             r#"
             INSERT INTO trips (
@@ -982,9 +1038,9 @@ impl TelemetryStore for Database {
         .bind(trip.start_lng)
         .bind(trip.end_lat)
         .bind(trip.end_lng)
-        .bind(trip.distance_km)
+        .bind(distance_km)
         .bind(trip.duration_minutes)
-        .bind(trip.avg_speed_kph)
+        .bind(avg_speed_kph)
         .bind(trip.max_speed_kph)
         .bind(trip.fuel_consumed)
         .bind(trip.start_odometer.map(|o| o as i64))

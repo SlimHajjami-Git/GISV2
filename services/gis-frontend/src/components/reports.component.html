@@ -868,9 +868,39 @@
                   </div>
                 </div>
 
-                <!-- One-line audit summary -->
-                <div style="padding:8px 14px;margin-bottom:10px;font-weight:600;color:var(--text-primary,#1e293b);">
-                  ✅ {{ fuelAuditReport.confirmedCount }} confirmés · ❌ {{ fuelAuditReport.notDetectedCount }} non détectés (suspects) · ⚪ {{ fuelAuditReport.undeclaredCount }} non déclarés
+                <!-- Synthèse : facturé vs entré dans la cuve — LE chiffre du rapport -->
+                <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+                  <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);">Facturé (saisi)</div>
+                    <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ fuelAuditReport.totalBilledLiters | number:'1.0-0' }} L</div>
+                  </div>
+                  <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);">Entré dans la cuve (jauge)</div>
+                    <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">≈ {{ fuelAuditReport.totalDetectedLiters | number:'1.0-0' }} L</div>
+                  </div>
+                  <div *ngIf="fuelAuditReport.coveragePercent != null" style="flex:1;min-width:170px;padding:12px 16px;border-radius:10px;"
+                       [style.background]="fuelAuditReport.coveragePercent >= 85 ? 'rgba(22,163,74,.08)' : 'rgba(220,38,38,.07)'"
+                       [style.border]="fuelAuditReport.coveragePercent >= 85 ? '1px solid rgba(22,163,74,.35)' : '1px solid rgba(220,38,38,.35)'">
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);">Couverture de saisie</div>
+                    <div style="font-size:22px;font-weight:800;" [style.color]="fuelAuditReport.coveragePercent >= 85 ? '#16a34a' : '#dc2626'">{{ fuelAuditReport.coveragePercent | number:'1.0-0' }} %</div>
+                  </div>
+                  <div *ngIf="fuelAuditReport.undeclaredLiters > 0" style="flex:1;min-width:190px;padding:12px 16px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:10px;">
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);">Pleins sans facture</div>
+                    <div style="font-size:22px;font-weight:800;color:#dc2626;">≈ {{ fuelAuditReport.undeclaredLiters | number:'1.0-0' }} L<span *ngIf="fuelAuditReport.estimatedUndeclaredCost != null" style="font-size:14px;font-weight:700;"> ({{ fuelAuditReport.estimatedUndeclaredCost | appCurrency }})</span></div>
+                  </div>
+                </div>
+
+                <!-- One-line audit summary + provenance de la conversion points→litres -->
+                <div style="padding:4px 14px 10px;font-weight:600;color:var(--text-primary,#1e293b);">
+                  ✅ {{ fuelAuditReport.confirmedCount }} cohérents · ❌ {{ fuelAuditReport.notDetectedCount }} non détectés (suspects) · 🔴 {{ fuelAuditReport.undeclaredCount }} non facturés
+                  <span style="display:block;font-size:12px;font-weight:400;color:var(--text-secondary,#64748b);margin-top:2px;">
+                    <ng-container *ngIf="fuelAuditReport.isCalibrated; else uncalibratedTpl">
+                      Jauge étalonnée sur {{ fuelAuditReport.calibrationPointCount }} pleins facturés — réservoir effectif ≈ {{ fuelAuditReport.effectiveTankLiters }} L.
+                    </ng-container>
+                    <ng-template #uncalibratedTpl>
+                      Jauge non étalonnée ({{ fuelAuditReport.calibrationPointCount }}/4 pleins exploitables) — conversion nominale {{ fuelAuditReport.tankCapacity }} L, fourchettes élargies. Chaque plein saisi avec ses litres exacts affine la précision.
+                    </ng-template>
+                  </span>
                 </div>
 
                 <!-- Per-fill verification table -->
@@ -887,22 +917,30 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr *ngFor="let check of fuelAuditReport.fillChecks">
+                      <tr *ngFor="let check of fuelAuditReport.fillChecks"
+                          [style.background]="check.verdict === 'non_declare' ? 'rgba(220,38,38,.05)' : null">
                         <td>{{ check.fillDate ? formatDateTime(check.fillDate) : '—' }}</td>
                         <td>{{ check.billedLiters > 0 ? (check.billedLiters | number:'1.1-1') : '—' }}</td>
                         <td>{{ check.matchedRefillDate ? formatDateTime(check.matchedRefillDate) : '—' }}</td>
-                        <td>{{ check.detectedLiters != null ? (check.detectedLiters | number:'1.1-1') : '—' }}</td>
+                        <td>
+                          <!-- La jauge mesure des points : afficher une fourchette, jamais
+                               un chiffre sec qui ferait accuser un chauffeur à tort. -->
+                          <ng-container *ngIf="check.detectedLitersLow != null && check.detectedLitersHigh != null; else rawDetectedTpl">
+                            <span title="Jauge : +{{ check.deltaPoints }} points">≈ {{ check.detectedLitersLow | number:'1.0-0' }}–{{ check.detectedLitersHigh | number:'1.0-0' }}</span>
+                          </ng-container>
+                          <ng-template #rawDetectedTpl>{{ check.detectedLiters != null ? (check.detectedLiters | number:'1.1-1') : '—' }}</ng-template>
+                        </td>
                         <td>{{ check.gapHours != null ? (check.gapHours | number:'1.0-0') : '—' }}</td>
                         <td>
                           @switch (check.verdict) {
                             @case ('confirme') {
-                              <span style="color:#16a34a;font-weight:600;">✅ Confirmé</span>
+                              <span style="color:#16a34a;font-weight:600;">✅ Cohérent avec la facture</span>
                             }
                             @case ('ecart') {
                               <span style="color:#d97706;font-weight:600;">⚠️ Écart</span>
                             }
                             @case ('non_declare') {
-                              <span style="color:#2563eb;font-weight:600;">⚪ Non déclaré</span>
+                              <span style="color:#dc2626;font-weight:700;">🔴 Non facturé</span>
                             }
                             @case ('volume_non_saisi') {
                               <span style="color:#ea580c;font-weight:600;">🟠 Volume non saisi</span>

@@ -1,3 +1,4 @@
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.FuelExpenses;
 using GisAPI.Domain.Entities;
@@ -175,9 +176,14 @@ public class FuelCalculationService : IFuelCalculationService
         }
 
         // === SOURCE 2: FuelRaw sensor % drops (ratchet pattern) ===
+        // Conversion points→litres ÉTALONNÉE par les pleins facturés du véhicule
+        // quand elle existe (sinon capacité/100). Chargée seulement ici : la
+        // source CAN (1) n'en a pas besoin et l'étalonnage coûte des requêtes.
+        decimal litersPerPoint = tankCapacity / 100m;
         if (!hasFuelData && positions.Count >= 3)
         {
-            var tankCap = (decimal)tankCapacity;
+            var calibration = await GetTankCalibrationAsync(vehicle, cancellationToken);
+            litersPerPoint = calibration.LitersPerPoint;
             int lastFuel = positions[0].FuelPercent;
             decimal totalDropPercent = 0;
 
@@ -190,7 +196,7 @@ public class FuelCalculationService : IFuelCalculationService
                 // Detect refuel: fuel went up >= 10% from last low
                 if (delta >= 10)
                 {
-                    var addedLiters = (delta / 100m) * tankCap;
+                    var addedLiters = delta * litersPerPoint;
                     var priceForRefuel = fuelPrices.GetValueOrDefault(fuelType, 0);
                     refuels.Add(new FuelRefillEventDto(
                         Timestamp: curr.RecordedAt,
@@ -233,7 +239,7 @@ public class FuelCalculationService : IFuelCalculationService
 
             if (totalDropPercent > 0)
             {
-                totalFuelConsumedLiters = (totalDropPercent / 100m) * tankCap;
+                totalFuelConsumedLiters = totalDropPercent * litersPerPoint;
                 avgConsumption = totalDistance > 0
                     ? (totalFuelConsumedLiters / totalDistance) * 100
                     : 0;
@@ -268,7 +274,7 @@ public class FuelCalculationService : IFuelCalculationService
             {
                 var fuelLiters = useEstimation
                     ? kv.Value.fuelPercent  // Already in liters for estimation mode
-                    : (kv.Value.fuelPercent / 100m) * tankCapacity;
+                    : kv.Value.fuelPercent * litersPerPoint;
                 return new DailyFuelConsumptionDto(
                     Date: kv.Key,
                     FuelConsumedLiters: Math.Round(fuelLiters, 2),
@@ -801,6 +807,8 @@ public class FuelCalculationService : IFuelCalculationService
         )).ToList();
 
         // Detected refills: level jumps >= 10% (same ratchet rule as consumption).
+        // From/To portent la mesure brute en points — la conversion en litres
+        // (nominale ici) sera ré-étalonnée par véhicule en aval.
         var refills = new List<DetectedRefillDto>();
         int lastFuel = positions[0].FuelPercent;
         for (int i = 1; i < positions.Count; i++)
@@ -810,7 +818,9 @@ public class FuelCalculationService : IFuelCalculationService
             {
                 refills.Add(new DetectedRefillDto(
                     positions[i].RecordedAt,
-                    Math.Round((decimal)delta / 100m * tankCap, 1)));
+                    Math.Round((decimal)delta / 100m * tankCap, 1),
+                    FromPercent: lastFuel,
+                    ToPercent: positions[i].FuelPercent));
                 lastFuel = positions[i].FuelPercent;
             }
             else if (delta < 0)
@@ -820,7 +830,7 @@ public class FuelCalculationService : IFuelCalculationService
             // small positive change = sensor noise → keep lastFuel
         }
 
-        return new FuelLevelAuditDto(true, tankCapacity, series, MergeSameRefill(refills));
+        return new FuelLevelAuditDto(true, tankCapacity, series, MergeSameRefill(refills, tankCap));
     }
 
     /// <summary>Fenêtre au-delà de laquelle deux hausses de niveau sont deux pleins distincts.</summary>
@@ -844,7 +854,7 @@ public class FuelCalculationService : IFuelCalculationService
     /// Le regroupement corrige aussi la comparaison des volumes : 405 L contre
     /// 423 L (4 % d'écart) est probant, là où 265 L contre 423 L ne l'était pas.
     /// </summary>
-    private static List<DetectedRefillDto> MergeSameRefill(List<DetectedRefillDto> refills)
+    private static List<DetectedRefillDto> MergeSameRefill(List<DetectedRefillDto> refills, decimal tankCap)
     {
         if (refills.Count < 2) return refills;
 
@@ -855,8 +865,17 @@ public class FuelCalculationService : IFuelCalculationService
                 && (r.T - merged[^1].T).TotalMinutes <= SameRefillWindowMinutes)
             {
                 // On conserve l'horodatage du DÉBUT du plein — c'est le moment où
-                // le conducteur est à la pompe — et on cumule les litres.
-                merged[^1] = merged[^1] with { Liters = Math.Round(merged[^1].Liters + r.Liters, 1) };
+                // le conducteur est à la pompe. Le niveau de départ est celui du
+                // PREMIER bond, l'arrivée celle du DERNIER : les litres se
+                // recalculent depuis cette montée totale (et non en additionnant
+                // des bonds dont les paliers intermédiaires peuvent se chevaucher).
+                var toPct = Math.Max(merged[^1].ToPercent, r.ToPercent);
+                var deltaPts = toPct - merged[^1].FromPercent;
+                merged[^1] = merged[^1] with
+                {
+                    ToPercent = toPct,
+                    Liters = Math.Round(deltaPts / 100m * tankCap, 1)
+                };
             }
             else
             {
@@ -865,6 +884,60 @@ public class FuelCalculationService : IFuelCalculationService
         }
 
         return merged;
+    }
+
+    /// <summary>
+    /// Étalonnage points→litres appris des pleins facturés (12 derniers mois,
+    /// 12 factures max). Chaque facture avec litres est rapprochée de la montée
+    /// de jauge la plus proche (±36 h : les factures sont souvent saisies sans
+    /// heure). Le rapport litres/points de chaque paire nourrit
+    /// TankCalibrationResult.Fit, qui décide seul s'il y a assez de points
+    /// cohérents pour faire foi.
+    /// </summary>
+    public async Task<TankCalibrationResult> GetTankCalibrationAsync(
+        Vehicle vehicle,
+        CancellationToken cancellationToken = default)
+    {
+        var nominal = vehicle.FuelTankCapacity ?? 60;
+        if (!vehicle.GpsDeviceId.HasValue || vehicle.GpsDevice == null)
+            return TankCalibrationResult.Uncalibrated(nominal);
+
+        var since = DateTime.UtcNow.AddDays(-365);
+        var entries = await _context.FuelEntries
+            .AsNoTracking()
+            .Where(fe => fe.InvoiceDate >= since && fe.Volume > 0
+                         && (fe.VehicleId == vehicle.Id
+                             || (fe.VehicleId == null
+                                 && !string.IsNullOrEmpty(vehicle.Plate)
+                                 && fe.VehiclePlate == vehicle.Plate)))
+            .OrderByDescending(fe => fe.InvoiceDate)
+            .Take(12)
+            .Select(fe => new { fe.InvoiceDate, fe.Volume })
+            .ToListAsync(cancellationToken);
+
+        var points = new List<TankCalibrationPoint>();
+        // Deux factures ne peuvent pas revendiquer la même montée de jauge
+        // (ex. facture fractionnée) : la première servie gagne, l'autre est ignorée.
+        var usedRefills = new HashSet<DateTime>();
+
+        foreach (var e in entries)
+        {
+            var audit = await GetFuelLevelAuditAsync(
+                vehicle, e.InvoiceDate.AddHours(-36), e.InvoiceDate.AddHours(36), cancellationToken);
+            if (!audit.HasSensor || audit.DetectedRefills.Count == 0) continue;
+
+            var best = audit.DetectedRefills
+                .Where(r => !usedRefills.Contains(r.T))
+                .OrderBy(r => Math.Abs((r.T - e.InvoiceDate).TotalHours))
+                .FirstOrDefault();
+            if (best == null || best.DeltaPoints < TankCalibrationResult.MinDeltaPointsForPoint)
+                continue;
+
+            usedRefills.Add(best.T);
+            points.Add(new TankCalibrationPoint(e.InvoiceDate, e.Volume, best.DeltaPoints));
+        }
+
+        return TankCalibrationResult.Fit(points, nominal);
     }
 
     /// <summary>
