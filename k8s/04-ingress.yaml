@@ -1,21 +1,27 @@
 # =============================================================================
 # GIS V2 - Ingress: Traefik (built-in with K3s)
 # Routes external traffic to internal services
-# TLS via cert-manager + Let's Encrypt (configured in deploy.sh)
+# TLS via cert-manager + Let's Encrypt
 # =============================================================================
 #
-# IMPORTANT: Replace ALL occurrences of "belive.calypso.com" and
-# "mobile.calypso.com" with your actual domain names.
+# ⚠ SERVEUR TN UNIQUEMENT (belive-calypso.com → 41.231.5.146).
+#   Ne PAS appliquer sur DZ : DZ s'accède par IP (197.140.9.87), sans domaine —
+#   des ingress avec ces hôtes y seraient inertes et relanceraient des
+#   challenges ACME impossibles à valider.
 #
-# DNS Records required (point to your VPS IP):
-#   A  belive.calypso.com      → <VPS_IP>
-#   A  mobile.calypso.com   → <VPS_IP>
-#   A  api.calypso.com      → <VPS_IP>
+# DNS requis (déjà en place chez Topnet, vérifié le 2026-08-05) :
+#   A  belive-calypso.com      → 41.231.5.146
+#   A  www.belive-calypso.com  → 41.231.5.146
+#
+# Historique : la version précédente de ce fichier portait des domaines
+# FICTIFS (*.calypso.com). Les challenges Let's Encrypt sont restés « pending »
+# 155 jours et les certificats n'ont jamais été émis. Le nettoyage de ces
+# restes est décrit dans SSL-TN-RUNBOOK.md — l'apply seul ne suffit pas.
 # =============================================================================
 
 # -----------------------------------------------------------------------------
 # Certificate Issuer (Let's Encrypt production)
-# Requires cert-manager to be installed (see deploy.sh)
+# L'e-mail reçoit uniquement les alertes d'expiration — boîte réellement lue.
 # -----------------------------------------------------------------------------
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -24,7 +30,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@calypso.com
+    email: hajjami.selim@gmail.com
     privateKeySecretRef:
       name: letsencrypt-prod-key
     solvers:
@@ -34,7 +40,9 @@ spec:
 
 ---
 # -----------------------------------------------------------------------------
-# Frontend Ingress — belive.calypso.com
+# Frontend Ingress — www.belive-calypso.com (+ apex)
+# Un seul certificat SAN couvre les deux hôtes. Les chemins reproduisent
+# ceux de l'ip-ingress (y compris /mobile) : même application, deux portes.
 # -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -49,11 +57,12 @@ spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - belive.calypso.com
+        - www.belive-calypso.com
+        - belive-calypso.com
       secretName: gisv2-frontend-tls
   rules:
-    - host: belive.calypso.com
-      http:
+    - host: www.belive-calypso.com
+      http: &app-paths
         paths:
           # API requests → gis-api
           - path: /api
@@ -79,6 +88,14 @@ spec:
                 name: gis-api
                 port:
                   number: 5000
+          # Mobile SPA (servie sous /mobile/)
+          - path: /mobile
+            pathType: Prefix
+            backend:
+              service:
+                name: mobile
+                port:
+                  number: 80
           # Everything else → frontend (Angular SPA)
           - path: /
             pathType: Prefix
@@ -87,89 +104,19 @@ spec:
                 name: frontend
                 port:
                   number: 80
+    - host: belive-calypso.com
+      http: *app-paths
 
 ---
 # -----------------------------------------------------------------------------
-# Mobile Ingress — mobile.calypso.com
-# -----------------------------------------------------------------------------
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: mobile-ingress
-  namespace: gisv2
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - mobile.calypso.com
-      secretName: gisv2-mobile-tls
-  rules:
-    - host: mobile.calypso.com
-      http:
-        paths:
-          # API requests → gis-api
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: gis-api
-                port:
-                  number: 5000
-          # SignalR hub
-          - path: /hubs
-            pathType: Prefix
-            backend:
-              service:
-                name: gis-api
-                port:
-                  number: 5000
-          # Everything else → mobile SPA
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: mobile
-                port:
-                  number: 80
-
----
-# -----------------------------------------------------------------------------
-# API-only Ingress — api.calypso.com (optional, for direct API access)
-# -----------------------------------------------------------------------------
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: api-ingress
-  namespace: gisv2
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-spec:
-  ingressClassName: traefik
-  tls:
-    - hosts:
-        - api.calypso.com
-      secretName: gisv2-api-tls
-  rules:
-    - host: api.calypso.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: gis-api
-                port:
-                  number: 5000
-
----
-# -----------------------------------------------------------------------------
-# HTTP → HTTPS redirect middleware
+# HTTP → HTTPS redirect — UNIQUEMENT pour les hôtes nommés.
+#
+# ⚠ NE PAS étendre à l'accès par IP : l'APK mobile en circulation (v1.1.1)
+# cible http://41.231.5.146/api en dur. L'ip-ingress ci-dessous reste en HTTP
+# simple tant qu'une version de l'app mobile pointant sur
+# https://www.belive-calypso.com n'est pas déployée sur la flotte.
+# (Traefik redirectScheme permanent = 308 : la méthode HTTP est préservée,
+# les POST survivent à la redirection.)
 # -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -182,8 +129,8 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: belive.calypso.com
-      http:
+    - host: www.belive-calypso.com
+      http: &redirect-paths
         paths:
           - path: /
             pathType: Prefix
@@ -192,32 +139,13 @@ spec:
                 name: frontend
                 port:
                   number: 80
-    - host: mobile.calypso.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: mobile
-                port:
-                  number: 80
-    - host: api.calypso.com
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: gis-api
-                port:
-                  number: 5000
+    - host: belive-calypso.com
+      http: *redirect-paths
 
 ---
 # -----------------------------------------------------------------------------
 # Nominatim StripPrefix middleware (removes /api/nominatim from path)
 # /api/nominatim/search → /search on nominatim:8080
-# /api/nominatim/reverse → /reverse on nominatim:8080
 # -----------------------------------------------------------------------------
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
@@ -254,7 +182,9 @@ spec:
 
 ---
 # -----------------------------------------------------------------------------
-# IP-based Ingress — access via VPS IP directly (no domain required)
+# IP-based Ingress — accès direct par IP, en HTTP, SANS redirection.
+# Voie de survie pour : l'APK mobile actuelle (http://41.231.5.146),
+# les tests, et le secours si le TLS casse un jour.
 # -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: Ingress
