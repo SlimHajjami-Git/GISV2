@@ -29,7 +29,7 @@
 --                          LAG(longitude) OVER (ORDER BY recorded_at) AS prev_lng
 --                   FROM gps_positions gp
 --                   JOIN vehicles v ON v.gps_device_id = gp.device_id
---                   WHERE v."Id" = t."VehicleId"
+--                   WHERE v.id = t."VehicleId"
 --                     AND gp.recorded_at BETWEEN t."StartTime" AND t."EndTime") seg
 --            ) AS new_km
 --     FROM trips t WHERE t."Status" = 'completed'
@@ -56,7 +56,7 @@ FROM (
                          LAG(longitude) OVER (ORDER BY recorded_at) AS prev_lng
                   FROM gps_positions gp
                   JOIN vehicles v ON v.gps_device_id = gp.device_id
-                  WHERE v."Id" = t2."VehicleId"
+                  WHERE v.id = t2."VehicleId"
                     AND gp.recorded_at BETWEEN t2."StartTime" AND t2."EndTime") seg
            ) AS new_km
     FROM trips t2
