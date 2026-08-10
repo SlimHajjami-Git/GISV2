@@ -5984,15 +5984,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const summary = report.summary;
     const p = (n: number) => String(n).padStart(2, '0');
 
-    // Libellés X : date de début de tranche « dd/MM » ; quand plusieurs tranches
-    // consécutives tombent le même jour, les suivantes affichent l'heure « HHh ».
+    // Libellés X : uniquement les débuts de journée — les heures ne servent
+    // qu'à l'échelle ≤ 48 h. Éclaircissage manuel + autoSkip OFF obligatoire :
+    // laisser Chart.js sauter des libellés supprime des marqueurs de jour au
+    // hasard et laisse des heures orphelines illisibles.
+    const spanMs = new Date(segments[segments.length - 1].startTime).getTime()
+                 - new Date(segments[0].startTime).getTime();
     const labels: string[] = [];
-    let prevDay = '';
-    for (const s of segments) {
-      const d = new Date(s.startTime);
-      const day = `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
-      if (day !== prevDay) { labels.push(day); prevDay = day; }
-      else labels.push(`${p(d.getHours())}h`);
+    if (spanMs <= 48 * 3600 * 1000) {
+      for (let i = 0; i < segments.length; i++) {
+        const d = new Date(segments[i].startTime);
+        const prev = i > 0 ? new Date(segments[i - 1].startTime) : null;
+        const sameDay = prev != null && prev.getDate() === d.getDate() && prev.getMonth() === d.getMonth();
+        labels.push(sameDay ? `${p(d.getHours())}h` : `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}h`);
+      }
+    } else {
+      let prevDay = '';
+      for (const s of segments) {
+        const d = new Date(s.startTime);
+        const day = `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+        if (day !== prevDay) { labels.push(day); prevDay = day; }
+        else labels.push('');
+      }
+      // Au-delà de ~10 jours marqués, n'en garder qu'un sur N pour respirer.
+      const dayPositions = labels.map((l, i) => l ? i : -1).filter(i => i >= 0);
+      if (dayPositions.length > 10) {
+        const step = Math.ceil(dayPositions.length / 10);
+        dayPositions.forEach((pos, k) => { if (k % step !== 0) labels[pos] = ''; });
+      }
     }
 
     const isMin = (s: ConsumptionSegment) => s.isReliable && summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex;
@@ -6119,7 +6138,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         scales: {
           x: {
             grid: { display: false },
-            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: true }
+            // autoSkip OFF : les libellés vides font l'éclaircissage nous-mêmes,
+            // Chart.js ne doit pas supprimer un marqueur de jour au hasard.
+            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: false }
           },
           y: {
             beginAtZero: true,
