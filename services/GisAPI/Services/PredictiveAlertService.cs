@@ -317,35 +317,63 @@ public class PredictiveAlertService : BackgroundService
             .Where(f => f.VehicleId == vehicle.Id && f.InvoiceDate >= prev7Days && f.InvoiceDate < last7Days)
             .ToListAsync(ct);
 
-        if (recentEntries.Count >= 2 && previousEntries.Count >= 2)
-        {
-            var recentAvg = recentEntries.Average(f => f.Volume);
-            var prevAvg = previousEntries.Average(f => f.Volume);
+        if (recentEntries.Count < 2 || previousEntries.Count < 2)
+            return;
 
-            if (prevAvg > 0)
+        // La taille moyenne d'un plein ne dit RIEN de la consommation : elle
+        // dépend du moment où le chauffeur s'arrête (2 gros pleins vs 3 petits
+        // = fausse "hausse" à consommation identique — cas Scania 001 du
+        // 08-10/08, alertes en boucle après la simple saisie des factures).
+        // On compare des L/100km : litres facturés ÷ km odomètre par fenêtre.
+        if (!vehicle.GpsDeviceId.HasValue)
+            return;
+
+        var recentKm = await WindowKmAsync(context, vehicle.GpsDeviceId.Value, last7Days, now, ct);
+        var prevKm = await WindowKmAsync(context, vehicle.GpsDeviceId.Value, prev7Days, last7Days, ct);
+        if (recentKm < 100 || prevKm < 100)
+            return; // pas assez de roulage pour une comparaison honnête
+
+        var recentRate = (double)recentEntries.Sum(f => f.Volume) / recentKm * 100.0;
+        var prevRate = (double)previousEntries.Sum(f => f.Volume) / prevKm * 100.0;
+        if (prevRate <= 0)
+            return;
+
+        var increase = (recentRate - prevRate) / prevRate * 100.0;
+        if (increase > 20)
+        {
+            // Fenêtres de 7 jours glissantes => re-notifier toutes les 6 h ne
+            // fait que répéter la même information : anti-doublon de 7 jours.
+            var alreadySent = await HasRecentNotification(context, companyId, "fuel_anomaly",
+                vehicle.Id, "fuel", ct, TimeSpan.FromDays(7));
+            if (!alreadySent)
             {
-                var increase = ((recentAvg - prevAvg) / prevAvg) * 100;
-                if (increase > 15)
-                {
-                    var alreadySent = await HasRecentNotification(context, companyId, "fuel_anomaly",
-                        vehicle.Id, "fuel", ct);
-                    if (!alreadySent)
-                    {
-                        await SendToCompanyAdmins(context, notifService, companyId,
-                            "fuel_anomaly",
-                            $"Consommation anormale: {vehicle.Name}",
-                            $"Consommation carburant en hausse de {increase:F0}% sur 7 jours pour {vehicle.Name} ({vehicle.Plate}). Moyenne: {recentAvg:F1}L vs {prevAvg:F1}L",
-                            "normal", "vehicle", vehicle.Id, "/vehicules", ct);
-                    }
-                }
+                await SendToCompanyAdmins(context, notifService, companyId,
+                    "fuel_anomaly",
+                    $"Consommation anormale: {vehicle.Name}",
+                    $"Consommation carburant en hausse de {increase:F0}% sur 7 jours pour {vehicle.Name} ({vehicle.Plate}). {recentRate:F1} L/100km vs {prevRate:F1} L/100km la semaine précédente.",
+                    "normal", "vehicle", vehicle.Id, "/vehicules", ct);
             }
         }
     }
 
-    private async Task<bool> HasRecentNotification(GisDbContext context, int companyId,
-        string type, int vehicleId, string keyword, CancellationToken ct)
+    /// <summary>Km parcourus sur la fenêtre d'après l'odomètre du boîtier (0 si indisponible).</summary>
+    private static async Task<double> WindowKmAsync(GisDbContext context, int deviceId,
+        DateTime from, DateTime to, CancellationToken ct)
     {
-        var cutoff = DateTime.UtcNow.AddHours(-CHECK_INTERVAL_HOURS);
+        var odo = await context.GpsPositions
+            .AsNoTracking()
+            .Where(p => p.DeviceId == deviceId && p.RecordedAt >= from && p.RecordedAt < to
+                        && p.OdometerKm != null && p.OdometerKm > 0)
+            .GroupBy(p => 1)
+            .Select(g => new { Min = g.Min(p => p.OdometerKm), Max = g.Max(p => p.OdometerKm) })
+            .FirstOrDefaultAsync(ct);
+        return odo?.Max == null || odo.Min == null ? 0 : (double)(odo.Max.Value - odo.Min.Value);
+    }
+
+    private async Task<bool> HasRecentNotification(GisDbContext context, int companyId,
+        string type, int vehicleId, string keyword, CancellationToken ct, TimeSpan? dedupWindow = null)
+    {
+        var cutoff = DateTime.UtcNow - (dedupWindow ?? TimeSpan.FromHours(CHECK_INTERVAL_HOURS));
         return await context.Notifications
             .IgnoreQueryFilters()
             .AsNoTracking()
