@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow, FuelAuditReport } from '../services/api.service';
-import { Subject, takeUntil } from 'rxjs';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow, FuelAuditReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { Subject, forkJoin, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
@@ -39,6 +39,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelComparisonCanvas') fuelComparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('fuelAuditCanvas') fuelAuditCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('consumptionCanvas') consumptionCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
   // Map popup state
@@ -163,6 +164,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       type: 'fuel-comparison',
       icon: '🔍',
       description: 'Anti-fraude : carburant facturé (carte) vs consommé (GPS)',
+      category: 'costs'
+    },
+    {
+      id: '18',
+      name: 'Analyse conso par segments',
+      type: 'consumption-analysis',
+      icon: '📐',
+      description: 'Consommation par tranches de X km, min/max et comparaison par tonnage',
       category: 'costs'
     },
     {
@@ -347,6 +356,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // Per-vehicle fuel audit (level curve + per-fill verification); only populated when a single vehicle is selected
   fuelAuditReport: FuelAuditReport | null = null;
 
+  // Analyse consommation par segments de X km + comparaison par tonnage (single vehicle)
+  consumptionReport: ConsumptionSegmentsReport | null = null;
+  consumptionByTonnage: ConsumptionByTonnageReport | null = null;
+  loadPeriods: VehicleLoadPeriod[] = [];
+  segmentKm = 100;   // taille de tranche paramétrable (km)
+  newLoadPeriod: { startTime: string; endTime: string; tonnageT: number | null; notes: string } = { startTime: '', endTime: '', tonnageT: null, notes: '' };
+  loadPeriodError = '';
+
   // Fuel estimation report data
   fuelEstimationReport: FleetFuelStatisticsDto | null = null;
   fuelEstimationActiveSection = 'summary';
@@ -395,6 +412,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private secondaryChart?: Chart;
   private fuelComparisonChart?: Chart;
   private fuelAuditChart?: Chart;
+  private consumptionChart?: Chart;
 
   constructor(
     private router: Router,
@@ -658,8 +676,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   onTemplateChange() {
     this.destroyAllCharts();
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
-    // Fuel comparison is meaningless on "today" (fuel accrues over time) -> default to month.
-    if (this.selectedTemplate?.type === 'fuel-comparison') this.selectStandardPeriod('month');
+    // Fuel comparison / segment analysis are meaningless on "today" (fuel and km accrue over time) -> default to month.
+    if (this.selectedTemplate?.type === 'fuel-comparison' || this.selectedTemplate?.type === 'consumption-analysis') this.selectStandardPeriod('month');
     this.reportGenerated = false;
     this.tableData = [];
     this.chartData = [];
@@ -678,7 +696,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
     this.showTemplateDropdown = false;
-    if (template?.type === 'fuel-comparison') this.selectStandardPeriod('month');
+    if (template?.type === 'fuel-comparison' || template?.type === 'consumption-analysis') this.selectStandardPeriod('month');
     this.reportGenerated = false;
     this.tableData = [];
     this.chartData = [];
@@ -740,6 +758,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
     if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
     if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
+    if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
   }
 
   // Pagination getters
@@ -888,7 +907,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // Reports that require a single vehicle
-    const singleVehicleReports = ['fuel', 'daily'];
+    const singleVehicleReports = ['fuel', 'daily', 'consumption-analysis'];
     if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
       console.warn('No vehicle selected for single-vehicle report');
       this.tableData = [];
@@ -909,7 +928,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.fuelEstimationReport = null;
     this.fuelComparisonReport = null;
     this.fuelAuditReport = null;
+    this.consumptionReport = null;
+    this.consumptionByTonnage = null;
     if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
+    if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
 
     // Re-compute dates from the selected period to ensure fresh timestamps
     if (this.selectedStandardPeriod !== 'custom') {
@@ -1013,6 +1035,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Handle fuel comparison (anti-fraud) report
     if (this.selectedTemplate.type === 'fuel-comparison') {
       this.executeFuelComparisonReport(vehicleId, startDate, endDate);
+      return;
+    }
+
+    // Handle consumption analysis by segments (single vehicle, guarded above)
+    if (this.selectedTemplate.type === 'consumption-analysis') {
+      this.executeConsumptionAnalysisReport(vehicleId!, startDate, endDate);
       return;
     }
 
@@ -5846,6 +5874,215 @@ export class ReportsComponent implements OnInit, OnDestroy {
           x: { title: { display: true, text: 'Date/Heure' }, ticks: { maxRotation: 60, autoSkip: true } },
           y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
         }
+      }
+    });
+  }
+
+  // ==================== ANALYSE CONSO PAR SEGMENTS (tranches de X km + tonnage) ====================
+
+  executeConsumptionAnalysisReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    this.consumptionReport = null;
+    this.consumptionByTonnage = null;
+    this.loadPeriodError = '';
+    if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
+
+    // Clamp de la taille de tranche (l'input number peut renvoyer une chaîne vide)
+    const segmentKm = Math.min(Math.max(Number(this.segmentKm) || 100, 10), 1000);
+    this.segmentKm = segmentKm;
+
+    const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
+    const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
+
+    forkJoin({
+      segments: this.apiService.getConsumptionSegments(vehicleId, startDateStr, endDateStr, segmentKm),
+      byTonnage: this.apiService.getConsumptionByTonnage(vehicleId, startDateStr, endDateStr, segmentKm),
+      loadPeriods: this.apiService.getVehicleLoadPeriods(vehicleId)
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: ({ segments, byTonnage, loadPeriods }) => {
+        this.ngZone.run(() => {
+          this.consumptionReport = segments;
+          this.consumptionByTonnage = byTonnage;
+          this.loadPeriods = loadPeriods || [];
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          // Canvas is *ngIf-gated on consumptionReport + hasSensor — defer draw until it's in the DOM
+          setTimeout(() => this.drawConsumptionChart(), 120);
+        });
+      },
+      error: (err) => {
+        console.error('Error loading consumption analysis report:', err);
+        this.ngZone.run(() => {
+          this.loading = false;
+          this.reportGenerated = true;
+          this.statisticsData = { 'Erreur': 'Impossible de charger l\'analyse de consommation par segments' };
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  /** Bar chart L/100km par segment : min fiable en vert, max fiable en rouge,
+   *  segments exclus grisés, ligne pointillée = moyenne fiable. */
+  drawConsumptionChart() {
+    if (this.consumptionChart) {
+      this.consumptionChart.destroy();
+      this.consumptionChart = undefined;
+    }
+
+    const canvas = this.consumptionCanvasRef?.nativeElement;
+    if (!canvas) return;
+
+    const report = this.consumptionReport;
+    if (!report?.hasSensor) return;
+
+    const segments = report.segments || [];
+    if (!segments.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const summary = report.summary;
+    const labels = segments.map(s => `S${s.index}`);
+    const colors = segments.map(s => {
+      if (!s.isReliable) return 'rgba(156,163,175,0.45)';                                    // exclu : gris
+      if (summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex) return '#22c55e'; // min fiable
+      if (summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex) return '#ef4444'; // max fiable
+      return '#3b82f6';
+    });
+
+    const fmt = (n: number | null | undefined, d = 1) =>
+      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+    const datasets: any[] = [
+      {
+        label: 'L/100km',
+        data: segments.map(s => s.lPer100Km),
+        backgroundColor: colors,
+        borderColor: colors,
+        borderWidth: 1,
+        borderRadius: 4,
+        order: 2
+      }
+    ];
+
+    if (summary?.avgLPer100Km != null) {
+      datasets.push({
+        label: `Moyenne fiable (${fmt(summary.avgLPer100Km)} L/100km)`,
+        data: segments.map(() => summary.avgLPer100Km),
+        type: 'line' as any,
+        borderColor: '#f59e0b',
+        backgroundColor: 'transparent',
+        borderDash: [6, 6],
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        order: 1
+      });
+    }
+
+    this.consumptionChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { usePointStyle: true }
+          },
+          title: {
+            display: true,
+            text: `Consommation par tranches de ${report.segmentKm} km — ${report.vehicleName}`
+          },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const s = segments[items[0]?.dataIndex];
+                return s ? `Segment S${s.index} · ${this.formatDateTime(s.startTime)} → ${this.formatDateTime(s.endTime)}` : '';
+              },
+              label: (c) => {
+                if (c.datasetIndex !== 0) return c.dataset.label || '';
+                const s = segments[c.dataIndex];
+                if (!s) return '';
+                const lines = [
+                  `${fmt(s.lPer100Km)} L/100km — ${fmt(s.fuelLiters)} L sur ${fmt(s.distanceKm)} km`,
+                  `Tonnage : ${s.tonnageT != null ? fmt(s.tonnageT) + ' t' : 'non renseigné'}`
+                ];
+                if (s.exclusionReason) lines.push(`Exclu : ${s.exclusionReason}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales: {
+          x: { title: { display: true, text: `Segment (tranches de ${report.segmentKm} km)` } },
+          y: { beginAtZero: true, title: { display: true, text: 'L/100km' } }
+        }
+      }
+    });
+  }
+
+  /** Ajoute une période de chargement (tonnage) puis relance le rapport :
+   *  les segments héritent du nouveau tonnage et les tableaux se rafraîchissent. */
+  addLoadPeriod() {
+    this.loadPeriodError = '';
+    const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
+    if (!vehicleId) return;
+
+    if (this.newLoadPeriod.tonnageT == null || this.newLoadPeriod.tonnageT === ('' as any) || !this.newLoadPeriod.startTime) {
+      this.loadPeriodError = 'Le tonnage et la date de début sont obligatoires.';
+      return;
+    }
+
+    // Les inputs datetime-local renvoient déjà "YYYY-MM-DDTHH:mm" (heure locale),
+    // le même format que toDateTime() — on transmet tel quel, jamais en UTC.
+    const body = {
+      vehicleId,
+      startTime: this.newLoadPeriod.startTime,
+      endTime: this.newLoadPeriod.endTime || null,
+      tonnageT: Number(this.newLoadPeriod.tonnageT),
+      notes: this.newLoadPeriod.notes?.trim() || null
+    };
+
+    this.apiService.createVehicleLoadPeriod(body).subscribe({
+      next: () => {
+        this.ngZone.run(() => {
+          this.newLoadPeriod = { startTime: '', endTime: '', tonnageT: null, notes: '' };
+          this.cdr.detectChanges();
+        });
+        // Relance complète : recharge périodes + segments + comparaison par tonnage
+        this.executeReport();
+      },
+      error: (err) => {
+        console.error('Error creating load period:', err);
+        this.ngZone.run(() => {
+          // 400 = message métier du backend (ex : chevauchement de périodes)
+          this.loadPeriodError = err?.error?.message || 'Impossible d\'ajouter la période de chargement.';
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  deleteLoadPeriod(id: number) {
+    if (!confirm('Supprimer cette période de chargement ?')) return;
+    this.loadPeriodError = '';
+    this.apiService.deleteVehicleLoadPeriod(id).subscribe({
+      next: () => {
+        // Relance complète : recharge périodes + segments + comparaison par tonnage
+        this.executeReport();
+      },
+      error: (err) => {
+        console.error('Error deleting load period:', err);
+        this.ngZone.run(() => {
+          this.loadPeriodError = err?.error?.message || 'Impossible de supprimer la période de chargement.';
+          this.cdr.detectChanges();
+        });
       }
     });
   }

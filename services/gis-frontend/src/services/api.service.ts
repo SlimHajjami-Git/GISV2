@@ -1969,6 +1969,47 @@ export class ApiService {
     return this.http.get<FuelAuditReport>(`${this.API_URL}/fuelexpenses/vehicle-audit`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== CONSUMPTION ANALYSIS (segments de X km + tonnage) ====================
+
+  /** Consumption per X-km segment (min/max, reliability) for a single vehicle. */
+  getConsumptionSegments(vehicleId: number, startDate?: string, endDate?: string, segmentKm: number = 100): Observable<ConsumptionSegmentsReport> {
+    let params = new HttpParams();
+    params = params.set('vehicleId', vehicleId.toString());
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    params = params.set('segmentKm', segmentKm.toString());
+    return this.http.get<ConsumptionSegmentsReport>(`${this.API_URL}/consumption-analysis/segments`, { headers: this.getHeaders(), params });
+  }
+
+  /** Consumption grouped by declared tonnage (segments inherit the load periods). */
+  getConsumptionByTonnage(vehicleId: number, startDate?: string, endDate?: string, segmentKm: number = 100): Observable<ConsumptionByTonnageReport> {
+    let params = new HttpParams();
+    params = params.set('vehicleId', vehicleId.toString());
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    params = params.set('segmentKm', segmentKm.toString());
+    return this.http.get<ConsumptionByTonnageReport>(`${this.API_URL}/consumption-analysis/by-tonnage`, { headers: this.getHeaders(), params });
+  }
+
+  /** Declared load (tonnage) periods of a vehicle. */
+  getVehicleLoadPeriods(vehicleId: number): Observable<VehicleLoadPeriod[]> {
+    let params = new HttpParams();
+    params = params.set('vehicleId', vehicleId.toString());
+    return this.http.get<VehicleLoadPeriod[]>(`${this.API_URL}/consumption-analysis/load-periods`, { headers: this.getHeaders(), params });
+  }
+
+  createVehicleLoadPeriod(body: { vehicleId: number; startTime: string; endTime: string | null; tonnageT: number; notes: string | null }): Observable<number> {
+    return this.http.post<number>(`${this.API_URL}/consumption-analysis/load-periods`, body, { headers: this.getHeaders() });
+  }
+
+  updateVehicleLoadPeriod(id: number, body: { id: number; startTime: string; endTime: string | null; tonnageT: number; notes: string | null }): Observable<any> {
+    return this.http.put<any>(`${this.API_URL}/consumption-analysis/load-periods/${id}`, body, { headers: this.getHeaders() });
+  }
+
+  deleteVehicleLoadPeriod(id: number): Observable<any> {
+    return this.http.delete<any>(`${this.API_URL}/consumption-analysis/load-periods/${id}`, { headers: this.getHeaders() });
+  }
+
   /** Send a one-off preview of the daily fleet report to the current user (test, no 06:00 wait). */
   sendDailyReportTest(): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test`, {}, { headers: this.getHeaders() });
@@ -3824,6 +3865,68 @@ export interface FuelAuditReport {
   isCalibrated: boolean;
   calibrationPointCount: number;
   effectiveTankLiters: number | null;
+}
+
+// ---- Analyse consommation par segments de X km + comparaison par tonnage ----
+export interface ConsumptionSegment {
+  index: number;
+  startTime: string;   // ISO
+  endTime: string;     // ISO
+  distanceKm: number;
+  fuelLiters: number;
+  lPer100Km: number;
+  tonnageT: number | null;          // tonnage hérité des périodes de chargement déclarées
+  isReliable: boolean;
+  exclusionReason: string | null;   // pourquoi le segment est exclu des stats
+}
+
+export interface ConsumptionSegmentsSummary {
+  totalKm: number;
+  totalLiters: number;
+  avgLPer100Km: number | null;
+  minLPer100Km: number | null;
+  minSegmentIndex: number | null;
+  maxLPer100Km: number | null;
+  maxSegmentIndex: number | null;
+  reliableSegments: number;
+  excludedSegments: number;
+}
+
+export interface ConsumptionSegmentsReport {
+  vehicleId: number;
+  vehicleName: string;
+  segmentKm: number;
+  hasSensor: boolean;
+  litersPerPoint: number;
+  isCalibrated: boolean;
+  segments: ConsumptionSegment[];
+  summary: ConsumptionSegmentsSummary;
+}
+
+export interface TonnageGroup {
+  tonnageT: number | null;   // null = segments sans tonnage déclaré
+  segmentCount: number;
+  totalKm: number;
+  avgLPer100Km: number;
+  minLPer100Km: number;
+  maxLPer100Km: number;
+  deltaVsLightestPercent: number | null;
+}
+
+export interface ConsumptionByTonnageReport {
+  vehicleId: number;
+  vehicleName: string;
+  segmentKm: number;
+  groups: TonnageGroup[];
+}
+
+export interface VehicleLoadPeriod {
+  id: number;
+  vehicleId: number;
+  startTime: string;        // ISO
+  endTime: string | null;   // null = en cours
+  tonnageT: number;
+  notes: string | null;
 }
 
 export interface VehicleFuelExpenseDto {

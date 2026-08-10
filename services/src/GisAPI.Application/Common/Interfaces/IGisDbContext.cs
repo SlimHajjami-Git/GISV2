@@ -51,6 +51,7 @@ public interface IGisDbContext
     DbSet<FuelType> FuelTypes { get; }
     DbSet<FuelPricing> FuelPricings { get; }
     DbSet<FuelEntry> FuelEntries { get; }
+    DbSet<VehicleLoadPeriod> VehicleLoadPeriods { get; }
     DbSet<SpeedLimitAlert> SpeedLimitAlerts { get; }
     
     // Brands & Models

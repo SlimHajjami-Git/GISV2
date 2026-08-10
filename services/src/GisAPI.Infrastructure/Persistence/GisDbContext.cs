@@ -117,6 +117,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<FuelType> FuelTypes => Set<FuelType>();
     public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
     public DbSet<FuelEntry> FuelEntries => Set<FuelEntry>();
+    public DbSet<VehicleLoadPeriod> VehicleLoadPeriods => Set<VehicleLoadPeriod>();
     public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
     
     // Brands & Models
@@ -172,6 +173,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<DriverAssignment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<DriverScore>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<PointOfInterest>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<VehicleLoadPeriod>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Contract>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Reservation>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Supplier>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);

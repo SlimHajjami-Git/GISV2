@@ -253,6 +253,9 @@ export class PermissionService {
       // fabriqués. Les deux dépendent du GPS : ReportFuel les gouverne.
       'fuel_estimation': 'reportFuel',
       'fuel_comparison': 'reportFuel',
+      // Analyse par segments : bâtie sur la jauge remontée par le boîtier,
+      // même dépendance GPS que les deux rapports ci-dessus → même drapeau.
+      'consumption_analysis': 'reportFuel',
       'ai_fleet': 'advancedReports'
     };
 

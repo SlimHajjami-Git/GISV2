@@ -54,6 +54,20 @@ public interface IFuelCalculationService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Consommation par tranches de X km depuis la jauge (ratchet étalonné).
+    /// Distance = odomètre quand sain, sinon Haversine. Les segments portant
+    /// une signature de capteur défaillant sont retournés marqués non fiables.
+    /// TonnageT est laissé null ici — le handler l'enrichit depuis les périodes
+    /// de chargement déclarées.
+    /// </summary>
+    Task<ConsumptionSegmentsReportDto?> GetConsumptionSegmentsAsync(
+        Vehicle vehicle,
+        DateTime startDate,
+        DateTime endDate,
+        int segmentKm,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Étalonnage points-de-jauge → litres du véhicule, appris de ses pleins
     /// FACTURÉS rapprochés des montées de jauge (12 derniers mois). Tant que
     /// moins de 4 pleins cohérents existent, retourne la conversion nominale

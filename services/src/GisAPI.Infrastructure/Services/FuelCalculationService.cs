@@ -725,6 +725,154 @@ public class FuelCalculationService : IFuelCalculationService
         return results;
     }
 
+    public async Task<ConsumptionSegmentsReportDto?> GetConsumptionSegmentsAsync(
+        Vehicle vehicle,
+        DateTime startDate,
+        DateTime endDate,
+        int segmentKm,
+        CancellationToken cancellationToken = default)
+    {
+        if (!vehicle.GpsDeviceId.HasValue) return null;
+
+        var startUtc = startDate.Kind == DateTimeKind.Utc ? startDate : startDate.ToUniversalTime();
+        var endUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
+        var vehicleName = string.IsNullOrWhiteSpace(vehicle.Name)
+            ? (vehicle.Plate ?? $"Vehicule {vehicle.Id}") : vehicle.Name;
+
+        var positions = await _context.GpsPositions
+            .AsNoTracking()
+            .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
+                        p.RecordedAt >= startUtc && p.RecordedAt <= endUtc &&
+                        p.FuelRaw != null)
+            .OrderBy(p => p.RecordedAt)
+            .Select(p => new
+            {
+                p.RecordedAt,
+                FuelPercent = p.FuelRaw!.Value,
+                p.OdometerKm,
+                p.Latitude,
+                p.Longitude,
+                p.SpeedKph
+            })
+            .ToListAsync(cancellationToken);
+
+        if (positions.Count < 3)
+        {
+            return new ConsumptionSegmentsReportDto(vehicle.Id, vehicleName, segmentKm,
+                HasSensor: false, LitersPerPoint: 0, IsCalibrated: false,
+                new List<ConsumptionSegmentDto>(),
+                new ConsumptionSegmentsSummaryDto(0, 0, null, null, null, null, null, 0, 0));
+        }
+
+        var calibration = await GetTankCalibrationAsync(vehicle, cancellationToken);
+        var litersPerPoint = calibration.LitersPerPoint;
+
+        // Plafond de vraisemblance par segment : plus large que le plafond période
+        // (un tronçon chargé en montée dépasse légitimement la moyenne du véhicule).
+        var vehicleType = vehicle.Type?.ToLower() ?? "berline";
+        var maxReasonable = vehicleType switch
+        {
+            "camion" or "bus" => 65m,
+            "camionnette" or "fourgon" or "utilitaire" or "minibus" => 33m,
+            _ => 26m
+        };
+
+        var segments = new List<ConsumptionSegmentDto>();
+        int lastFuel = positions[0].FuelPercent;
+        decimal segLiters = 0m, segDist = 0m;
+        var segStart = positions[0].RecordedAt;
+        bool segSensorFault = false;
+
+        ConsumptionSegmentDto CloseSegment(DateTime end)
+        {
+            var lp100 = segDist > 0 ? Math.Round(segLiters / segDist * 100m, 2) : 0m;
+            string? reason = null;
+            if (segSensorFault) reason = "chute capteur suspecte";
+            else if (lp100 > maxReasonable) reason = "consommation invraisemblable";
+            else if (lp100 < 1m) reason = "jauge figee (aucune baisse)";
+            return new ConsumptionSegmentDto(segments.Count, segStart, end,
+                Math.Round(segDist, 1), Math.Round(segLiters, 1), lp100,
+                TonnageT: null, IsReliable: reason == null, ExclusionReason: reason);
+        }
+
+        for (int i = 1; i < positions.Count; i++)
+        {
+            var prev = positions[i - 1];
+            var curr = positions[i];
+
+            // Distance : odomètre entre trames consécutives quand il est sain
+            // (croissant, pas de saut aberrant), sinon Haversine bornée.
+            decimal stepKm = 0m;
+            if (prev.OdometerKm.HasValue && curr.OdometerKm.HasValue &&
+                curr.OdometerKm.Value >= prev.OdometerKm.Value &&
+                curr.OdometerKm.Value - prev.OdometerKm.Value < 50)
+            {
+                stepKm = curr.OdometerKm.Value - prev.OdometerKm.Value;
+            }
+            else
+            {
+                var d = (decimal)HaversineKm(prev.Latitude, prev.Longitude, curr.Latitude, curr.Longitude);
+                if (d > 0.01m && d < 5m && (decimal)(curr.SpeedKph ?? 0) > 2m)
+                    stepKm = d;
+            }
+            segDist += stepKm;
+
+            // Carburant : mêmes règles ratchet que le calcul de consommation période.
+            var delta = curr.FuelPercent - lastFuel;
+            if (delta >= 10)
+            {
+                lastFuel = curr.FuelPercent;   // plein : pas de la consommation
+            }
+            else if (delta < 0)
+            {
+                var drop = -delta;
+                if (drop < 50)
+                {
+                    segLiters += drop * litersPerPoint;
+                    // Falaise quasi à l'arrêt = signature capteur (flotteur coincé),
+                    // pas une consommation réelle.
+                    if (drop >= 10 && (curr.SpeedKph ?? 0) < 5)
+                        segSensorFault = true;
+                }
+                else
+                {
+                    segSensorFault = true;     // chute >= 50 pts : capteur en vrac
+                }
+                lastFuel = curr.FuelPercent;
+            }
+            // hausse < 10 pts : bruit, lastFuel inchangé
+
+            if (segDist >= segmentKm)
+            {
+                segments.Add(CloseSegment(curr.RecordedAt));
+                segStart = curr.RecordedAt;
+                segLiters = 0m; segDist = 0m; segSensorFault = false;
+            }
+        }
+
+        // Dernier segment partiel : gardé s'il couvre au moins la moitié de X km.
+        if (segDist >= segmentKm / 2m)
+            segments.Add(CloseSegment(positions[^1].RecordedAt));
+
+        var reliable = segments.Where(s => s.IsReliable).ToList();
+        var totalReliableKm = reliable.Sum(s => s.DistanceKm);
+        var summary = new ConsumptionSegmentsSummaryDto(
+            TotalKm: Math.Round(segments.Sum(s => s.DistanceKm), 1),
+            TotalLiters: Math.Round(segments.Sum(s => s.FuelLiters), 1),
+            AvgLPer100Km: totalReliableKm > 0
+                ? Math.Round(reliable.Sum(s => s.FuelLiters) / totalReliableKm * 100m, 2) : null,
+            MinLPer100Km: reliable.Count > 0 ? reliable.Min(s => s.LPer100Km) : null,
+            MinSegmentIndex: reliable.Count > 0 ? reliable.OrderBy(s => s.LPer100Km).First().Index : null,
+            MaxLPer100Km: reliable.Count > 0 ? reliable.Max(s => s.LPer100Km) : null,
+            MaxSegmentIndex: reliable.Count > 0 ? reliable.OrderByDescending(s => s.LPer100Km).First().Index : null,
+            ReliableSegments: reliable.Count,
+            ExcludedSegments: segments.Count - reliable.Count);
+
+        return new ConsumptionSegmentsReportDto(vehicle.Id, vehicleName, segmentKm,
+            HasSensor: true, LitersPerPoint: Math.Round(litersPerPoint, 3),
+            IsCalibrated: calibration.IsCalibrated, segments, summary);
+    }
+
     /// <summary>
     /// Per-vehicle fuel-level audit from the boitier sensor: builds the fuel-level curve over
     /// time (litres) and the detected refills (>= 10% level jumps), reusing the same conversion

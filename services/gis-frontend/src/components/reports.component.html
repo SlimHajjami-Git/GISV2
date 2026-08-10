@@ -237,7 +237,7 @@
         </div>
         @if (!selectedTemplateId) {
           <div class="validation-hint">⚠️ Sélectionnez un type de rapport</div>
-        } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period')) {
+        } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period' || selectedTemplate?.type === 'consumption-analysis')) {
           <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
         }
 
@@ -776,8 +776,8 @@
         } @else {
           <!-- ========== OTHER REPORTS SECTION ========== -->
           <div class="workspace-content">
-            <!-- Chart Section (hidden for fuel-comparison: it renders its own charts below) -->
-            <div class="chart-section" *ngIf="selectedTemplate?.type !== 'fuel-comparison'">
+            <!-- Chart Section (hidden for fuel-comparison and consumption-analysis: they render their own charts below) -->
+            <div class="chart-section" *ngIf="selectedTemplate?.type !== 'fuel-comparison' && selectedTemplate?.type !== 'consumption-analysis'">
               <div class="charts-container">
                 @if (selectedTemplate?.type === 'driving-behavior') {
                   <div class="behavior-cards-row">
@@ -966,8 +966,197 @@
               </ng-template>
             </div>
 
-            <!-- Table Section for non-monthly reports -->
-            <div class="table-section">
+            <!-- Analyse conso par segments : tranches de X km, min/max + comparaison par tonnage (single vehicle only) -->
+            <div *ngIf="selectedTemplate?.type === 'consumption-analysis' && reportGenerated" class="consumption-analysis-section" style="margin-bottom:16px;">
+
+              <!-- Taille de tranche paramétrable -->
+              <div style="display:flex;gap:16px;align-items:center;padding:10px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;font-weight:600;">Tranche (km)
+                  <input type="number" min="10" max="1000" step="10" class="field-input" [(ngModel)]="segmentKm" style="width:90px;">
+                </label>
+                <button class="btn-execute" (click)="executeReport()" [disabled]="loading">
+                  @if (loading) { <span class="spinner"></span> }
+                  Recalculer
+                </button>
+                <span style="color:var(--text-secondary,#64748b);font-size:12px;">Consommation par tranches de {{ segmentKm }} km — min/max et comparaison par tonnage déclaré</span>
+              </div>
+
+              <!-- Échec de chargement (les voisins ne l'affichent que en console) -->
+              <div *ngIf="!loading && !consumptionReport" style="padding:12px 14px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:8px;color:#dc2626;font-weight:600;">
+                Impossible de charger l'analyse de consommation par segments.
+              </div>
+
+              <ng-container *ngIf="consumptionReport">
+                <ng-container *ngIf="consumptionReport.hasSensor; else noSensorConsoTpl">
+
+                  <!-- KPI : moyenne / min / max / segments -->
+                  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+                    <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Moyenne (L/100km)</div>
+                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.avgLPer100Km != null ? (consumptionReport.summary.avgLPer100Km | number:'1.1-1') : '—' }}</div>
+                    </div>
+                    <div style="flex:1;min-width:170px;padding:12px 16px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.35);border-radius:10px;">
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Min (L/100km)</div>
+                      <div style="font-size:22px;font-weight:800;color:#16a34a;">{{ consumptionReport.summary.minLPer100Km != null ? (consumptionReport.summary.minLPer100Km | number:'1.1-1') : '—' }}</div>
+                      <div *ngIf="consumptionReport.summary.minSegmentIndex != null" style="font-size:11px;color:var(--text-secondary,#64748b);">segment S{{ consumptionReport.summary.minSegmentIndex }}</div>
+                    </div>
+                    <div style="flex:1;min-width:170px;padding:12px 16px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:10px;">
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Max (L/100km)</div>
+                      <div style="font-size:22px;font-weight:800;color:#dc2626;">{{ consumptionReport.summary.maxLPer100Km != null ? (consumptionReport.summary.maxLPer100Km | number:'1.1-1') : '—' }}</div>
+                      <div *ngIf="consumptionReport.summary.maxSegmentIndex != null" style="font-size:11px;color:var(--text-secondary,#64748b);">segment S{{ consumptionReport.summary.maxSegmentIndex }}</div>
+                    </div>
+                    <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Segments</div>
+                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.reliableSegments }} fiables <span style="font-size:14px;font-weight:700;color:var(--text-secondary,#64748b);">/ {{ consumptionReport.summary.excludedSegments }} exclus</span></div>
+                    </div>
+                  </div>
+
+                  <!-- Provenance de la conversion points→litres + volumes analysés -->
+                  <div style="padding:4px 14px 10px;font-size:12px;color:var(--text-secondary,#64748b);">
+                    {{ consumptionReport.summary.totalKm | number:'1.0-0' }} km analysés · {{ consumptionReport.summary.totalLiters | number:'1.0-0' }} L consommés ·
+                    <ng-container *ngIf="consumptionReport.isCalibrated; else nominalConvTpl">jauge étalonnée ({{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point appris des pleins facturés).</ng-container>
+                    <ng-template #nominalConvTpl>jauge non étalonnée — conversion nominale {{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point, chiffres indicatifs. Chaque plein saisi avec ses litres exacts affine la précision.</ng-template>
+                  </div>
+
+                  <!-- Graphe L/100km par segment -->
+                  <div class="chart-section" style="margin-bottom:12px;" *ngIf="consumptionReport.segments.length">
+                    <div class="charts-container">
+                      <div class="chart-area" style="min-height:320px;">
+                        <canvas #consumptionCanvas></canvas>
+                      </div>
+                    </div>
+                  </div>
+                  <div *ngIf="!consumptionReport.segments.length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
+                    Aucun segment sur la période — pas assez de distance parcourue pour une tranche de {{ consumptionReport.segmentKm }} km.
+                  </div>
+
+                  <!-- Périodes de chargement (tonnage déclaré par l'utilisateur) -->
+                  <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;">
+                    <div style="font-weight:700;color:var(--text-primary,#1e293b);margin-bottom:8px;">Périodes de chargement (tonnage)</div>
+                    <div class="table-wrapper" style="margin-bottom:10px;" *ngIf="loadPeriods.length">
+                      <table class="data-table">
+                        <thead>
+                          <tr>
+                            <th>Début</th>
+                            <th>Fin</th>
+                            <th>Tonnage (t)</th>
+                            <th>Notes</th>
+                            <th></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr *ngFor="let period of loadPeriods">
+                            <td>{{ formatDateTime(period.startTime) }}</td>
+                            <td>{{ period.endTime ? formatDateTime(period.endTime) : 'en cours' }}</td>
+                            <td>{{ period.tonnageT | number:'1.0-1' }}</td>
+                            <td>{{ period.notes || '—' }}</td>
+                            <td style="text-align:right;"><button style="background:none;border:none;cursor:pointer;font-size:15px;" title="Supprimer" (click)="deleteLoadPeriod(period.id)">🗑️</button></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                    <div *ngIf="!loadPeriods.length" style="color:var(--text-secondary,#64748b);font-size:12px;margin-bottom:10px;">Aucune période déclarée — les segments sont regroupés en « non renseigné ».</div>
+                    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Début
+                        <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.startTime">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Fin (optionnel)
+                        <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.endTime">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Tonnage (t)
+                        <input type="number" step="0.5" min="0" max="100" class="field-input" [(ngModel)]="newLoadPeriod.tonnageT" style="width:90px;">
+                      </label>
+                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Notes
+                        <input type="text" class="field-input" [(ngModel)]="newLoadPeriod.notes" placeholder="ex : chantier X">
+                      </label>
+                      <button class="btn-execute" (click)="addLoadPeriod()" [disabled]="loading">Ajouter</button>
+                    </div>
+                    <div *ngIf="loadPeriodError" style="color:#dc2626;font-weight:600;font-size:12px;margin-top:6px;">{{ loadPeriodError }}</div>
+                  </div>
+
+                  <!-- Comparaison de la consommation par tonnage déclaré -->
+                  <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;" *ngIf="consumptionByTonnage?.groups?.length">
+                    <div style="font-weight:700;color:var(--text-primary,#1e293b);margin-bottom:8px;">Consommation par tonnage</div>
+                    <div class="table-wrapper">
+                      <table class="data-table">
+                        <thead>
+                          <tr>
+                            <th>Tonnage</th>
+                            <th>Segments</th>
+                            <th>Km</th>
+                            <th>Moyenne L/100</th>
+                            <th>Min</th>
+                            <th>Max</th>
+                            <th>Écart vs plus léger</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr *ngFor="let group of consumptionByTonnage?.groups">
+                            <td>{{ group.tonnageT != null ? ((group.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
+                            <td>{{ group.segmentCount }}</td>
+                            <td>{{ group.totalKm | number:'1.0-0' }}</td>
+                            <td><strong>{{ group.avgLPer100Km | number:'1.1-1' }}</strong></td>
+                            <td>{{ group.minLPer100Km | number:'1.1-1' }}</td>
+                            <td>{{ group.maxLPer100Km | number:'1.1-1' }}</td>
+                            <td>
+                              <span *ngIf="group.deltaVsLightestPercent != null" style="font-weight:600;" [style.color]="group.deltaVsLightestPercent > 0 ? '#dc2626' : '#16a34a'">
+                                {{ group.deltaVsLightestPercent > 0 ? '+' : '' }}{{ group.deltaVsLightestPercent | number:'1.0-1' }} %
+                              </span>
+                              <span *ngIf="group.deltaVsLightestPercent == null" style="color:var(--text-secondary,#64748b);">—</span>
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Détail des segments -->
+                  <div class="table-wrapper" style="margin-bottom:12px;">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Début</th>
+                          <th>Km</th>
+                          <th>Litres</th>
+                          <th>L/100km</th>
+                          <th>Tonnage</th>
+                          <th>Fiabilité</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr *ngFor="let seg of consumptionReport.segments"
+                            [style.opacity]="seg.isReliable ? null : 0.55"
+                            [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
+                          <td>S{{ seg.index }}</td>
+                          <td>{{ formatDateTime(seg.startTime) }}</td>
+                          <td>{{ seg.distanceKm | number:'1.1-1' }}</td>
+                          <td>{{ seg.fuelLiters | number:'1.1-1' }}</td>
+                          <td><strong [style.color]="seg.isReliable && seg.index === consumptionReport.summary.minSegmentIndex ? '#16a34a' : (seg.isReliable && seg.index === consumptionReport.summary.maxSegmentIndex ? '#dc2626' : null)">{{ seg.lPer100Km | number:'1.1-1' }}</strong></td>
+                          <td>{{ seg.tonnageT != null ? ((seg.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
+                          <td>
+                            <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">✅ Fiable</span>
+                            <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">exclu : {{ seg.exclusionReason || 'non fiable' }}</span>
+                          </td>
+                        </tr>
+                        <tr *ngIf="!consumptionReport.segments.length">
+                          <td colspan="7" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucun segment sur la période.</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </ng-container>
+
+                <ng-template #noSensorConsoTpl>
+                  <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#fcd34d);border-left:4px solid #f59e0b;border-radius:8px;color:var(--text-primary,#1e293b);">
+                    ⚠️ Pas de capteur carburant exploitable sur ce véhicule — analyse par segments indisponible (seul le NEMS L remonte le niveau)
+                  </div>
+                </ng-template>
+              </ng-container>
+            </div>
+
+            <!-- Table Section for non-monthly reports (consumption-analysis renders its own tables above) -->
+            <div class="table-section" *ngIf="selectedTemplate?.type !== 'consumption-analysis'">
               <div class="section-toolbar">
                 <div class="toolbar-left">
                   <div class="pagination">

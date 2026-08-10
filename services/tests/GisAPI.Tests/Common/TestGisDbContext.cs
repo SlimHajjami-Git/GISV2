@@ -64,6 +64,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<FuelType> FuelTypes => Set<FuelType>();
     public DbSet<FuelPricing> FuelPricings => Set<FuelPricing>();
     public DbSet<FuelEntry> FuelEntries => Set<FuelEntry>();
+    public DbSet<VehicleLoadPeriod> VehicleLoadPeriods => Set<VehicleLoadPeriod>();
     public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
     public DbSet<Driver> Drivers => Set<Driver>();
     
