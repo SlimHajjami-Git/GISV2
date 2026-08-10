@@ -51,6 +51,19 @@ public class ConsumptionAnalysisController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Explication IA d'une tranche (clic sur une barre du rapport) : profil de
+    /// conduite reconstitué + tonnage + contexte, soumis à Groq. Réponse en
+    /// cache 15 min côté serveur.
+    /// </summary>
+    [HttpPost("explain-segment")]
+    public async Task<ActionResult<ExplainSegmentResultDto>> ExplainSegment(
+        [FromBody] ExplainConsumptionSegmentQuery query)
+    {
+        var result = await _mediator.Send(query);
+        return Ok(result);
+    }
+
     [HttpGet("load-periods")]
     public async Task<ActionResult<List<VehicleLoadPeriodDto>>> GetLoadPeriods([FromQuery] int vehicleId)
     {

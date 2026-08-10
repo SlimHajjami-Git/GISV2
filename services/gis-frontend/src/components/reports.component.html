@@ -1034,6 +1034,29 @@
                       </div>
                     </div>
                   </div>
+                  <div *ngIf="visibleConsumptionSegments().length && !aiSegment" style="font-size:11px;color:var(--text-secondary,#94a3b8);margin:0 14px 8px;">
+                    💡 Cliquez sur une barre pour obtenir une explication de la tranche.
+                  </div>
+
+                  <!-- Panneau explication IA de la tranche cliquée -->
+                  <div *ngIf="aiSegment" style="margin:0 0 12px;padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-left:3px solid #6366f1;border-radius:10px;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+                      <div>
+                        <div style="font-weight:700;color:var(--text-primary,#1e293b);font-size:13px;">💡 Explication de la tranche</div>
+                        <div style="font-size:11.5px;color:var(--text-secondary,#64748b);margin-top:2px;">
+                          Du {{ formatDateTime(aiSegment.startTime) }} au {{ formatDateTime(aiSegment.endTime) }}
+                          · {{ aiSegment.distanceKm | number:'1.0-0' }} km
+                          · <strong>{{ aiSegment.lPer100Km | number:'1.1-1' }} L/100 km</strong>
+                          · {{ aiSegment.tonnageT != null ? ((aiSegment.tonnageT | number:'1.0-1') + ' t') : 'chargement non renseigné' }}
+                        </div>
+                      </div>
+                      <button (click)="closeAiPanel()" style="background:none;border:none;cursor:pointer;color:var(--text-secondary,#94a3b8);font-size:16px;line-height:1;padding:2px;">✕</button>
+                    </div>
+                    <div *ngIf="aiLoading" style="margin-top:10px;font-size:12.5px;color:var(--text-secondary,#64748b);font-style:italic;">
+                      Analyse en cours…
+                    </div>
+                    <div *ngIf="!aiLoading && aiExplanation" style="margin-top:10px;font-size:13px;color:var(--text-primary,#1e293b);line-height:1.55;white-space:pre-line;">{{ aiExplanation }}</div>
+                  </div>
                   <div *ngIf="!consumptionReport.segments.length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
                     Aucun segment sur la période — pas assez de distance parcourue pour une tranche de {{ consumptionReport.segmentKm }} km.
                   </div>
@@ -1166,6 +1189,9 @@
                           </thead>
                           <tbody>
                             <tr *ngFor="let seg of visibleConsumptionSegments()"
+                                (click)="explainSegment(seg)"
+                                title="Cliquer pour une explication de la tranche"
+                                [style.cursor]="'pointer'"
                                 [style.opacity]="seg.isReliable ? null : 0.55"
                                 [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
                               <td>{{ seg.index }}</td>

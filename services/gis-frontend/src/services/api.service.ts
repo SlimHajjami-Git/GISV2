@@ -2010,6 +2010,17 @@ export class ApiService {
     return this.http.delete<any>(`${this.API_URL}/consumption-analysis/load-periods/${id}`, { headers: this.getHeaders() });
   }
 
+  /** AI explanation of one consumption segment (Groq) — server caches 15 min. */
+  explainConsumptionSegment(body: {
+    vehicleId: number; startTime: string; endTime: string;
+    distanceKm: number; fuelLiters: number; lPer100Km: number;
+    tonnageT: number | null; isReliable: boolean; exclusionReason: string | null;
+    segmentKm: number; periodAvgLPer100Km: number | null;
+    periodMinLPer100Km: number | null; periodMaxLPer100Km: number | null;
+  }): Observable<ExplainSegmentResult> {
+    return this.http.post<ExplainSegmentResult>(`${this.API_URL}/consumption-analysis/explain-segment`, body, { headers: this.getHeaders() });
+  }
+
   /** Send a one-off preview of the daily fleet report to the current user (test, no 06:00 wait). */
   sendDailyReportTest(): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/reports/daily-fleet-report/test`, {}, { headers: this.getHeaders() });
@@ -3927,6 +3938,11 @@ export interface VehicleLoadPeriod {
   endTime: string | null;   // null = en cours
   tonnageT: number;
   notes: string | null;
+}
+
+export interface ExplainSegmentResult {
+  explanation: string;
+  fromCache: boolean;
 }
 
 export interface VehicleFuelExpenseDto {

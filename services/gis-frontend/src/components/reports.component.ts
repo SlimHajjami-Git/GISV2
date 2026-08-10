@@ -361,6 +361,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Les tranches sans données exploitables sont masquées par défaut (vue client) —
    *  affichables via une case discrète pour le diagnostic interne. */
   showExcludedSegments = false;
+  /** Explication IA de la tranche cliquée (Groq) */
+  aiSegment: ConsumptionSegment | null = null;
+  aiExplanation = '';
+  aiLoading = false;
   consumptionByTonnage: ConsumptionByTonnageReport | null = null;
   loadPeriods: VehicleLoadPeriod[] = [];
   segmentKm = 100;   // taille de tranche paramétrable (km)
@@ -5892,6 +5896,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.consumptionReport = null;
     this.consumptionByTonnage = null;
     this.loadPeriodError = '';
+    this.closeAiPanel();
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
 
     // Clamp de la taille de tranche (l'input number peut renvoyer une chaîne vide)
@@ -5962,6 +5967,51 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   minSegmentDate(): string { return this.segmentStartLabel(this.consumptionReport?.summary?.minSegmentIndex); }
   maxSegmentDate(): string { return this.segmentStartLabel(this.consumptionReport?.summary?.maxSegmentIndex); }
+
+  /** Clic sur une barre ou une ligne du détail : demande à l'IA d'expliquer la tranche. */
+  explainSegment(seg: ConsumptionSegment) {
+    const report = this.consumptionReport;
+    const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
+    if (!report || !vehicleId) return;
+
+    this.aiSegment = seg;
+    this.aiExplanation = '';
+    this.aiLoading = true;
+    this.cdr.detectChanges();
+
+    this.apiService.explainConsumptionSegment({
+      vehicleId,
+      startTime: seg.startTime,
+      endTime: seg.endTime,
+      distanceKm: seg.distanceKm,
+      fuelLiters: seg.fuelLiters,
+      lPer100Km: seg.lPer100Km,
+      tonnageT: seg.tonnageT,
+      isReliable: seg.isReliable,
+      exclusionReason: seg.exclusionReason,
+      segmentKm: report.segmentKm,
+      periodAvgLPer100Km: report.summary?.avgLPer100Km ?? null,
+      periodMinLPer100Km: report.summary?.minLPer100Km ?? null,
+      periodMaxLPer100Km: report.summary?.maxLPer100Km ?? null
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => this.ngZone.run(() => {
+        this.aiExplanation = res.explanation;
+        this.aiLoading = false;
+        this.cdr.detectChanges();
+      }),
+      error: () => this.ngZone.run(() => {
+        this.aiExplanation = 'Analyse IA momentanément indisponible.';
+        this.aiLoading = false;
+        this.cdr.detectChanges();
+      })
+    });
+  }
+
+  closeAiPanel() {
+    this.aiSegment = null;
+    this.aiExplanation = '';
+    this.aiLoading = false;
+  }
 
   drawConsumptionChart() {
     if (this.consumptionChart) {
@@ -6108,6 +6158,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        // Clic sur une barre → explication IA de la tranche (hors zone Angular)
+        onClick: (_evt, elements) => {
+          if (!elements?.length) return;
+          const s = segments[elements[0].index];
+          if (s) this.ngZone.run(() => this.explainSegment(s));
+        },
+        onHover: (evt, elements) => {
+          const target = evt.native?.target as HTMLElement | null;
+          if (target) target.style.cursor = elements?.length ? 'pointer' : 'default';
+        },
         plugins: {
           legend: { display: false },
           tooltip: {
