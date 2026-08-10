@@ -969,16 +969,26 @@
             <!-- Analyse conso par segments : tranches de X km, min/max + comparaison par tonnage (single vehicle only) -->
             <div *ngIf="selectedTemplate?.type === 'consumption-analysis' && reportGenerated" class="consumption-analysis-section" style="margin-bottom:16px;">
 
-              <!-- Taille de tranche paramétrable -->
-              <div style="display:flex;gap:16px;align-items:center;padding:10px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;flex-wrap:wrap;">
-                <label style="display:flex;align-items:center;gap:6px;font-weight:600;">Tranche (km)
+              <!-- En-tête : titre + explication en une phrase + presets de tranche -->
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                <div style="flex:1;min-width:260px;">
+                  <div style="font-size:16px;font-weight:700;color:var(--text-primary,#1e293b);">Consommation réelle par tranches de {{ segmentKm }} km</div>
+                  <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;max-width:560px;">Le trajet est découpé en tranches de {{ segmentKm }} km ; la consommation de chaque tranche est mesurée sur la jauge. On voit ainsi la meilleure, la pire, et l'effet du chargement.</div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <button *ngFor="let preset of segmentKmPresets" (click)="setSegmentKmPreset(preset)" [disabled]="loading"
+                          [style.background]="+segmentKm === preset ? '#3b82f6' : 'transparent'"
+                          [style.color]="+segmentKm === preset ? '#fff' : 'var(--text-secondary,#64748b)'"
+                          [style.border-color]="+segmentKm === preset ? '#3b82f6' : 'var(--border-color,#e2e8f0)'"
+                          style="border:1px solid var(--border-color,#e2e8f0);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;">
+                    {{ preset }} km
+                  </button>
                   <input type="number" min="10" max="1000" step="10" class="field-input" [(ngModel)]="segmentKm" style="width:90px;">
-                </label>
-                <button class="btn-execute" (click)="executeReport()" [disabled]="loading">
-                  @if (loading) { <span class="spinner"></span> }
-                  Recalculer
-                </button>
-                <span style="color:var(--text-secondary,#64748b);font-size:12px;">Consommation par tranches de {{ segmentKm }} km — min/max et comparaison par tonnage déclaré</span>
+                  <button class="btn-execute" style="flex:0 0 auto;" (click)="executeReport()" [disabled]="loading">
+                    @if (loading) { <span class="spinner"></span> }
+                    Recalculer
+                  </button>
+                </div>
               </div>
 
               <!-- Échec de chargement (les voisins ne l'affichent que en console) -->
@@ -989,34 +999,31 @@
               <ng-container *ngIf="consumptionReport">
                 <ng-container *ngIf="consumptionReport.hasSensor; else noSensorConsoTpl">
 
-                  <!-- KPI : moyenne / min / max / segments -->
-                  <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
-                    <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
-                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Moyenne (L/100km)</div>
-                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.avgLPer100Km != null ? (consumptionReport.summary.avgLPer100Km | number:'1.1-1') : '—' }}</div>
+                  <!-- Ligne héro : moyenne en grand + meilleure / pire tranche -->
+                  <div *ngIf="consumptionReport.summary.avgLPer100Km != null" style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:16px 18px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:8px;">
+                    <div>
+                      <div style="display:flex;align-items:baseline;gap:8px;">
+                        <span style="font-size:40px;font-weight:800;line-height:1;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.avgLPer100Km | number:'1.1-1' }}</span>
+                        <span style="font-size:13px;font-weight:600;color:var(--text-secondary,#64748b);">L/100 km</span>
+                      </div>
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;">mesurée sur {{ reliableConsumptionKm() | number:'1.0-0' }} km analysés</div>
                     </div>
-                    <div style="flex:1;min-width:170px;padding:12px 16px;background:rgba(22,163,74,.08);border:1px solid rgba(22,163,74,.35);border-radius:10px;">
-                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Min (L/100km)</div>
-                      <div style="font-size:22px;font-weight:800;color:#16a34a;">{{ consumptionReport.summary.minLPer100Km != null ? (consumptionReport.summary.minLPer100Km | number:'1.1-1') : '—' }}</div>
-                      <div *ngIf="consumptionReport.summary.minSegmentIndex != null" style="font-size:11px;color:var(--text-secondary,#64748b);">segment S{{ consumptionReport.summary.minSegmentIndex }}</div>
-                    </div>
-                    <div style="flex:1;min-width:170px;padding:12px 16px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:10px;">
-                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Max (L/100km)</div>
-                      <div style="font-size:22px;font-weight:800;color:#dc2626;">{{ consumptionReport.summary.maxLPer100Km != null ? (consumptionReport.summary.maxLPer100Km | number:'1.1-1') : '—' }}</div>
-                      <div *ngIf="consumptionReport.summary.maxSegmentIndex != null" style="font-size:11px;color:var(--text-secondary,#64748b);">segment S{{ consumptionReport.summary.maxSegmentIndex }}</div>
-                    </div>
-                    <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
-                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Segments analysés</div>
-                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.reliableSegments }} <span style="font-size:14px;font-weight:700;color:var(--text-secondary,#64748b);">× {{ consumptionReport.segmentKm }} km</span></div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;">
+                      <div *ngIf="consumptionReport.summary.minLPer100Km != null" style="padding:8px 14px;background:rgba(34,197,94,.09);border-radius:10px;">
+                        <div style="font-size:12px;font-weight:700;color:#16a34a;">▼ Meilleure tranche&nbsp;: {{ consumptionReport.summary.minLPer100Km | number:'1.1-1' }} L/100</div>
+                        <div *ngIf="minSegmentDate()" style="font-size:11px;color:var(--text-secondary,#64748b);margin-top:2px;">{{ minSegmentDate() }}</div>
+                      </div>
+                      <div *ngIf="consumptionReport.summary.maxLPer100Km != null" style="padding:8px 14px;background:rgba(239,68,68,.08);border-radius:10px;">
+                        <div style="font-size:12px;font-weight:700;color:#dc2626;">▲ Pire tranche&nbsp;: {{ consumptionReport.summary.maxLPer100Km | number:'1.1-1' }} L/100</div>
+                        <div *ngIf="maxSegmentDate()" style="font-size:11px;color:var(--text-secondary,#64748b);margin-top:2px;">{{ maxSegmentDate() }}</div>
+                      </div>
                     </div>
                   </div>
 
-                  <!-- Provenance de la conversion points→litres + volumes analysés
-                       (uniquement les tranches exploitables — cohérent avec les stats) -->
-                  <div style="padding:4px 14px 10px;font-size:12px;color:var(--text-secondary,#64748b);">
-                    {{ reliableConsumptionKm() | number:'1.0-0' }} km analysés · {{ reliableConsumptionLiters() | number:'1.0-0' }} L consommés ·
-                    <ng-container *ngIf="consumptionReport.isCalibrated; else nominalConvTpl">jauge étalonnée ({{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point appris des pleins facturés).</ng-container>
-                    <ng-template #nominalConvTpl>jauge non étalonnée — conversion nominale {{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point, chiffres indicatifs. Chaque plein saisi avec ses litres exacts affine la précision.</ng-template>
+                  <!-- Provenance de la conversion points→litres (discrète, jamais alarmante) -->
+                  <div *ngIf="consumptionReport.segments.length" style="padding:0 4px;font-size:11px;color:var(--text-secondary,#94a3b8);margin-bottom:12px;">
+                    <ng-container *ngIf="consumptionReport.isCalibrated; else nominalConvTpl">Conversion jauge étalonnée sur les pleins facturés ({{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point)</ng-container>
+                    <ng-template #nominalConvTpl>Conversion nominale ({{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point) — saisir les pleins avec litres exacts améliore la précision</ng-template>
                   </div>
 
                   <!-- Graphe L/100km par segment (tranches exploitables uniquement en vue client) -->
@@ -1033,75 +1040,43 @@
                   <div *ngIf="consumptionReport.segments.length && !visibleConsumptionSegments().length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
                     Pas assez de données exploitables sur la période pour une analyse fiable.
                   </div>
-                  <!-- Case discrète (diagnostic interne) : révèle les tranches écartées -->
-                  <label *ngIf="consumptionReport.summary.excludedSegments > 0" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary,#94a3b8);margin:0 14px 12px;cursor:pointer;">
-                    <input type="checkbox" [(ngModel)]="showExcludedSegments" (ngModelChange)="drawConsumptionChart()">
-                    afficher aussi les tranches incomplètes ({{ consumptionReport.summary.excludedSegments }})
-                  </label>
 
-                  <!-- Périodes de chargement (tonnage déclaré par l'utilisateur) -->
-                  <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;">
-                    <div style="font-weight:700;color:var(--text-primary,#1e293b);margin-bottom:8px;">Périodes de chargement (tonnage)</div>
-                    <div class="table-wrapper" style="margin-bottom:10px;" *ngIf="loadPeriods.length">
+                  <!-- Effet du chargement : cartes comparatives (≤ 4 groupes), tableau en repli -->
+                  <div *ngIf="consumptionByTonnage?.groups?.length" style="padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                    <div style="font-weight:700;color:var(--text-primary,#1e293b);">Effet du chargement</div>
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);margin:2px 0 12px;">Déclarez les périodes de chargement pour comparer à vide / chargé.</div>
+
+                    <div *ngIf="(consumptionByTonnage?.groups?.length || 0) <= 4" style="display:flex;gap:10px;flex-wrap:wrap;">
+                      <div *ngFor="let group of consumptionByTonnage?.groups" style="flex:1;min-width:150px;padding:12px 14px;border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
+                        <div style="font-size:12px;font-weight:600;" [style.color]="group.tonnageT == null ? 'var(--text-secondary,#64748b)' : 'var(--text-primary,#1e293b)'">
+                          {{ group.tonnageT == null ? 'Sans chargement déclaré' : (group.tonnageT === 0 ? 'À vide' : ((group.tonnageT | number:'1.0-1') + ' t')) }}
+                        </div>
+                        <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);margin-top:2px;">{{ group.avgLPer100Km | number:'1.1-1' }} <span style="font-size:12px;font-weight:600;color:var(--text-secondary,#64748b);">L/100</span></div>
+                        <div *ngIf="group.deltaVsLightestPercent != null" style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700;"
+                             [style.background]="group.deltaVsLightestPercent > 0 ? 'rgba(239,68,68,.08)' : 'rgba(34,197,94,.09)'"
+                             [style.color]="group.deltaVsLightestPercent > 0 ? '#dc2626' : '#16a34a'">
+                          {{ group.deltaVsLightestPercent > 0 ? '+' : '' }}{{ group.deltaVsLightestPercent | number:'1.0-1' }} % vs à vide
+                        </div>
+                        <div style="font-size:11px;color:var(--text-secondary,#64748b);margin-top:6px;">{{ group.segmentCount }} tranche{{ group.segmentCount > 1 ? 's' : '' }} · {{ group.totalKm | number:'1.0-0' }} km</div>
+                      </div>
+                    </div>
+
+                    <div *ngIf="(consumptionByTonnage?.groups?.length || 0) > 4" class="table-wrapper">
                       <table class="data-table">
                         <thead>
                           <tr>
-                            <th>Début</th>
-                            <th>Fin</th>
-                            <th>Tonnage (t)</th>
-                            <th>Notes</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr *ngFor="let period of loadPeriods">
-                            <td>{{ formatDateTime(period.startTime) }}</td>
-                            <td>{{ period.endTime ? formatDateTime(period.endTime) : 'en cours' }}</td>
-                            <td>{{ period.tonnageT | number:'1.0-1' }}</td>
-                            <td>{{ period.notes || '—' }}</td>
-                            <td style="text-align:right;"><button style="background:none;border:none;cursor:pointer;font-size:15px;" title="Supprimer" (click)="deleteLoadPeriod(period.id)">🗑️</button></td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <div *ngIf="!loadPeriods.length" style="color:var(--text-secondary,#64748b);font-size:12px;margin-bottom:10px;">Aucune période déclarée — les segments sont regroupés en « non renseigné ».</div>
-                    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
-                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Début
-                        <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.startTime">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Fin (optionnel)
-                        <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.endTime">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Tonnage (t)
-                        <input type="number" step="0.5" min="0" max="100" class="field-input" [(ngModel)]="newLoadPeriod.tonnageT" style="width:90px;">
-                      </label>
-                      <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Notes
-                        <input type="text" class="field-input" [(ngModel)]="newLoadPeriod.notes" placeholder="ex : chantier X">
-                      </label>
-                      <button class="btn-execute" (click)="addLoadPeriod()" [disabled]="loading">Ajouter</button>
-                    </div>
-                    <div *ngIf="loadPeriodError" style="color:#dc2626;font-weight:600;font-size:12px;margin-top:6px;">{{ loadPeriodError }}</div>
-                  </div>
-
-                  <!-- Comparaison de la consommation par tonnage déclaré -->
-                  <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;" *ngIf="consumptionByTonnage?.groups?.length">
-                    <div style="font-weight:700;color:var(--text-primary,#1e293b);margin-bottom:8px;">Consommation par tonnage</div>
-                    <div class="table-wrapper">
-                      <table class="data-table">
-                        <thead>
-                          <tr>
-                            <th>Tonnage</th>
-                            <th>Segments</th>
+                            <th>Chargement</th>
+                            <th>Tranches</th>
                             <th>Km</th>
                             <th>Moyenne L/100</th>
                             <th>Min</th>
                             <th>Max</th>
-                            <th>Écart vs plus léger</th>
+                            <th>Écart vs à vide</th>
                           </tr>
                         </thead>
                         <tbody>
                           <tr *ngFor="let group of consumptionByTonnage?.groups">
-                            <td>{{ group.tonnageT != null ? ((group.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
+                            <td>{{ group.tonnageT == null ? 'non renseigné' : (group.tonnageT === 0 ? 'À vide' : ((group.tonnageT | number:'1.0-1') + ' t')) }}</td>
                             <td>{{ group.segmentCount }}</td>
                             <td>{{ group.totalKm | number:'1.0-0' }}</td>
                             <td><strong>{{ group.avgLPer100Km | number:'1.1-1' }}</strong></td>
@@ -1119,40 +1094,103 @@
                     </div>
                   </div>
 
-                  <!-- Détail des segments -->
-                  <div class="table-wrapper" style="margin-bottom:12px;">
-                    <table class="data-table">
-                      <thead>
-                        <tr>
-                          <th>#</th>
-                          <th>Début</th>
-                          <th>Km</th>
-                          <th>Litres</th>
-                          <th>L/100km</th>
-                          <th>Tonnage</th>
-                          <th *ngIf="showExcludedSegments">Qualité</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr *ngFor="let seg of visibleConsumptionSegments()"
-                            [style.opacity]="seg.isReliable ? null : 0.55"
-                            [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
-                          <td>S{{ seg.index }}</td>
-                          <td>{{ formatDateTime(seg.startTime) }}</td>
-                          <td>{{ seg.distanceKm | number:'1.1-1' }}</td>
-                          <td>{{ seg.fuelLiters | number:'1.1-1' }}</td>
-                          <td><strong [style.color]="seg.isReliable && seg.index === consumptionReport.summary.minSegmentIndex ? '#16a34a' : (seg.isReliable && seg.index === consumptionReport.summary.maxSegmentIndex ? '#dc2626' : null)">{{ seg.lPer100Km | number:'1.1-1' }}</strong></td>
-                          <td>{{ seg.tonnageT != null ? ((seg.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
-                          <td *ngIf="showExcludedSegments">
-                            <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">✅ OK</span>
-                            <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">données non exploitables</span>
-                          </td>
-                        </tr>
-                        <tr *ngIf="!visibleConsumptionSegments().length">
-                          <td colspan="7" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucun segment sur la période.</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <!-- Repliable : déclarer un chargement (périodes de tonnage) -->
+                  <div style="padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                    <button (click)="showLoadPeriodsPanel = !showLoadPeriodsPanel"
+                            style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:var(--text-secondary,#64748b);display:inline-flex;align-items:center;gap:6px;">
+                      <span style="font-size:11px;">{{ showLoadPeriodsPanel ? '▾' : '▸' }}</span> Déclarer un chargement
+                      <span *ngIf="loadPeriods.length" style="font-weight:400;">· {{ loadPeriods.length }} période{{ loadPeriods.length > 1 ? 's' : '' }} déclarée{{ loadPeriods.length > 1 ? 's' : '' }}</span>
+                    </button>
+                    <div *ngIf="showLoadPeriodsPanel" style="margin-top:12px;">
+                      <div class="table-wrapper" style="margin-bottom:10px;" *ngIf="loadPeriods.length">
+                        <table class="data-table">
+                          <thead>
+                            <tr>
+                              <th>Début</th>
+                              <th>Fin</th>
+                              <th>Tonnage (t)</th>
+                              <th>Notes</th>
+                              <th></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr *ngFor="let period of loadPeriods">
+                              <td>{{ formatDateTime(period.startTime) }}</td>
+                              <td>{{ period.endTime ? formatDateTime(period.endTime) : 'en cours' }}</td>
+                              <td>{{ period.tonnageT | number:'1.0-1' }}</td>
+                              <td>{{ period.notes || '—' }}</td>
+                              <td style="text-align:right;"><button style="background:none;border:none;cursor:pointer;font-size:12px;font-weight:600;color:#dc2626;padding:0;" (click)="deleteLoadPeriod(period.id)">Supprimer</button></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div *ngIf="!loadPeriods.length" style="color:var(--text-secondary,#64748b);font-size:12px;margin-bottom:10px;">Aucune période déclarée — les tranches sont regroupées en « sans chargement déclaré ».</div>
+                      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Début
+                          <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.startTime">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Fin (optionnel)
+                          <input type="datetime-local" class="field-input" [(ngModel)]="newLoadPeriod.endTime">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Tonnage (t)
+                          <input type="number" step="0.5" min="0" max="100" class="field-input" [(ngModel)]="newLoadPeriod.tonnageT" style="width:90px;">
+                        </label>
+                        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--text-secondary,#64748b);">Notes
+                          <input type="text" class="field-input" [(ngModel)]="newLoadPeriod.notes" placeholder="ex : chantier X">
+                        </label>
+                        <button class="btn-execute" style="flex:0 0 auto;" (click)="addLoadPeriod()" [disabled]="loading">Ajouter</button>
+                      </div>
+                      <div *ngIf="loadPeriodError" style="color:#dc2626;font-weight:600;font-size:12px;margin-top:6px;">{{ loadPeriodError }}</div>
+                    </div>
+                  </div>
+
+                  <!-- Repliable : détail des tranches -->
+                  <div style="padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                    <button (click)="showSegmentDetailsPanel = !showSegmentDetailsPanel"
+                            style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:var(--text-secondary,#64748b);display:inline-flex;align-items:center;gap:6px;">
+                      <span style="font-size:11px;">{{ showSegmentDetailsPanel ? '▾' : '▸' }}</span> Détail des tranches
+                    </button>
+                    <div *ngIf="showSegmentDetailsPanel" style="margin-top:12px;">
+                      <div class="table-wrapper">
+                        <table class="data-table">
+                          <thead>
+                            <tr>
+                              <th>N°</th>
+                              <th>Début</th>
+                              <th>Distance (km)</th>
+                              <th>Carburant (L)</th>
+                              <th>L/100 km</th>
+                              <th>Chargement</th>
+                              <th *ngIf="showExcludedSegments">Qualité</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr *ngFor="let seg of visibleConsumptionSegments()"
+                                [style.opacity]="seg.isReliable ? null : 0.55"
+                                [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
+                              <td>{{ seg.index }}</td>
+                              <td>{{ formatDateTime(seg.startTime) }}</td>
+                              <td>{{ seg.distanceKm | number:'1.1-1' }}</td>
+                              <td>{{ seg.fuelLiters | number:'1.1-1' }}</td>
+                              <td><strong [style.color]="seg.isReliable && seg.index === consumptionReport.summary.minSegmentIndex ? '#16a34a' : (seg.isReliable && seg.index === consumptionReport.summary.maxSegmentIndex ? '#dc2626' : null)">{{ seg.lPer100Km | number:'1.1-1' }}</strong></td>
+                              <td>{{ seg.tonnageT != null ? ((seg.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
+                              <td *ngIf="showExcludedSegments">
+                                <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">OK</span>
+                                <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">données non exploitables</span>
+                              </td>
+                            </tr>
+                            <tr *ngIf="!visibleConsumptionSegments().length">
+                              <td colspan="7" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucune tranche sur la période.</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <!-- Case discrète (diagnostic interne) : révèle les tranches écartées -->
+                      <label *ngIf="consumptionReport.summary.excludedSegments > 0" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary,#94a3b8);margin-top:8px;cursor:pointer;">
+                        <input type="checkbox" [(ngModel)]="showExcludedSegments" (ngModelChange)="drawConsumptionChart()">
+                        afficher aussi les tranches incomplètes ({{ consumptionReport.summary.excludedSegments }})
+                      </label>
+                    </div>
                   </div>
                 </ng-container>
 

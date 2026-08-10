@@ -364,6 +364,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   consumptionByTonnage: ConsumptionByTonnageReport | null = null;
   loadPeriods: VehicleLoadPeriod[] = [];
   segmentKm = 100;   // taille de tranche paramétrable (km)
+  segmentKmPresets = [50, 100, 200];
+  /** Sections repliables (fermées par défaut) : déclaration de chargement + détail des tranches. */
+  showLoadPeriodsPanel = false;
+  showSegmentDetailsPanel = false;
   newLoadPeriod: { startTime: string; endTime: string; tonnageT: number | null; notes: string } = { startTime: '', endTime: '', tonnageT: null, notes: '' };
   loadPeriodError = '';
 
@@ -5926,8 +5930,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Bar chart L/100km par segment : min fiable en vert, max fiable en rouge,
-   *  segments exclus grisés, ligne pointillée = moyenne fiable. */
   /** Tranches affichées : en vue client (par défaut) les tranches sans données
    *  exploitables sont masquées — le résumé, lui, les excluait déjà des stats. */
   visibleConsumptionSegments(): ConsumptionSegment[] {
@@ -5941,11 +5943,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .reduce((sum, s) => sum + s.distanceKm, 0);
   }
 
-  reliableConsumptionLiters(): number {
-    return (this.consumptionReport?.segments || [])
-      .filter(s => s.isReliable)
-      .reduce((sum, s) => sum + s.fuelLiters, 0);
+  /** Preset de taille de tranche (chips 50 / 100 / 200 km) : applique et relance le rapport. */
+  setSegmentKmPreset(km: number) {
+    if (this.loading) return;
+    this.segmentKm = km;
+    this.executeReport();
   }
+
+  /** Date de début formatée (« le 04/08 à 08:12 ») de la tranche min/max fiable — '' si introuvable. */
+  private segmentStartLabel(index: number | null | undefined): string {
+    if (index == null) return '';
+    const seg = this.consumptionReport?.segments?.find(s => s.index === index);
+    if (!seg) return '';
+    const d = new Date(seg.startTime);
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `le ${p(d.getDate())}/${p(d.getMonth() + 1)} à ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  minSegmentDate(): string { return this.segmentStartLabel(this.consumptionReport?.summary?.minSegmentIndex); }
+  maxSegmentDate(): string { return this.segmentStartLabel(this.consumptionReport?.summary?.maxSegmentIndex); }
 
   drawConsumptionChart() {
     if (this.consumptionChart) {
@@ -5966,44 +5982,106 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!ctx) return;
 
     const summary = report.summary;
-    const labels = segments.map(s => `S${s.index}`);
+    const p = (n: number) => String(n).padStart(2, '0');
+
+    // Libellés X : date de début de tranche « dd/MM » ; quand plusieurs tranches
+    // consécutives tombent le même jour, les suivantes affichent l'heure « HHh ».
+    const labels: string[] = [];
+    let prevDay = '';
+    for (const s of segments) {
+      const d = new Date(s.startTime);
+      const day = `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+      if (day !== prevDay) { labels.push(day); prevDay = day; }
+      else labels.push(`${p(d.getHours())}h`);
+    }
+
+    const isMin = (s: ConsumptionSegment) => s.isReliable && summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex;
+    const isMax = (s: ConsumptionSegment) => s.isReliable && summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex;
+
     const colors = segments.map(s => {
-      if (!s.isReliable) return 'rgba(156,163,175,0.45)';                                    // exclu : gris
-      if (summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex) return '#22c55e'; // min fiable
-      if (summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex) return '#ef4444'; // max fiable
-      return '#3b82f6';
+      if (!s.isReliable) return 'rgba(148,163,175,.35)';   // exclu (visible seulement en mode diagnostic)
+      if (isMin(s)) return '#22c55e';                       // meilleure tranche
+      if (isMax(s)) return '#ef4444';                       // pire tranche
+      return 'rgba(59,130,246,.55)';
+    });
+    const hoverColors = segments.map(s => {
+      if (!s.isReliable) return 'rgba(148,163,175,.35)';
+      if (isMin(s)) return '#22c55e';
+      if (isMax(s)) return '#ef4444';
+      return 'rgba(59,130,246,.8)';
     });
 
-    const fmt = (n: number | null | undefined, d = 1) =>
-      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const fmt1 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fmt0 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+    const fmtT = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    const fmtDT = (iso: string) => {
+      const d = new Date(iso);
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
 
     const datasets: any[] = [
       {
-        label: 'L/100km',
+        label: 'L/100 km',
         data: segments.map(s => s.lPer100Km),
         backgroundColor: colors,
-        borderColor: colors,
-        borderWidth: 1,
-        borderRadius: 4,
+        hoverBackgroundColor: hoverColors,
+        borderWidth: 0,
+        borderRadius: 6,
+        barPercentage: .62,
+        categoryPercentage: .78,
         order: 2
       }
     ];
 
     if (summary?.avgLPer100Km != null) {
       datasets.push({
-        label: `Moyenne fiable (${fmt(summary.avgLPer100Km)} L/100km)`,
+        label: 'Moyenne',
         data: segments.map(() => summary.avgLPer100Km),
         type: 'line' as any,
-        borderColor: '#f59e0b',
+        borderColor: 'rgba(245,158,11,.9)',
         backgroundColor: 'transparent',
-        borderDash: [6, 6],
-        borderWidth: 2,
+        borderDash: [5, 5],
+        borderWidth: 1.5,
         pointRadius: 0,
         pointHoverRadius: 0,
         fill: false,
         order: 1
       });
     }
+
+    // Annotations discrètes : valeur au-dessus des barres min/max + « moyenne X » sur la ligne.
+    const minIdx = segments.findIndex(isMin);
+    const maxIdx = segments.findIndex(isMax);
+    const avg = summary?.avgLPer100Km;
+    const annotationsPlugin = {
+      id: 'consoAnnotations',
+      afterDatasetsDraw: (chart: any) => {
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const meta = chart.getDatasetMeta(0);
+        c.save();
+        c.font = '11px sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'bottom';
+        const drawBarValue = (i: number, color: string) => {
+          const bar = meta?.data?.[i];
+          if (!bar) return;
+          c.fillStyle = color;
+          c.fillText(fmt1(segments[i].lPer100Km), bar.x, bar.y - 4);
+        };
+        if (minIdx >= 0) drawBarValue(minIdx, '#16a34a');
+        if (maxIdx >= 0 && maxIdx !== minIdx) drawBarValue(maxIdx, '#dc2626');
+        if (avg != null && chart.scales?.['y']) {
+          const y = chart.scales['y'].getPixelForValue(avg);
+          c.fillStyle = 'rgba(245,158,11,.95)';
+          c.textAlign = 'right';
+          c.fillText(`moyenne ${fmt1(avg)}`, chart.chartArea.right - 4, y - 4);
+        }
+        c.restore();
+      }
+    };
 
     this.consumptionChart = new Chart(ctx, {
       type: 'bar',
@@ -6012,28 +6090,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'top',
-            labels: { usePointStyle: true }
-          },
-          title: {
-            display: true,
-            text: `Consommation par tranches de ${report.segmentKm} km — ${report.vehicleName}`
-          },
+          legend: { display: false },
           tooltip: {
+            backgroundColor: 'rgba(15,23,42,.92)',
+            padding: 10,
+            cornerRadius: 8,
+            displayColors: false,
+            filter: (item) => item.datasetIndex === 0,
             callbacks: {
               title: (items) => {
                 const s = segments[items[0]?.dataIndex];
-                return s ? `Segment S${s.index} · ${this.formatDateTime(s.startTime)} → ${this.formatDateTime(s.endTime)}` : '';
+                return s ? `Du ${fmtDT(s.startTime)} au ${fmtDT(s.endTime)}` : '';
               },
               label: (c) => {
-                if (c.datasetIndex !== 0) return c.dataset.label || '';
                 const s = segments[c.dataIndex];
                 if (!s) return '';
                 const lines = [
-                  `${fmt(s.lPer100Km)} L/100km — ${fmt(s.fuelLiters)} L sur ${fmt(s.distanceKm)} km`,
-                  `Tonnage : ${s.tonnageT != null ? fmt(s.tonnageT) + ' t' : 'non renseigné'}`
+                  `${fmt1(s.lPer100Km)} L/100 km`,
+                  `${fmt0(s.distanceKm)} km parcourus · ${fmt0(s.fuelLiters)} L consommés`,
+                  `Chargement : ${s.tonnageT != null ? fmtT(s.tonnageT) + ' t' : 'non renseigné'}`
                 ];
                 if (s.exclusionReason) lines.push('Données non exploitables sur cette tranche');
                 return lines;
@@ -6042,10 +6117,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
           }
         },
         scales: {
-          x: { title: { display: true, text: `Segment (tranches de ${report.segmentKm} km)` } },
-          y: { beginAtZero: true, title: { display: true, text: 'L/100km' } }
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: true }
+          },
+          y: {
+            beginAtZero: true,
+            grace: '10%',
+            border: { display: false },
+            grid: { color: 'rgba(148,163,184,.14)' },
+            ticks: { color: '#94a3b8', font: { size: 11 } }
+          }
         }
-      }
+      },
+      plugins: [annotationsPlugin]
     });
   }
 
