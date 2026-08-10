@@ -358,6 +358,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   // Analyse consommation par segments de X km + comparaison par tonnage (single vehicle)
   consumptionReport: ConsumptionSegmentsReport | null = null;
+  /** Les tranches sans données exploitables sont masquées par défaut (vue client) —
+   *  affichables via une case discrète pour le diagnostic interne. */
+  showExcludedSegments = false;
   consumptionByTonnage: ConsumptionByTonnageReport | null = null;
   loadPeriods: VehicleLoadPeriod[] = [];
   segmentKm = 100;   // taille de tranche paramétrable (km)
@@ -5925,6 +5928,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   /** Bar chart L/100km par segment : min fiable en vert, max fiable en rouge,
    *  segments exclus grisés, ligne pointillée = moyenne fiable. */
+  /** Tranches affichées : en vue client (par défaut) les tranches sans données
+   *  exploitables sont masquées — le résumé, lui, les excluait déjà des stats. */
+  visibleConsumptionSegments(): ConsumptionSegment[] {
+    const segs = this.consumptionReport?.segments || [];
+    return this.showExcludedSegments ? segs : segs.filter(s => s.isReliable);
+  }
+
+  reliableConsumptionKm(): number {
+    return (this.consumptionReport?.segments || [])
+      .filter(s => s.isReliable)
+      .reduce((sum, s) => sum + s.distanceKm, 0);
+  }
+
+  reliableConsumptionLiters(): number {
+    return (this.consumptionReport?.segments || [])
+      .filter(s => s.isReliable)
+      .reduce((sum, s) => sum + s.fuelLiters, 0);
+  }
+
   drawConsumptionChart() {
     if (this.consumptionChart) {
       this.consumptionChart.destroy();
@@ -5937,7 +5959,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const report = this.consumptionReport;
     if (!report?.hasSensor) return;
 
-    const segments = report.segments || [];
+    const segments = this.visibleConsumptionSegments();
     if (!segments.length) return;
 
     const ctx = canvas.getContext('2d');
@@ -6013,7 +6035,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                   `${fmt(s.lPer100Km)} L/100km — ${fmt(s.fuelLiters)} L sur ${fmt(s.distanceKm)} km`,
                   `Tonnage : ${s.tonnageT != null ? fmt(s.tonnageT) + ' t' : 'non renseigné'}`
                 ];
-                if (s.exclusionReason) lines.push(`Exclu : ${s.exclusionReason}`);
+                if (s.exclusionReason) lines.push('Données non exploitables sur cette tranche');
                 return lines;
               }
             }

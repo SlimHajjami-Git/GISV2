@@ -1006,20 +1006,21 @@
                       <div *ngIf="consumptionReport.summary.maxSegmentIndex != null" style="font-size:11px;color:var(--text-secondary,#64748b);">segment S{{ consumptionReport.summary.maxSegmentIndex }}</div>
                     </div>
                     <div style="flex:1;min-width:170px;padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:10px;">
-                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Segments</div>
-                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.reliableSegments }} fiables <span style="font-size:14px;font-weight:700;color:var(--text-secondary,#64748b);">/ {{ consumptionReport.summary.excludedSegments }} exclus</span></div>
+                      <div style="font-size:12px;color:var(--text-secondary,#64748b);">Segments analysés</div>
+                      <div style="font-size:22px;font-weight:800;color:var(--text-primary,#1e293b);">{{ consumptionReport.summary.reliableSegments }} <span style="font-size:14px;font-weight:700;color:var(--text-secondary,#64748b);">× {{ consumptionReport.segmentKm }} km</span></div>
                     </div>
                   </div>
 
-                  <!-- Provenance de la conversion points→litres + volumes analysés -->
+                  <!-- Provenance de la conversion points→litres + volumes analysés
+                       (uniquement les tranches exploitables — cohérent avec les stats) -->
                   <div style="padding:4px 14px 10px;font-size:12px;color:var(--text-secondary,#64748b);">
-                    {{ consumptionReport.summary.totalKm | number:'1.0-0' }} km analysés · {{ consumptionReport.summary.totalLiters | number:'1.0-0' }} L consommés ·
+                    {{ reliableConsumptionKm() | number:'1.0-0' }} km analysés · {{ reliableConsumptionLiters() | number:'1.0-0' }} L consommés ·
                     <ng-container *ngIf="consumptionReport.isCalibrated; else nominalConvTpl">jauge étalonnée ({{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point appris des pleins facturés).</ng-container>
                     <ng-template #nominalConvTpl>jauge non étalonnée — conversion nominale {{ consumptionReport.litersPerPoint | number:'1.2-2' }} L/point, chiffres indicatifs. Chaque plein saisi avec ses litres exacts affine la précision.</ng-template>
                   </div>
 
-                  <!-- Graphe L/100km par segment -->
-                  <div class="chart-section" style="margin-bottom:12px;" *ngIf="consumptionReport.segments.length">
+                  <!-- Graphe L/100km par segment (tranches exploitables uniquement en vue client) -->
+                  <div class="chart-section" style="margin-bottom:4px;" *ngIf="visibleConsumptionSegments().length">
                     <div class="charts-container">
                       <div class="chart-area" style="min-height:320px;">
                         <canvas #consumptionCanvas></canvas>
@@ -1029,6 +1030,14 @@
                   <div *ngIf="!consumptionReport.segments.length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
                     Aucun segment sur la période — pas assez de distance parcourue pour une tranche de {{ consumptionReport.segmentKm }} km.
                   </div>
+                  <div *ngIf="consumptionReport.segments.length && !visibleConsumptionSegments().length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
+                    Pas assez de données exploitables sur la période pour une analyse fiable.
+                  </div>
+                  <!-- Case discrète (diagnostic interne) : révèle les tranches écartées -->
+                  <label *ngIf="consumptionReport.summary.excludedSegments > 0" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary,#94a3b8);margin:0 14px 12px;cursor:pointer;">
+                    <input type="checkbox" [(ngModel)]="showExcludedSegments" (ngModelChange)="drawConsumptionChart()">
+                    afficher aussi les tranches incomplètes ({{ consumptionReport.summary.excludedSegments }})
+                  </label>
 
                   <!-- Périodes de chargement (tonnage déclaré par l'utilisateur) -->
                   <div style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;margin-bottom:12px;">
@@ -1121,11 +1130,11 @@
                           <th>Litres</th>
                           <th>L/100km</th>
                           <th>Tonnage</th>
-                          <th>Fiabilité</th>
+                          <th *ngIf="showExcludedSegments">Qualité</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr *ngFor="let seg of consumptionReport.segments"
+                        <tr *ngFor="let seg of visibleConsumptionSegments()"
                             [style.opacity]="seg.isReliable ? null : 0.55"
                             [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
                           <td>S{{ seg.index }}</td>
@@ -1134,12 +1143,12 @@
                           <td>{{ seg.fuelLiters | number:'1.1-1' }}</td>
                           <td><strong [style.color]="seg.isReliable && seg.index === consumptionReport.summary.minSegmentIndex ? '#16a34a' : (seg.isReliable && seg.index === consumptionReport.summary.maxSegmentIndex ? '#dc2626' : null)">{{ seg.lPer100Km | number:'1.1-1' }}</strong></td>
                           <td>{{ seg.tonnageT != null ? ((seg.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
-                          <td>
-                            <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">✅ Fiable</span>
-                            <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">exclu : {{ seg.exclusionReason || 'non fiable' }}</span>
+                          <td *ngIf="showExcludedSegments">
+                            <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">✅ OK</span>
+                            <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">données non exploitables</span>
                           </td>
                         </tr>
-                        <tr *ngIf="!consumptionReport.segments.length">
+                        <tr *ngIf="!visibleConsumptionSegments().length">
                           <td colspan="7" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucun segment sur la période.</td>
                         </tr>
                       </tbody>
