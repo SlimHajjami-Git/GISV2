@@ -43,8 +43,9 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
             query = query.Where(s => s.IsActive == request.IsActive.Value);
         }
 
-        // Order by rating desc, then name
-        query = query.OrderByDescending(s => s.Rating).ThenBy(s => s.Name);
+        // Order by rating desc, then name. Cast en double : SQLite (tests) ne sait pas
+        // trier un decimal ; l'ordre est identique sous PostgreSQL.
+        query = query.OrderByDescending(s => (double)s.Rating).ThenBy(s => s.Name);
 
         var totalCount = await query.CountAsync(cancellationToken);
 

@@ -23,10 +23,27 @@ public class UpdateSupplierServicesCommandHandler : IRequestHandler<UpdateSuppli
         if (supplier == null)
             return false;
 
-        // Services table doesn't exist yet - just update timestamp
+        // Remplacement complet : on supprime les services existants puis on insère la nouvelle liste
+        var existingServices = await _context.SupplierServices
+            .Where(ss => ss.SupplierId == supplier.Id)
+            .ToListAsync(cancellationToken);
+        _context.SupplierServices.RemoveRange(existingServices);
+
+        foreach (var serviceCode in request.Services
+                     .Select(s => s.ToLower())
+                     .Where(s => ValidServices.Contains(s))
+                     .Distinct())
+        {
+            _context.SupplierServices.Add(new SupplierService
+            {
+                SupplierId = supplier.Id,
+                ServiceCode = serviceCode
+            });
+        }
+
         supplier.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(cancellationToken);
-        
+
         return true;
     }
 }
