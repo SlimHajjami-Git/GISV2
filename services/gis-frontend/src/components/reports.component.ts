@@ -5661,27 +5661,31 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return (this.comparisonAudit?.cardFills || []).reduce((sum, f) => sum + (Number(f.liters) || 0), 0);
   }
 
-  /** Sous-échantillonnage min/max par seau (~1200 seaux, ordre chronologique
-   *  préservé) : la forme de la courbe et surtout ses SAUTS — les pleins — survivent. */
-  private downsampleLevelSeries(series: FuelLevelPoint[]): FuelLevelPoint[] {
-    if (series.length <= 1500) return series;
-    const bucketCount = 1200;
-    const bucketSize = series.length / bucketCount;
-    const out: FuelLevelPoint[] = [];
-    for (let b = 0; b < bucketCount; b++) {
-      const start = Math.floor(b * bucketSize);
-      const end = Math.min(series.length, Math.floor((b + 1) * bucketSize));
-      if (start >= end) continue;
-      let minIdx = start;
-      let maxIdx = start;
-      for (let i = start + 1; i < end; i++) {
-        if (series[i].percent < series[minIdx].percent) minIdx = i;
-        if (series[i].percent > series[maxIdx].percent) maxIdx = i;
-      }
-      if (minIdx === maxIdx) out.push(series[minIdx]);
-      else out.push(series[Math.min(minIdx, maxIdx)], series[Math.max(minIdx, maxIdx)]);
+  /** Rééchantillonnage sur une grille TEMPORELLE uniforme (~1200 pas, pas ≥ 15 min).
+   *  Indispensable : sur un axe catégorie, des points espacés irrégulièrement
+   *  déforment le temps (les journées denses en trames s'étirent, les journées à
+   *  l'arrêt se compressent) — la courbe ne ressemblait plus à celle de la page
+   *  carburant. Report de la dernière valeur connue entre deux trames ; null
+   *  avant la première donnée. */
+  private resampleLevelSeries(series: FuelLevelPoint[], startIso: string, endIso: string):
+    { grid: { t: string; percent: number | null; liters: number | null }[]; t0: number; stepMs: number } {
+    if (!series.length) return { grid: [], t0: 0, stepMs: 1 };
+    const firstMs = new Date(series[0].t).getTime();
+    const lastMs = new Date(series[series.length - 1].t).getTime();
+    const startMs = new Date(startIso).getTime();
+    const endMs = new Date(endIso).getTime();
+    const t0 = Math.min(isNaN(startMs) ? firstMs : startMs, firstMs);
+    const t1 = Math.max(isNaN(endMs) ? lastMs : endMs, lastMs);
+    const span = Math.max(t1 - t0, 60_000);
+    const stepMs = Math.max(15 * 60_000, Math.ceil(span / 1200 / 60_000) * 60_000);
+    const grid: { t: string; percent: number | null; liters: number | null }[] = [];
+    let si = 0;
+    let last: FuelLevelPoint | null = null;
+    for (let t = t0; t <= t1; t += stepMs) {
+      while (si < series.length && new Date(series[si].t).getTime() <= t) { last = series[si]; si++; }
+      grid.push({ t: new Date(t).toISOString(), percent: last?.percent ?? null, liters: last?.liters ?? null });
     }
-    return out;
+    return { grid, t0, stepMs };
   }
 
   /** Libellés X pour une série horodatée : mêmes marqueurs de jour que
@@ -5706,34 +5710,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return labels;
   }
 
-  /** Index du point de courbe le plus proche de la date d'un plein. Les factures
-   *  datées au jour (minuit pile) visent 12:00 et se limitent d'abord aux points
-   *  de cette même journée ; à défaut, le point le plus proche toutes dates confondues. */
-  private nearestLevelIndexForFill(fillDate: string, series: FuelLevelPoint[], times: number[]): number {
-    const d = new Date(fillDate);
-    const dateOnly = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
-    let target = d.getTime();
-    if (dateOnly) {
-      target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
-      let sameDayBest = -1;
-      let sameDayDist = Infinity;
-      for (let i = 0; i < series.length; i++) {
-        const sd = new Date(series[i].t);
-        if (sd.getFullYear() !== d.getFullYear() || sd.getMonth() !== d.getMonth() || sd.getDate() !== d.getDate()) continue;
-        const dist = Math.abs(times[i] - target);
-        if (dist < sameDayDist) { sameDayDist = dist; sameDayBest = i; }
-      }
-      if (sameDayBest >= 0) return sameDayBest;
-    }
-    let best = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < times.length; i++) {
-      const dist = Math.abs(times[i] - target);
-      if (dist < bestDist) { bestDist = dist; best = i; }
-    }
-    return best;
-  }
-
   /** Graphe du rapport 17 : la courbe du niveau de réservoir (%) sur la période,
    *  avec un cercle ambre posé SUR la courbe à chaque plein facturé. Chaque remontée
    *  de jauge doit avoir son cercle ; une remontée orpheline = plein non déclaré. */
@@ -5749,7 +5725,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const audit = this.comparisonAudit;
     if (!audit?.hasSensor) return;
 
-    const series = this.downsampleLevelSeries(audit.levelSeries || []);
+    const { grid: series, t0, stepMs } = this.resampleLevelSeries(
+      audit.levelSeries || [], audit.startDate, audit.endDate);
     if (!series.length) return;
 
     const ctx = canvas.getContext('2d');
@@ -5764,18 +5741,38 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
 
     const labels = this.buildTimestampDayLabels(series.map(pt => pt.t));
-    const times = series.map(pt => new Date(pt.t).getTime());
 
-    // Cercles : chaque plein facturé est posé sur le point de courbe le plus
-    // proche de sa date — le cercle DOIT toucher la courbe pour que l'œil
-    // rapproche remontée de jauge et facture d'un seul regard.
-    // Un scatter {x: index} sur un axe CATÉGORIE est interprété de travers par
-    // Chart.js (tous les cercles s'empilent à gauche). Fiable à 100 % : un
-    // tableau creux ALIGNÉ sur les labels — null partout, le niveau au bon index.
+    // Cercles : le backend a DÉJÀ rapproché chaque facture d'une remontée de
+    // jauge (fillChecks.matchedRefillDate) — le cercle se pose AU SOMMET de la
+    // remontée appariée, pas à midi du jour de facture (qui tombait dans le
+    // creux d'avant-plein). Sans appariement : repli sur midi. Tableau creux
+    // aligné sur les labels (un scatter {x} sur axe catégorie part à gauche).
+    const checks = audit.fillChecks || [];
+    const gridIndexFor = (ms: number) =>
+      Math.min(series.length - 1, Math.max(0, Math.round((ms - t0) / stepMs)));
+    const nearestDrawn = (idx: number): number => {
+      if (series[idx]?.percent != null) return idx;
+      for (let d = 1; d < series.length; d++) {
+        if (idx + d < series.length && series[idx + d].percent != null) return idx + d;
+        if (idx - d >= 0 && series[idx - d].percent != null) return idx - d;
+      }
+      return idx;
+    };
+
     const fillValues: (number | null)[] = new Array(series.length).fill(null);
     const fillAt: (FuelCardFill | null)[] = new Array(series.length).fill(null);
     for (const f of (audit.cardFills || [])) {
-      let idx = this.nearestLevelIndexForFill(f.date, series, times);
+      const chk = checks.find(c => c.fillDate
+        && Math.abs(new Date(c.fillDate).getTime() - new Date(f.date).getTime()) < 3_600_000
+        && Math.abs((c.billedLiters ?? 0) - f.liters) < 0.5);
+      let whenMs: number;
+      if (chk?.matchedRefillDate) {
+        whenMs = new Date(chk.matchedRefillDate).getTime() + stepMs; // juste APRÈS le saut = plateau haut
+      } else {
+        const d = new Date(f.date);
+        whenMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+      }
+      let idx = nearestDrawn(gridIndexFor(whenMs));
       while (idx < series.length && fillAt[idx] !== null) idx++; // 2 pleins même point → décale d'un cran
       if (idx >= series.length) idx = series.length - 1;
       fillValues[idx] = series[idx].percent;
@@ -5872,7 +5869,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                   return lines;
                 }
                 const pt = series[c.dataIndex];
-                if (!pt) return '';
+                if (!pt || pt.percent == null) return '';
                 return `${fmtDT(pt.t)} — ${fmt0(pt.percent)} % (${fmt0(pt.liters)} L)`;
               }
             }
