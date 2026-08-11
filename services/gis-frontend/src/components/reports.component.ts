@@ -5661,6 +5661,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return (this.comparisonAudit?.cardFills || []).reduce((sum, f) => sum + (Number(f.liters) || 0), 0);
   }
 
+  /** Même règle anti-bruit que le rapport carburant (cf. préparation du graphe
+   *  « Évolution du niveau ») : les petites hausses de +1 à +4 pts sont du
+   *  ballottement, pas du carburant ajouté — ignorées SANS déplacer la
+   *  référence. Les baisses restent (la consommation descend par pas de 1 pt)
+   *  et les vraies remontées (≥ +5) passent. */
+  private denoiseLevelSeries(series: FuelLevelPoint[]): FuelLevelPoint[] {
+    const out: FuelLevelPoint[] = [];
+    let ref: number | null = null;
+    for (const pt of series) {
+      if (ref === null) { out.push(pt); ref = pt.percent; continue; }
+      const delta = pt.percent - ref;
+      if (delta === 0) continue;              // pas de changement : inutile
+      if (delta > 0 && delta < 5) continue;   // bruit +1..+4 : ignoré
+      out.push(pt);
+      ref = pt.percent;
+    }
+    return out;
+  }
+
   /** Rééchantillonnage sur une grille TEMPORELLE uniforme (~1200 pas, pas ≥ 15 min).
    *  Indispensable : sur un axe catégorie, des points espacés irrégulièrement
    *  déforment le temps (les journées denses en trames s'étirent, les journées à
@@ -5726,7 +5745,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!audit?.hasSensor) return;
 
     const { grid: series, t0, stepMs } = this.resampleLevelSeries(
-      audit.levelSeries || [], audit.startDate, audit.endDate);
+      this.denoiseLevelSeries(audit.levelSeries || []), audit.startDate, audit.endDate);
     if (!series.length) return;
 
     const ctx = canvas.getContext('2d');
