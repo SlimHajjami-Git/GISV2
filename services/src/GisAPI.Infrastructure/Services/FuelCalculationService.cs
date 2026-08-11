@@ -56,9 +56,13 @@ public class FuelCalculationService : IFuelCalculationService
         var endDateUtc = endDate.Kind == DateTimeKind.Utc ? endDate : endDate.ToUniversalTime();
 
         // ===== 0. Query FMS CAN bus FuelRateLPer100Km (most accurate source) =====
+        // Un TAUX moyen n'a pas besoin de toute la période demandée : sur les
+        // longues fenêtres (la page carburant s'ouvrait sur janvier→aujourd'hui)
+        // ce scan saturait PostgreSQL — incident TN du 11/08. 30 jours suffisent.
+        var rateFromUtc = endDateUtc.AddDays(-30) > startDateUtc ? endDateUtc.AddDays(-30) : startDateUtc;
         var fmsRates = await _context.GpsPositions
             .Where(p => p.DeviceId == vehicle.GpsDeviceId.Value &&
-                        p.RecordedAt >= startDateUtc && p.RecordedAt <= endDateUtc &&
+                        p.RecordedAt >= rateFromUtc && p.RecordedAt <= endDateUtc &&
                         p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
             .Select(p => (double)p.FuelRateLPer100Km!.Value)
             .ToListAsync(cancellationToken);
@@ -595,10 +599,14 @@ public class FuelCalculationService : IFuelCalculationService
         var deviceToVehicle = gpsVehicles.ToDictionary(v => v.GpsDeviceId!.Value, v => v);
 
         // ── Query 1: FMS fuel rates per device (SQL GROUP BY) ──
+        // Fenêtre du taux plafonnée à 30 jours : un taux moyen flotte sur 7 mois
+        // = scan de dizaines de millions de trames, saturation PG (incident TN
+        // 11/08, 3 requêtes concurrentes à 13s+ et retries EF en cascade).
+        var rateFromUtc = endUtc.AddDays(-30) > startUtc ? endUtc.AddDays(-30) : startUtc;
         var fmsRatesByDevice = await _context.GpsPositions
             .AsNoTracking()
             .Where(p => deviceIds.Contains(p.DeviceId) &&
-                        p.RecordedAt >= startUtc && p.RecordedAt <= endUtc &&
+                        p.RecordedAt >= rateFromUtc && p.RecordedAt <= endUtc &&
                         p.FuelRateLPer100Km != null && p.FuelRateLPer100Km > 0 && p.FuelRateLPer100Km < 80)
             .GroupBy(p => p.DeviceId)
             .Select(g => new
