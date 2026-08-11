@@ -5792,6 +5792,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
         whenMs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
       }
       let idx = nearestDrawn(gridIndexFor(whenMs));
+      // Aimant au maximum local (±3 pas ≈ ±2 h) : entre l'arrondi de grille et
+      // l'horodatage au DÉBUT du plein, le cercle pouvait tomber au pied de la
+      // remontée — il doit la coiffer.
+      let bestIdx = idx;
+      for (let d = -3; d <= 3; d++) {
+        const j = idx + d;
+        if (j >= 0 && j < series.length && series[j].percent != null &&
+            (series[bestIdx].percent == null || series[j].percent! > series[bestIdx].percent!)) {
+          bestIdx = j;
+        }
+      }
+      idx = bestIdx;
       while (idx < series.length && fillAt[idx] !== null) idx++; // 2 pleins même point → décale d'un cran
       if (idx >= series.length) idx = series.length - 1;
       fillValues[idx] = series[idx].percent;
