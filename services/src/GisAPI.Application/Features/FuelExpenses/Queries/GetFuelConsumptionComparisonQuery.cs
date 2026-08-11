@@ -99,22 +99,67 @@ public class GetFuelConsumptionComparisonQueryHandler
             _ => 26m
         };
 
+        // ── Ancres temporelles : l'INSTANT réel de chaque plein, lu sur la jauge ──
+        // Les factures sont datées au JOUR (minuit) : borner les intervalles sur
+        // les dates de facture comptait dans un intervalle les km roulés APRÈS
+        // le plein de fin (avec le carburant du plein suivant !) et doublait les
+        // journées de plein entre intervalles adjacents → km gonflés de ~30-50 %,
+        // consommation « réelle » irréaliste (27 L/100 sur un camion à 43).
+        // On se cale sur la remontée de jauge ≥ 10 pts la plus proche (±36 h) ;
+        // à défaut, midi du jour de facture.
+        var refillTimes = new List<DateTime>();
+        {
+            int? lf = null;
+            foreach (var f in frames)
+            {
+                if (lf == null) { lf = f.Fuel; continue; }
+                var d = f.Fuel - lf.Value;
+                if (d >= 10)
+                {
+                    if (refillTimes.Count == 0 || (f.RecordedAt - refillTimes[refillTimes.Count - 1]).TotalMinutes > 30)
+                        refillTimes.Add(f.RecordedAt);
+                    lf = f.Fuel;
+                }
+                else if (d < 0) lf = f.Fuel;
+            }
+        }
+
+        DateTime AnchorFor(DateTime invoiceDate)
+        {
+            var reference = invoiceDate.TimeOfDay == TimeSpan.Zero ? invoiceDate.AddHours(12) : invoiceDate;
+            var best = reference;
+            var bestHours = 36.0;
+            foreach (var t in refillTimes)
+            {
+                var h = Math.Abs((t - reference).TotalHours);
+                if (h < bestHours) { bestHours = h; best = t; }
+            }
+            return best;
+        }
+
+        int LowerBound(DateTime t)
+        {
+            int lo = 0, hi = frames.Count;
+            while (lo < hi)
+            {
+                var mid = (lo + hi) / 2;
+                if (frames[mid].RecordedAt < t) lo = mid + 1; else hi = mid;
+            }
+            return lo;
+        }
+
+        var anchors = invoices.Select(iv => AnchorFor(iv.InvoiceDate)).ToList();
+
         var intervals = new List<ConsumptionComparisonIntervalDto>();
-        int cursor = 0;
 
         for (int i = 1; i < invoices.Count; i++)
         {
-            var from = invoices[i - 1].InvoiceDate;
-            var to = invoices[i].InvoiceDate;
-            // Facture datée au jour (minuit) : l'intervalle couvre jusqu'à la fin
-            // de la journée du plein de fin, sinon on ampute le dernier jour.
-            var toInclusive = to.TimeOfDay == TimeSpan.Zero ? to.AddDays(1) : to;
+            var from = anchors[i - 1];
+            var to = anchors[i];
+            if (to <= from) continue; // deux factures ancrées sur le même plein
 
-            // Avance du curseur (frames triées) jusqu'au début de l'intervalle.
-            while (cursor < frames.Count && frames[cursor].RecordedAt < from) cursor++;
-            int sliceStart = cursor;
-            int sliceEnd = sliceStart;
-            while (sliceEnd < frames.Count && frames[sliceEnd].RecordedAt < toInclusive) sliceEnd++;
+            int sliceStart = LowerBound(from);
+            int sliceEnd = LowerBound(to); // strict : exclut la trame du saut de fin
 
             long minOdo = long.MaxValue, maxOdo = 0;
             decimal measuredLiters = 0m;

@@ -166,14 +166,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       description: 'Pleins réels posés sur la courbe du niveau de carburant',
       category: 'costs'
     },
-    {
-      id: '18',
-      name: 'Analyse conso par segments',
-      type: 'consumption-analysis',
-      icon: '📐',
-      description: 'Consommation par tranches de X km, min/max et comparaison par tonnage',
-      category: 'costs'
-    },
+    // Rapport 18 « Analyse conso par segments » retiré du menu le 11/08 (demande
+    // Slim) : le graphe mesurée vs réelle du rapport 17 couvre le besoin. Le code
+    // du bloc et les endpoints backend restent en place — réactivable en
+    // remettant cette entrée.
     {
       id: '15',
       name: 'Coûts mensuel par véhicule',
