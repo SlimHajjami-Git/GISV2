@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
 import { Subject, forkJoin, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -5769,10 +5769,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Cercles : chaque plein facturé est posé sur le point de courbe le plus
     // proche de sa date — le cercle DOIT toucher la courbe pour que l'œil
     // rapproche remontée de jauge et facture d'un seul regard.
-    const fills = (audit.cardFills || []).map(f => {
-      const idx = this.nearestLevelIndexForFill(f.date, series, times);
-      return { fill: f, x: idx, y: series[idx].percent };
-    });
+    // Un scatter {x: index} sur un axe CATÉGORIE est interprété de travers par
+    // Chart.js (tous les cercles s'empilent à gauche). Fiable à 100 % : un
+    // tableau creux ALIGNÉ sur les labels — null partout, le niveau au bon index.
+    const fillValues: (number | null)[] = new Array(series.length).fill(null);
+    const fillAt: (FuelCardFill | null)[] = new Array(series.length).fill(null);
+    for (const f of (audit.cardFills || [])) {
+      let idx = this.nearestLevelIndexForFill(f.date, series, times);
+      while (idx < series.length && fillAt[idx] !== null) idx++; // 2 pleins même point → décale d'un cran
+      if (idx >= series.length) idx = series.length - 1;
+      fillValues[idx] = series[idx].percent;
+      fillAt[idx] = f;
+    }
+    const fillsCount = (audit.cardFills || []).length;
 
     const fillsDatasetLabel = 'Pleins réels';
     const datasets: any[] = [
@@ -5789,24 +5798,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
         order: 1
       }
     ];
-    if (fills.length) {
+    if (fillsCount > 0) {
       datasets.push({
         label: fillsDatasetLabel,
-        type: 'scatter' as any,
-        data: fills.map(f => ({ x: f.x, y: f.y })),
+        data: fillValues,          // aligné index-à-index sur les labels
+        showLine: false,
+        spanGaps: false,
         pointStyle: 'circle',
-        radius: 9,
-        hoverRadius: 11,
+        pointRadius: 9,
+        pointHoverRadius: 11,
         backgroundColor: 'rgba(245,158,11,.18)',
         borderColor: '#d97706',
-        borderWidth: 3,
+        pointBorderWidth: 3,
         order: 0
       });
     }
 
     // Annotation « ⛽ N L » au-dessus de chaque cercle tant qu'ils restent lisibles (≤ 12).
     const fillsDatasetIndex = datasets.length - 1;
-    const drawFillLabels = fills.length > 0 && fills.length <= 12;
+    const drawFillLabels = fillsCount > 0 && fillsCount <= 12;
     const annotationsPlugin = {
       id: 'comparisonAnnotations',
       afterDatasetsDraw: (chart: any) => {
@@ -5819,8 +5829,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.textBaseline = 'bottom';
         c.fillStyle = '#b45309';
         fillMeta?.data?.forEach((pt: any, i: number) => {
-          if (!pt || !fills[i]) return;
-          c.fillText(`⛽ ${fmt0(fills[i].fill.liters)} L`, pt.x, pt.y - 12);
+          const f = fillAt[i];
+          if (!f || !pt || pt.skip || isNaN(pt.y)) return;
+          c.fillText(`⛽ ${fmt0(f.liters)} L`, pt.x, pt.y - 12);
         });
         c.restore();
       }
@@ -5844,20 +5855,20 @@ export class ReportsComponent implements OnInit, OnDestroy {
                 const it = items[0];
                 if (!it) return '';
                 if ((it.dataset as any).label === fillsDatasetLabel) {
-                  const f = fills[it.dataIndex];
+                  const f = fillAt[it.dataIndex];
                   if (!f) return '';
-                  const d = new Date(f.fill.date);
+                  const d = new Date(f.date);
                   return `Plein réel — ${p(d.getDate())}/${p(d.getMonth() + 1)}`;
                 }
                 return '';
               },
               label: (c) => {
                 if ((c.dataset as any).label === fillsDatasetLabel) {
-                  const f = fills[c.dataIndex];
+                  const f = fillAt[c.dataIndex];
                   if (!f) return '';
-                  const amount = (f.fill.cost ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                  const lines = [`${fmt0(f.fill.liters)} L · ${amount} ${this.getCurrencyCode()}`];
-                  if (f.fill.station) lines.push(f.fill.station);
+                  const amount = (f.cost ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const lines = [`${fmt0(f.liters)} L · ${amount} ${this.getCurrencyCode()}`];
+                  if (f.station) lines.push(f.station);
                   return lines;
                 }
                 const pt = series[c.dataIndex];
