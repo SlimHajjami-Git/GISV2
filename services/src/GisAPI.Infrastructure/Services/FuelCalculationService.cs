@@ -962,6 +962,13 @@ public class FuelCalculationService : IFuelCalculationService
             Math.Round((decimal)p.FuelPercent / 100m * tankCap, 1)
         )).ToList();
 
+        // Décimation de la SÉRIE RENVOYÉE uniquement (la détection des pleins
+        // reste en pleine résolution) : sur 6 mois, la courbe collapsée fait
+        // encore des dizaines de milliers de points = des Mo de JSON et un
+        // chargement interminable côté client. Min/max par seau : les sauts
+        // — les pleins — survivent.
+        series = DecimateLevelSeries(series, 1500);
+
         // Detected refills: level jumps >= 10% (same ratchet rule as consumption).
         // From/To portent la mesure brute en points — la conversion en litres
         // (nominale ici) sera ré-étalonnée par véhicule en aval.
@@ -987,6 +994,38 @@ public class FuelCalculationService : IFuelCalculationService
         }
 
         return new FuelLevelAuditDto(true, tankCapacity, series, MergeSameRefill(refills, tankCap));
+    }
+
+    /// <summary>
+    /// Réduit une série de niveau à ≤ maxPoints en gardant, par seau, le point
+    /// MIN et le point MAX (ordre chronologique préservé) : la silhouette et
+    /// surtout les sauts de pleins restent intacts.
+    /// </summary>
+    private static List<FuelLevelPointDto> DecimateLevelSeries(List<FuelLevelPointDto> series, int maxPoints)
+    {
+        if (series.Count <= maxPoints) return series;
+        var buckets = maxPoints / 2;
+        var size = (double)series.Count / buckets;
+        var output = new List<FuelLevelPointDto>(maxPoints);
+        for (int b = 0; b < buckets; b++)
+        {
+            int start = (int)(b * size);
+            int end = Math.Min(series.Count, (int)((b + 1) * size));
+            if (start >= end) continue;
+            int minIdx = start, maxIdx = start;
+            for (int i = start + 1; i < end; i++)
+            {
+                if (series[i].Percent < series[minIdx].Percent) minIdx = i;
+                if (series[i].Percent > series[maxIdx].Percent) maxIdx = i;
+            }
+            if (minIdx == maxIdx) output.Add(series[minIdx]);
+            else
+            {
+                output.Add(series[Math.Min(minIdx, maxIdx)]);
+                output.Add(series[Math.Max(minIdx, maxIdx)]);
+            }
+        }
+        return output;
     }
 
     /// <summary>Fenêtre au-delà de laquelle deux hausses de niveau sont deux pleins distincts.</summary>
@@ -1050,6 +1089,15 @@ public class FuelCalculationService : IFuelCalculationService
     /// TankCalibrationResult.Fit, qui décide seul s'il y a assez de points
     /// cohérents pour faire foi.
     /// </summary>
+    // L'étalonnage relance un audit ±36 h autour de chacune des 12 dernières
+    // factures — 12 calculs lourds PAR CHARGEMENT de rapport, alors que le
+    // résultat ne change que quand une facture est saisie. Cache dont la clé
+    // est l'EMPREINTE du jeu de factures : invalidation automatique dès
+    // qu'une facture arrive, et aucune pollution entre jeux de données.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime At, TankCalibrationResult Result)>
+        CalibrationCache = new();
+    private static readonly TimeSpan CalibrationCacheTtl = TimeSpan.FromMinutes(30);
+
     public async Task<TankCalibrationResult> GetTankCalibrationAsync(
         Vehicle vehicle,
         CancellationToken cancellationToken = default)
@@ -1070,6 +1118,13 @@ public class FuelCalculationService : IFuelCalculationService
             .Take(12)
             .Select(fe => new { fe.InvoiceDate, fe.Volume })
             .ToListAsync(cancellationToken);
+
+        // Cache APRÈS la (petite) requête factures : on n'économise que les 12
+        // sous-audits lourds, et la clé change dès que le jeu de factures bouge.
+        var cacheKey = $"{vehicle.Id}|{entries.Count}|{(entries.Count > 0 ? entries.Max(e => e.InvoiceDate).Ticks : 0)}|{entries.Sum(e => e.Volume)}";
+        if (CalibrationCache.TryGetValue(cacheKey, out var cached) &&
+            DateTime.UtcNow - cached.At < CalibrationCacheTtl)
+            return cached.Result;
 
         var points = new List<TankCalibrationPoint>();
         // Deux factures ne peuvent pas revendiquer la même montée de jauge
@@ -1093,7 +1148,11 @@ public class FuelCalculationService : IFuelCalculationService
             points.Add(new TankCalibrationPoint(e.InvoiceDate, e.Volume, best.DeltaPoints));
         }
 
-        return TankCalibrationResult.Fit(points, nominal);
+        var result = TankCalibrationResult.Fit(points, nominal);
+        foreach (var kv in CalibrationCache.Where(kv => DateTime.UtcNow - kv.Value.At > CalibrationCacheTtl).ToList())
+            CalibrationCache.TryRemove(kv.Key, out _);
+        CalibrationCache[cacheKey] = (DateTime.UtcNow, result);
+        return result;
     }
 
     /// <summary>
