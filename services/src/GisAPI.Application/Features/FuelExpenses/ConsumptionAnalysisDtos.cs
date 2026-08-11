@@ -61,3 +61,27 @@ public record VehicleLoadPeriodDto(
     DateTime? EndTime,
     decimal TonnageT,
     string? Notes);
+
+/// <summary>
+/// Un intervalle « plein à plein » : entre deux pleins consécutifs, les litres
+/// versés au plein de FIN divisés par les km parcourus donnent la consommation
+/// RÉELLE — comparable à ce que la jauge a mesuré sur la même fenêtre.
+/// Hypothèse de la méthode : chaque plein remplit le réservoir (pratique SGF).
+/// </summary>
+public record ConsumptionComparisonIntervalDto(
+    DateTime Start,
+    DateTime End,
+    decimal Km,
+    decimal RealLiters,
+    decimal RealLPer100,
+    decimal? MeasuredLiters,
+    decimal? MeasuredLPer100,
+    bool MeasuredReliable);
+
+public record FuelConsumptionComparisonDto(
+    int VehicleId,
+    bool HasSensor,
+    List<ConsumptionComparisonIntervalDto> Intervals,
+    decimal? AvgRealLPer100,
+    decimal? AvgMeasuredLPer100,
+    decimal? DeltaPercent);

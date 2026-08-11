@@ -64,6 +64,21 @@ public class ConsumptionAnalysisController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Consommation mesurée (jauge) vs réelle (plein à plein) par intervalle
+    /// entre deux pleins facturés consécutifs, avec moyennes pondérées km.
+    /// </summary>
+    [HttpGet("consumption-comparison")]
+    public async Task<ActionResult<FuelConsumptionComparisonDto>> GetConsumptionComparison(
+        [FromQuery] int vehicleId,
+        [FromQuery] DateTime? startDate,
+        [FromQuery] DateTime? endDate)
+    {
+        var result = await _mediator.Send(
+            new GetFuelConsumptionComparisonQuery(vehicleId, startDate, endDate));
+        return Ok(result);
+    }
+
     [HttpGet("load-periods")]
     public async Task<ActionResult<List<VehicleLoadPeriodDto>>> GetLoadPeriods([FromQuery] int vehicleId)
     {

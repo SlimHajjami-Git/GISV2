@@ -1981,6 +1981,15 @@ export class ApiService {
     return this.http.get<ConsumptionSegmentsReport>(`${this.API_URL}/consumption-analysis/segments`, { headers: this.getHeaders(), params });
   }
 
+  /** Consommation mesurée (jauge) vs réelle (factures, méthode plein à plein) par intervalle entre deux pleins consécutifs. */
+  getConsumptionComparison(vehicleId: number, startDate?: string, endDate?: string): Observable<FuelConsumptionComparisonReport> {
+    let params = new HttpParams();
+    params = params.set('vehicleId', vehicleId.toString());
+    if (startDate) params = params.set('startDate', startDate);
+    if (endDate) params = params.set('endDate', endDate);
+    return this.http.get<FuelConsumptionComparisonReport>(`${this.API_URL}/consumption-analysis/consumption-comparison`, { headers: this.getHeaders(), params });
+  }
+
   /** Consumption grouped by declared tonnage (segments inherit the load periods). */
   getConsumptionByTonnage(vehicleId: number, startDate?: string, endDate?: string, segmentKm: number = 100): Observable<ConsumptionByTonnageReport> {
     let params = new HttpParams();
@@ -3938,6 +3947,27 @@ export interface VehicleLoadPeriod {
   endTime: string | null;   // null = en cours
   tonnageT: number;
   notes: string | null;
+}
+
+// ---- Consommation mesurée (jauge) vs réelle (factures, méthode plein à plein) ----
+export interface ConsumptionComparisonInterval {
+  start: string;                    // ISO — date du plein qui OUVRE l'intervalle
+  end: string;                      // ISO — date du plein qui le FERME
+  km: number;
+  realLiters: number;               // litres facturés au plein de fin
+  realLPer100: number;
+  measuredLiters: number | null;    // ratchet jauge étalonné sur la même fenêtre
+  measuredLPer100: number | null;
+  measuredReliable: boolean;        // false = fenêtre polluée par le capteur
+}
+
+export interface FuelConsumptionComparisonReport {
+  vehicleId: number;
+  hasSensor: boolean;
+  intervals: ConsumptionComparisonInterval[];
+  avgRealLPer100: number | null;      // moyenne pondérée km
+  avgMeasuredLPer100: number | null;  // moyenne pondérée km (intervalles fiables)
+  deltaPercent: number | null;        // (réel − mesuré) / mesuré × 100
 }
 
 export interface ExplainSegmentResult {

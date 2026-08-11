@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
-import { Subject, forkJoin, takeUntil } from 'rxjs';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { Subject, forkJoin, of, takeUntil, catchError } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
@@ -38,6 +38,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('comparisonCanvas') comparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('comparisonConsoCanvas') comparisonConsoCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('consumptionCanvas') consumptionCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
@@ -350,6 +351,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // réellement facturés posés dessus (single vehicle). Une remontée sans cercle = plein non déclaré.
   comparisonAudit: FuelAuditReport | null = null;
 
+  // Rapport 17, second graphe : consommation mesurée (jauge) vs réelle (factures,
+  // méthode plein à plein) par intervalle entre deux pleins consécutifs.
+  comparisonConsumption: FuelConsumptionComparisonReport | null = null;
+
   // Analyse consommation par segments de X km + comparaison par tonnage (single vehicle)
   consumptionReport: ConsumptionSegmentsReport | null = null;
   /** Les tranches sans données exploitables sont masquées par défaut (vue client) —
@@ -416,6 +421,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private chart?: Chart;
   private secondaryChart?: Chart;
   private comparisonChart?: Chart;
+  private comparisonConsoChart?: Chart;
   private consumptionChart?: Chart;
 
   constructor(
@@ -761,6 +767,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
     if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
+    if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
   }
 
@@ -930,9 +937,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
     this.comparisonAudit = null;
+    this.comparisonConsumption = null;
     this.consumptionReport = null;
     this.consumptionByTonnage = null;
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
+    if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
 
     // Re-compute dates from the selected period to ensure fresh timestamps
@@ -5622,14 +5631,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
   executeFuelComparisonReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     this.comparisonAudit = null;
+    this.comparisonConsumption = null;
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
+    if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
 
     const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
     const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
 
-    this.apiService.getFuelAuditReport(vehicleId, startDateStr, endDateStr)
-      .pipe(takeUntil(this.destroy$)).subscribe({
-        next: (audit) => {
+    forkJoin({
+      audit: this.apiService.getFuelAuditReport(vehicleId, startDateStr, endDateStr),
+      // La comparaison plein à plein ne doit jamais faire tomber la courbe de niveau :
+      // en cas d'erreur sur ce second appel, on continue sans le second graphe.
+      conso: this.apiService.getConsumptionComparison(vehicleId, startDateStr, endDateStr)
+        .pipe(catchError(() => of(null)))
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+        next: ({ audit, conso }) => {
           this.ngZone.run(() => {
             // Tableau « Historique des pleins réels » du plus récent au plus ancien —
             // le graphe, lui, replace chaque plein par sa date, l'ordre lui est égal.
@@ -5637,11 +5653,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
               .slice()
               .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
             this.comparisonAudit = audit;
+            this.comparisonConsumption = conso;
             this.reportGenerated = true;
             this.loading = false;
             this.cdr.detectChanges();
-            // Canvas is *ngIf-gated on comparisonAudit + hasSensor — defer draw until it's in the DOM
-            setTimeout(() => this.drawComparisonChart(), 120);
+            // Canvases are *ngIf-gated (comparisonAudit + hasSensor, intervalles) — defer draw until they're in the DOM
+            setTimeout(() => { this.drawComparisonChart(); this.drawComparisonConsoChart(); }, 120);
           });
         },
         error: (err) => {
@@ -5654,6 +5671,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
           });
         }
       });
+  }
+
+  /** Chip « Écart » du second graphe : vert quand l'écart réel/mesuré reste ≤ 10 % en valeur absolue. */
+  comparisonDeltaOk(): boolean {
+    const d = this.comparisonConsumption?.deltaPercent;
+    return d != null && Math.abs(d) <= 10;
   }
 
   /** Litres facturés : somme des volumes des pleins réels sur la période. */
@@ -5923,6 +5946,158 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       },
       plugins: [annotationsPlugin]
+    });
+  }
+
+  /** Second graphe du rapport 17 : consommation mesurée par la jauge vs consommation
+   *  réelle déduite des factures (méthode plein à plein), par intervalle entre deux
+   *  pleins consécutifs. Barres bleues = jauge (grisées quand la fenêtre est polluée
+   *  par le capteur), barres ambre = litres facturés rapportés aux mêmes kilomètres. */
+  drawComparisonConsoChart() {
+    if (this.comparisonConsoChart) {
+      this.comparisonConsoChart.destroy();
+      this.comparisonConsoChart = undefined;
+    }
+
+    const canvas = this.comparisonConsoCanvasRef?.nativeElement;
+    if (!canvas) return;
+
+    const report = this.comparisonConsumption;
+    const intervals = report?.intervals || [];
+    if (!intervals.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const p = (n: number) => String(n).padStart(2, '0');
+    const fmtDM = (iso: string) => {
+      const d = new Date(iso);
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+    };
+    const fmt1 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fmt0 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+
+    // Un groupe de barres par intervalle, étiqueté par le plein qui le FERME.
+    const labels = intervals.map(iv => `→ ${fmtDM(iv.end)}`);
+
+    // Barres « mesurée » : bleues quand la fenêtre est fiable, grisées sinon
+    // (la valeur reste affichée si elle existe — le gris signale le doute).
+    const measuredColors = intervals.map(iv =>
+      iv.measuredReliable && iv.measuredLPer100 != null ? 'rgba(59,130,246,.65)' : 'rgba(148,163,175,.35)');
+
+    const measuredLabel = 'Mesurée (jauge)';
+    const realLabel = 'Réelle (factures)';
+    const datasets: any[] = [
+      {
+        label: measuredLabel,
+        data: intervals.map(iv => iv.measuredLPer100),   // null → pas de barre
+        backgroundColor: measuredColors,
+        borderWidth: 0,
+        borderRadius: 5,
+        barPercentage: .7,
+        categoryPercentage: .75
+      },
+      {
+        label: realLabel,
+        data: intervals.map(iv => iv.realLPer100),
+        backgroundColor: 'rgba(245,158,11,.75)',
+        borderColor: '#d97706',
+        borderWidth: 1,
+        borderRadius: 5,
+        barPercentage: .7,
+        categoryPercentage: .75
+      }
+    ];
+
+    // Deux lignes de moyenne en pointillés (modèle : ligne « moyenne » de
+    // drawConsumptionChart) — libellés à droite, décalés de part et d'autre de
+    // leur ligne pour ne pas se chevaucher quand les moyennes sont proches.
+    const avgMeasured = report!.avgMeasuredLPer100;
+    const avgReal = report!.avgRealLPer100;
+    const avgLinesPlugin = {
+      id: 'consoComparisonAvgLines',
+      afterDatasetsDraw: (chart: any) => {
+        const yScale = chart.scales?.['y'];
+        if (!yScale) return;
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const area = chart.chartArea;
+        const drawAvgLine = (value: number, color: string, label: string, labelAbove: boolean) => {
+          const y = yScale.getPixelForValue(value);
+          c.save();
+          c.strokeStyle = color;
+          c.lineWidth = 1.5;
+          c.setLineDash([5, 5]);
+          c.beginPath();
+          c.moveTo(area.left, y);
+          c.lineTo(area.right, y);
+          c.stroke();
+          c.setLineDash([]);
+          c.font = '11px sans-serif';
+          c.fillStyle = color;
+          c.textAlign = 'right';
+          c.textBaseline = labelAbove ? 'bottom' : 'top';
+          c.fillText(label, area.right - 4, labelAbove ? y - 3 : y + 3);
+          c.restore();
+        };
+        if (avgMeasured != null) drawAvgLine(avgMeasured, 'rgba(59,130,246,.9)', `mesurée ${fmt1(avgMeasured)}`, true);
+        if (avgReal != null) drawAvgLine(avgReal, 'rgba(245,158,11,.95)', `réelle ${fmt1(avgReal)}`, false);
+      }
+    };
+
+    this.comparisonConsoChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          // Légende indispensable ici : deux séries à distinguer.
+          legend: {
+            display: true,
+            position: 'top',
+            labels: { usePointStyle: true, boxWidth: 8, color: '#64748b', font: { size: 11 } }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15,23,42,.92)',
+            padding: 10,
+            cornerRadius: 8,
+            displayColors: false,
+            callbacks: {
+              title: (items) => {
+                const iv = intervals[items[0]?.dataIndex];
+                return iv ? `Du ${fmtDM(iv.start)} au ${fmtDM(iv.end)}` : '';
+              },
+              label: (c) => {
+                const iv = intervals[c.dataIndex];
+                if (!iv) return '';
+                if ((c.dataset as any).label === measuredLabel) {
+                  if (!iv.measuredReliable || iv.measuredLPer100 == null) {
+                    return 'Mesure non exploitable sur cette fenêtre';
+                  }
+                  return `Mesurée : ${fmt1(iv.measuredLPer100)} L/100 km (${fmt0(iv.measuredLiters)} L sur ${fmt0(iv.km)} km)`;
+                }
+                return `Réelle : ${fmt1(iv.realLPer100)} L/100 km (${fmt0(iv.realLiters)} L facturés)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0 }
+          },
+          y: {
+            beginAtZero: true,
+            grace: '10%',
+            border: { display: false },
+            grid: { color: 'rgba(148,163,184,.14)' },
+            ticks: { color: '#94a3b8', font: { size: 11 } }
+          }
+        }
+      },
+      plugins: [avgLinesPlugin]
     });
   }
 

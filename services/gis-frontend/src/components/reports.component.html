@@ -924,6 +924,42 @@
                     Aucun plein saisi sur la période — saisissez les factures dans la page Carburant pour activer la comparaison.
                   </div>
                 </div>
+
+                <!-- Second graphe : consommation mesurée (jauge) vs réelle (factures, méthode plein à plein) -->
+                <div *ngIf="comparisonConsumption" style="padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                  <div style="font-weight:700;color:var(--text-primary,#1e293b);">Consommation : mesurée vs réelle</div>
+                  <div style="font-size:11px;color:var(--text-secondary,#94a3b8);margin:2px 0 10px;max-width:560px;">Chaque paire de barres couvre l'intervalle entre deux pleins : ce que la jauge a mesuré, contre ce que les litres facturés impliquent sur les mêmes kilomètres.</div>
+
+                  <ng-container *ngIf="comparisonConsumption.intervals.length; else consoComparisonEmptyTpl">
+                    <!-- Chips : moyennes mesurée / réelle + écart -->
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                      <div *ngIf="comparisonConsumption.avgMeasuredLPer100 != null" style="padding:8px 14px;background:rgba(59,130,246,.09);border-radius:10px;">
+                        <div style="font-size:12px;font-weight:700;color:#2563eb;">Moyenne mesurée&nbsp;: {{ comparisonConsumption.avgMeasuredLPer100 | number:'1.1-1' }} L/100</div>
+                      </div>
+                      <div *ngIf="comparisonConsumption.avgRealLPer100 != null" style="padding:8px 14px;background:rgba(245,158,11,.12);border-radius:10px;">
+                        <div style="font-size:12px;font-weight:700;color:#b45309;">Moyenne réelle&nbsp;: {{ comparisonConsumption.avgRealLPer100 | number:'1.1-1' }} L/100</div>
+                      </div>
+                      <div *ngIf="comparisonConsumption.deltaPercent != null" style="padding:8px 14px;border-radius:10px;"
+                           [style.background]="comparisonDeltaOk() ? 'rgba(34,197,94,.12)' : 'rgba(245,158,11,.12)'">
+                        <div style="font-size:12px;font-weight:700;" [style.color]="comparisonDeltaOk() ? '#16a34a' : '#b45309'">
+                          Écart&nbsp;: {{ comparisonConsumption.deltaPercent > 0 ? '+' : '' }}{{ comparisonConsumption.deltaPercent | number:'1.0-1' }} %
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Graphe barres groupées mesurée / réelle -->
+                    <div class="charts-container">
+                      <div class="chart-area" style="min-height:280px;">
+                        <canvas #comparisonConsoCanvas></canvas>
+                      </div>
+                    </div>
+                  </ng-container>
+                  <ng-template #consoComparisonEmptyTpl>
+                    <div style="color:var(--text-secondary,#64748b);font-size:12px;">
+                      Saisissez au moins deux pleins sur la période pour calculer la consommation réelle (méthode plein à plein).
+                    </div>
+                  </ng-template>
+                </div>
               </ng-container>
             </div>
 
