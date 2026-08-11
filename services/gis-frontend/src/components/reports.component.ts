@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelEntryDto, PaginatedFuelEntriesResult, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
-import { Subject, forkJoin, of, takeUntil } from 'rxjs';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { Subject, forkJoin, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
@@ -162,7 +162,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       name: 'Carburant réel vs GPS',
       type: 'fuel-comparison',
       icon: '🔍',
-      description: 'Pleins réels superposés sur la consommation mesurée par tranches',
+      description: 'Pleins réels posés sur la courbe du niveau de carburant',
       category: 'costs'
     },
     {
@@ -346,11 +346,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   monthlyCostReport: MonthlyCostReport | null = null;
   monthlyCostReportType: 'costs' | 'fuel' = 'costs';
 
-  // Carburant réel vs GPS : pleins facturés (factures) superposés sur la consommation
-  // mesurée par tranches (single vehicle). Partage segmentKm / showExcludedSegments avec le rapport 18.
-  comparisonSegments: ConsumptionSegmentsReport | null = null;
-  comparisonEntries: FuelEntryDto[] = [];
-  showComparisonDetailsPanel = false;
+  // Carburant réel vs GPS : courbe du niveau de réservoir (jauge) avec les pleins
+  // réellement facturés posés dessus (single vehicle). Une remontée sans cercle = plein non déclaré.
+  comparisonAudit: FuelAuditReport | null = null;
 
   // Analyse consommation par segments de X km + comparaison par tonnage (single vehicle)
   consumptionReport: ConsumptionSegmentsReport | null = null;
@@ -931,8 +929,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.monthlyReport = null;
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
-    this.comparisonSegments = null;
-    this.comparisonEntries = [];
+    this.comparisonAudit = null;
     this.consumptionReport = null;
     this.consumptionByTonnage = null;
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
@@ -5617,99 +5614,129 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${m}min`;
   }
 
-  // ==================== CARBURANT RÉEL VS GPS (pleins superposés sur la conso par tranches) ====================
+  // ==================== CARBURANT RÉEL VS GPS (pleins facturés posés sur la courbe de niveau) ====================
 
-  /** Rapport 17 : même socle que l'analyse par tranches (rapport 18), avec en
-   *  superposition les pleins réellement facturés à la pompe. La courbe mesure
-   *  ce que le moteur consomme ; les repères, ce qui a été payé. */
+  /** Rapport 17 : courbe du niveau de réservoir mesuré par la jauge, avec un cercle
+   *  posé SUR la courbe à chaque plein réellement facturé. L'œil vérifie directement :
+   *  une remontée sans cercle = plein non déclaré ; un cercle sans remontée = facture suspecte. */
   executeFuelComparisonReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
-    this.comparisonSegments = null;
-    this.comparisonEntries = [];
+    this.comparisonAudit = null;
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
-
-    // Clamp de la taille de tranche (l'input number peut renvoyer une chaîne vide)
-    const segmentKm = Math.min(Math.max(Number(this.segmentKm) || 100, 10), 1000);
-    this.segmentKm = segmentKm;
 
     const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
     const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
 
-    // Les factures carburant sont indexées par matricule, pas par id véhicule.
-    const plate = (this.vehicles.find((v: any) => v.id == vehicleId)?.plate || '').trim();
-    const emptyEntries: PaginatedFuelEntriesResult = { items: [], totalCount: 0, page: 1, pageSize: 0, totalPages: 0 };
+    this.apiService.getFuelAuditReport(vehicleId, startDateStr, endDateStr)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: (audit) => {
+          this.ngZone.run(() => {
+            // Tableau « Historique des pleins réels » du plus récent au plus ancien —
+            // le graphe, lui, replace chaque plein par sa date, l'ordre lui est égal.
+            audit.cardFills = (audit.cardFills || [])
+              .slice()
+              .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            this.comparisonAudit = audit;
+            this.reportGenerated = true;
+            this.loading = false;
+            this.cdr.detectChanges();
+            // Canvas is *ngIf-gated on comparisonAudit + hasSensor — defer draw until it's in the DOM
+            setTimeout(() => this.drawComparisonChart(), 120);
+          });
+        },
+        error: (err) => {
+          console.error('Error loading fuel comparison report:', err);
+          this.ngZone.run(() => {
+            this.loading = false;
+            this.reportGenerated = true;
+            this.statisticsData = { 'Erreur': 'Impossible de charger la comparaison consommation / pleins réels' };
+            this.cdr.detectChanges();
+          });
+        }
+      });
+  }
 
-    forkJoin({
-      segments: this.apiService.getConsumptionSegments(vehicleId, startDateStr, endDateStr, segmentKm),
-      entries: plate
-        ? this.apiService.getFuelEntries({ vehiclePlate: plate, startDate: startDateStr, endDate: endDateStr, pageSize: 500 })
-        : of(emptyEntries)
-    }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: ({ segments, entries }) => {
-        this.ngZone.run(() => {
-          this.comparisonSegments = segments;
-          this.comparisonEntries = (entries.items || [])
-            .slice()
-            .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime());
-          this.reportGenerated = true;
-          this.loading = false;
-          this.cdr.detectChanges();
-          // Canvas is *ngIf-gated on comparisonSegments + hasSensor — defer draw until it's in the DOM
-          setTimeout(() => this.drawComparisonChart(), 120);
-        });
-      },
-      error: (err) => {
-        console.error('Error loading fuel comparison report:', err);
-        this.ngZone.run(() => {
-          this.loading = false;
-          this.reportGenerated = true;
-          this.statisticsData = { 'Erreur': 'Impossible de charger la comparaison consommation / pleins réels' };
-          this.cdr.detectChanges();
-        });
+  /** Litres facturés : somme des volumes des pleins réels sur la période. */
+  comparisonBilledLiters(): number {
+    return (this.comparisonAudit?.cardFills || []).reduce((sum, f) => sum + (Number(f.liters) || 0), 0);
+  }
+
+  /** Sous-échantillonnage min/max par seau (~1200 seaux, ordre chronologique
+   *  préservé) : la forme de la courbe et surtout ses SAUTS — les pleins — survivent. */
+  private downsampleLevelSeries(series: FuelLevelPoint[]): FuelLevelPoint[] {
+    if (series.length <= 1500) return series;
+    const bucketCount = 1200;
+    const bucketSize = series.length / bucketCount;
+    const out: FuelLevelPoint[] = [];
+    for (let b = 0; b < bucketCount; b++) {
+      const start = Math.floor(b * bucketSize);
+      const end = Math.min(series.length, Math.floor((b + 1) * bucketSize));
+      if (start >= end) continue;
+      let minIdx = start;
+      let maxIdx = start;
+      for (let i = start + 1; i < end; i++) {
+        if (series[i].percent < series[minIdx].percent) minIdx = i;
+        if (series[i].percent > series[maxIdx].percent) maxIdx = i;
       }
-    });
+      if (minIdx === maxIdx) out.push(series[minIdx]);
+      else out.push(series[Math.min(minIdx, maxIdx)], series[Math.max(minIdx, maxIdx)]);
+    }
+    return out;
   }
 
-  /** Tranches affichées dans la comparaison — même règle que le rapport 18. */
-  visibleComparisonSegments(): ConsumptionSegment[] {
-    const segs = this.comparisonSegments?.segments || [];
-    return this.showExcludedSegments ? segs : segs.filter(s => s.isReliable);
+  /** Libellés X pour une série horodatée : mêmes marqueurs de jour que
+   *  buildSegmentDayLabels (« dd/MM » au premier point de chaque journée, '' sinon,
+   *  éclaircis à ≤ 10), appliqués à des timestamps bruts plutôt qu'à des tranches. */
+  private buildTimestampDayLabels(timestamps: string[]): string[] {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const labels: string[] = [];
+    let prevDay = '';
+    for (const t of timestamps) {
+      const d = new Date(t);
+      const day = `${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+      if (day !== prevDay) { labels.push(day); prevDay = day; }
+      else labels.push('');
+    }
+    // Au-delà de ~10 jours marqués, n'en garder qu'un sur N pour respirer.
+    const dayPositions = labels.map((l, i) => l ? i : -1).filter(i => i >= 0);
+    if (dayPositions.length > 10) {
+      const step = Math.ceil(dayPositions.length / 10);
+      dayPositions.forEach((pos, k) => { if (k % step !== 0) labels[pos] = ''; });
+    }
+    return labels;
   }
 
-  /** Litres mesurés par la jauge, tranches fiables uniquement. */
-  comparisonMeasuredLiters(): number {
-    return (this.comparisonSegments?.segments || [])
-      .filter(s => s.isReliable)
-      .reduce((sum, s) => sum + s.fuelLiters, 0);
+  /** Index du point de courbe le plus proche de la date d'un plein. Les factures
+   *  datées au jour (minuit pile) visent 12:00 et se limitent d'abord aux points
+   *  de cette même journée ; à défaut, le point le plus proche toutes dates confondues. */
+  private nearestLevelIndexForFill(fillDate: string, series: FuelLevelPoint[], times: number[]): number {
+    const d = new Date(fillDate);
+    const dateOnly = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+    let target = d.getTime();
+    if (dateOnly) {
+      target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12).getTime();
+      let sameDayBest = -1;
+      let sameDayDist = Infinity;
+      for (let i = 0; i < series.length; i++) {
+        const sd = new Date(series[i].t);
+        if (sd.getFullYear() !== d.getFullYear() || sd.getMonth() !== d.getMonth() || sd.getDate() !== d.getDate()) continue;
+        const dist = Math.abs(times[i] - target);
+        if (dist < sameDayDist) { sameDayDist = dist; sameDayBest = i; }
+      }
+      if (sameDayBest >= 0) return sameDayBest;
+    }
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < times.length; i++) {
+      const dist = Math.abs(times[i] - target);
+      if (dist < bestDist) { bestDist = dist; best = i; }
+    }
+    return best;
   }
 
-  /** Litres facturés : somme des volumes des pleins saisis sur la période. */
-  comparisonInvoicedLiters(): number {
-    return this.comparisonEntries.reduce((sum, e) => sum + (Number(e.volume) || 0), 0);
-  }
-
-  /** Écart facturé − mesuré (L). Positif = plus payé que consommé. */
-  comparisonGapLiters(): number {
-    return this.comparisonInvoicedLiters() - this.comparisonMeasuredLiters();
-  }
-
-  /** Écart en % du mesuré — null quand rien n'est mesuré sur la période. */
-  comparisonGapPercent(): number | null {
-    const measured = this.comparisonMeasuredLiters();
-    if (measured <= 0) return null;
-    return (this.comparisonGapLiters() / measured) * 100;
-  }
-
-  /** Écart notable (> 15 % en valeur absolue) → chip teintée ambre. */
-  comparisonGapHigh(): boolean {
-    const gap = this.comparisonGapPercent();
-    return gap != null && Math.abs(gap) > 15;
-  }
-
-  /** Graphe du rapport 17 : exactement le socle de drawConsumptionChart (barres
-   *  L/100 km par tranche, min vert / max rouge, ligne moyenne ambre) + un nuage
-   *  de triangles « pleins réels » (litres facturés, axe de droite) positionnés
-   *  sur la tranche qui contient la date de facture. */
+  /** Graphe du rapport 17 : la courbe du niveau de réservoir (%) sur la période,
+   *  avec un cercle ambre posé SUR la courbe à chaque plein facturé. Chaque remontée
+   *  de jauge doit avoir son cercle ; une remontée orpheline = plein non déclaré. */
   drawComparisonChart() {
     if (this.comparisonChart) {
       this.comparisonChart.destroy();
@@ -5719,194 +5746,88 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const canvas = this.comparisonCanvasRef?.nativeElement;
     if (!canvas) return;
 
-    const report = this.comparisonSegments;
-    if (!report?.hasSensor) return;
+    const audit = this.comparisonAudit;
+    if (!audit?.hasSensor) return;
 
-    const segments = this.visibleComparisonSegments();
-    if (!segments.length) return;
+    const series = this.downsampleLevelSeries(audit.levelSeries || []);
+    if (!series.length) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const summary = report.summary;
     const p = (n: number) => String(n).padStart(2, '0');
-    const labels = this.buildSegmentDayLabels(segments);
-
-    const isMin = (s: ConsumptionSegment) => s.isReliable && summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex;
-    const isMax = (s: ConsumptionSegment) => s.isReliable && summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex;
-
-    const colors = segments.map(s => {
-      if (!s.isReliable) return 'rgba(148,163,175,.35)';   // exclu (visible seulement en mode diagnostic)
-      if (isMin(s)) return '#22c55e';                       // meilleure tranche
-      if (isMax(s)) return '#ef4444';                       // pire tranche
-      return 'rgba(59,130,246,.55)';
-    });
-    const hoverColors = segments.map(s => {
-      if (!s.isReliable) return 'rgba(148,163,175,.35)';
-      if (isMin(s)) return '#22c55e';
-      if (isMax(s)) return '#ef4444';
-      return 'rgba(59,130,246,.8)';
-    });
-
-    const fmt1 = (n: number | null | undefined) =>
-      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     const fmt0 = (n: number | null | undefined) =>
       (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
-    const fmtT = (n: number | null | undefined) =>
-      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
     const fmtDT = (iso: string) => {
       const d = new Date(iso);
       return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
     };
 
-    // Position de chaque plein : la tranche visible qui contient la date de facture.
-    // Les factures datées au jour (minuit) tombent sur la première tranche de la
-    // journée ; à défaut, la tranche la plus proche par milieu de tranche.
-    const segStart = segments.map(s => new Date(s.startTime).getTime());
-    const segEnd = segments.map(s => new Date(s.endTime).getTime());
-    const segIndexForEntry = (entry: FuelEntryDto): number => {
-      const d = new Date(entry.invoiceDate);
-      const t = d.getTime();
-      const dateOnly = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
-      if (dateOnly) {
-        for (let i = 0; i < segments.length; i++) {
-          const s = new Date(segments[i].startTime);
-          if (s.getFullYear() === d.getFullYear() && s.getMonth() === d.getMonth() && s.getDate() === d.getDate()) return i;
-        }
-      } else {
-        for (let i = 0; i < segments.length; i++) {
-          if (t >= segStart[i] && t <= segEnd[i]) return i;
-        }
-      }
-      let best = 0;
-      let bestDist = Infinity;
-      for (let i = 0; i < segments.length; i++) {
-        const dist = Math.abs(t - (segStart[i] + segEnd[i]) / 2);
-        if (dist < bestDist) { bestDist = dist; best = i; }
-      }
-      return best;
-    };
-    const fills = this.comparisonEntries.map(e => ({ entry: e, x: segIndexForEntry(e), y: Number(e.volume) || 0 }));
+    const labels = this.buildTimestampDayLabels(series.map(pt => pt.t));
+    const times = series.map(pt => new Date(pt.t).getTime());
 
-    const datasets: any[] = [
-      {
-        label: 'L/100 km',
-        data: segments.map(s => s.lPer100Km),
-        backgroundColor: colors,
-        hoverBackgroundColor: hoverColors,
-        borderWidth: 0,
-        borderRadius: 6,
-        barPercentage: .62,
-        categoryPercentage: .78,
-        order: 2
-      }
-    ];
-
-    if (summary?.avgLPer100Km != null) {
-      datasets.push({
-        label: 'Moyenne',
-        data: segments.map(() => summary.avgLPer100Km),
-        type: 'line' as any,
-        borderColor: 'rgba(245,158,11,.9)',
-        backgroundColor: 'transparent',
-        borderDash: [5, 5],
-        borderWidth: 1.5,
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        fill: false,
-        order: 1
-      });
-    }
+    // Cercles : chaque plein facturé est posé sur le point de courbe le plus
+    // proche de sa date — le cercle DOIT toucher la courbe pour que l'œil
+    // rapproche remontée de jauge et facture d'un seul regard.
+    const fills = (audit.cardFills || []).map(f => {
+      const idx = this.nearestLevelIndexForFill(f.date, series, times);
+      return { fill: f, x: idx, y: series[idx].percent };
+    });
 
     const fillsDatasetLabel = 'Pleins réels';
+    const datasets: any[] = [
+      {
+        label: 'Niveau',
+        data: series.map(pt => pt.percent),
+        borderColor: '#10b981',
+        borderWidth: 2,
+        backgroundColor: 'rgba(16,185,129,.10)',
+        fill: 'origin',
+        pointRadius: 0,
+        pointHitRadius: 6,
+        tension: .15,
+        order: 1
+      }
+    ];
     if (fills.length) {
       datasets.push({
         label: fillsDatasetLabel,
         type: 'scatter' as any,
         data: fills.map(f => ({ x: f.x, y: f.y })),
-        yAxisID: 'yL',
-        pointStyle: 'triangle',
-        radius: 7,
-        hoverRadius: 9,
-        backgroundColor: '#f59e0b',
-        borderColor: '#b45309',
-        borderWidth: 1.5,
+        pointStyle: 'circle',
+        radius: 9,
+        hoverRadius: 11,
+        backgroundColor: 'rgba(245,158,11,.18)',
+        borderColor: '#d97706',
+        borderWidth: 3,
         order: 0
       });
     }
 
-    // Annotations : valeurs min/max + « moyenne X » (comme le rapport 18), plus
-    // « ⛽ N L » au-dessus de chaque plein tant qu'ils restent lisibles (≤ 12).
-    const minIdx = segments.findIndex(isMin);
-    const maxIdx = segments.findIndex(isMax);
-    const avg = summary?.avgLPer100Km;
+    // Annotation « ⛽ N L » au-dessus de chaque cercle tant qu'ils restent lisibles (≤ 12).
     const fillsDatasetIndex = datasets.length - 1;
     const drawFillLabels = fills.length > 0 && fills.length <= 12;
     const annotationsPlugin = {
       id: 'comparisonAnnotations',
       afterDatasetsDraw: (chart: any) => {
+        if (!drawFillLabels) return;
         const c = chart.ctx as CanvasRenderingContext2D;
-        const meta = chart.getDatasetMeta(0);
+        const fillMeta = chart.getDatasetMeta(fillsDatasetIndex);
         c.save();
         c.font = '11px sans-serif';
         c.textAlign = 'center';
         c.textBaseline = 'bottom';
-        const drawBarValue = (i: number, color: string) => {
-          const bar = meta?.data?.[i];
-          if (!bar) return;
-          c.fillStyle = color;
-          c.fillText(fmt1(segments[i].lPer100Km), bar.x, bar.y - 4);
-        };
-        if (minIdx >= 0) drawBarValue(minIdx, '#16a34a');
-        if (maxIdx >= 0 && maxIdx !== minIdx) drawBarValue(maxIdx, '#dc2626');
-        if (drawFillLabels) {
-          const fillMeta = chart.getDatasetMeta(fillsDatasetIndex);
-          c.fillStyle = '#b45309';
-          c.textAlign = 'center';
-          fillMeta?.data?.forEach((pt: any, i: number) => {
-            if (!pt || !fills[i]) return;
-            c.fillText(`⛽ ${fmt0(fills[i].y)} L`, pt.x, pt.y - 9);
-          });
-        }
-        if (avg != null && chart.scales?.['y']) {
-          const y = chart.scales['y'].getPixelForValue(avg);
-          c.fillStyle = 'rgba(245,158,11,.95)';
-          c.textAlign = 'right';
-          c.fillText(`moyenne ${fmt1(avg)}`, chart.chartArea.right - 4, y - 4);
-        }
+        c.fillStyle = '#b45309';
+        fillMeta?.data?.forEach((pt: any, i: number) => {
+          if (!pt || !fills[i]) return;
+          c.fillText(`⛽ ${fmt0(fills[i].fill.liters)} L`, pt.x, pt.y - 12);
+        });
         c.restore();
       }
     };
 
-    const scales: any = {
-      x: {
-        grid: { display: false },
-        // autoSkip OFF : les libellés vides font l'éclaircissage nous-mêmes,
-        // Chart.js ne doit pas supprimer un marqueur de jour au hasard.
-        ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: false }
-      },
-      y: {
-        beginAtZero: true,
-        grace: '10%',
-        border: { display: false },
-        grid: { color: 'rgba(148,163,184,.14)' },
-        ticks: { color: '#94a3b8', font: { size: 11 } }
-      }
-    };
-    if (fills.length) {
-      // Axe de droite dédié aux litres facturés — marge haute pour les libellés ⛽.
-      scales.yL = {
-        position: 'right',
-        beginAtZero: true,
-        suggestedMax: Math.max(...fills.map(f => f.y)) * 1.3,
-        grid: { display: false },
-        border: { display: false },
-        ticks: { color: '#94a3b8', font: { size: 11 } }
-      };
-    }
-
     this.comparisonChart = new Chart(ctx, {
-      type: 'bar',
+      type: 'line',
       data: { labels, datasets },
       options: {
         responsive: true,
@@ -5918,8 +5839,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
             padding: 10,
             cornerRadius: 8,
             displayColors: false,
-            // Barres (tranches) et triangles (pleins) parlent ; la ligne moyenne se tait.
-            filter: (item) => (item.dataset as any).label !== 'Moyenne',
             callbacks: {
               title: (items) => {
                 const it = items[0];
@@ -5927,35 +5846,42 @@ export class ReportsComponent implements OnInit, OnDestroy {
                 if ((it.dataset as any).label === fillsDatasetLabel) {
                   const f = fills[it.dataIndex];
                   if (!f) return '';
-                  const d = new Date(f.entry.invoiceDate);
+                  const d = new Date(f.fill.date);
                   return `Plein réel — ${p(d.getDate())}/${p(d.getMonth() + 1)}`;
                 }
-                const s = segments[it.dataIndex];
-                return s ? `Du ${fmtDT(s.startTime)} au ${fmtDT(s.endTime)}` : '';
+                return '';
               },
               label: (c) => {
                 if ((c.dataset as any).label === fillsDatasetLabel) {
                   const f = fills[c.dataIndex];
                   if (!f) return '';
-                  const amount = (f.entry.totalAmount ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                  const lines = [`${fmt0(f.y)} L · ${amount} ${this.getCurrencyCode()}`];
-                  if (f.entry.stationName) lines.push(f.entry.stationName);
+                  const amount = (f.fill.cost ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const lines = [`${fmt0(f.fill.liters)} L · ${amount} ${this.getCurrencyCode()}`];
+                  if (f.fill.station) lines.push(f.fill.station);
                   return lines;
                 }
-                const s = segments[c.dataIndex];
-                if (!s) return '';
-                const lines = [
-                  `${fmt1(s.lPer100Km)} L/100 km`,
-                  `${fmt0(s.distanceKm)} km parcourus · ${fmt0(s.fuelLiters)} L consommés`,
-                  `Chargement : ${s.tonnageT != null ? fmtT(s.tonnageT) + ' t' : 'non renseigné'}`
-                ];
-                if (s.exclusionReason) lines.push('Données non exploitables sur cette tranche');
-                return lines;
+                const pt = series[c.dataIndex];
+                if (!pt) return '';
+                return `${fmtDT(pt.t)} — ${fmt0(pt.percent)} % (${fmt0(pt.liters)} L)`;
               }
             }
           }
         },
-        scales
+        scales: {
+          x: {
+            grid: { display: false },
+            // autoSkip OFF : les libellés vides font l'éclaircissage nous-mêmes,
+            // Chart.js ne doit pas supprimer un marqueur de jour au hasard.
+            ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: false }
+          },
+          y: {
+            min: 0,
+            max: 100,
+            border: { display: false },
+            grid: { color: 'rgba(148,163,184,.14)' },
+            ticks: { color: '#94a3b8', font: { size: 11 } }
+          }
+        }
       },
       plugins: [annotationsPlugin]
     });

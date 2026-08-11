@@ -839,87 +839,68 @@
               </div>
             </div>
 
-            <!-- Carburant réel vs GPS : pleins facturés superposés sur la consommation mesurée (single vehicle only) -->
+            <!-- Carburant réel vs GPS : courbe du niveau de réservoir + pleins facturés posés dessus (single vehicle only) -->
             <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && reportGenerated" class="fuel-comparison-section" style="margin-bottom:16px;">
 
-              <!-- En-tête : titre + explication en une phrase + presets de tranche -->
-              <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
-                <div style="flex:1;min-width:260px;">
-                  <div style="font-size:16px;font-weight:700;color:var(--text-primary,#1e293b);">Consommation mesurée vs pleins réels</div>
-                  <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;max-width:560px;">La courbe mesure ce que le moteur consomme (jauge) ; les repères montrent ce que vous avez réellement payé à la pompe.</div>
-                </div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                  <button *ngFor="let preset of segmentKmPresets" (click)="setSegmentKmPreset(preset)" [disabled]="loading"
-                          [style.background]="+segmentKm === preset ? '#3b82f6' : 'transparent'"
-                          [style.color]="+segmentKm === preset ? '#fff' : 'var(--text-secondary,#64748b)'"
-                          [style.border-color]="+segmentKm === preset ? '#3b82f6' : 'var(--border-color,#e2e8f0)'"
-                          style="border:1px solid var(--border-color,#e2e8f0);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;background:transparent;">
-                    {{ preset }} km
-                  </button>
-                  <input type="number" min="10" max="1000" step="10" class="field-input" [(ngModel)]="segmentKm" style="width:90px;">
-                  <button class="btn-execute" style="flex:0 0 auto;" (click)="executeReport()" [disabled]="loading">
-                    @if (loading) { <span class="spinner"></span> }
-                    Recalculer
-                  </button>
-                </div>
+              <!-- En-tête : titre + explication en une phrase -->
+              <div style="padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
+                <div style="font-size:16px;font-weight:700;color:var(--text-primary,#1e293b);">Consommation mesurée vs pleins réels</div>
+                <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;max-width:560px;">La courbe montre le niveau du réservoir mesuré par le boîtier ; chaque cercle est un plein réellement facturé. Une remontée sans cercle = plein non déclaré.</div>
               </div>
 
               <!-- Échec de chargement -->
-              <div *ngIf="!loading && !comparisonSegments" style="padding:12px 14px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:8px;color:#dc2626;font-weight:600;">
+              <div *ngIf="!loading && !comparisonAudit" style="padding:12px 14px;background:rgba(220,38,38,.07);border:1px solid rgba(220,38,38,.35);border-radius:8px;color:#dc2626;font-weight:600;">
                 Impossible de charger la comparaison consommation / pleins réels.
               </div>
 
-              <ng-container *ngIf="comparisonSegments">
+              <ng-container *ngIf="comparisonAudit">
 
-                <!-- Ligne héro : litres facturés en grand + chips mesuré / écart -->
+                <!-- Ligne héro : litres facturés en grand + chips détecté / couverture -->
                 <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;padding:16px 18px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
                   <div>
                     <div style="display:flex;align-items:baseline;gap:8px;">
-                      <span style="font-size:40px;font-weight:800;line-height:1;color:var(--text-primary,#1e293b);">{{ comparisonInvoicedLiters() | number:'1.0-0' }}</span>
+                      <span style="font-size:40px;font-weight:800;line-height:1;color:var(--text-primary,#1e293b);">{{ comparisonBilledLiters() | number:'1.0-0' }}</span>
                       <span style="font-size:13px;font-weight:600;color:var(--text-secondary,#64748b);">L facturés</span>
                     </div>
-                    <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;">{{ comparisonEntries.length }} plein{{ comparisonEntries.length > 1 ? 's' : '' }} sur la période</div>
+                    <div style="font-size:12px;color:var(--text-secondary,#64748b);margin-top:4px;">{{ comparisonAudit.cardFills.length }} plein{{ comparisonAudit.cardFills.length > 1 ? 's' : '' }} sur la période</div>
                   </div>
                   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-left:auto;">
-                    <div *ngIf="comparisonSegments.hasSensor" style="padding:8px 14px;background:rgba(59,130,246,.09);border-radius:10px;">
-                      <div style="font-size:12px;font-weight:700;color:#2563eb;">Consommation mesurée&nbsp;: {{ comparisonMeasuredLiters() | number:'1.0-0' }} L</div>
+                    <div *ngIf="comparisonAudit.hasSensor" style="padding:8px 14px;background:rgba(59,130,246,.09);border-radius:10px;">
+                      <div style="font-size:12px;font-weight:700;color:#2563eb;">Détecté par la jauge&nbsp;: {{ comparisonAudit.totalDetectedLiters | number:'1.0-0' }} L</div>
                     </div>
-                    <div *ngIf="comparisonSegments.hasSensor && comparisonGapPercent() != null" style="padding:8px 14px;border-radius:10px;max-width:290px;"
-                         [style.background]="comparisonGapHigh() ? 'rgba(245,158,11,.12)' : 'rgba(148,163,184,.12)'">
-                      <div style="font-size:12px;font-weight:700;" [style.color]="comparisonGapHigh() ? '#b45309' : 'var(--text-primary,#1e293b)'">
-                        Écart&nbsp;: {{ comparisonGapLiters() >= 0 ? '+' : '' }}{{ comparisonGapLiters() | number:'1.0-0' }} L ({{ (comparisonGapPercent() || 0) >= 0 ? '+' : '' }}{{ comparisonGapPercent() | number:'1.0-0' }} %)
+                    <div *ngIf="comparisonAudit.hasSensor && comparisonAudit.coveragePercent != null" style="padding:8px 14px;border-radius:10px;max-width:290px;"
+                         [style.background]="(comparisonAudit.coveragePercent || 0) < 85 ? 'rgba(245,158,11,.12)' : 'rgba(34,197,94,.12)'">
+                      <div style="font-size:12px;font-weight:700;" [style.color]="(comparisonAudit.coveragePercent || 0) < 85 ? '#b45309' : '#16a34a'">
+                        Couverture&nbsp;: {{ comparisonAudit.coveragePercent | number:'1.0-0' }} %
                       </div>
-                      <div style="font-size:11px;color:var(--text-secondary,#64748b);margin-top:2px;">le niveau du réservoir en début/fin de période explique un écart normal</div>
+                      <div style="font-size:11px;color:var(--text-secondary,#64748b);margin-top:2px;">pleins facturés retrouvés dans les remontées de la jauge</div>
                     </div>
                   </div>
                 </div>
 
-                <!-- Pas de capteur : la comparaison graphique est indisponible, les pleins restent utiles -->
-                <div *ngIf="!comparisonSegments.hasSensor" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
+                <!-- Pas de capteur : la courbe est indisponible, les pleins restent utiles -->
+                <div *ngIf="!comparisonAudit.hasSensor" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
                   Pas de capteur de niveau exploitable : seule la partie « pleins réels » est affichée.
                 </div>
 
-                <ng-container *ngIf="comparisonSegments.hasSensor">
-                  <!-- Graphe : conso par tranches + triangles des pleins facturés -->
-                  <div class="chart-section" style="margin-bottom:12px;" *ngIf="visibleComparisonSegments().length">
+                <ng-container *ngIf="comparisonAudit.hasSensor">
+                  <!-- Graphe : courbe de niveau + cercles des pleins facturés -->
+                  <div class="chart-section" style="margin-bottom:12px;" *ngIf="comparisonAudit.levelSeries.length">
                     <div class="charts-container">
                       <div class="chart-area" style="min-height:320px;">
                         <canvas #comparisonCanvas></canvas>
                       </div>
                     </div>
                   </div>
-                  <div *ngIf="!comparisonSegments.segments.length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
-                    Aucun segment sur la période — pas assez de distance parcourue pour une tranche de {{ comparisonSegments.segmentKm }} km.
-                  </div>
-                  <div *ngIf="comparisonSegments.segments.length && !visibleComparisonSegments().length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
-                    Pas assez de données exploitables sur la période pour une analyse fiable.
+                  <div *ngIf="!comparisonAudit.levelSeries.length" style="padding:12px 14px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:8px;color:var(--text-secondary,#64748b);margin-bottom:12px;">
+                    Aucune remontée de jauge sur la période — la courbe de niveau ne peut pas être tracée.
                   </div>
                 </ng-container>
 
                 <!-- Historique des pleins réels -->
                 <div style="padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
                   <div style="font-weight:700;color:var(--text-primary,#1e293b);margin-bottom:10px;">Historique des pleins réels</div>
-                  <div class="table-wrapper" *ngIf="comparisonEntries.length">
+                  <div class="table-wrapper" *ngIf="comparisonAudit.cardFills.length">
                     <table class="data-table">
                       <thead>
                         <tr>
@@ -927,71 +908,20 @@
                           <th>Litres</th>
                           <th>Montant</th>
                           <th>Station</th>
-                          <th>N° facture</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr *ngFor="let entry of comparisonEntries">
-                          <td>{{ entry.invoiceDate | date:'dd/MM/yyyy' }}</td>
-                          <td>{{ entry.volume | number:'1.0-1' }} L</td>
-                          <td>{{ entry.totalAmount | appCurrency }}</td>
-                          <td>{{ entry.stationName || '—' }}</td>
-                          <td>{{ entry.invoiceNumber || '—' }}</td>
+                        <tr *ngFor="let fill of comparisonAudit.cardFills">
+                          <td>{{ fill.date | date:'dd/MM/yyyy' }}</td>
+                          <td>{{ fill.liters | number:'1.0-1' }} L</td>
+                          <td>{{ fill.cost | appCurrency }}</td>
+                          <td>{{ fill.station || '—' }}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
-                  <div *ngIf="!comparisonEntries.length" style="color:var(--text-secondary,#64748b);font-size:12px;">
+                  <div *ngIf="!comparisonAudit.cardFills.length" style="color:var(--text-secondary,#64748b);font-size:12px;">
                     Aucun plein saisi sur la période — saisissez les factures dans la page Carburant pour activer la comparaison.
-                  </div>
-                </div>
-
-                <!-- Repliable : détail des tranches -->
-                <div *ngIf="comparisonSegments.hasSensor" style="padding:12px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
-                  <button (click)="showComparisonDetailsPanel = !showComparisonDetailsPanel"
-                          style="background:none;border:none;cursor:pointer;padding:0;font-size:13px;font-weight:600;color:var(--text-secondary,#64748b);display:inline-flex;align-items:center;gap:6px;">
-                    <span style="font-size:11px;">{{ showComparisonDetailsPanel ? '▾' : '▸' }}</span> Détail des tranches
-                  </button>
-                  <div *ngIf="showComparisonDetailsPanel" style="margin-top:12px;">
-                    <div class="table-wrapper">
-                      <table class="data-table">
-                        <thead>
-                          <tr>
-                            <th>N°</th>
-                            <th>Début</th>
-                            <th>Distance (km)</th>
-                            <th>Carburant (L)</th>
-                            <th>L/100 km</th>
-                            <th>Chargement</th>
-                            <th *ngIf="showExcludedSegments">Qualité</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          <tr *ngFor="let seg of visibleComparisonSegments()"
-                              [style.opacity]="seg.isReliable ? null : 0.55"
-                              [style.background]="seg.isReliable ? null : 'rgba(156,163,175,.08)'">
-                            <td>{{ seg.index }}</td>
-                            <td>{{ formatDateTime(seg.startTime) }}</td>
-                            <td>{{ seg.distanceKm | number:'1.1-1' }}</td>
-                            <td>{{ seg.fuelLiters | number:'1.1-1' }}</td>
-                            <td><strong [style.color]="seg.isReliable && seg.index === comparisonSegments.summary.minSegmentIndex ? '#16a34a' : (seg.isReliable && seg.index === comparisonSegments.summary.maxSegmentIndex ? '#dc2626' : null)">{{ seg.lPer100Km | number:'1.1-1' }}</strong></td>
-                            <td>{{ seg.tonnageT != null ? ((seg.tonnageT | number:'1.0-1') + ' t') : 'non renseigné' }}</td>
-                            <td *ngIf="showExcludedSegments">
-                              <span *ngIf="seg.isReliable" style="color:#16a34a;font-weight:600;">OK</span>
-                              <span *ngIf="!seg.isReliable" class="badge" style="background:#9ca3af;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;">données non exploitables</span>
-                            </td>
-                          </tr>
-                          <tr *ngIf="!visibleComparisonSegments().length">
-                            <td colspan="7" style="text-align:center;color:var(--text-secondary,#64748b);padding:14px;">Aucune tranche sur la période.</td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                    <!-- Case discrète (diagnostic interne) : révèle les tranches écartées -->
-                    <label *ngIf="comparisonSegments.summary.excludedSegments > 0" style="display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary,#94a3b8);margin-top:8px;cursor:pointer;">
-                      <input type="checkbox" [(ngModel)]="showExcludedSegments" (ngModelChange)="drawComparisonChart()">
-                      afficher aussi les tranches incomplètes ({{ comparisonSegments.summary.excludedSegments }})
-                    </label>
                   </div>
                 </div>
               </ng-container>
