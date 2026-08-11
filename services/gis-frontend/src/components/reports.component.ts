@@ -2,8 +2,8 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelComparisonReport, FuelComparisonRow, FuelAuditReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
-import { Subject, forkJoin, takeUntil } from 'rxjs';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelEntryDto, PaginatedFuelEntriesResult, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { Subject, forkJoin, of, takeUntil } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
@@ -37,8 +37,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
-  @ViewChild('fuelComparisonCanvas') fuelComparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
-  @ViewChild('fuelAuditCanvas') fuelAuditCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('comparisonCanvas') comparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('consumptionCanvas') consumptionCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
@@ -163,7 +162,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       name: 'Carburant réel vs GPS',
       type: 'fuel-comparison',
       icon: '🔍',
-      description: 'Anti-fraude : carburant facturé (carte) vs consommé (GPS)',
+      description: 'Pleins réels superposés sur la consommation mesurée par tranches',
       category: 'costs'
     },
     {
@@ -347,14 +346,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   monthlyCostReport: MonthlyCostReport | null = null;
   monthlyCostReportType: 'costs' | 'fuel' = 'costs';
 
-  // Fuel comparison (anti-fraud) report data
-  fuelComparisonReport: FuelComparisonReport | null = null;
-  fuelComparisonRows: any[] = [];
-  fcThresholdPercent = 25;
-  fcThresholdLiters = 20;
-
-  // Per-vehicle fuel audit (level curve + per-fill verification); only populated when a single vehicle is selected
-  fuelAuditReport: FuelAuditReport | null = null;
+  // Carburant réel vs GPS : pleins facturés (factures) superposés sur la consommation
+  // mesurée par tranches (single vehicle). Partage segmentKm / showExcludedSegments avec le rapport 18.
+  comparisonSegments: ConsumptionSegmentsReport | null = null;
+  comparisonEntries: FuelEntryDto[] = [];
+  showComparisonDetailsPanel = false;
 
   // Analyse consommation par segments de X km + comparaison par tonnage (single vehicle)
   consumptionReport: ConsumptionSegmentsReport | null = null;
@@ -421,8 +417,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   private chart?: Chart;
   private secondaryChart?: Chart;
-  private fuelComparisonChart?: Chart;
-  private fuelAuditChart?: Chart;
+  private comparisonChart?: Chart;
   private consumptionChart?: Chart;
 
   constructor(
@@ -767,8 +762,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
     if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
     if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
-    if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
-    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
+    if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
   }
 
@@ -918,7 +912,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // Reports that require a single vehicle
-    const singleVehicleReports = ['fuel', 'daily', 'consumption-analysis'];
+    const singleVehicleReports = ['fuel', 'daily', 'consumption-analysis', 'fuel-comparison'];
     if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
       console.warn('No vehicle selected for single-vehicle report');
       this.tableData = [];
@@ -937,11 +931,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.monthlyReport = null;
     this.mileagePeriodReport = null;
     this.fuelEstimationReport = null;
-    this.fuelComparisonReport = null;
-    this.fuelAuditReport = null;
+    this.comparisonSegments = null;
+    this.comparisonEntries = [];
     this.consumptionReport = null;
     this.consumptionByTonnage = null;
-    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
+    if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
 
     // Re-compute dates from the selected period to ensure fresh timestamps
@@ -1043,9 +1037,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Handle fuel comparison (anti-fraud) report
+    // Handle fuel comparison (pleins réels vs consommation mesurée) report — single vehicle, guarded above
     if (this.selectedTemplate.type === 'fuel-comparison') {
-      this.executeFuelComparisonReport(vehicleId, startDate, endDate);
+      this.executeFuelComparisonReport(vehicleId!, startDate, endDate);
       return;
     }
 
@@ -5623,269 +5617,347 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${m}min`;
   }
 
-  // ==================== FUEL ESTIMATION REPORT ====================
-  
-  executeFuelComparisonReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+  // ==================== CARBURANT RÉEL VS GPS (pleins superposés sur la conso par tranches) ====================
+
+  /** Rapport 17 : même socle que l'analyse par tranches (rapport 18), avec en
+   *  superposition les pleins réellement facturés à la pompe. La courbe mesure
+   *  ce que le moteur consomme ; les repères, ce qui a été payé. */
+  executeFuelComparisonReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
-    this.fuelComparisonReport = null;
-    this.fuelComparisonRows = [];
-    this.fuelAuditReport = null;
-    if (this.fuelComparisonChart) { this.fuelComparisonChart.destroy(); this.fuelComparisonChart = undefined; }
-    if (this.fuelAuditChart) { this.fuelAuditChart.destroy(); this.fuelAuditChart = undefined; }
+    this.comparisonSegments = null;
+    this.comparisonEntries = [];
+    if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
+
+    // Clamp de la taille de tranche (l'input number peut renvoyer une chaîne vide)
+    const segmentKm = Math.min(Math.max(Number(this.segmentKm) || 100, 10), 1000);
+    this.segmentKm = segmentKm;
 
     const startDateStr = startDate ? this.toDateTime(startDate) : undefined;
     const endDateStr = endDate ? this.toDateTime(endDate) : undefined;
 
-    this.apiService.getFuelComparisonReport(startDateStr, endDateStr, vehicleId).subscribe({
-      next: (report) => {
+    // Les factures carburant sont indexées par matricule, pas par id véhicule.
+    const plate = (this.vehicles.find((v: any) => v.id == vehicleId)?.plate || '').trim();
+    const emptyEntries: PaginatedFuelEntriesResult = { items: [], totalCount: 0, page: 1, pageSize: 0, totalPages: 0 };
+
+    forkJoin({
+      segments: this.apiService.getConsumptionSegments(vehicleId, startDateStr, endDateStr, segmentKm),
+      entries: plate
+        ? this.apiService.getFuelEntries({ vehiclePlate: plate, startDate: startDateStr, endDate: endDateStr, pageSize: 500 })
+        : of(emptyEntries)
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: ({ segments, entries }) => {
         this.ngZone.run(() => {
-          this.fuelComparisonReport = report;
-          this.fuelComparisonRows = report.rows || [];
-          this.computeFuelComparisonTable();
+          this.comparisonSegments = segments;
+          this.comparisonEntries = (entries.items || [])
+            .slice()
+            .sort((a, b) => new Date(b.invoiceDate).getTime() - new Date(a.invoiceDate).getTime());
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
-          // Canvas is *ngIf-gated on reportGenerated — defer draw until it's in the DOM
-          setTimeout(() => this.drawFuelComparisonChart(), 100);
+          // Canvas is *ngIf-gated on comparisonSegments + hasSensor — defer draw until it's in the DOM
+          setTimeout(() => this.drawComparisonChart(), 120);
         });
-
-        // For a single vehicle, also load the per-vehicle fuel AUDIT (level curve + per-fill verification)
-        if (vehicleId) {
-          this.apiService.getFuelAuditReport(vehicleId, startDateStr, endDateStr).subscribe({
-            next: (audit) => {
-              this.ngZone.run(() => {
-                this.fuelAuditReport = audit;
-                this.cdr.detectChanges();
-                // Audit canvas is *ngIf-gated on fuelAuditReport + hasSensor — defer draw until it's in the DOM
-                setTimeout(() => this.drawFuelAuditChart(), 120);
-              });
-            },
-            error: (err) => {
-              console.error('Error loading fuel audit report:', err);
-              this.ngZone.run(() => { this.fuelAuditReport = null; this.cdr.detectChanges(); });
-            }
-          });
-        }
       },
       error: (err) => {
         console.error('Error loading fuel comparison report:', err);
         this.ngZone.run(() => {
           this.loading = false;
           this.reportGenerated = true;
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport carburant réel vs GPS' };
+          this.statisticsData = { 'Erreur': 'Impossible de charger la comparaison consommation / pleins réels' };
           this.cdr.detectChanges();
         });
       }
     });
   }
 
-  /**
-   * Verdict d'une ligne de comparaison réel / boîtier.
-   *
-   * L'écart se lit dans les DEUX sens, et ils ne veulent pas dire la même chose :
-   *  - écart POSITIF  → on a acheté PLUS que le réservoir n'a consommé : du
-   *    carburant payé n'est pas arrivé dans ce véhicule. C'est le soupçon de
-   *    détournement, et c'est ce que les seuils réglables encadrent.
-   *  - écart NÉGATIF  → le réservoir a consommé PLUS qu'on n'a acheté : ce n'est
-   *    pas une fraude, ce sont des achats qui n'ont pas été saisis.
-   *
-   * Le second cas retombait sur « 🟢 OK » — la condition ne teste que
-   * `diffLiters > seuil`. Un camion affichant −618,9 L (−35 %) était donc présenté
-   * comme conforme, alors que la moitié de ses pleins manquait à l'appel. Le
-   * rapport rassurait au lieu d'alerter.
-   */
-  private fuelComparisonVerdict(row: FuelComparisonRow): string {
-    if (row.diffLiters > this.fcThresholdLiters && row.diffPercent > this.fcThresholdPercent) return '🔴 Suspect';
-    if (row.diffLiters > 0 && row.diffPercent > 10) return '🟡 À vérifier';
-    // Symétrique du seuil de soupçon, mais avec un sens différent : il manque des
-    // factures, pas du carburant.
-    if (-row.diffLiters > this.fcThresholdLiters && -row.diffPercent > this.fcThresholdPercent) return '🟠 Achats non saisis';
-    if (row.diffLiters < 0 && -row.diffPercent > 10) return '🟡 Saisie incomplète';
-    return '🟢 OK';
+  /** Tranches affichées dans la comparaison — même règle que le rapport 18. */
+  visibleComparisonSegments(): ConsumptionSegment[] {
+    const segs = this.comparisonSegments?.segments || [];
+    return this.showExcludedSegments ? segs : segs.filter(s => s.isReliable);
   }
 
-  /** Build the displayed table + summary stats from fuelComparisonRows.
-   *  Re-run whenever the operator changes a fraud threshold. */
-  computeFuelComparisonTable() {
-    const round = (n: number, d: number) => {
-      const f = Math.pow(10, d);
-      return Math.round((Number(n) || 0) * f) / f;
-    };
-    const sourceLabel = (s: string): string => {
-      if (s === 'capteur') return '📡 Capteur';
-      if (s === 'estime') return '≈ Estimé';
-      return '— Aucun GPS';
-    };
-
-    // Keep backend order (already sorted by diff desc)
-    this.tableData = this.fuelComparisonRows.map((row: FuelComparisonRow) => ({
-      'Véhicule': row.vehicleName || row.plate,
-      'Réel (L)': round(row.realLiters, 1),
-      'Réel': round(row.realCost, 2),
-      'Boitier (L)': round(row.gpsLiters, 1),
-      'Source': sourceLabel(row.gpsSource),
-      'Distance (km)': row.distanceKm,
-      'Écart (L)': round(row.diffLiters, 1),
-      'Écart %': round(row.diffPercent, 1) + '%',
-      'Verdict': this.fuelComparisonVerdict(row)
-    }));
-
-    const report = this.fuelComparisonReport;
-    const totalReal = report?.totalRealLiters || 0;
-    const totalGps = report?.totalGpsLiters || 0;
-    const suspectCount = this.fuelComparisonRows.filter(
-      (r: FuelComparisonRow) => this.fuelComparisonVerdict(r) === '🔴 Suspect'
-    ).length;
-
-    this.statisticsData = {
-      'Carburant facturé (réel)': round(totalReal, 1) + ' L',
-      'Coût total': round(report?.totalRealCost || 0, 2) + ' ' + this.getCurrencyCode(),
-      'Carburant boitier (GPS)': round(totalGps, 1) + ' L',
-      'Écart total': round(totalReal - totalGps, 1) + ' L',
-      'Véhicules suspects': suspectCount,
-      'Véhicules avec capteur': report?.sensorCount || 0
-    };
-
-    this.cdr.detectChanges();
+  /** Litres mesurés par la jauge, tranches fiables uniquement. */
+  comparisonMeasuredLiters(): number {
+    return (this.comparisonSegments?.segments || [])
+      .filter(s => s.isReliable)
+      .reduce((sum, s) => sum + s.fuelLiters, 0);
   }
 
-  /** Grouped vertical bar chart: per vehicle, "Réel (facturé)" vs "Boitier (GPS)" litres.
-   *  Does not depend on the fraud thresholds, so it is only redrawn when data changes. */
-  drawFuelComparisonChart() {
-    if (this.fuelComparisonChart) {
-      this.fuelComparisonChart.destroy();
-      this.fuelComparisonChart = undefined;
+  /** Litres facturés : somme des volumes des pleins saisis sur la période. */
+  comparisonInvoicedLiters(): number {
+    return this.comparisonEntries.reduce((sum, e) => sum + (Number(e.volume) || 0), 0);
+  }
+
+  /** Écart facturé − mesuré (L). Positif = plus payé que consommé. */
+  comparisonGapLiters(): number {
+    return this.comparisonInvoicedLiters() - this.comparisonMeasuredLiters();
+  }
+
+  /** Écart en % du mesuré — null quand rien n'est mesuré sur la période. */
+  comparisonGapPercent(): number | null {
+    const measured = this.comparisonMeasuredLiters();
+    if (measured <= 0) return null;
+    return (this.comparisonGapLiters() / measured) * 100;
+  }
+
+  /** Écart notable (> 15 % en valeur absolue) → chip teintée ambre. */
+  comparisonGapHigh(): boolean {
+    const gap = this.comparisonGapPercent();
+    return gap != null && Math.abs(gap) > 15;
+  }
+
+  /** Graphe du rapport 17 : exactement le socle de drawConsumptionChart (barres
+   *  L/100 km par tranche, min vert / max rouge, ligne moyenne ambre) + un nuage
+   *  de triangles « pleins réels » (litres facturés, axe de droite) positionnés
+   *  sur la tranche qui contient la date de facture. */
+  drawComparisonChart() {
+    if (this.comparisonChart) {
+      this.comparisonChart.destroy();
+      this.comparisonChart = undefined;
     }
 
-    const canvas = this.fuelComparisonCanvasRef?.nativeElement;
+    const canvas = this.comparisonCanvasRef?.nativeElement;
     if (!canvas) return;
 
-    const rows = this.fuelComparisonRows || [];
-    if (!rows.length) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const labels = rows.map((r: FuelComparisonRow) => r.plate || r.vehicleName);
-
-    this.fuelComparisonChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Réel (facturé) L',
-            data: rows.map((r: FuelComparisonRow) => r.realLiters),
-            backgroundColor: '#6366f1',
-            borderColor: '#6366f1',
-            borderWidth: 1,
-            borderRadius: 4
-          },
-          {
-            label: 'Boitier (GPS) L',
-            data: rows.map((r: FuelComparisonRow) => r.gpsLiters),
-            backgroundColor: '#10b981',
-            borderColor: '#10b981',
-            borderWidth: 1,
-            borderRadius: 4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: true,
-            position: 'top',
-            labels: { usePointStyle: true }
-          },
-          title: {
-            display: true,
-            text: 'Carburant facturé vs consommé (litres) par véhicule'
-          },
-          tooltip: {
-            mode: 'index',
-            intersect: false,
-            callbacks: {
-              label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} L`
-            }
-          }
-        },
-        scales: {
-          x: { title: { display: true, text: 'Véhicule' } },
-          y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
-        }
-      }
-    });
-  }
-
-  /** Fuel-level curve over time (saw-tooth: consumption + refill jumps) for the audited vehicle.
-   *  Litres in tank from levelSeries; only drawn when the vehicle has an exploitable sensor. */
-  drawFuelAuditChart() {
-    if (this.fuelAuditChart) {
-      this.fuelAuditChart.destroy();
-      this.fuelAuditChart = undefined;
-    }
-
-    const canvas = this.fuelAuditCanvasRef?.nativeElement;
-    if (!canvas) return;
-
-    const report = this.fuelAuditReport;
+    const report = this.comparisonSegments;
     if (!report?.hasSensor) return;
 
-    const series = report.levelSeries || [];
-    if (!series.length) return;
+    const segments = this.visibleComparisonSegments();
+    if (!segments.length) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const labels = series.map(p => this.formatDateTime(p.t));
+    const summary = report.summary;
+    const p = (n: number) => String(n).padStart(2, '0');
+    const labels = this.buildSegmentDayLabels(segments);
 
-    this.fuelAuditChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Niveau réservoir (L)',
-            data: series.map(p => p.liters),
-            borderColor: '#6366f1',
-            backgroundColor: 'rgba(99,102,241,0.12)',
-            borderWidth: 2,
-            pointRadius: 2,
-            pointHoverRadius: 4,
-            tension: 0,
-            fill: true
-          }
-        ]
+    const isMin = (s: ConsumptionSegment) => s.isReliable && summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex;
+    const isMax = (s: ConsumptionSegment) => s.isReliable && summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex;
+
+    const colors = segments.map(s => {
+      if (!s.isReliable) return 'rgba(148,163,175,.35)';   // exclu (visible seulement en mode diagnostic)
+      if (isMin(s)) return '#22c55e';                       // meilleure tranche
+      if (isMax(s)) return '#ef4444';                       // pire tranche
+      return 'rgba(59,130,246,.55)';
+    });
+    const hoverColors = segments.map(s => {
+      if (!s.isReliable) return 'rgba(148,163,175,.35)';
+      if (isMin(s)) return '#22c55e';
+      if (isMax(s)) return '#ef4444';
+      return 'rgba(59,130,246,.8)';
+    });
+
+    const fmt1 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fmt0 = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+    const fmtT = (n: number | null | undefined) =>
+      (n ?? 0).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+    const fmtDT = (iso: string) => {
+      const d = new Date(iso);
+      return `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    };
+
+    // Position de chaque plein : la tranche visible qui contient la date de facture.
+    // Les factures datées au jour (minuit) tombent sur la première tranche de la
+    // journée ; à défaut, la tranche la plus proche par milieu de tranche.
+    const segStart = segments.map(s => new Date(s.startTime).getTime());
+    const segEnd = segments.map(s => new Date(s.endTime).getTime());
+    const segIndexForEntry = (entry: FuelEntryDto): number => {
+      const d = new Date(entry.invoiceDate);
+      const t = d.getTime();
+      const dateOnly = d.getHours() === 0 && d.getMinutes() === 0 && d.getSeconds() === 0;
+      if (dateOnly) {
+        for (let i = 0; i < segments.length; i++) {
+          const s = new Date(segments[i].startTime);
+          if (s.getFullYear() === d.getFullYear() && s.getMonth() === d.getMonth() && s.getDate() === d.getDate()) return i;
+        }
+      } else {
+        for (let i = 0; i < segments.length; i++) {
+          if (t >= segStart[i] && t <= segEnd[i]) return i;
+        }
+      }
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < segments.length; i++) {
+        const dist = Math.abs(t - (segStart[i] + segEnd[i]) / 2);
+        if (dist < bestDist) { bestDist = dist; best = i; }
+      }
+      return best;
+    };
+    const fills = this.comparisonEntries.map(e => ({ entry: e, x: segIndexForEntry(e), y: Number(e.volume) || 0 }));
+
+    const datasets: any[] = [
+      {
+        label: 'L/100 km',
+        data: segments.map(s => s.lPer100Km),
+        backgroundColor: colors,
+        hoverBackgroundColor: hoverColors,
+        borderWidth: 0,
+        borderRadius: 6,
+        barPercentage: .62,
+        categoryPercentage: .78,
+        order: 2
+      }
+    ];
+
+    if (summary?.avgLPer100Km != null) {
+      datasets.push({
+        label: 'Moyenne',
+        data: segments.map(() => summary.avgLPer100Km),
+        type: 'line' as any,
+        borderColor: 'rgba(245,158,11,.9)',
+        backgroundColor: 'transparent',
+        borderDash: [5, 5],
+        borderWidth: 1.5,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: false,
+        order: 1
+      });
+    }
+
+    const fillsDatasetLabel = 'Pleins réels';
+    if (fills.length) {
+      datasets.push({
+        label: fillsDatasetLabel,
+        type: 'scatter' as any,
+        data: fills.map(f => ({ x: f.x, y: f.y })),
+        yAxisID: 'yL',
+        pointStyle: 'triangle',
+        radius: 7,
+        hoverRadius: 9,
+        backgroundColor: '#f59e0b',
+        borderColor: '#b45309',
+        borderWidth: 1.5,
+        order: 0
+      });
+    }
+
+    // Annotations : valeurs min/max + « moyenne X » (comme le rapport 18), plus
+    // « ⛽ N L » au-dessus de chaque plein tant qu'ils restent lisibles (≤ 12).
+    const minIdx = segments.findIndex(isMin);
+    const maxIdx = segments.findIndex(isMax);
+    const avg = summary?.avgLPer100Km;
+    const fillsDatasetIndex = datasets.length - 1;
+    const drawFillLabels = fills.length > 0 && fills.length <= 12;
+    const annotationsPlugin = {
+      id: 'comparisonAnnotations',
+      afterDatasetsDraw: (chart: any) => {
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const meta = chart.getDatasetMeta(0);
+        c.save();
+        c.font = '11px sans-serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'bottom';
+        const drawBarValue = (i: number, color: string) => {
+          const bar = meta?.data?.[i];
+          if (!bar) return;
+          c.fillStyle = color;
+          c.fillText(fmt1(segments[i].lPer100Km), bar.x, bar.y - 4);
+        };
+        if (minIdx >= 0) drawBarValue(minIdx, '#16a34a');
+        if (maxIdx >= 0 && maxIdx !== minIdx) drawBarValue(maxIdx, '#dc2626');
+        if (drawFillLabels) {
+          const fillMeta = chart.getDatasetMeta(fillsDatasetIndex);
+          c.fillStyle = '#b45309';
+          c.textAlign = 'center';
+          fillMeta?.data?.forEach((pt: any, i: number) => {
+            if (!pt || !fills[i]) return;
+            c.fillText(`⛽ ${fmt0(fills[i].y)} L`, pt.x, pt.y - 9);
+          });
+        }
+        if (avg != null && chart.scales?.['y']) {
+          const y = chart.scales['y'].getPixelForValue(avg);
+          c.fillStyle = 'rgba(245,158,11,.95)';
+          c.textAlign = 'right';
+          c.fillText(`moyenne ${fmt1(avg)}`, chart.chartArea.right - 4, y - 4);
+        }
+        c.restore();
+      }
+    };
+
+    const scales: any = {
+      x: {
+        grid: { display: false },
+        // autoSkip OFF : les libellés vides font l'éclaircissage nous-mêmes,
+        // Chart.js ne doit pas supprimer un marqueur de jour au hasard.
+        ticks: { color: '#94a3b8', font: { size: 11 }, maxRotation: 0, autoSkip: false }
       },
+      y: {
+        beginAtZero: true,
+        grace: '10%',
+        border: { display: false },
+        grid: { color: 'rgba(148,163,184,.14)' },
+        ticks: { color: '#94a3b8', font: { size: 11 } }
+      }
+    };
+    if (fills.length) {
+      // Axe de droite dédié aux litres facturés — marge haute pour les libellés ⛽.
+      scales.yL = {
+        position: 'right',
+        beginAtZero: true,
+        suggestedMax: Math.max(...fills.map(f => f.y)) * 1.3,
+        grid: { display: false },
+        border: { display: false },
+        ticks: { color: '#94a3b8', font: { size: 11 } }
+      };
+    }
+
+    this.comparisonChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'top',
-            labels: { usePointStyle: true }
-          },
-          title: {
-            display: true,
-            text: 'Niveau carburant dans le temps'
-          },
+          legend: { display: false },
           tooltip: {
-            mode: 'index',
-            intersect: false,
+            backgroundColor: 'rgba(15,23,42,.92)',
+            padding: 10,
+            cornerRadius: 8,
+            displayColors: false,
+            // Barres (tranches) et triangles (pleins) parlent ; la ligne moyenne se tait.
+            filter: (item) => (item.dataset as any).label !== 'Moyenne',
             callbacks: {
-              label: (c) => `${c.dataset.label}: ${(c.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} L`
+              title: (items) => {
+                const it = items[0];
+                if (!it) return '';
+                if ((it.dataset as any).label === fillsDatasetLabel) {
+                  const f = fills[it.dataIndex];
+                  if (!f) return '';
+                  const d = new Date(f.entry.invoiceDate);
+                  return `Plein réel — ${p(d.getDate())}/${p(d.getMonth() + 1)}`;
+                }
+                const s = segments[it.dataIndex];
+                return s ? `Du ${fmtDT(s.startTime)} au ${fmtDT(s.endTime)}` : '';
+              },
+              label: (c) => {
+                if ((c.dataset as any).label === fillsDatasetLabel) {
+                  const f = fills[c.dataIndex];
+                  if (!f) return '';
+                  const amount = (f.entry.totalAmount ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                  const lines = [`${fmt0(f.y)} L · ${amount} ${this.getCurrencyCode()}`];
+                  if (f.entry.stationName) lines.push(f.entry.stationName);
+                  return lines;
+                }
+                const s = segments[c.dataIndex];
+                if (!s) return '';
+                const lines = [
+                  `${fmt1(s.lPer100Km)} L/100 km`,
+                  `${fmt0(s.distanceKm)} km parcourus · ${fmt0(s.fuelLiters)} L consommés`,
+                  `Chargement : ${s.tonnageT != null ? fmtT(s.tonnageT) + ' t' : 'non renseigné'}`
+                ];
+                if (s.exclusionReason) lines.push('Données non exploitables sur cette tranche');
+                return lines;
+              }
             }
           }
         },
-        scales: {
-          x: { title: { display: true, text: 'Date/Heure' }, ticks: { maxRotation: 60, autoSkip: true } },
-          y: { beginAtZero: true, title: { display: true, text: 'Litres' } }
-        }
-      }
+        scales
+      },
+      plugins: [annotationsPlugin]
     });
   }
 
@@ -6013,31 +6085,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.aiLoading = false;
   }
 
-  drawConsumptionChart() {
-    if (this.consumptionChart) {
-      this.consumptionChart.destroy();
-      this.consumptionChart = undefined;
-    }
-
-    const canvas = this.consumptionCanvasRef?.nativeElement;
-    if (!canvas) return;
-
-    const report = this.consumptionReport;
-    if (!report?.hasSensor) return;
-
-    const segments = this.visibleConsumptionSegments();
-    if (!segments.length) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const summary = report.summary;
+  /** Libellés X partagés par les graphes « par tranches » (rapports 17 et 18) :
+   *  uniquement les débuts de journée — les heures ne servent qu'à l'échelle ≤ 48 h.
+   *  Éclaircissage manuel + autoSkip OFF obligatoire : laisser Chart.js sauter des
+   *  libellés supprime des marqueurs de jour au hasard et laisse des heures
+   *  orphelines illisibles. */
+  private buildSegmentDayLabels(segments: ConsumptionSegment[]): string[] {
     const p = (n: number) => String(n).padStart(2, '0');
-
-    // Libellés X : uniquement les débuts de journée — les heures ne servent
-    // qu'à l'échelle ≤ 48 h. Éclaircissage manuel + autoSkip OFF obligatoire :
-    // laisser Chart.js sauter des libellés supprime des marqueurs de jour au
-    // hasard et laisse des heures orphelines illisibles.
     const spanMs = new Date(segments[segments.length - 1].startTime).getTime()
                  - new Date(segments[0].startTime).getTime();
     const labels: string[] = [];
@@ -6063,6 +6117,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
         dayPositions.forEach((pos, k) => { if (k % step !== 0) labels[pos] = ''; });
       }
     }
+    return labels;
+  }
+
+  drawConsumptionChart() {
+    if (this.consumptionChart) {
+      this.consumptionChart.destroy();
+      this.consumptionChart = undefined;
+    }
+
+    const canvas = this.consumptionCanvasRef?.nativeElement;
+    if (!canvas) return;
+
+    const report = this.consumptionReport;
+    if (!report?.hasSensor) return;
+
+    const segments = this.visibleConsumptionSegments();
+    if (!segments.length) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const summary = report.summary;
+    const p = (n: number) => String(n).padStart(2, '0');
+    const labels = this.buildSegmentDayLabels(segments);
 
     const isMin = (s: ConsumptionSegment) => s.isReliable && summary?.minSegmentIndex != null && s.index === summary.minSegmentIndex;
     const isMax = (s: ConsumptionSegment) => s.isReliable && summary?.maxSegmentIndex != null && s.index === summary.maxSegmentIndex;
