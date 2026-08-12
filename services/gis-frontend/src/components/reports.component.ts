@@ -6083,7 +6083,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
                 if (!iv) return '';
                 if ((c.dataset as any).label === measuredLabel) {
                   if (!iv.measuredReliable || iv.measuredLPer100 == null) {
-                    return 'Mesure non exploitable sur cette fenêtre';
+                    const lines = ['Mesure écartée des moyennes :'];
+                    lines.push(iv.measuredIssue || 'données de mesure non exploitables');
+                    lines.push('Seule la barre « Réelle » fait foi sur cette fenêtre.');
+                    return lines;
                   }
                   return `Mesurée : ${fmt1(iv.measuredLPer100)} L/100 km (${fmt0(iv.measuredLiters)} L sur ${fmt0(iv.km)} km)`;
                 }
@@ -6256,7 +6259,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       lPer100Km: itv.measuredLPer100 ?? itv.realLPer100,
       tonnageT: null,
       isReliable: itv.measuredReliable,
-      exclusionReason: itv.measuredReliable ? null : 'mesure jauge non exploitable sur la fenêtre',
+      exclusionReason: itv.measuredReliable ? null : (itv.measuredIssue || 'mesure jauge non exploitable sur la fenêtre'),
       segmentKm: Math.max(1, Math.round(itv.km)),
       periodAvgLPer100Km: this.comparisonConsumption?.avgMeasuredLPer100 ?? null,
       periodMinLPer100Km: null,

@@ -3960,6 +3960,7 @@ export interface ConsumptionComparisonInterval {
   measuredLiters: number | null;    // ratchet jauge étalonné sur la même fenêtre
   measuredLPer100: number | null;
   measuredReliable: boolean;        // false = fenêtre polluée par le capteur
+  measuredIssue: string | null;     // raison précise quand la mesure est écartée
 }
 
 export interface FuelConsumptionComparisonReport {
