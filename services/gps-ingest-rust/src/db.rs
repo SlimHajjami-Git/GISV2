@@ -230,8 +230,12 @@ impl Database {
             }
         }
 
-        // Insert alert if send_flag indicates an event
-        if frame.send_flag != 0 {
+        // N'insérer une alerte QUE pour les vrais événements (5..=11 : speeding,
+        // harsh_braking, ibutton, input1-3, alert). Les flags 1-4 (periodic,
+        // gps_valid, device_cap, io_change) sont de la télémétrie de routine :
+        // ils inondaient gps_alerts de ~466 000 lignes/jour (~9,3 Go sur TN)
+        // pour ~900 alertes réelles — et le .NET les ignorait de toute façon.
+        if matches!(frame.send_flag, 5..=11) {
             let _alert_id = self.insert_alert(device_id, frame).await?;
         }
 
