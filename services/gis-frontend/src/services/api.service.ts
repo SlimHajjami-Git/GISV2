@@ -2019,13 +2019,14 @@ export class ApiService {
     return this.http.delete<any>(`${this.API_URL}/consumption-analysis/load-periods/${id}`, { headers: this.getHeaders() });
   }
 
-  /** AI explanation of one consumption segment (Groq) — server caches 15 min. */
+  /** AI explanation of one consumption segment or fill-to-fill interval (Groq) — server caches 15 min. */
   explainConsumptionSegment(body: {
     vehicleId: number; startTime: string; endTime: string;
     distanceKm: number; fuelLiters: number; lPer100Km: number;
     tonnageT: number | null; isReliable: boolean; exclusionReason: string | null;
     segmentKm: number; periodAvgLPer100Km: number | null;
     periodMinLPer100Km: number | null; periodMaxLPer100Km: number | null;
+    realLiters?: number | null; realLPer100Km?: number | null;
   }): Observable<ExplainSegmentResult> {
     return this.http.post<ExplainSegmentResult>(`${this.API_URL}/consumption-analysis/explain-segment`, body, { headers: this.getHeaders() });
   }

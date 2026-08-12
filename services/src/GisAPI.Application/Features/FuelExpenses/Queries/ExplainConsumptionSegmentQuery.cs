@@ -30,7 +30,11 @@ public record ExplainConsumptionSegmentQuery(
     int SegmentKm,
     decimal? PeriodAvgLPer100Km,
     decimal? PeriodMinLPer100Km,
-    decimal? PeriodMaxLPer100Km) : IRequest<ExplainSegmentResultDto>;
+    decimal? PeriodMaxLPer100Km,
+    // Renseignés quand l'explication porte sur un intervalle plein-à-plein du
+    // rapport Réel vs GPS : l'IA doit alors adresser l'écart facture/mesure.
+    decimal? RealLiters = null,
+    decimal? RealLPer100Km = null) : IRequest<ExplainSegmentResultDto>;
 
 public record ExplainSegmentResultDto(string Explanation, bool FromCache);
 
@@ -73,7 +77,7 @@ public class ExplainConsumptionSegmentQueryHandler
         if (vehicle?.GpsDeviceId == null)
             return new ExplainSegmentResultDto("Analyse indisponible pour ce véhicule.", false);
 
-        var cacheKey = $"{vehicle.Id}|{request.StartTime.Ticks}|{request.EndTime.Ticks}|{request.TonnageT}|{request.LPer100Km}";
+        var cacheKey = $"{vehicle.Id}|{request.StartTime.Ticks}|{request.EndTime.Ticks}|{request.TonnageT}|{request.LPer100Km}|{request.RealLPer100Km}";
         if (Cache.TryGetValue(cacheKey, out var hit) && DateTime.UtcNow - hit.At < CacheTtl)
             return new ExplainSegmentResultDto(hit.Text, true);
 
@@ -130,6 +134,8 @@ public class ExplainConsumptionSegmentQueryHandler
         sb.AppendLine(request.TonnageT.HasValue
             ? $"Chargement déclaré : {request.TonnageT.Value.ToString("0.#", fr)} tonnes"
             : "Chargement déclaré : aucun (inconnu)");
+        if (request.RealLiters.HasValue && request.RealLPer100Km.HasValue)
+            sb.AppendLine($"Carburant réellement FACTURÉ sur ce même intervalle (méthode plein à plein) : {request.RealLiters.Value.ToString("0.#", fr)} L, soit {request.RealLPer100Km.Value.ToString("0.#", fr)} L/100 km");
         if (frames.Count >= 5)
         {
             sb.AppendLine($"Profil de conduite mesuré : vitesse moyenne en roulage {avgMoving:0} km/h, pointe {maxSpeed:0} km/h, {pctFast:0} % du roulage au-dessus de 90 km/h");
@@ -151,7 +157,11 @@ public class ExplainConsumptionSegmentQueryHandler
             "Structure imposée : « Causes probables : » suivi de 2 à 3 puces courtes classées de la plus à la " +
             "moins vraisemblable, PUIS « Recommandation : » une seule phrase actionnable. " +
             "Appuie-toi UNIQUEMENT sur les chiffres fournis — n'invente aucun fait. Compare toujours la tranche " +
-            "aux références du véhicule plutôt qu'à des normes générales. Si le chargement est inconnu, mentionne " +
+            "aux références du véhicule plutôt qu'à des normes générales. Si des litres FACTURÉS sont fournis pour " +
+            "l'intervalle, commence par dire si mesure et facture concordent (écart < 10 % = normal), et en cas " +
+            "d'écart notable propose les causes possibles : niveau du réservoir différent aux bornes, plein non " +
+            "complet, données de mesure partielles, ou carburant payé non versé dans ce réservoir. " +
+            "Si le chargement est inconnu, mentionne " +
             "que le déclarer affinerait l'analyse. Si les données de mesure sont signalées non exploitables, " +
             "explique calmement que la tranche ne doit pas être interprétée et pourquoi elle est écartée des " +
             "statistiques — sans jamais parler de capteur ou GPS défaillant. Maximum 130 mots. Pas de titre, pas de gras.";

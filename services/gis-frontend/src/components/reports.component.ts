@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionComparisonInterval, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
 import { Subject, forkJoin, of, takeUntil, catchError } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -358,6 +358,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   showExcludedSegments = false;
   /** Explication IA de la tranche cliquée (Groq) */
   aiSegment: ConsumptionSegment | null = null;
+  /** Intervalle plein-à-plein cliqué dans le graphe mesurée vs réelle (rapport 17) */
+  aiInterval: ConsumptionComparisonInterval | null = null;
   aiExplanation = '';
   aiLoading = false;
   consumptionByTonnage: ConsumptionByTonnageReport | null = null;
@@ -5628,6 +5630,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.loading = true;
     this.comparisonAudit = null;
     this.comparisonConsumption = null;
+    this.closeAiPanel();
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
 
@@ -6048,6 +6051,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        // Clic sur une paire de barres → interprétation IA de l'intervalle
+        onClick: (_evt, elements) => {
+          if (!elements?.length) return;
+          const iv = intervals[elements[0].index];
+          if (iv) this.ngZone.run(() => this.explainComparisonInterval(iv));
+        },
+        onHover: (evt, elements) => {
+          const target = evt.native?.target as HTMLElement | null;
+          if (target) target.style.cursor = elements?.length ? 'pointer' : 'default';
+        },
         plugins: {
           // Légende indispensable ici : deux séries à distinguer.
           legend: {
@@ -6217,8 +6230,51 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   closeAiPanel() {
     this.aiSegment = null;
+    this.aiInterval = null;
     this.aiExplanation = '';
     this.aiLoading = false;
+  }
+
+  /** Clic sur une paire de barres du graphe mesurée vs réelle : interprétation
+   *  IA de l'intervalle plein-à-plein (profil de conduite + écart facture/mesure). */
+  explainComparisonInterval(itv: ConsumptionComparisonInterval) {
+    const vehicleId = this.selectedVehicleId ? parseInt(this.selectedVehicleId) : undefined;
+    if (!vehicleId) return;
+
+    this.aiInterval = itv;
+    this.aiSegment = null;
+    this.aiExplanation = '';
+    this.aiLoading = true;
+    this.cdr.detectChanges();
+
+    this.apiService.explainConsumptionSegment({
+      vehicleId,
+      startTime: itv.start,
+      endTime: itv.end,
+      distanceKm: itv.km,
+      fuelLiters: itv.measuredLiters ?? itv.realLiters,
+      lPer100Km: itv.measuredLPer100 ?? itv.realLPer100,
+      tonnageT: null,
+      isReliable: itv.measuredReliable,
+      exclusionReason: itv.measuredReliable ? null : 'mesure jauge non exploitable sur la fenêtre',
+      segmentKm: Math.max(1, Math.round(itv.km)),
+      periodAvgLPer100Km: this.comparisonConsumption?.avgMeasuredLPer100 ?? null,
+      periodMinLPer100Km: null,
+      periodMaxLPer100Km: null,
+      realLiters: itv.realLiters,
+      realLPer100Km: itv.realLPer100
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => this.ngZone.run(() => {
+        this.aiExplanation = res.explanation;
+        this.aiLoading = false;
+        this.cdr.detectChanges();
+      }),
+      error: () => this.ngZone.run(() => {
+        this.aiExplanation = 'Analyse IA momentanément indisponible.';
+        this.aiLoading = false;
+        this.cdr.detectChanges();
+      })
+    });
   }
 
   /** Libellés X partagés par les graphes « par tranches » (rapports 17 et 18) :
