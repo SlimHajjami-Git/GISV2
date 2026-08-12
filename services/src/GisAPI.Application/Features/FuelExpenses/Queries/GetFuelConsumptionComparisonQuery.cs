@@ -211,7 +211,12 @@ public class GetFuelConsumptionComparisonQueryHandler
             else if (sensorFault) issue = "chute de jauge anormale sur la fenêtre (incident capteur)";
             else if (measuredLPer100.Value < 1m) issue = "jauge figée sur la fenêtre (aucune baisse mesurée)";
             else if (measuredLPer100.Value > maxReasonable) issue = "valeur invraisemblable pour ce type de véhicule";
-            var reliable = issue == null;
+            // DEMANDE SLIM (12/08, « pour le moment ») : ne plus écarter les
+            // fenêtres suspectes — elles comptent comme vraies (barres normales
+            // + incluses dans les moyennes). Le diagnostic reste calculé dans
+            // MeasuredIssue à titre informatif. Pour RÉTABLIR l'exclusion :
+            // var reliable = issue == null;
+            var reliable = measuredLPer100.HasValue;
 
             intervals.Add(new ConsumptionComparisonIntervalDto(
                 from, to, Math.Round(km, 0),
