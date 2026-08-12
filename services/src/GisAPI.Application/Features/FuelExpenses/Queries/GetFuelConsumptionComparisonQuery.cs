@@ -204,25 +204,14 @@ public class GetFuelConsumptionComparisonQueryHandler
             decimal? measuredLPer100 = hasSensor && sliceEnd > sliceStart
                 ? Math.Round(measuredLiters / km * 100m, 2) : null;
 
-            // Raison précise quand la mesure est écartée — affichée au survol
-            // et transmise à l'IA (un sec « non exploitable » n'explique rien).
-            string? issue = null;
-            if (!measuredLPer100.HasValue) issue = "pas de données de jauge sur la fenêtre";
-            else if (sensorFault) issue = "chute de jauge anormale sur la fenêtre (incident capteur)";
-            else if (measuredLPer100.Value < 1m) issue = "jauge figée sur la fenêtre (aucune baisse mesurée)";
-            else if (measuredLPer100.Value > maxReasonable) issue = "valeur invraisemblable pour ce type de véhicule";
-            // CHOIX PRODUIT (Slim, 12/08) : pas de grisage — toutes les fenêtres
-            // mesurées comptent comme vraies (barres normales + incluses dans
-            // les moyennes). Le diagnostic reste calculé dans MeasuredIssue à
-            // titre informatif (API). Pour réactiver le garde-fou visuel :
-            // var reliable = issue == null;
-            var reliable = measuredLPer100.HasValue;
+            var reliable = measuredLPer100.HasValue && !sensorFault
+                           && measuredLPer100.Value >= 1m && measuredLPer100.Value <= maxReasonable;
 
             intervals.Add(new ConsumptionComparisonIntervalDto(
                 from, to, Math.Round(km, 0),
                 Math.Round(invoices[i].Volume, 1), realLPer100,
                 measuredLPer100.HasValue ? Math.Round(measuredLiters, 1) : null,
-                measuredLPer100, reliable, issue));
+                measuredLPer100, reliable));
         }
 
         // Moyennes pondérées par les km — le réel sur tous les intervalles,

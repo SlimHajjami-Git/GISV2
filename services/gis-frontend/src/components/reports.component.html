@@ -953,29 +953,6 @@
                         <canvas #comparisonConsoCanvas></canvas>
                       </div>
                     </div>
-                    <div *ngIf="!aiInterval" style="font-size:11px;color:var(--text-secondary,#94a3b8);margin-top:6px;">
-                      💡 Cliquez sur une paire de barres pour obtenir une interprétation de l'intervalle.
-                    </div>
-
-                    <!-- Panneau interprétation IA de l'intervalle cliqué -->
-                    <div *ngIf="aiInterval" style="margin-top:10px;padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-left:3px solid #6366f1;border-radius:10px;">
-                      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-                        <div>
-                          <div style="font-weight:700;color:var(--text-primary,#1e293b);font-size:13px;">💡 Interprétation de l'intervalle</div>
-                          <div style="font-size:11.5px;color:var(--text-secondary,#64748b);margin-top:2px;">
-                            Du {{ formatDateTime(aiInterval.start) }} au {{ formatDateTime(aiInterval.end) }}
-                            · {{ aiInterval.km | number:'1.0-0' }} km
-                            · mesuré : <strong>{{ aiInterval.measuredLPer100 != null ? (aiInterval.measuredLPer100 | number:'1.1-1') : '—' }}</strong>
-                            · réel : <strong>{{ aiInterval.realLPer100 | number:'1.1-1' }}</strong> L/100 km
-                          </div>
-                        </div>
-                        <button (click)="closeAiPanel()" style="background:none;border:none;cursor:pointer;color:var(--text-secondary,#94a3b8);font-size:16px;line-height:1;padding:2px;">✕</button>
-                      </div>
-                      <div *ngIf="aiLoading" style="margin-top:10px;font-size:12.5px;color:var(--text-secondary,#64748b);font-style:italic;">
-                        Analyse en cours…
-                      </div>
-                      <div *ngIf="!aiLoading && aiExplanation" style="margin-top:10px;font-size:13px;color:var(--text-primary,#1e293b);line-height:1.55;white-space:pre-line;">{{ aiExplanation }}</div>
-                    </div>
                   </ng-container>
                   <ng-template #consoComparisonEmptyTpl>
                     <div style="color:var(--text-secondary,#64748b);font-size:12px;">

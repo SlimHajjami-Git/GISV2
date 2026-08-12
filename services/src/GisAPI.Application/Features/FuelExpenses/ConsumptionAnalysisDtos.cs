@@ -76,8 +76,7 @@ public record ConsumptionComparisonIntervalDto(
     decimal RealLPer100,
     decimal? MeasuredLiters,
     decimal? MeasuredLPer100,
-    bool MeasuredReliable,
-    string? MeasuredIssue = null);
+    bool MeasuredReliable);
 
 public record FuelConsumptionComparisonDto(
     int VehicleId,
