@@ -211,10 +211,12 @@ public class GetFuelConsumptionComparisonQueryHandler
             else if (sensorFault) issue = "chute de jauge anormale sur la fenêtre (incident capteur)";
             else if (measuredLPer100.Value < 1m) issue = "jauge figée sur la fenêtre (aucune baisse mesurée)";
             else if (measuredLPer100.Value > maxReasonable) issue = "valeur invraisemblable pour ce type de véhicule";
-            // Garde-fou actif (rétabli le 12/08 sur demande Slim après un essai
-            // « tout considérer comme vrai ») : les fenêtres suspectes sont
-            // affichées grisées avec leur raison et exclues des moyennes.
-            var reliable = issue == null;
+            // CHOIX PRODUIT (Slim, 12/08) : pas de grisage — toutes les fenêtres
+            // mesurées comptent comme vraies (barres normales + incluses dans
+            // les moyennes). Le diagnostic reste calculé dans MeasuredIssue à
+            // titre informatif (API). Pour réactiver le garde-fou visuel :
+            // var reliable = issue == null;
+            var reliable = measuredLPer100.HasValue;
 
             intervals.Add(new ConsumptionComparisonIntervalDto(
                 from, to, Math.Round(km, 0),
