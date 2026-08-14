@@ -33,7 +33,14 @@ public class VoltageSensorAuditService : BackgroundService
     // positions pour toute la flotte.
     private const int CycleHours = 24;
     private const int StartupDelayMinutes = 6;
-    private const int WindowDays = 7;
+
+    // 60 jours, et non 7 : cet audit ne juge pas l'état du moment mais une
+    // propriété de l'installation — le capteur est-il relié à quelque chose ?
+    // Cela ne change pas d'une semaine à l'autre, donc rien ne justifie de se
+    // priver de l'historique disponible. La fenêtre de 7 j, reprise sans
+    // réfléchir du service voisin (qui, lui, cherche un état récent), laissait
+    // 15 véhicules sans verdict faute d'avoir assez roulé cette semaine-là.
+    private const int WindowDays = 60;
 
     // Au-dessus de cette vitesse, le moteur tourne à coup sûr et l'alternateur
     // débite : c'est la fenêtre où la tension DOIT être haute.
