@@ -15,6 +15,10 @@ export const environment = {
   // true on Calypso/TN; leave absent (or false) on deployments that must keep
   // the classic marketing landing (e.g. Bougeo/DZ).
   aiAssistantLanding: true,
+  // Inscription libre (route /inscription + lien depuis /login). PER-DEPLOYMENT:
+  // its absence means disabled. The screen is only half the switch — the API
+  // stays closed until Registration__SelfSignupEnabled=true is set server-side.
+  selfSignup: true,
   // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
   // Tunisian carriers here by default; the Algeria/Bougeo build replaces this
   // list with Mobilis / Djezzy / Ooredoo Algérie in its own copy of this file.

@@ -280,6 +280,20 @@ spec:
                 configMapKeyRef:
                   name: gisv2-config
                   key: GROQ_MODEL
+            # Adresse publique servant à composer les liens envoyés par email
+            # (confirmation d'inscription). Doit être une URL réellement
+            # joignable : le défaut du code (gpa.belive.tn) n'existe pas en DNS.
+            # Passer en https le jour où k8s/SSL-TN-RUNBOOK.md est appliqué.
+            - name: App__PublicBaseUrl
+              value: "http://belive-calypso.com"
+            # Inscription libre. Deuxième moitié de l'interrupteur : sans ceci
+            # l'endpoint /api/auth/register répond 404, même bouton affiché.
+            - name: Registration__SelfSignupEnabled
+              value: "true"
+            - name: Registration__DefaultPlanCode
+              value: "plan-basique"
+            - name: Registration__TrialDays
+              value: "14"
             # CORS — allow both internal K8s and external domain
             - name: Cors__AllowedOrigins__0
               value: "http://frontend:80"
