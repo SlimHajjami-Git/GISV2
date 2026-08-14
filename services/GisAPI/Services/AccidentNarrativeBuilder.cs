@@ -269,12 +269,19 @@ internal static class AccidentNarrativeBuilder
         var intensity = DetectIntensity(c);
         var reasons = new List<object>();
 
-        if (c.KphBef >= 30 && c.KphAft <= 5)
+        // On raconte la vitesse de la DERNIÈRE MINUTE, pas le maximum sur cinq.
+        // Sinon on décrit une chute qui n'a pas eu lieu : le rapport envoyé à
+        // Hertz le 14/08/2026 annonçait « 58 km/h → immobilisation », alors que
+        // ce 58 datait de 63 secondes plus tôt et que le véhicule roulait à
+        // 26 km/h juste avant. Et on ne parle de chute BRUTALE que si elle
+        // l'était vraiment sur cette dernière minute.
+        var kphNarr = c.KphJustBef >= 1 ? c.KphJustBef : c.KphBef;
+        if (kphNarr >= 30 && c.KphAft <= 5)
         {
             reasons.Add(new
             {
                 title = "Chute brutale de la vitesse",
-                text = $"Le véhicule est passé de {Math.Round(c.KphBef)} km/h à une immobilisation totale en quelques secondes. Ce profil ne correspond pas à un freinage volontaire.",
+                text = $"Le véhicule est passé de {Math.Round(kphNarr)} km/h à une immobilisation totale en quelques secondes. Ce profil ne correspond pas à un freinage volontaire.",
             });
         }
 
@@ -403,13 +410,16 @@ internal static class AccidentNarrativeBuilder
             });
         }
 
-        if (c.KphBef >= 1)
+        if (c.KphJustBef >= 1 || c.KphBef >= 1)
         {
+            var kphShown = c.KphJustBef >= 1 ? c.KphJustBef : c.KphBef;
             rows.Add(new
             {
                 label = "Vitesse avant l'impact",
-                value = $"{Math.Round(c.KphBef)} km/h",
-                hint = "Vitesse maximale observée dans les 5 min précédentes",
+                value = $"{Math.Round(kphShown)} km/h",
+                hint = c.KphJustBef >= 1
+                    ? "Vitesse maximale observée dans la minute précédente"
+                    : "Vitesse maximale observée dans les 5 min précédentes",
             });
         }
 

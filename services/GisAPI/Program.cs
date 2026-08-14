@@ -132,6 +132,12 @@ builder.Services.AddHostedService<GisAPI.Services.AccidentDetectionService>();
 // the moment 3 consecutive frames exceed 5 km/h (the tow truck starts moving).
 builder.Services.AddHostedService<GisAPI.Services.AccidentTowMonitoringService>();
 
+// Auto-rétractation : annule une détection encore « en attente » dès que le
+// véhicule reprend la route — la preuve la plus simple qu'il n'y a pas eu de
+// choc. Ajouté après le faux positif du 14/08/2026 (251 TU 8875, signalé
+// « choc très violent » alors qu'il roulait à 68 km/h moins d'une heure après).
+builder.Services.AddHostedService<GisAPI.Services.AccidentSelfRetractionService>();
+
 // Tow Detection Service — standalone (no accident required). Flags any vehicle
 // moving engine-off (ignition_on=false) above 15 km/h with real displacement
 // over a cluster of consecutive frames; excludes immobilised vehicles. Persists

@@ -279,6 +279,15 @@ enriched AS (
            AND b.recorded_at BETWEEN c.recorded_at - INTERVAL '5 minutes'
                                  AND c.recorded_at - INTERVAL '30 seconds'
         ) AS kph_bef,
+        -- Vitesse de la DERNIERE minute : c'est celle qui décrit honnêtement
+        -- l'instant du choc. kph_bef, maximum sur 5 min, sert au filtrage mais
+        -- ne doit jamais servir de récit (voir AccidentCandidate.KphJustBef).
+        (SELECT MAX(b.speed_kph)
+         FROM gps_positions b
+         WHERE b.device_id   = c.device_id
+           AND b.recorded_at BETWEEN c.recorded_at - INTERVAL '60 seconds'
+                                 AND c.recorded_at - INTERVAL '1 second'
+        ) AS kph_just_bef,
         (SELECT COUNT(*)
          FROM gps_positions b
          WHERE b.device_id   = c.device_id
@@ -311,7 +320,8 @@ SELECT
     az::int       AS ""Az"",
     mag::double precision        AS ""Mag"",
     n_prior_7d::int              AS ""NPrior7d"",
-    COALESCE(kph_bef, 0)::double precision AS ""KphBef"",
+    COALESCE(kph_bef, 0)::double precision      AS ""KphBef"",
+    COALESCE(kph_just_bef, 0)::double precision AS ""KphJustBef"",
     n_mov_bef::int                         AS ""NMovBef"",
     COALESCE(kph_aft, 0)::double precision AS ""KphAft"",
     n_aft::int                             AS ""NAft"",
@@ -758,6 +768,20 @@ public class AccidentCandidate
     public double Mag { get; set; }
     public int NPrior7d { get; set; }
     public double KphBef { get; set; }
+
+    /// <summary>
+    /// Vitesse maximale dans la MINUTE précédant le choc — celle qu'on
+    /// raconte au client, par opposition à <see cref="KphBef"/> qui est un
+    /// maximum sur 5 minutes et sert au filtrage.
+    ///
+    /// <para>Le 14/08/2026, le rapport envoyé à Hertz annonçait « passé de
+    /// 58 km/h à l'immobilisation en quelques secondes » : le 58 km/h datait
+    /// de 63 secondes plus tôt, la séquence réelle avant le pic étant
+    /// 26 → 14 → 13 → 10 → 0. Un ralentissement ordinaire décrit comme un
+    /// choc.</para>
+    /// </summary>
+    public double KphJustBef { get; set; }
+
     public int NMovBef { get; set; }
     public double KphAft { get; set; }
     public int NAft { get; set; }
