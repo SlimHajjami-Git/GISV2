@@ -294,13 +294,16 @@ spec:
               value: "plan-basique"
             - name: Registration__TrialDays
               value: "14"
-            # CORS — allow both internal K8s and external domain
+            # CORS — allow both internal K8s and external domain.
+            # Les entrées *.calypso.com d'origine visaient des domaines FICTIFS
+            # (jamais en DNS) ; remplacées par le vrai domaine servi en HTTPS.
+            # L'origine par IP reste : l'APK mobile en circulation la cible.
             - name: Cors__AllowedOrigins__0
               value: "http://frontend:80"
             - name: Cors__AllowedOrigins__1
-              value: "https://belive.calypso.com"
+              value: "https://www.belive-calypso.com"
             - name: Cors__AllowedOrigins__2
-              value: "https://mobile.calypso.com"
+              value: "https://belive-calypso.com"
             - name: Cors__AllowedOrigins__3
               value: "http://41.231.5.146"
             # SMTP Email

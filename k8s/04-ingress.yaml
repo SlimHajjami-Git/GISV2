@@ -1,7 +1,7 @@
 # =============================================================================
 # GIS V2 - Ingress: Traefik (built-in with K3s)
 # Routes external traffic to internal services
-# TLS via cert-manager + Let's Encrypt
+# TLS via certificat COMMERCIAL GlobalSign (voir bloc ci-dessous)
 # =============================================================================
 #
 # ⚠ SERVEUR TN UNIQUEMENT (belive-calypso.com → 41.231.5.146).
@@ -20,25 +20,26 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Certificate Issuer (Let's Encrypt production)
-# L'e-mail reçoit uniquement les alertes d'expiration — boîte réellement lue.
+# CERTIFICAT — GlobalSign AlphaSSL, acheté (PAS Let's Encrypt).
+#
+#   Secret    : belive-calypso-tls (namespace gisv2), type kubernetes.io/tls
+#   Couvre    : www.belive-calypso.com + belive-calypso.com (SAN)
+#   Validité  : 2026-08-10 → 2027-02-25  ⚠ À RENOUVELER AVANT CETTE DATE
+#
+# Le secret est créé HORS git — il contient une clé privée. Sources sur le
+# serveur TN, dans ~/ssl : belive-calypso-v2.key (la clé qui correspond ;
+# la paire sans « -v2 » est une CSR abandonnée) + fullchain.pem
+# (certificat feuille SUIVI de l'intermédiaire, cet ordre exactement).
+#
+#   kubectl create secret tls belive-calypso-tls -n gisv2 \
+#     --cert=fullchain.pem --key=belive-calypso-v2.key \
+#     --dry-run=client -o yaml | kubectl apply -f -
+#
+# ⚠ AUCUNE annotation cert-manager sur l'ingress ci-dessous : elle ferait
+# écraser ce certificat payant par une tentative ACME. Les objets Certificate
+# hérités (gisv2-frontend-tls / -api- / -mobile-, en échec depuis 164 jours,
+# domaines fictifs) ne pointent PAS sur ce secret — d'où son nom distinct.
 # -----------------------------------------------------------------------------
-apiVersion: cert-manager.io/v1
-kind: ClusterIssuer
-metadata:
-  name: letsencrypt-prod
-spec:
-  acme:
-    server: https://acme-v02.api.letsencrypt.org/directory
-    email: hajjami.selim@gmail.com
-    privateKeySecretRef:
-      name: letsencrypt-prod-key
-    solvers:
-      - http01:
-          ingress:
-            class: traefik
-
----
 # -----------------------------------------------------------------------------
 # Frontend Ingress — www.belive-calypso.com (+ apex)
 # Un seul certificat SAN couvre les deux hôtes. Les chemins reproduisent
@@ -50,7 +51,6 @@ metadata:
   name: frontend-ingress
   namespace: gisv2
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
@@ -59,7 +59,7 @@ spec:
     - hosts:
         - www.belive-calypso.com
         - belive-calypso.com
-      secretName: gisv2-frontend-tls
+      secretName: belive-calypso-tls
   rules:
     - host: www.belive-calypso.com
       http: &app-paths
