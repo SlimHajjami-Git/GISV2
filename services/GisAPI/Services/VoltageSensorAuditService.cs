@@ -34,13 +34,16 @@ public class VoltageSensorAuditService : BackgroundService
     private const int CycleHours = 24;
     private const int StartupDelayMinutes = 6;
 
-    // 60 jours, et non 7 : cet audit ne juge pas l'état du moment mais une
-    // propriété de l'installation — le capteur est-il relié à quelque chose ?
-    // Cela ne change pas d'une semaine à l'autre, donc rien ne justifie de se
-    // priver de l'historique disponible. La fenêtre de 7 j, reprise sans
-    // réfléchir du service voisin (qui, lui, cherche un état récent), laissait
-    // 15 véhicules sans verdict faute d'avoir assez roulé cette semaine-là.
-    private const int WindowDays = 60;
+    // 7 jours — et le verdict est CUMULATIF (voir plus bas), ce qui donne la
+    // couverture d'une longue fenêtre sans en payer le prix.
+    //
+    // Mesuré sur la base TN : le même agrégat sur 21 jours prend 3 minutes à
+    // cache froid, 45 jours 1 min 15 à chaud. Au-delà du dépassement de délai,
+    // ce balayage complet évince le cache de Postgres — c'est exactement ce qui
+    // avait ralenti toute l'application en juillet (voir /vehicles/with-positions).
+    // Le gain, lui, était de 15 véhicules sur 390 : le marché n'en vaut pas la
+    // peine quand l'accumulation donne le même résultat gratuitement.
+    private const int WindowDays = 7;
 
     // Au-dessus de cette vitesse, le moteur tourne à coup sûr et l'alternateur
     // débite : c'est la fenêtre où la tension DOIT être haute.
@@ -83,9 +86,9 @@ public class VoltageSensorAuditService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
 
-        // Médianes calculées PAR POSTGRES : ramener 7 jours de positions en
-        // mémoire coûterait des millions de lignes. On ne rapatrie qu'une ligne
-        // par boîtier.
+        // Médianes calculées PAR POSTGRES : ramener la fenêtre en mémoire
+        // coûterait des millions de lignes. On ne rapatrie qu'une ligne par
+        // boîtier.
         const string sql = @"
 SELECT p.device_id AS ""DeviceId"",
        percentile_disc(0.5) WITHIN GROUP (ORDER BY p.power_voltage)
@@ -115,7 +118,7 @@ GROUP BY p.device_id;
         var devices = await context.GpsDevices.IgnoreQueryFilters().ToListAsync(ct);
 
         var now = DateTime.UtcNow;
-        int reliable = 0, unreliable = 0, undecided = 0;
+        int reliable = 0, unreliable = 0, undecided = 0, conserves = 0;
 
         foreach (var device in devices)
         {
@@ -127,7 +130,22 @@ GROUP BY p.device_id;
                 sample?.DrivingFrames ?? 0,
                 sample?.RestingFrames ?? 0);
 
-            device.VoltageSensorReliable = verdict;
+            // VERDICT CUMULATIF : « pas assez de données cette semaine » n'est
+            // pas une raison d'effacer ce qu'on savait déjà. Un véhicule qui a
+            // peu roulé garde son verdict précédent, et le parc se classe
+            // progressivement — on obtient la couverture d'une fenêtre longue
+            // sans jamais balayer plus de 7 jours. Toute évaluation concluante
+            // écrase l'ancienne, donc un boîtier recâblé est repris au vol.
+            if (verdict != null)
+            {
+                device.VoltageSensorReliable = verdict;
+            }
+            else if (device.VoltageSensorReliable != null)
+            {
+                verdict = device.VoltageSensorReliable;
+                conserves++;
+            }
+
             device.VoltageSensorCheckedAt = now;
 
             if (verdict == true) reliable++;
@@ -138,8 +156,8 @@ GROUP BY p.device_id;
         await context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "VoltageSensorAudit: {Reliable} capteur(s) fiable(s), {Unreliable} plat(s) — masqué(s), {Undecided} sans conclusion",
-            reliable, unreliable, undecided);
+            "VoltageSensorAudit: {Reliable} fiable(s), {Unreliable} masqué(s), {Undecided} sans conclusion ({Conserves} verdict(s) repris d'une passe précédente)",
+            reliable, unreliable, undecided, conserves);
     }
 
     internal sealed class SensorSample
@@ -150,4 +168,5 @@ GROUP BY p.device_id;
         public long DrivingFrames { get; set; }
         public long RestingFrames { get; set; }
     }
+
 }
