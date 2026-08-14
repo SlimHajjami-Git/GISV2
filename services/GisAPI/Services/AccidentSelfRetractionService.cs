@@ -65,6 +65,13 @@ public class AccidentSelfRetractionService : BackgroundService
         try { await Task.Delay(TimeSpan.FromMinutes(StartupDelayMinutes), ct); }
         catch (TaskCanceledException) { return; }
 
+        // Trace de démarrage, comme les services voisins : ce service annule
+        // des détections d'accident sans intervention humaine, il ne doit pas
+        // pouvoir tourner — ou ne pas tourner — sans qu'on puisse le constater.
+        _logger.LogInformation(
+            "AccidentSelfRetractionService started (cycle={Cycle}min, fenêtre={Watch}h, grâce={Grace}min, reprise≥{Kph}km/h sur {Frames} trames)",
+            CycleMinutes, WatchHours, GraceMinutes, ResumedDrivingKph, ResumedFramesRequired);
+
         while (!ct.IsCancellationRequested)
         {
             try
