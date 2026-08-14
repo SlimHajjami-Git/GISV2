@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Common;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -225,29 +226,35 @@ GROUP BY device_id;
             deviceStats.TryGetValue(deviceId, out var stats);
             var lastComm = v.GpsDevice?.LastCommunication;
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 41;
-            // Calculate battery level from latest position's PowerVoltage (same formula as Rust ingest)
-            // Fallback to GpsDevice.BatteryLevel if PowerVoltage is not available
-            // ALSO compute the raw voltage in volts so the UI can show "12.6 V"
-            // alongside (or instead of) the percentage — operator preference.
-            int? batteryLevel = v.GpsDevice?.BatteryLevel;
+            // Tension et niveau de batterie — affichés UNIQUEMENT si l'audit a
+            // établi que le capteur de ce boîtier mesure vraiment quelque chose
+            // (VoltageSensorAuditService : le capteur suit-il l'alternateur ?).
+            //
+            // Sur 243 véhicules TN, 213 renvoyaient la MÊME valeur moteur
+            // tournant et moteur éteint : l'octet ne mesurait rien. On affichait
+            // pourtant « 12,9 V / 100 % » sur un véhicule incapable de démarrer
+            // (259 TU 4987, 14/08/2026). Devant une batterie, un trou franc vaut
+            // mieux qu'une fausse assurance — d'où le silence par défaut, y
+            // compris quand le verdict est encore inconnu (null).
+            //
+            // Le facteur dépend du protocole : 0,3 en NEMS, 0,1 en Teltonika.
+            // Le 0,3 appliqué à tous plafonnait les Teltonika à 14,4 V en
+            // permanence, quel que soit l'état de la batterie.
+            int? batteryLevel = null;
             double? batteryVoltageV = null;
-            if (position?.PowerVoltage != null && position.PowerVoltage > 0)
+            var voltageFactor = VoltageScale.FactorFor(v.GpsDevice?.ProtocolType);
+            if (v.GpsDevice?.VoltageSensorReliable == true
+                && voltageFactor != null
+                && position?.PowerVoltage != null
+                && position.PowerVoltage > 0)
             {
-                const double voltageFactor = 0.3;
                 const double batteryMinV = 11.0;
                 const double batteryMaxV = 12.8;
-                // Operational ceiling for a 12 V system: textbook regulated
-                // alternator output is 14.4 V (Bosch / Toyota service specs).
-                // Some NEMS L boîtiers report bytes ≥ 49 (≥ 14.7 V) due to a
-                // firmware calibration quirk that breaks above the alternator
-                // range — those values are physically impossible on a 12 V
-                // car and would otherwise display as e.g. "16.5 V" on a
-                // perfectly healthy rental vehicle. We clamp at the display
-                // layer only; the raw byte stays untouched in the DB.
-                const double batteryRealisticMaxV = 14.4;
-                var voltage = position.PowerVoltage.Value * voltageFactor;
-                if (voltage > batteryRealisticMaxV) voltage = batteryRealisticMaxV;
+                var voltage = position.PowerVoltage.Value * voltageFactor.Value;
+                if (voltage > VoltageScale.AlternatorCeilingV) voltage = VoltageScale.AlternatorCeilingV;
                 batteryVoltageV = Math.Round(voltage, 1);
+
+                batteryLevel = v.GpsDevice?.BatteryLevel;
                 if (batteryLevel == null)
                 {
                     if (voltage <= batteryMinV) batteryLevel = 0;

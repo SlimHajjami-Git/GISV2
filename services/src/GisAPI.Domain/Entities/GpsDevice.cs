@@ -80,6 +80,25 @@ public class GpsDevice : TenantEntity
     /// </summary>
     public DateTime? LastOfflineAlertAt { get; set; }
 
+    /// <summary>
+    /// Verdict de <c>VoltageSensorAuditService</c> : le capteur de tension de
+    /// ce boîtier mesure-t-il réellement la batterie ?
+    ///
+    /// <para>La plupart ne mesurent rien — ils renvoient une valeur quasi
+    /// constante, identique moteur tournant et moteur éteint, alors qu'un
+    /// alternateur fait monter la tension de ~1,6 V. Tant que ce drapeau n'est
+    /// pas <c>true</c>, l'interface n'affiche NI tension NI pourcentage :
+    /// afficher « 100 % » sur une batterie morte est pire que n'afficher
+    /// rien.</para>
+    ///
+    /// <para><c>null</c> = jamais audité ou données insuffisantes, traité
+    /// comme non affichable.</para>
+    /// </summary>
+    public bool? VoltageSensorReliable { get; set; }
+
+    /// <summary>Dernier passage de l'audit pour ce boîtier.</summary>
+    public DateTime? VoltageSensorCheckedAt { get; set; }
+
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
 

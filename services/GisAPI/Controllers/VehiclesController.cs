@@ -154,6 +154,16 @@ public class VehiclesController : ControllerBase
                                         ? Math.Min(rawCachedV.Value, 14.4)
                                         : (double?)null;
 
+                                    // Le handler a déjà tranché : il laisse la tension à null quand
+                                    // l'audit du capteur dit qu'elle ne mesure rien (la majorité des
+                                    // boîtiers). Redis, lui, publie la valeur brute sans ce filtre —
+                                    // la reprendre ici ressusciterait le « 100 % » sur une batterie
+                                    // morte. Ce null est donc un verdict, pas une donnée manquante :
+                                    // on ne le comble jamais depuis le cache.
+                                    var batteryDisplayable = vehicle.Stats?.BatteryVoltage != null
+                                                          || vehicle.Stats?.BatteryLevel != null;
+                                    if (!batteryDisplayable) cachedVoltage = null;
+
                                     var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
                                         dbPos?.Id ?? 0,
                                         cached.Latitude,
@@ -164,7 +174,7 @@ public class VehiclesController : ControllerBase
                                         cached.RecordedAt,
                                         cached.FuelRaw != 0 ? cached.FuelRaw : dbPos?.FuelRaw,
                                         (short?)(cached.TemperatureC ?? dbPos?.TemperatureC),
-                                        cached.BatteryPercent ?? dbPos?.BatteryLevel,
+                                        batteryDisplayable ? (cached.BatteryPercent ?? dbPos?.BatteryLevel) : null,
                                         dbPos?.Address,
                                         cached.OdometerKm ?? dbPos?.OdometerKm,
                                         cachedVoltage
@@ -188,8 +198,12 @@ public class VehiclesController : ControllerBase
                                                 CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
                                                 FuelLevel = updatedFuelLevel,
                                                 Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
-                                                BatteryLevel = cached.BatteryPercent ?? vehicle.Stats.BatteryLevel,
-                                                BatteryVoltage = cachedVoltage ?? vehicle.Stats.BatteryVoltage,
+                                                BatteryLevel = batteryDisplayable
+                                                    ? (cached.BatteryPercent ?? vehicle.Stats.BatteryLevel)
+                                                    : null,
+                                                BatteryVoltage = batteryDisplayable
+                                                    ? (cachedVoltage ?? vehicle.Stats.BatteryVoltage)
+                                                    : null,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
                                                 IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5,
                                                 // Fresh frame is ignition-on → engine is currently

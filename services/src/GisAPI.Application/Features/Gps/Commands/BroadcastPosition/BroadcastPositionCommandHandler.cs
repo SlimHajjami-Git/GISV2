@@ -21,6 +21,11 @@ public record DeviceCacheEntry(
     int FuelTankCapacity,
     int? SpeedLimit,
     bool IsImmobilized,
+    // Verdict de VoltageSensorAuditService. Faux pour la grande majorité des
+    // boîtiers, dont le capteur renvoie une valeur constante sans rapport avec
+    // la batterie : on ne diffuse alors NI tension NI pourcentage, sinon le
+    // temps réel réécrirait par-dessus le silence voulu par le chemin REST.
+    bool VoltageSensorReliable,
     DateTime CachedAt
 );
 
@@ -136,6 +141,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 device.Vehicle?.FuelTankCapacity ?? 60,
                 device.Vehicle?.SpeedLimit,
                 device.Vehicle?.IsImmobilized ?? false,
+                device.VoltageSensorReliable == true,
                 DateTime.UtcNow);
             _deviceCache[request.DeviceUid] = cached;
         }
@@ -176,8 +182,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             IgnitionOn = ignitionOn,
             IsMoving = ignitionOn && speed >= SPEED_THRESHOLD,
             FuelRaw = fuelLevel,
-            BatteryVoltage = request.BatteryVoltage,
-            BatteryPercent = request.BatteryPercent,
+            BatteryVoltage = cached.VoltageSensorReliable ? request.BatteryVoltage : null,
+            BatteryPercent = cached.VoltageSensorReliable ? request.BatteryPercent : null,
             TemperatureC = request.TemperatureC,
             RecordedAt = request.RecordedAt,
             Timestamp = now

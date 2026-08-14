@@ -161,6 +161,13 @@ builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 // charging, or the saturated-firmware long-silence pattern).
 builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService>();
 
+// Audit du capteur de tension : décide, par boîtier, si sa valeur de batterie
+// est affichable. Le test est l'alternateur — un capteur qui rend la même
+// valeur moteur tournant et moteur éteint ne mesure rien. Sans cet audit,
+// l'interface annonçait « 12,9 V / 100 % » sur un véhicule en panne de
+// batterie (259 TU 4987, 14/08/2026).
+builder.Services.AddHostedService<GisAPI.Services.VoltageSensorAuditService>();
+
 // Invoice Orphan Cleanup — deletes scanned-invoice files under uploads/invoices
 // that no VehicleCost.ReceiptUrl references and are older than 24h (abandoned
 // scans / deleted costs), so the AI invoice-scan feature can't grow disk forever.
