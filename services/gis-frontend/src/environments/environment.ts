@@ -19,6 +19,8 @@ export const environment = {
   // its absence means disabled. The screen is only half the switch — the API
   // stays closed until Registration__SelfSignupEnabled=true is set server-side.
   selfSignup: true,
+  // Exemple de numéro affiché dans le formulaire d'inscription (indicatif TN).
+  phonePlaceholder: '+216 20 000 000',
   // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
   // Tunisian carriers here by default; the Algeria/Bougeo build replaces this
   // list with Mobilis / Djezzy / Ooredoo Algérie in its own copy of this file.

@@ -120,7 +120,7 @@ import { environment } from '../environments/environment';
 
           <div class="form-group">
             <label for="phone">Téléphone <span class="optional">facultatif</span></label>
-            <input type="tel" id="phone" name="phone" [(ngModel)]="phone" placeholder="+213 5 00 00 00 00" />
+            <input type="tel" id="phone" name="phone" [(ngModel)]="phone" [placeholder]="phonePlaceholder" />
           </div>
 
           <div class="form-group">
@@ -408,6 +408,9 @@ export class RegisterComponent {
   brand = (environment as any).brandName || 'Calypso';
   // Purement informatif : la durée qui fait foi est celle du serveur.
   trialDays = (environment as any).selfSignupTrialDays || 14;
+  // Indicatif PAR DÉPLOIEMENT : le repli garde le format algérien d'origine,
+  // pour que Bougeo/DZ reste inchangé sans toucher à sa copie locale.
+  phonePlaceholder = (environment as any).phonePlaceholder || '+213 5 00 00 00 00';
 
   constructor(
     private router: Router,
