@@ -115,8 +115,9 @@ spec:
 # cible http://41.231.5.146/api en dur. L'ip-ingress ci-dessous reste en HTTP
 # simple tant qu'une version de l'app mobile pointant sur
 # https://www.belive-calypso.com n'est pas déployée sur la flotte.
-# (Traefik redirectScheme permanent = 308 : la méthode HTTP est préservée,
-# les POST survivent à la redirection.)
+# (Traefik redirectScheme + permanent: true renvoie un 301 — vérifié. Sans
+# effet ici : seule la navigation navigateur, en GET, emprunte cette porte ;
+# les clients qui envoient des POST visent l'IP, qui ne redirige pas.)
 # -----------------------------------------------------------------------------
 apiVersion: networking.k8s.io/v1
 kind: Ingress

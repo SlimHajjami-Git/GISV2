@@ -283,9 +283,8 @@ spec:
             # Adresse publique servant à composer les liens envoyés par email
             # (confirmation d'inscription). Doit être une URL réellement
             # joignable : le défaut du code (gpa.belive.tn) n'existe pas en DNS.
-            # Passer en https le jour où k8s/SSL-TN-RUNBOOK.md est appliqué.
             - name: App__PublicBaseUrl
-              value: "http://belive-calypso.com"
+              value: "https://www.belive-calypso.com"
             # Inscription libre. Deuxième moitié de l'interrupteur : sans ceci
             # l'endpoint /api/auth/register répond 404, même bouton affiché.
             - name: Registration__SelfSignupEnabled
