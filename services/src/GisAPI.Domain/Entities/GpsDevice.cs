@@ -99,6 +99,13 @@ public class GpsDevice : TenantEntity
     /// <summary>Dernier passage de l'audit pour ce boîtier.</summary>
     public DateTime? VoltageSensorCheckedAt { get; set; }
 
+    /// <summary>
+    /// Dernière alerte « démarrage impossible » envoyée pour ce boîtier.
+    /// Temporisation de 24 h : un véhicule qui reste en panne ne doit pas
+    /// renotifier à chaque cycle de détection.
+    /// </summary>
+    public DateTime? LastStartFailureAlertAt { get; set; }
+
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }
 

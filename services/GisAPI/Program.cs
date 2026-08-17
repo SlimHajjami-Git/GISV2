@@ -174,6 +174,11 @@ builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService
 // batterie (259 TU 4987, 14/08/2026).
 builder.Services.AddHostedService<GisAPI.Services.VoltageSensorAuditService>();
 
+// Détection "véhicule qui ne démarre pas" : lit le DÉMARREUR (tentatives de
+// contact répétées + immobilité du jour + a roulé la veille) et non la tension,
+// dont les cinq formulations testées ont toutes été réfutées sur ce matériel.
+builder.Services.AddHostedService<GisAPI.Services.StartFailureDetectionService>();
+
 // Invoice Orphan Cleanup — deletes scanned-invoice files under uploads/invoices
 // that no VehicleCost.ReceiptUrl references and are older than 24h (abandoned
 // scans / deleted costs), so the AI invoice-scan feature can't grow disk forever.
