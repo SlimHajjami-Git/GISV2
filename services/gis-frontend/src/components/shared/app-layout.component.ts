@@ -1545,6 +1545,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   /** Bannière abonnement : ambre J-30 (admins société), rouge J-7 / grâce (tous). */
   subBannerVisible(b: SubscriptionBanner | null): boolean {
+    // Pas de module abonnement sur ce déploiement : pas de bandeau d'échéance.
+    if (!this.subscriptionModuleEnabled) return false;
     if (!b) return false;
     if (b.level === 'danger') return true;
     if (b.level === 'warning') {
@@ -1867,8 +1869,17 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
    * règle corrigée est vérifiée — société installée : masqué ; compte GPA :
    * visible — et l'achat en ligne existe désormais derrière.)
    */
+  /**
+   * Module abonnement actif sur CE déploiement ? L'absence de clé vaut activé —
+   * seul un déploiement facturé hors application (Bougeo/DZ) pose
+   * `subscriptionModule: false` dans son environment.ts.
+   */
+  private readonly subscriptionModuleEnabled =
+    (environment as any).subscriptionModule !== false;
+
   canManageOwnSubscription(): boolean {
-    return this.permissionService.canManageOwnSubscription();
+    return this.subscriptionModuleEnabled
+        && this.permissionService.canManageOwnSubscription();
   }
 
   hasModule(moduleName: string): boolean {

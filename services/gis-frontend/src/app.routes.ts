@@ -66,6 +66,18 @@ const aiLandingEnabled = (environment as any).aiAssistantLanding === true;
 // serveur (l'endpoint répond 404) — masquer un bouton ne ferme pas une API.
 const selfSignupEnabled = (environment as any).selfSignup === true;
 
+// Le MODULE ABONNEMENT est lui aussi PAR DÉPLOIEMENT : écran de gestion,
+// entrée de menu et bandeau d'échéance. Certaines installations sont facturées
+// hors application (Bougeo/DZ) et n'ont rien à y faire.
+//
+// Ici l'absence de clé vaut ACTIVÉ, à l'inverse des autres drapeaux : le module
+// existe depuis toujours et la majorité des déploiements le veulent. Seul celui
+// qui n'en veut pas pose `subscriptionModule: false` dans son environment.ts.
+//
+// L'écran /abonnement-suspendu, lui, reste TOUJOURS présent : c'est le filet
+// qui explique la situation si un abonnement expire malgré tout.
+const subscriptionModuleEnabled = (environment as any).subscriptionModule !== false;
+
 export const routes: Routes = [
   // Public routes (no auth required)
   // When enabled, the AI automobile assistant is the first page users land on
@@ -119,7 +131,9 @@ export const routes: Routes = [
   { path: 'carburant', component: CarburantComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'carburant' } },
   
   // Subscription (always accessible)
-  { path: 'subscription', component: SubscriptionComponent, canActivate: [AuthGuard] },
+  ...(subscriptionModuleEnabled
+    ? [{ path: 'subscription', component: SubscriptionComponent, canActivate: [AuthGuard] }]
+    : []),
   
   // Monitoring module
   { path: 'monitoring', component: MonitoringComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'monitoring' } },
