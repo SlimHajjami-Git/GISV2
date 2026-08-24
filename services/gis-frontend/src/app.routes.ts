@@ -13,6 +13,8 @@ import { FranceLegalComponent } from './components/france/france-legal.component
 import { FranceNotFoundComponent } from './components/france/france-not-found.component';
 import { RegionService } from './services/region.service';
 import { LoginComponent } from './components/login.component';
+import { ForgotPasswordComponent } from './components/forgot-password.component';
+import { ResetPasswordComponent } from './components/reset-password.component';
 import { RegisterComponent } from './components/register.component';
 import { ConfirmEmailComponent } from './components/confirm-email.component';
 import { DashboardComponent } from './components/dashboard.component';
@@ -143,6 +145,11 @@ export const routes: Routes = [
   { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },
+  // Reinitialisation de mot de passe. TOUJOURS presentes, meme la ou
+  // l inscription libre est fermee : un utilisateur cree par un administrateur
+  // peut lui aussi perdre son mot de passe, et n aurait alors aucun recours.
+  { path: 'mot-de-passe-oublie', component: ForgotPasswordComponent },
+  { path: 'reinitialiser-mot-de-passe', component: ResetPasswordComponent },
   ...(selfSignupEnabled
     ? [
         { path: 'inscription', component: RegisterComponent },

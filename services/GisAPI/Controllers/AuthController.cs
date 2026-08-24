@@ -66,7 +66,8 @@ public class AuthController : ControllerBase
             request.CompanyName,
             request.Phone,
             request.AccountType ?? GisAPI.Application.Features.Auth.Commands.Register.AccountTypes.Individual,
-            request.FleetSizeRange));
+            request.FleetSizeRange,
+            request.Country));
 
         return Ok(result);
     }
@@ -101,6 +102,43 @@ public class AuthController : ControllerBase
         var result = await _mediator.Send(
             new GisAPI.Application.Features.Auth.Commands.ResendConfirmation.ResendConfirmationCommand(request.Email));
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Demande de réinitialisation de mot de passe.
+    ///
+    /// <para>Répond TOUJOURS 200 avec le même message, que l'adresse soit connue
+    /// ou non : distinguer les deux cas transformerait ce point d'entrée en
+    /// annuaire d'adresses possédant un compte.</para>
+    ///
+    /// <para>Contrairement à la confirmation d'inscription, ce point d'entrée
+    /// n'est PAS conditionné à l'inscription libre : un utilisateur créé par un
+    /// administrateur peut lui aussi perdre son mot de passe, et sur un
+    /// déploiement où l'inscription est fermée il n'aurait alors plus aucun
+    /// recours.</para>
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    public async Task<ActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Auth.Commands.ForgotPassword.ForgotPasswordCommand(request.Email));
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Pose le nouveau mot de passe à partir du jeton reçu par courriel.
+    /// Répond 400 si le jeton est inconnu, périmé ou déjà consommé.
+    /// </summary>
+    [AllowAnonymous]
+    [HttpPost("reset-password")]
+    public async Task<ActionResult> ResetPasswordWithToken([FromBody] ResetPasswordWithTokenRequest request)
+    {
+        var result = await _mediator.Send(
+            new GisAPI.Application.Features.Auth.Commands.ResetPassword.ResetPasswordWithTokenCommand(
+                request.Token, request.NewPassword));
+
+        return result.Success ? Ok(result) : BadRequest(result);
     }
 
     /// <summary>
@@ -321,11 +359,15 @@ public record RegisterRequest(
     string? CompanyName,
     string? Phone,
     string? AccountType,
-    string? FleetSizeRange = null);
+    string? FleetSizeRange = null,
+    string? Country = null);
 
 public record ConfirmEmailRequest(string Token);
 
 public record ResendConfirmationRequest(string Email);
+
+public record ForgotPasswordRequest(string Email);
+public record ResetPasswordWithTokenRequest(string Token, string NewPassword);
 public record RefreshRequest(string Token, string RefreshToken);
 public record VerifyPasswordRequest(string Password);
 // ChangePasswordRequest is defined in GisAPI.DTOs.AuthDTOs.cs

@@ -63,7 +63,7 @@ import { environment } from '../environments/environment';
               <input type="checkbox" [(ngModel)]="rememberMe" name="rememberMe" />
               <span>Se souvenir de moi</span>
             </label>
-            <a href="#" class="link">Mot de passe oublié ?</a>
+            <a routerLink="/mot-de-passe-oublie" class="link">Mot de passe oublié ?</a>
           </div>
 
           @if (errorMessage) {

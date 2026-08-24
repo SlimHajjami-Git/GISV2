@@ -374,6 +374,11 @@ public class GisDbContext : DbContext, IGisDbContext
         // « EmailVerificationToken » en base et échouerait à la première requête.
         modelBuilder.Entity<User>().Property(u => u.EmailVerificationToken).HasColumnName("email_verification_token").HasMaxLength(128);
         modelBuilder.Entity<User>().Property(u => u.EmailVerificationExpiresAt).HasColumnName("email_verification_expires_at");
+        // Réinitialisation de mot de passe — même remarque que ci-dessus : sans
+        // ces deux lignes, EF chercherait « PasswordResetToken » et la
+        // fonctionnalité échouerait à la première requête, pas à la compilation.
+        modelBuilder.Entity<User>().Property(u => u.PasswordResetToken).HasColumnName("password_reset_token").HasMaxLength(128);
+        modelBuilder.Entity<User>().Property(u => u.PasswordResetExpiresAt).HasColumnName("password_reset_expires_at");
 
         // Role configuration is handled by RoleConfiguration.cs
 

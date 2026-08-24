@@ -34,6 +34,18 @@ public class User : TenantEntity
     public string? EmailVerificationToken { get; set; }
     public DateTime? EmailVerificationExpiresAt { get; set; }
 
+    // ── Réinitialisation de mot de passe (« mot de passe oublié ») ──
+    //
+    // Même patron que ci-dessus, et pour la même raison : un compte n'a qu'une
+    // demande valide à la fois, et en émettre une nouvelle doit invalider la
+    // précédente — ce qu'un simple écrasement obtient.
+    //
+    // Le jeton est à USAGE UNIQUE : il est effacé dès qu'il a servi, pour qu'un
+    // lien retrouvé dans une boîte mail des mois plus tard ne rouvre pas le
+    // compte.
+    public string? PasswordResetToken { get; set; }
+    public DateTime? PasswordResetExpiresAt { get; set; }
+
     // Module permissions (per-user access control)
     public string AccessLevel { get; set; } = "user"; // "admin" or "user"
     public bool CanMonitoring { get; set; } = true;

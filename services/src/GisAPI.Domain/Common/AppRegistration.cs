@@ -41,6 +41,15 @@ public static class AppRegistration
     /// Durée de validité du lien de confirmation d'adresse email, en heures.
     /// </summary>
     public static int EmailConfirmationHours { get; set; } = 48;
+
+    /// <summary>
+    /// Durée de validité d'un lien de réinitialisation de mot de passe.
+    ///
+    /// Volontairement BEAUCOUP plus courte que la confirmation d'adresse : ce
+    /// lien-ci donne accès au compte, il ne doit pas traîner une journée dans
+    /// une boîte mail.
+    /// </summary>
+    public static int PasswordResetMinutes { get; set; } = 60;
 }
 
 /// <summary>
