@@ -500,72 +500,10 @@ type NotifBucket = Notification | NotifThreadGroup;
         </div>
       </nav>
 
-      <!-- RAIL LATÉRAL + CONTENU
-           Chaque entrée est gardée par hasModule(), exactement comme la barre
-           du haut : un rail écrit en dur proposerait des modules non souscrits,
-           et l'utilisateur serait renvoyé par FeatureGuard sans comprendre. -->
-      <div class="body-row">
-        <aside class="side-rail" [class.collapsed]="railCollapsed" aria-label="Navigation principale">
-          <div class="rail-inner">
-            <nav class="rail-nav">
-              <a *ngIf="hasModule('dashboard')" [routerLink]="['/dashboard']" routerLinkActive="on" class="rail-link" title="Tableau de bord">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>
-                <span>Tableau de bord</span>
-              </a>
-              <a *ngIf="hasModule('vehicles')" [routerLink]="['/vehicles']" routerLinkActive="on" class="rail-link" title="Véhicules">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 13h18M5 13l1.6-5.2A2 2 0 0 1 8.5 6.4h7a2 2 0 0 1 1.9 1.4L19 13v5h-2.2v-2H7.2v2H5z"/><circle cx="7.8" cy="16" r="1.1"/><circle cx="16.2" cy="16" r="1.1"/></svg>
-                <span>Véhicules</span>
-              </a>
-              <a *ngIf="hasModule('monitoring')" [routerLink]="['/monitoring']" routerLinkActive="on" class="rail-link" title="Carte">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg>
-                <span>Carte</span>
-              </a>
-              <a *ngIf="hasModule('tours')" [routerLink]="['/tournees']" routerLinkActive="on" class="rail-link" title="Exploitation">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="6.5" r="2.3"/><circle cx="18" cy="17.5" r="2.3"/><path d="M8.3 6.5h5.2a3.2 3.2 0 0 1 0 6.4h-3a3.2 3.2 0 0 0 0 6.4h5.2"/></svg>
-                <span>Exploitation</span>
-              </a>
-              <a *ngIf="hasModule('maintenance')" [routerLink]="['/entretien-programmable']" routerLinkActive="on" class="rail-link" title="Maintenance">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.7 6.3a4 4 0 0 0 4.6 5.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3a4 4 0 0 0-1.8-2.9z"/></svg>
-                <span>Maintenance</span>
-              </a>
-              <a *ngIf="hasModule('costs')" [routerLink]="['/depenses']" routerLinkActive="on" class="rail-link" title="Finances">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.2v9.6M14.4 9.6a2.6 2.6 0 0 0-2.4-1.2c-1.5 0-2.5.8-2.5 2s1 1.8 2.5 2 2.6.8 2.6 2-1.1 2-2.6 2a2.7 2.7 0 0 1-2.5-1.3"/></svg>
-                <span>Finances</span>
-              </a>
-              <a *ngIf="hasModule('accidents')" [routerLink]="['/accident-reports']" routerLinkActive="on" class="rail-link" title="Incidents">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.2 21 19H3z"/><path d="M12 10v4"/><circle cx="12" cy="16.6" r=".9" fill="currentColor" stroke="none"/></svg>
-                <span>Incidents</span>
-              </a>
-              <a *ngIf="hasModule('reports')" [routerLink]="['/reports']" routerLinkActive="on" class="rail-link" title="Rapports">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3.5h7.5L18 8v12.5H6z"/><path d="M13.5 3.5V8H18M9 12.5h6M9 16h4"/></svg>
-                <span>Rapports</span>
-              </a>
-              <a *ngIf="hasModule('settings')" [routerLink]="['/settings']" routerLinkActive="on" class="rail-link" title="Paramètres">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2.8"/><path d="M19.2 14.2a1.5 1.5 0 0 0 .3 1.7l.1.1a1.8 1.8 0 1 1-2.6 2.6l-.1-.1a1.5 1.5 0 0 0-2.5 1v.3a1.8 1.8 0 1 1-3.6 0v-.2a1.5 1.5 0 0 0-2.6-1l-.1.1a1.8 1.8 0 1 1-2.6-2.6l.1-.1a1.5 1.5 0 0 0-1-2.5H4a1.8 1.8 0 1 1 0-3.6h.2a1.5 1.5 0 0 0 1-2.6l-.1-.1a1.8 1.8 0 1 1 2.6-2.6l.1.1a1.5 1.5 0 0 0 2.5-1V4a1.8 1.8 0 1 1 3.6 0v.2a1.5 1.5 0 0 0 2.5 1l.1-.1a1.8 1.8 0 1 1 2.6 2.6l-.1.1a1.5 1.5 0 0 0 1 2.5h.3a1.8 1.8 0 1 1 0 3.6h-.2a1.5 1.5 0 0 0-1.4 1z"/></svg>
-                <span>Paramètres</span>
-              </a>
-            </nav>
-
-            <button type="button" class="rail-toggle" (click)="toggleRail()"
-                    [attr.aria-expanded]="!railCollapsed"
-                    [title]="railCollapsed ? 'Déployer le menu' : 'Réduire le menu'">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 7.5 10 12l4.5 4.5"/></svg>
-              <span>Réduire</span>
-            </button>
-
-            <div class="rail-brand">
-              <svg viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                <path d="M25.5 8A11 11 0 1 0 25.5 24" stroke="url(#calypsoPin)" stroke-width="6" stroke-linecap="round"/>
-              </svg>
-              <span><b>Calypso</b><i>Intelligence in Motion</i></span>
-            </div>
-          </div>
-        </aside>
-
-        <main class="main-content">
-          <ng-content></ng-content>
-        </main>
-      </div>
+      <!-- MAIN CONTENT AREA -->
+      <main class="main-content">
+        <ng-content></ng-content>
+      </main>
 
       <!-- Chat Widget -->
       <app-chat></app-chat>
@@ -1304,75 +1242,8 @@ type NotifBucket = Notification | NotifThreadGroup;
     }
 
     /* ===== MAIN CONTENT ===== */
-    /* ===== RAIL LATÉRAL =====
-       Posé dans le flux, à côté du contenu, plutôt qu'en position:fixed : les
-       bandeaux d'alerte au-dessus de la barre du haut décalent tout le gabarit,
-       et un rail fixé se serait retrouvé à cheval dessus. Le collant est porté
-       par l'intérieur, pour que le rail reste visible sur les pages longues. */
-    .body-row { display: flex; flex: 1; min-height: 0; }
-    .side-rail {
-      flex: none; width: 230px;
-      background: var(--bg-nav);
-      border-right: 1px solid var(--border-color);
-      transition: width .18s ease;
-    }
-    .side-rail.collapsed { width: 62px; }
-    .rail-inner {
-      position: sticky; top: 42px; height: calc(100vh - 42px);
-      display: flex; flex-direction: column; gap: 4px;
-      padding: 12px 10px 14px; overflow-y: auto; overflow-x: hidden;
-    }
-    .rail-nav { display: flex; flex-direction: column; gap: 2px; }
-    .rail-link {
-      display: flex; align-items: center; gap: 12px;
-      padding: 9px 11px; border-radius: 9px;
-      color: var(--text-secondary); text-decoration: none;
-      font-size: 13px; font-weight: 600; white-space: nowrap;
-      transition: background .15s, color .15s;
-    }
-    .rail-link svg {
-      width: 19px; height: 19px; flex: none;
-      fill: none; stroke: currentColor; stroke-width: 1.7;
-      stroke-linecap: round; stroke-linejoin: round;
-    }
-    .rail-link:hover { background: var(--bg-hover); color: var(--text-primary); }
-    .rail-link.on { background: color-mix(in srgb, var(--primary) 14%, transparent); color: var(--primary); }
-    .rail-toggle {
-      margin-top: auto; display: flex; align-items: center; gap: 12px;
-      padding: 9px 11px; border-radius: 9px; border: 0; background: none;
-      color: var(--text-muted); font-size: 12.5px; font-weight: 600;
-      cursor: pointer; white-space: nowrap; font-family: inherit;
-    }
-    .rail-toggle:hover { background: var(--bg-hover); color: var(--text-primary); }
-    .rail-toggle svg {
-      width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor;
-      stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
-      transition: transform .18s ease;
-    }
-    .side-rail.collapsed .rail-toggle svg { transform: rotate(180deg); }
-    .rail-brand {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 11px 2px; margin-top: 10px;
-      border-top: 1px solid var(--border-color);
-    }
-    .rail-brand svg { width: 24px; height: 24px; flex: none; }
-    .rail-brand span { display: flex; flex-direction: column; line-height: 1.25; white-space: nowrap; }
-    .rail-brand b { font-size: 13px; font-weight: 700; color: var(--text-primary); }
-    .rail-brand i { font-size: 10.5px; font-style: normal; color: var(--text-muted); }
-    /* Replié : seules les icônes restent, centrées. */
-    .side-rail.collapsed .rail-link span,
-    .side-rail.collapsed .rail-toggle span,
-    .side-rail.collapsed .rail-brand span { display: none; }
-    .side-rail.collapsed .rail-link,
-    .side-rail.collapsed .rail-toggle,
-    .side-rail.collapsed .rail-brand { justify-content: center; padding-left: 0; padding-right: 0; }
-    /* Sous 1024px l'écran est trop étroit pour deux navigations : la barre du
-       haut suffit, et le rail disparaît plutôt que de rogner le contenu. */
-    @media (max-width: 1024px) { .side-rail { display: none; } }
-
     .main-content {
       flex: 1;
-      min-width: 0;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -1615,18 +1486,6 @@ type NotifBucket = Notification | NotifThreadGroup;
 export class AppLayoutComponent implements OnInit, OnDestroy {
   /** Brand name shown in the navbar — per-deployment (Calypso / Bougeo / …). */
   readonly brandName = environment.brandName;
-
-  /**
-   * Rail latéral replié ou déployé. Le choix est mémorisé : c'est une
-   * préférence d'espace de travail, et la redemander à chaque page serait
-   * pénible pour quelqu'un qui passe la journée dans l'application.
-   */
-  railCollapsed = localStorage.getItem('app_rail_collapsed') === '1';
-
-  toggleRail(): void {
-    this.railCollapsed = !this.railCollapsed;
-    localStorage.setItem('app_rail_collapsed', this.railCollapsed ? '1' : '0');
-  }
 
   /** Impersonation ("voir en tant que") — bandeau + retour super-admin. */
   isImpersonating(): boolean { return this.authService.isImpersonating(); }
