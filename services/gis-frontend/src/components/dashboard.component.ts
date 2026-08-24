@@ -141,7 +141,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
       <ng-container *ngIf="hasGps">
       <!-- ── Flotte en direct (Leaflet) ── -->
-      <section class="card span-8 acc-indigo anim" style="--i:1">
+      <section class="card span-8 acc-indigo anim ord-1" style="--i:1">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Temps réel</div><h2>Flotte en direct</h2></div>
@@ -159,7 +159,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── État de la flotte (donut) ── -->
-      <section class="card acc-green anim" style="--i:2">
+      <section class="card acc-green anim ord-2" style="--i:2">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9"/><path d="M12 3a9 9 0 0 1 9 9h-9z"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Flotte</div><h2>État de la flotte</h2></div>
@@ -189,7 +189,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── Consommation carburant (graphique) ── -->
-      <section class="card span-8 acc-cyan anim" style="--i:3">
+      <section class="card acc-cyan anim ord-3" style="--i:3">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5s-6 6.2-6 11a6 6 0 0 0 12 0c0-4.8-6-11-6-11z"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Carburant</div><h2>Consommation carburant</h2></div>
@@ -254,7 +254,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </ng-container>
 
       <!-- ── Dépenses ── -->
-      <section class="card acc-indigo spend anim" style="--i:5">
+      <section class="card acc-indigo spend anim ord-4" style="--i:5">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6.5H9.8a2.8 2.8 0 0 0 0 5.6h4.4a2.8 2.8 0 0 1 0 5.6H6.5"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Finances</div><h2>Dépenses</h2></div>
@@ -304,7 +304,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── Alertes ── -->
-      <section class="card acc-red anim" style="--i:8">
+      <section class="card acc-red anim ord-5" style="--i:8">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8v.2"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Sécurité</div><h2>Alertes</h2></div>
@@ -677,6 +677,18 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       border-radius:0 3px 3px 0;background:var(--accent,var(--primary));
     }
     .span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}
+
+    /* Ordre de la maquette : carte + camembert, puis consommation, dépenses et
+       alertes sur une même rangée de trois. On agit par la propriete order plutot qu en
+       déplaçant le balisage — ces cartes vivent dans des ng-container
+       conditionnels (hasGps), et les sortir de leur bloc changerait les
+       conditions dans lesquelles elles s'affichent. */
+    .bento .card{order:6}
+    .bento .ord-1{order:1}
+    .bento .ord-2{order:2}
+    .bento .ord-3{order:3}
+    .bento .ord-4{order:4}
+    .bento .ord-5{order:5}
 
     .acc-indigo{--accent:var(--acc-indigo);--accent-ink:var(--acc-indigo-ink)}
     .acc-green {--accent:var(--acc-green); --accent-ink:var(--acc-green-ink)}

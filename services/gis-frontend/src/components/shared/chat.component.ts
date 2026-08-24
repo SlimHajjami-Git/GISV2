@@ -1,7 +1,8 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, filter } from 'rxjs';
+import { NavigationEnd, Router } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SignalRService } from '../../services/signalr.service';
 
@@ -526,6 +527,11 @@ export class ChatComponent implements OnInit, OnDestroy {
   @ViewChild('aiMessagesArea') aiMessagesArea?: ElementRef;
 
   isOpen = false;
+
+  /** Refus explicite du panneau ancre, retenu d une session a l autre. */
+  private static readonly DISMISSED_KEY = 'ai_panel_dismissed';
+
+  private navSub?: Subscription;
   activeTab: 'chat' | 'ai' = 'chat';
   activeUser: ChatUser | null = null;
   users: ChatUser[] = [];
@@ -558,7 +564,8 @@ export class ChatComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private signalRService: SignalRService,
     private cdr: ChangeDetectorRef,
-    private ngZone: NgZone
+    private ngZone: NgZone,
+    private router: Router
   ) {}
 
   ngOnInit() {
@@ -574,12 +581,18 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.refreshInterval = setInterval(() => {
       if (this.isOpen) this.loadUsers();
     }, 30000);
+
+    this.openAssistantOnDashboard();
+    this.navSub = this.router.events
+      .pipe(filter(e => e instanceof NavigationEnd))
+      .subscribe(() => this.openAssistantOnDashboard());
   }
 
   ngOnDestroy() {
     if (this.refreshInterval) clearInterval(this.refreshInterval);
     this.chatSub?.unsubscribe();
     this.readSub?.unsubscribe();
+    this.navSub?.unsubscribe();
     // Le panneau disparaît avec le composant : la place qu'il réservait dans
     // le contenu doit être rendue, sinon la page garde une marge fantôme.
     document.body.classList.remove('chat-docked');
@@ -593,6 +606,27 @@ export class ChatComponent implements OnInit, OnDestroy {
    */
   private reflectDockedState(): void {
     document.body.classList.toggle('chat-docked', this.isOpen);
+  }
+
+  /**
+   * Sur le tableau de bord, l'assistant se présente OUVERT : la maquette en
+   * fait une colonne de l'écran, pas une bulle qu'il faut deviner.
+   *
+   * <p>Trois garde-fous. Il ne s'ouvre que sur le tableau de bord — occuper
+   * 384 px sur toutes les pages, y compris la carte plein écran, serait
+   * hostile. Une fermeture est retenue : quelqu'un qui l'a écarté ne veut pas
+   * le voir resurgir à chaque visite. Et sous 1280 px il n'apparaît pas de
+   * lui-même, l'écran étant trop étroit pour deux colonnes.</p>
+   */
+  private openAssistantOnDashboard(): void {
+    if (this.isOpen) return;
+    if (localStorage.getItem(ChatComponent.DISMISSED_KEY) === '1') return;
+    if (!this.router.url.split('?')[0].startsWith('/dashboard')) return;
+    if (window.innerWidth < 1281) return;
+
+    this.isOpen = true;
+    this.switchToAi();
+    this.reflectDockedState();
   }
 
   private setupSignalR() {
@@ -694,6 +728,9 @@ export class ChatComponent implements OnInit, OnDestroy {
   toggleChat() {
     this.isOpen = !this.isOpen;
     this.reflectDockedState();
+    // Une fermeture est un refus : on la retient, pour que le panneau ne
+    // resurgisse pas a chaque retour sur le tableau de bord.
+    localStorage.setItem(ChatComponent.DISMISSED_KEY, this.isOpen ? '0' : '1');
     if (this.isOpen) {
       this.activeUser = null;
       this.aiActiveVehicle = null;
