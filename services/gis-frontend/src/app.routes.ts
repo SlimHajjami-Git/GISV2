@@ -2,7 +2,15 @@ import { Routes } from '@angular/router';
 import { environment } from './environments/environment';
 import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
-import { FranceLandingComponent } from './components/france-landing.component';
+import { FranceShellComponent } from './components/france/france-shell.component';
+import { FranceHomeComponent } from './components/france/france-home.component';
+import { FranceFeaturesComponent } from './components/france/france-features.component';
+import { FrancePricingComponent } from './components/france/france-pricing.component';
+import { FranceAutoComponent } from './components/france/france-auto.component';
+import { FranceContactComponent } from './components/france/france-contact.component';
+import { FrancePrivacyComponent } from './components/france/france-privacy.component';
+import { FranceLegalComponent } from './components/france/france-legal.component';
+import { FranceNotFoundComponent } from './components/france/france-not-found.component';
 import { RegionService } from './services/region.service';
 import { LoginComponent } from './components/login.component';
 import { RegisterComponent } from './components/register.component';
@@ -80,12 +88,19 @@ const selfSignupEnabled = (environment as any).selfSignup === true;
 // qui explique la situation si un abonnement expire malgré tout.
 const subscriptionModuleEnabled = (environment as any).subscriptionModule !== false;
 
-// VITRINE EUROPÉENNE — décidée à l'exécution, pas au déploiement.
+// VITRINE EUROPÉENNE — décidée par le NOM DE DOMAINE (environment.europeanHostnames).
 //
-// Un visiteur détecté en Europe reçoit le site public France ; partout ailleurs
-// l'accueil habituel ne bouge pas. La détection se fait sur le FUSEAU HORAIRE
-// du navigateur, jamais sur l'adresse IP : une géolocalisation par IP serait un
-// traitement de donnée personnelle, sur le site même qui promet de les protéger.
+// Une première version se fiait au fuseau horaire du navigateur. C'était faux,
+// et démontré en production : la Tunisie est à UTC+1 et le sélecteur Windows
+// propose en tête « (UTC+01:00) Bruxelles, Copenhague, Madrid, Paris ». Un poste
+// tunisien réglé ainsi se déclare Europe/Paris — les utilisateurs tunisiens
+// recevaient la vitrine France. Le fuseau ne dit pas où est le visiteur, il dit
+// comment sa machine a été réglée.
+//
+// L'adresse IP répondrait à la bonne question mais c'est une donnée personnelle.
+// Le domaine, lui, ne décrit personne et ne se trompe pas : quand un domaine
+// français pointera ici, il suffira de l'ajouter à la liste. Tant qu'elle est
+// vide, la vitrine reste joignable par sa propre adresse, /fr.
 //
 // Le service est instancié directement — la table de routes est évaluée au
 // chargement du module, avant que l'injecteur d'Angular n'existe. Le service
@@ -99,14 +114,32 @@ export const routes: Routes = [
   // landing stays reachable at /accueil.
   {
     path: '',
-    component: franceSiteForVisitor
-      ? FranceLandingComponent
-      : (aiLandingEnabled ? AiLandingComponent : LandingComponent)
+    ...(franceSiteForVisitor
+      ? { redirectTo: 'fr', pathMatch: 'full' as const }
+      : { component: aiLandingEnabled ? AiLandingComponent : LandingComponent })
   },
-  // Adresse STABLE de la vitrine France. Ce n'est pas un confort de recette :
-  // un robot d'indexation explore depuis les États-Unis et ne déclenchera
-  // jamais la détection — sans cette URL, la vitrine ne serait pas référencée.
-  { path: 'fr', component: FranceLandingComponent },
+  // Le site commercial France : une coque (en-tête, pied de page, feuille de
+  // style) et huit pages enfants, conformément au cahier des charges. Elles
+  // vivent sous /fr et non à la racine pour qu'il n'existe qu'UNE adresse par
+  // page : deux URL servant le même contenu se pénalisent mutuellement au
+  // référencement, et le cahier des charges pose des exigences SEO précises.
+  {
+    path: 'fr',
+    component: FranceShellComponent,
+    children: [
+      { path: '', component: FranceHomeComponent },
+      { path: 'fonctionnalites', component: FranceFeaturesComponent },
+      { path: 'tarifs', component: FrancePricingComponent },
+      { path: 'calypso-auto', component: FranceAutoComponent },
+      { path: 'contact', component: FranceContactComponent },
+      { path: 'confidentialite', component: FrancePrivacyComponent },
+      { path: 'mentions-legales', component: FranceLegalComponent },
+      // Une adresse inconnue SOUS /fr doit rester dans le site France, avec sa
+      // mise en page : la renvoyer vers la 404 générale ferait sortir le
+      // visiteur de la vitrine sans qu'il comprenne pourquoi.
+      { path: '**', component: FranceNotFoundComponent }
+    ]
+  },
   { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },

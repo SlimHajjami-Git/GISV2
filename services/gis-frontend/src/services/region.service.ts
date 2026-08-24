@@ -1,23 +1,31 @@
 import { Injectable } from '@angular/core';
+import { environment } from '../environments/environment';
 
 export type Region = 'europe' | 'default';
 
 /**
- * Détermine si le visiteur se trouve en Europe, pour décider quelle vitrine
- * publique lui présenter.
+ * Décide quelle vitrine publique présenter : la vitrine commerciale France ou
+ * l'accueil habituel.
  *
- * <p><b>Pourquoi le fuseau horaire et non l'adresse IP.</b> Une géolocalisation
- * par IP est un traitement de donnée personnelle : il faudrait la déclarer, la
- * justifier et la faire reposer sur un prestataire tiers — sur le site même qui
- * promet de protéger les données. Le fuseau horaire est lu dans le navigateur,
- * ne sort jamais du poste, n'identifie personne et ne coûte aucun appel réseau.
- * Il sépare parfaitement <code>Europe/Paris</code> de <code>Africa/Tunis</code>,
- * qui est le seul cas qui nous occupe aujourd'hui.</p>
+ * <p><b>Le signal est le nom de domaine, et lui seul.</b> Une première version
+ * se fiait au fuseau horaire du navigateur. C'était faux, et démontré en
+ * production : la Tunisie est à UTC+1 et le sélecteur Windows met en tête
+ * « (UTC+01:00) Bruxelles, Copenhague, Madrid, Paris ». Un poste tunisien
+ * réglé ainsi se déclare <code>Europe/Paris</code> et recevait la vitrine
+ * France. Le fuseau ne dit pas où se trouve le visiteur, il dit comment sa
+ * machine a été configurée — ce n'est pas la même question.</p>
  *
- * <p><b>Ce que ce service ne fait PAS.</b> Il ne décide de rien une fois
- * l'utilisateur connecté. À partir de là, c'est le pays de la société qui fait
- * foi : sans quoi un client français en déplacement à Tunis verrait son
- * application changer d'apparence en cours de route.</p>
+ * <p>L'adresse IP répondrait, elle, à la bonne question, mais c'est une donnée
+ * personnelle : il faudrait la déclarer et la confier à un tiers, sur le site
+ * même qui promet de protéger les données. Le domaine, lui, ne décrit personne
+ * et ne se trompe jamais : quand un domaine français pointera vers ce serveur,
+ * il suffira de l'ajouter à <code>europeanHostnames</code>. En attendant, la
+ * vitrine reste joignable par son adresse propre, <code>/fr</code>.</p>
+ *
+ * <p><b>Hors de la page publique, ce service ne décide de rien.</b> Une fois
+ * l'utilisateur connecté, c'est le pays de sa société qui fait foi : sans quoi
+ * un client français en déplacement à Tunis verrait son application changer
+ * d'apparence en cours de route.</p>
  */
 @Injectable({ providedIn: 'root' })
 export class RegionService {
@@ -25,14 +33,8 @@ export class RegionService {
 
   private cached: Region | null = null;
 
-  /**
-   * Région du visiteur. Le résultat est mis en cache : la valeur ne peut pas
-   * changer pendant une visite, et on évite de relire le fuseau à chaque appel.
-   */
   get region(): Region {
-    if (this.cached === null) {
-      this.cached = this.resolve();
-    }
+    if (this.cached === null) this.cached = this.resolve();
     return this.cached;
   }
 
@@ -41,32 +43,20 @@ export class RegionService {
   }
 
   private resolve(): Region {
-    // 1. Forçage explicite — indispensable pour recetter les deux vitrines
-    //    depuis n'importe où. `?region=europe` dans l'URL, mémorisé ensuite.
+    // Forçage explicite, pour recetter les deux vitrines depuis n'importe où.
     const forced = this.readOverride();
     if (forced) return forced;
 
-    // 2. Fuseau horaire du navigateur.
-    const zone = this.timeZone();
-    if (zone.startsWith('Europe/')) return 'europe';
-    // Un fuseau africain ou asiatique tranche dans l'autre sens sans ambiguïté.
-    if (zone.startsWith('Africa/') || zone.startsWith('Asia/')) return 'default';
+    const host = this.hostname();
+    const listed = (environment.europeanHostnames ?? []).some(
+      h => host === h.toLowerCase() || host.endsWith('.' + h.toLowerCase()));
 
-    // 3. Repli sur la langue quand le fuseau ne dit rien d'utile (UTC, robots
-    //    d'indexation, navigateurs verrouillés). `fr-TN` reste tunisien.
-    const lang = (navigator.language || '').toLowerCase();
-    if (lang.endsWith('-tn') || lang.endsWith('-dz') || lang.endsWith('-ma')) return 'default';
-    if (lang.startsWith('fr') || lang.startsWith('de') || lang.startsWith('es')
-        || lang.startsWith('it') || lang.startsWith('nl') || lang.startsWith('pt')) {
-      return 'europe';
-    }
-
-    return 'default';
+    return listed ? 'europe' : 'default';
   }
 
-  private timeZone(): string {
+  private hostname(): string {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      return (window.location.hostname || '').toLowerCase();
     } catch {
       return '';
     }
@@ -83,7 +73,7 @@ export class RegionService {
       const stored = localStorage.getItem(RegionService.OVERRIDE_KEY);
       if (stored === 'europe' || stored === 'default') return stored;
     } catch {
-      // Navigation privée ou stockage refusé : on retombe sur la détection.
+      // Navigation privée ou stockage refusé : on retombe sur le domaine.
     }
     return null;
   }

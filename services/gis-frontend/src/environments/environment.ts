@@ -21,6 +21,15 @@ export const environment = {
   selfSignup: true,
   // Exemple de numéro affiché dans le formulaire d'inscription (indicatif TN).
   phonePlaceholder: '+216 20 000 000',
+  // Domaines qui servent la vitrine commerciale France a la racine. PER-DEPLOYMENT.
+  // Le NOM DE DOMAINE est le seul signal fiable : le fuseau horaire du visiteur
+  // ne dit pas ou il est, il dit comment sa machine a ete reglee — en Tunisie
+  // (UTC+1) Windows propose « Bruxelles, Copenhague, Madrid, Paris » en tete de
+  // liste, si bien que des postes tunisiens se declarent Europe/Paris. Tant
+  // qu aucun domaine .fr ne pointe ici, la liste reste vide et la vitrine
+  // France n est accessible que par son adresse /fr.
+  europeanHostnames: [] as string[],
+
   // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
   // Tunisian carriers here by default; the Algeria/Bougeo build replaces this
   // list with Mobilis / Djezzy / Ooredoo Algérie in its own copy of this file.
