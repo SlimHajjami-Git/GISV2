@@ -19,7 +19,7 @@ import { Component } from '@angular/core';
   selector: 'app-france-contact',
   standalone: true,
   template: `
-    <section class="band-sky tight">
+    <section class="band-glow tight">
       <div class="shell">
         <div class="sec-head rise">
           <h2>Contactez-nous</h2>
@@ -34,19 +34,19 @@ import { Component } from '@angular/core';
               mise en ligne publique de cette page. Ils ne sont pas inventés ici.
             </div>
             <div class="ci">
-              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD8" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></div>
               <div><h4>Courriel</h4><p>à communiquer</p></div>
             </div>
             <div class="ci">
-              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD8" stroke-width="2" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg></div>
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" aria-hidden="true"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg></div>
               <div><h4>Téléphone</h4><p>à communiquer</p></div>
             </div>
             <div class="ci">
-              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD8" stroke-width="2" aria-hidden="true"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" aria-hidden="true"><path d="M12 21s7-6.3 7-11a7 7 0 1 0-14 0c0 4.7 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg></div>
               <div><h4>Adresse</h4><p>à communiquer</p></div>
             </div>
             <div class="ci">
-              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1B4FD8" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+              <div class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
               <div><h4>Horaires</h4><p>à communiquer</p></div>
             </div>
           </div>
@@ -64,7 +64,7 @@ import { Component } from '@angular/core';
             <label for="c-msg">Message</label>
             <textarea id="c-msg" name="message" rows="6" placeholder="Votre message…"></textarea>
 
-            <button class="btn btn-primary" type="submit" style="width:100%">Envoyer le message</button>
+            <button class="btn btn-grad" type="submit" style="width:100%">Envoyer le message</button>
 
             @if (attempted) {
               <p class="legal-warn" style="margin-top:18px" role="status">

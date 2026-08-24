@@ -9,18 +9,19 @@ import { RouterLink } from '@angular/router';
  * mode annuel sont donc calculés, jamais saisis en dur, pour qu'ils ne
  * puissent pas diverger du taux affiché.</p>
  *
- * <p>Ce qui ne figure PAS ici est délibéré : durée de l'essai (le texte du
- * cahier des charges et les maquettes se contredisent, 14 jours contre
- * 7 jours), « sans engagement » et « sans carte bancaire ». Ce sont des
- * engagements commerciaux ; ils n'ont pas été validés, et une page publique
- * n'est pas l'endroit où l'on en fait l'hypothèse.</p>
+ * <p>« 7 jours gratuits », « sans carte bancaire » et « sans engagement »
+ * figurent sur l'accueil parce que la maquette de référence les porte et qu'il
+ * a été demandé de la recopier fidèlement. Ce sont des ENGAGEMENTS COMMERCIAUX,
+ * pas des éléments de mise en page : ils restent à confirmer avant toute mise
+ * en avant publique, et la durée d'essai contredit le texte du cahier des
+ * charges, qui annonce 14 jours. Cette page-ci n'avance donc aucune durée.</p>
  */
 @Component({
   selector: 'app-france-pricing',
   standalone: true,
   imports: [RouterLink],
   template: `
-    <section class="band-sky tight">
+    <section class="band-glow tight">
       <div class="shell">
         <div class="sec-head rise">
           <h2>Des tarifs simples et transparents</h2>
@@ -52,7 +53,7 @@ import { RouterLink } from '@angular/router';
               <li>Alertes intelligentes</li>
               <li>Assistance par courriel</li>
             </ul>
-            <a class="btn btn-ghost" routerLink="/inscription">Essayer gratuitement</a>
+            <a class="btn btn-line" routerLink="/inscription">Essayer gratuitement</a>
           </div>
 
           <div class="plan reco">
@@ -73,13 +74,13 @@ import { RouterLink } from '@angular/router';
               <li>Personnalisation avancée</li>
               <li>Assistance prioritaire</li>
             </ul>
-            <a class="btn btn-primary" routerLink="/inscription">Essayer gratuitement</a>
+            <a class="btn btn-grad" routerLink="/inscription">Essayer gratuitement</a>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="band-white tight">
+    <section class="band-2 tight">
       <div class="shell">
         <div class="sec-head rise">
           <h2>Questions fréquentes sur les tarifs</h2>
@@ -109,10 +110,10 @@ import { RouterLink } from '@angular/router';
       </div>
     </section>
 
-    <section class="band-navy">
+    <section class="band-glow">
       <div class="shell final">
         <h2>Prêt à simplifier la gestion de votre parc ?</h2>
-        <a class="btn btn-light" routerLink="/inscription">Essayer gratuitement</a>
+        <a class="btn btn-grad" routerLink="/inscription">Essayer gratuitement</a>
       </div>
     </section>
   `

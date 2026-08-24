@@ -6,6 +6,15 @@
     <base href="/">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Solution complète de gestion de parc automobile avec suivi GPS en temps réel" />
+    <!-- Manrope sert UNIQUEMENT au site commercial France (.fr). L'application
+         de gestion ne la référence nulle part : la charger ne change donc rien
+         à son apparence. On évite volontairement d'ajouter Inter, que le CSS de
+         l'application demande sans jamais l'avoir chargée — la fournir
+         maintenant modifierait le rendu de toute l'application. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap">
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
   </head>
   <body>

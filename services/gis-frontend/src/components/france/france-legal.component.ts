@@ -15,7 +15,7 @@ import { RouterLink } from '@angular/router';
   standalone: true,
   imports: [RouterLink],
   template: `
-    <section class="band-white tight">
+    <section class="band-2 tight">
       <div class="shell">
         <div class="legal">
           <h2>Mentions légales</h2>
