@@ -91,7 +91,11 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
     }
     .fr-hd-dot { width: 7px; height: 7px; border-radius: 50%; background: #34D399; flex: none; }
     .fr-hd a:focus-visible { outline: 2px solid #A78BFA; outline-offset: 3px; border-radius: 8px; }
-    @media (max-width: 1080px) {
+    /* Le menu tient jusqu a 900px. Il disparaissait a 1080, si bien que sur un
+       portable le bandeau se reduisait au logo et aux deux boutons — et ne
+       ressemblait plus du tout a celui des pages du site. */
+    @media (max-width: 1180px) { .fr-hd-nav { gap: 20px; } .fr-hd-bar { gap: 22px; } }
+    @media (max-width: 900px) {
       .fr-hd-nav .fr-hd-hide { display: none; }
       .fr-hd-bar { gap: 16px; }
     }

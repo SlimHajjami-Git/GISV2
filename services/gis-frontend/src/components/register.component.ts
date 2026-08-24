@@ -33,9 +33,6 @@ import { FranceHeaderComponent } from './france/france-header.component';
 
       <div class="auth-card">
         <div class="auth-header">
-          <div class="logo">
-            <img src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
-          </div>
           <h1>{{ submitted ? 'Vérifiez votre boîte mail' : 'Créer un compte' }}</h1>
           <p>{{ submitted ? 'Une dernière étape avant de commencer.' : trialDays + " jours d'essai — sans carte bancaire" }}</p>
         </div>
