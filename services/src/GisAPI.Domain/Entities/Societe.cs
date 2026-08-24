@@ -33,6 +33,21 @@ public class Societe : AuditableEntity
     public int? SubscriptionTypeId { get; set; }
     public SubscriptionType? SubscriptionType { get; set; }
 
+    /// <summary>
+    /// Tranche de véhicules déclarée à l'inscription (« 1-5 », « 6-20 »…).
+    /// Donnée commerciale destinée à qualifier le prospect ; elle n'a aucun
+    /// effet fonctionnel et ne limite rien.
+    ///
+    /// <para>On conserve le CODE de la tranche, pas un nombre : l'utilisateur
+    /// déclare un ordre de grandeur. Le décompte réel se lit dans
+    /// <c>vehicles</c>.</para>
+    ///
+    /// <para><c>null</c> pour toute société antérieure à ce champ, et pour les
+    /// clients d'API qui ne l'envoient pas.</para>
+    /// </summary>
+    [Column("fleet_size_range")]
+    public string? FleetSizeRange { get; set; }
+
     // Anti-doublon persistant pour l'envoi du rapport journalier : date du dernier
     // rapport deja envoye a cette societe. Survit aux redemarrages de l'API (evite
     // de renvoyer le rapport a tout le monde lors d'un deploiement apres 06:00).

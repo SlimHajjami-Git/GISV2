@@ -114,6 +114,13 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             BillingCycle = billingCycle,
             SubscriptionStatus = "active",
             NextPaymentAmount = plan.YearlyPrice,
+            // Tranche déclarée : conservée telle quelle si elle fait partie des
+            // valeurs connues, ignorée sinon. Une tranche fantaisiste vaut moins
+            // qu'une absence de tranche — et ne doit pas faire échouer une
+            // inscription pour une donnée purement commerciale.
+            FleetSizeRange = FleetSizeRanges.IsValid(request.FleetSizeRange)
+                ? request.FleetSizeRange
+                : null,
             Settings = new SocieteSettings()
         };
         _context.Societes.Add(societe);

@@ -65,7 +65,8 @@ public class AuthController : ControllerBase
             request.Password,
             request.CompanyName,
             request.Phone,
-            request.AccountType ?? GisAPI.Application.Features.Auth.Commands.Register.AccountTypes.Individual));
+            request.AccountType ?? GisAPI.Application.Features.Auth.Commands.Register.AccountTypes.Individual,
+            request.FleetSizeRange));
 
         return Ok(result);
     }
@@ -319,7 +320,8 @@ public record RegisterRequest(
     string Password,
     string? CompanyName,
     string? Phone,
-    string? AccountType);
+    string? AccountType,
+    string? FleetSizeRange = null);
 
 public record ConfirmEmailRequest(string Token);
 

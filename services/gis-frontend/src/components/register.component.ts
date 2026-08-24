@@ -118,6 +118,20 @@ import { environment } from '../environments/environment';
             </div>
           }
 
+          <!-- Tranche de véhicules : un ordre de grandeur, pas un décompte.
+               Posée à tout le monde — un particulier a lui aussi des véhicules,
+               et la question porte sur eux, pas sur une entreprise. -->
+          <div class="form-group">
+            <label for="fleetSize">Combien de véhicules gérez-vous ?</label>
+            <select id="fleetSize" name="fleetSize" [(ngModel)]="fleetSizeRange" required>
+              <option value="" disabled>Choisissez une tranche</option>
+              @for (r of fleetSizeOptions; track r) {
+                <option [value]="r">{{ r === '100+' ? '100 et plus' : r + ' véhicules' }}</option>
+              }
+            </select>
+            <small class="hint">Une estimation suffit — vous ajouterez vos véhicules ensuite.</small>
+          </div>
+
           <div class="form-group">
             <label for="phone">Téléphone <span class="optional">facultatif</span></label>
             <input type="tel" id="phone" name="phone" [(ngModel)]="phone" [placeholder]="phonePlaceholder" />
@@ -412,6 +426,10 @@ export class RegisterComponent {
   // pour que Bougeo/DZ reste inchangé sans toucher à sa copie locale.
   phonePlaceholder = (environment as any).phonePlaceholder || '+213 5 00 00 00 00';
 
+  /** Tranches proposées — mêmes valeurs que `FleetSizeRanges` côté serveur. */
+  readonly fleetSizeOptions = ['1-5', '6-20', '21-50', '51-100', '100+'];
+  fleetSizeRange = '';
+
   constructor(
     private router: Router,
     private authService: AuthService,
@@ -422,7 +440,10 @@ export class RegisterComponent {
     const base = this.firstName.trim().length > 0
       && this.lastName.trim().length > 0
       && this.email.trim().length > 0
-      && this.password.length >= 10;
+      && this.password.length >= 10
+      // Exigée à l'écran, facultative côté API : le serveur reste compatible
+      // avec les clients qui ne l'envoient pas (application mobile notamment).
+      && this.fleetSizeRange.length > 0;
     // Un professionnel doit nommer sa société ; un particulier n'a rien à saisir.
     return this.accountType === 'societe'
       ? base && this.companyName.trim().length > 0
@@ -450,6 +471,7 @@ export class RegisterComponent {
       // Le nom d'entreprise n'est transmis que par un professionnel : pour un
       // particulier il n'existe pas, et le serveur l'ignorerait de toute façon.
       companyName: this.accountType === 'societe' ? this.companyName.trim() : undefined,
+      fleetSizeRange: this.fleetSizeRange || undefined,
       phone: this.phone.trim() || undefined
     }).subscribe({
       next: (res) => {
