@@ -35,17 +35,7 @@ import { Subscription, filter } from 'rxjs';
       <header class="site">
         <div class="shell bar">
           <a class="brand" routerLink="/fr" aria-label="Calypso, accueil">
-            <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="cg" x1="2" y1="2" x2="30" y2="30">
-                  <stop offset="0" stop-color="#3B82F6"/>
-                  <stop offset="1" stop-color="#8B5CF6"/>
-                </linearGradient>
-              </defs>
-              <path d="M25.5 8A11 11 0 1 0 25.5 24" stroke="url(#cg)" stroke-width="6"
-                    stroke-linecap="round" fill="none"/>
-            </svg>
-            <span class="brand-word">CALYPSO</span>
+            <img class="mark" src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
           </a>
           <nav class="nav">
             <a class="hide-sm" routerLink="/fr/fonctionnalites" routerLinkActive="on">Fonctionnalités</a>
@@ -67,11 +57,7 @@ import { Subscription, filter } from 'rxjs';
           <div class="foot-grid">
             <div class="foot-brand">
               <a class="brand" routerLink="/fr">
-                <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-                  <path d="M25.5 8A11 11 0 1 0 25.5 24" stroke="url(#cg)" stroke-width="6"
-                        stroke-linecap="round" fill="none"/>
-                </svg>
-                <span class="brand-word">CALYPSO</span>
+                <img class="mark" src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
               </a>
               <p>La solution intelligente pour gérer votre parc automobile.</p>
             </div>
@@ -170,10 +156,9 @@ import { Subscription, filter } from 'rxjs';
     }
     .fr .bar { display: flex; align-items: center; gap: 34px; height: 78px; }
     .fr .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-    .fr .mark { width: 30px; height: 30px; flex-shrink: 0; }
-    .fr .brand-word {
-      color: #fff; font-size: 21px; font-weight: 800; letter-spacing: .06em;
-    }
+    .fr .mark { height: 30px; width: auto; flex-shrink: 0; display: block; }
+    /* Le mot « CALYPSO » fait partie du logo officiel : plus de texte separe. */
+    .fr .brand-word { color: #fff; font-size: 21px; font-weight: 800; letter-spacing: .06em; }
     .fr .nav { display: flex; gap: 30px; margin-left: auto; align-items: center; }
     .fr .nav a { color: var(--txt-soft); text-decoration: none; font-size: 14.5px; font-weight: 600; }
     .fr .nav a:hover { color: #fff; }
@@ -255,10 +240,8 @@ import { Subscription, filter } from 'rxjs';
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
     }
-    .fr .orbit-core .mark { width: 78px; height: 78px; }
-    .fr .orbit-core span {
-      font-size: 26px; font-weight: 800; letter-spacing: .15em; color: #fff;
-    }
+    .fr .orbit-core img { width: 230px; height: auto; display: block; }
+    .fr .orbit-core span { font-size: 26px; font-weight: 800; letter-spacing: .15em; color: #fff; }
     .fr .o-card {
       position: absolute; width: 30%; min-width: 172px;
       background: rgba(12,18,37,.88); border: 1px solid var(--line-2);
@@ -373,6 +356,12 @@ import { Subscription, filter } from 'rxjs';
     }
     .fr .tab:hover { color: #fff; border-color: var(--line-2); }
     .fr .tab[aria-selected="true"] { background: var(--grad); border-color: transparent; color: #fff; }
+    /* Offre unique : une seule carte, centree, plus large qu un demi-ecran
+       mais pas etalee — au-dela l oeil ne relie plus le prix a la liste. */
+    .fr .offer { max-width: 660px; margin: 0 auto; }
+    .fr .ticks.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; }
+    @media (max-width: 560px) { .fr .ticks.two { grid-template-columns: 1fr; } }
+
     .fr .plans { display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px; max-width: 1000px; margin: 0 auto; }
     .fr .plan {
       background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);

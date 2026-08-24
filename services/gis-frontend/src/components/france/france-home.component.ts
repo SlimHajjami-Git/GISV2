@@ -58,17 +58,7 @@ import { RouterLink } from '@angular/router';
           </div>
 
           <div class="orbit-core">
-            <svg class="mark" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="cg2" x1="2" y1="2" x2="30" y2="30">
-                  <stop offset="0" stop-color="#3B82F6"/>
-                  <stop offset="1" stop-color="#8B5CF6"/>
-                </linearGradient>
-              </defs>
-              <path d="M25.5 8A11 11 0 1 0 25.5 24" stroke="url(#cg2)" stroke-width="6"
-                    stroke-linecap="round" fill="none"/>
-            </svg>
-            <span>CALYPSO</span>
+            <img src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
           </div>
 
           <div class="o-card c1">

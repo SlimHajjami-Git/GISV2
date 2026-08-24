@@ -4,17 +4,16 @@ import { RouterLink } from '@angular/router';
 /**
  * Page 3 — Tarifs.
  *
- * <p>Les montants et les deux formules viennent de la planche du cahier des
- * charges. La remise annuelle y est annoncée à 20 % : les prix affichés en
- * mode annuel sont donc calculés, jamais saisis en dur, pour qu'ils ne
- * puissent pas diverger du taux affiché.</p>
+ * <p><b>Une seule offre, deux durées.</b> Les formules « Essentiel » et
+ * « Avancé » de la maquette ont été abandonnées : le prix ne dépend plus du
+ * périmètre fonctionnel mais de la durée d'engagement — 3 € par véhicule et
+ * par mois en annuel, 4 € en semestriel. Tout le produit est inclus dans les
+ * deux cas, ce qui rend la page beaucoup plus simple à lire et supprime la
+ * question « qu'est-ce que je perds si je prends la moins chère ».</p>
  *
- * <p>« 7 jours gratuits », « sans carte bancaire » et « sans engagement »
- * figurent sur l'accueil parce que la maquette de référence les porte et qu'il
- * a été demandé de la recopier fidèlement. Ce sont des ENGAGEMENTS COMMERCIAUX,
- * pas des éléments de mise en page : ils restent à confirmer avant toute mise
- * en avant publique, et la durée d'essai contredit le texte du cahier des
- * charges, qui annonce 14 jours. Cette page-ci n'avance donc aucune durée.</p>
+ * <p>La remise annoncée n'est pas saisie en dur : elle est calculée à partir
+ * des deux prix, pour qu'elle ne puisse jamais diverger de ce qui est
+ * réellement facturé.</p>
  */
 @Component({
   selector: 'app-france-pricing',
@@ -28,51 +27,44 @@ import { RouterLink } from '@angular/router';
           <p>Toutes les fonctionnalités incluses. Sans surprise.</p>
         </div>
 
-        <div class="tabs rise" role="tablist" aria-label="Périodicité de facturation">
+        <div class="tabs rise" role="tablist" aria-label="Durée d'engagement">
           <button class="tab" role="tab" type="button"
-                  [attr.aria-selected]="!annual" (click)="annual = false">Mensuel</button>
+                  [attr.aria-selected]="annual" (click)="annual = true">
+            Annuel — économisez {{ savingPct }} %
+          </button>
           <button class="tab" role="tab" type="button"
-                  [attr.aria-selected]="annual" (click)="annual = true">Annuel — économisez 20 %</button>
+                  [attr.aria-selected]="!annual" (click)="annual = false">
+            Semestriel
+          </button>
         </div>
 
-        <div class="plans rise">
-          <div class="plan">
-            <div class="term">Essentiel</div>
+        <div class="offer rise">
+          <div class="plan reco">
+            <div class="badge">TOUT INCLUS</div>
+            <div class="term">{{ annual ? 'Engagement annuel' : 'Engagement semestriel' }}</div>
             <div class="price">
-              <span class="n">{{ annual ? '2,40' : '3' }} €</span>
+              <span class="n">{{ annual ? 3 : 4 }} €</span>
               <span class="u">/ mois</span>
             </div>
             <p class="sub">par véhicule</p>
-            <p class="flex">{{ annual ? 'Facturé annuellement' : 'Facturé mensuellement' }}</p>
-            <ul class="ticks">
+            <p class="flex">
+              {{ annual ? 'Facturé une fois par an' : 'Facturé tous les six mois' }}
+            </p>
+
+            <p class="same">Tout le produit, sans option ni palier :</p>
+            <ul class="ticks two">
               <li>Utilisateurs illimités</li>
               <li>Entretiens et réparations</li>
               <li>Carburant et dépenses</li>
               <li>Suivi des échéances</li>
-              <li>Tableaux de bord</li>
+              <li>Tableaux de bord temps réel</li>
               <li>Alertes intelligentes</li>
-              <li>Assistance par courriel</li>
-            </ul>
-            <a class="btn btn-line" routerLink="/inscription">Essayer gratuitement</a>
-          </div>
-
-          <div class="plan reco">
-            <div class="badge">RECOMMANDÉ</div>
-            <div class="term">Avancé</div>
-            <div class="price">
-              <span class="n">{{ annual ? '3,20' : '4' }} €</span>
-              <span class="u">/ mois</span>
-            </div>
-            <p class="sub">par véhicule</p>
-            <p class="flex">{{ annual ? 'Facturé annuellement' : 'Facturé mensuellement' }}</p>
-            <p class="same">Tout ce que contient Essentiel, plus :</p>
-            <ul class="ticks">
               <li>Rapports avancés</li>
               <li>Export de données</li>
               <li>API et intégrations</li>
               <li>Gestion multi-sociétés</li>
-              <li>Personnalisation avancée</li>
-              <li>Assistance prioritaire</li>
+              <li>Application mobile</li>
+              <li>Assistance en français</li>
             </ul>
             <a class="btn btn-grad" routerLink="/inscription">Essayer gratuitement</a>
           </div>
@@ -87,18 +79,23 @@ import { RouterLink } from '@angular/router';
         </div>
         <div class="faq rise">
           <details>
-            <summary>Le prix dépend-il du nombre d'utilisateurs ?</summary>
-            <p class="ans">Non. La facturation se fait au véhicule, et le nombre
-               d'utilisateurs est illimité dans les deux formules — un chef de parc,
-               un comptable et un atelier peuvent travailler sur le même compte sans
-               coût supplémentaire.</p>
+            <summary>Quelle est la différence entre l'annuel et le semestriel ?</summary>
+            <p class="ans">La durée d'engagement, rien d'autre. Le produit est
+               identique dans les deux cas : c'est l'engagement plus long qui
+               fait baisser le prix mensuel de 4 € à 3 € par véhicule.</p>
           </details>
           <details>
-            <summary>Que contient exactement « toutes les fonctionnalités incluses » ?</summary>
-            <p class="ans">Les cinq univers du produit — entretiens, réparations,
-               carburant, dépenses et échéances — ainsi que les tableaux de bord et
-               les alertes. La formule Avancé y ajoute les rapports avancés, l'export,
-               les intégrations et la gestion multi-sociétés.</p>
+            <summary>Le prix dépend-il du nombre d'utilisateurs ?</summary>
+            <p class="ans">Non. La facturation se fait au véhicule, et le nombre
+               d'utilisateurs est illimité — un chef de parc, un comptable et un
+               atelier peuvent travailler sur le même compte sans coût
+               supplémentaire.</p>
+          </details>
+          <details>
+            <summary>Y a-t-il des fonctionnalités réservées à une formule plus chère ?</summary>
+            <p class="ans">Non, et c'est volontaire. Rapports avancés, export,
+               API, multi-sociétés : tout est inclus. Vous ne choisissez qu'une
+               durée.</p>
           </details>
           <details>
             <summary>Mes données m'appartiennent-elles ?</summary>
@@ -119,6 +116,20 @@ import { RouterLink } from '@angular/router';
   `
 })
 export class FrancePricingComponent {
-  /** Périodicité affichée. Le mensuel est le repère le plus lisible par défaut. */
-  annual = false;
+  /** L'annuel est proposé par défaut : c'est l'offre la plus avantageuse. */
+  annual = true;
+
+  private static readonly ANNUAL = 3;
+  private static readonly HALF_YEAR = 4;
+
+  /**
+   * Remise affichée sur l'onglet annuel. Calculée, jamais saisie : un taux
+   * écrit en dur finit toujours par contredire les prix le jour où l'un des
+   * deux bouge.
+   */
+  get savingPct(): number {
+    const a = FrancePricingComponent.ANNUAL;
+    const h = FrancePricingComponent.HALF_YEAR;
+    return Math.round((1 - a / h) * 100);
+  }
 }
