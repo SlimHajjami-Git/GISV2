@@ -1,4 +1,5 @@
 import { Component, NgZone } from '@angular/core';
+import { FranceHeaderComponent } from './france/france-header.component';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -29,7 +30,7 @@ interface AssistantResponse {
 @Component({
   selector: 'app-ai-landing',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, FranceHeaderComponent],
   template: `
   <div class="cockpit">
     <!-- ambient layers -->
@@ -49,34 +50,7 @@ interface AssistantResponse {
     </div>
 
     <!-- top bar -->
-    <header class="topbar">
-      <div class="brand">
-        <span class="logo">
-          <img src="/assets/calypso-logo.svg" alt="Calypso">
-        </span>
-        <div class="brand-txt">
-          <span class="brand-name">Calypso</span>
-          <span class="brand-badge">Assistant Auto · IA</span>
-        </div>
-      </div>
-      <div class="nav-actions">
-        @if (connected) {
-          <span class="chip-connected" [title]="userName">
-            <span class="cc-dot"></span>
-            <span class="cc-lbl">Connecté<span class="cc-name">{{ userName ? ' · ' + userName : '' }}</span></span>
-          </span>
-        } @else {
-          <button class="btn-login" (click)="goToLogin()">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            <span class="btn-login-lbl">Se connecter</span>
-          </button>
-        }
-        <button class="btn-calypso" (click)="goToCalypso()">
-          {{ connected ? 'Ouvrir Calypso' : 'Accéder à Calypso' }}
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </div>
-    </header>
+    <app-france-header [connected]="connected" [userName]="userName"></app-france-header>
 
     <!-- conversation -->
     <main class="stage" [class.chatting]="messages.length > 0">

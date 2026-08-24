@@ -5,6 +5,7 @@ import {
   NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet
 } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
+import { FranceHeaderComponent } from './france-header.component';
 
 /**
  * Coque du site commercial France : en-tête, pied de page, et la feuille de
@@ -28,25 +29,11 @@ import { Subscription, filter } from 'rxjs';
 @Component({
   selector: 'app-france-shell',
   standalone: true,
-  imports: [RouterLink, RouterLinkActive, RouterOutlet],
+  imports: [RouterLink, RouterLinkActive, RouterOutlet, FranceHeaderComponent],
   encapsulation: ViewEncapsulation.None,
   template: `
     <div class="fr">
-      <header class="site">
-        <div class="shell bar">
-          <a class="brand" routerLink="/fr" aria-label="Calypso, accueil">
-            <img class="mark" src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
-          </a>
-          <nav class="nav">
-            <a class="hide-sm" routerLink="/fr/fonctionnalites" routerLinkActive="on">Fonctionnalités</a>
-            <a class="hide-sm" routerLink="/fr/tarifs" routerLinkActive="on">Tarifs</a>
-            <a class="hide-sm" routerLink="/fr/calypso-auto" routerLinkActive="on">Calypso Auto</a>
-            <a class="hide-sm" routerLink="/fr/contact" routerLinkActive="on">Contact</a>
-            <a class="sep" routerLink="/login">Se connecter</a>
-            <a class="btn btn-grad btn-sm" routerLink="/inscription">ESSAYER GRATUITEMENT</a>
-          </nav>
-        </div>
-      </header>
+      <app-france-header></app-france-header>
 
       <main>
         <router-outlet></router-outlet>

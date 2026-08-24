@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
+import { FranceHeaderComponent } from './france/france-header.component';
 
 /**
  * Inscription libre — jumeau visuel de l'écran de connexion.
@@ -21,8 +22,9 @@ import { environment } from '../environments/environment';
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, FranceHeaderComponent],
   template: `
+    <app-france-header></app-france-header>
     <div class="auth-page">
       <div class="auth-bg">
         <div class="bg-glow"></div>
