@@ -290,7 +290,7 @@ export class AiLandingComponent {
   messages: ChatMessage[] = [];
 
   readonly suggestions = [
-    { q: 'Quelle voiture acheter avec un budget de 50 000 DT ?', icon: this.ico('car') },
+    { q: 'Comment bien choisir ma prochaine voiture ?', icon: this.ico('car') },
     { q: 'Mon voyant moteur est allumé, que faire ?', icon: this.ico('warn') },
     { q: 'Quand dois-je faire ma prochaine vidange ?', icon: this.ico('drop') },
     { q: 'Comment réduire ma consommation de carburant ?', icon: this.ico('fuel') },
@@ -433,7 +433,7 @@ export class AiLandingComponent {
   private respond(q: string): string {
     const s = q.toLowerCase();
     if (s.includes('achat') || s.includes('acheter') || s.includes('budget') || s.includes('occasion'))
-      return "Pour un conseil d'achat personnalisé (modèles adaptés, prix du marché tunisien, défauts à contrôler, revente), j'ai besoin de la connexion à l'IA qui est momentanément indisponible. Réessayez dans un instant — et préparez votre budget (DT) et votre usage (ville, route, famille, utilitaire). 🚗";
+      return "Pour un conseil d'achat personnalisé (modèles adaptés, défauts à contrôler, revente), j'ai besoin de la connexion à l'IA qui est momentanément indisponible. Réessayez dans un instant — et préparez votre budget et votre usage (ville, route, famille, utilitaire). 🚗";
     if (s.includes('vidange') || s.includes('huile'))
       return "En général : tous les 10 000–15 000 km (ou une fois par an) en essence, et 7 000–10 000 km en diesel — plus tôt en usage intensif. Le carnet d'entretien de votre modèle fait foi. 🔧";
     if (s.includes('voyant') || s.includes('warning') || (s.includes('moteur') && s.includes('allum')))
