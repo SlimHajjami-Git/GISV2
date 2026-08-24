@@ -259,3 +259,14 @@ body.no-animations .leaflet-zoom-animated {
   /* Hide the default Leaflet pointer arrow — it clashes with the chip look. */
   display: none;
 }
+
+/* ===== PANNEAU IA ANCRÉ =====
+   Le panneau d'assistance est ancré au bord droit, pas flottant. Au-delà de
+   1280 px on lui réserve sa colonne pour qu'il se pose À CÔTÉ du contenu ;
+   en dessous, l'écran est trop étroit pour deux colonnes et il se superpose,
+   comme le faisait l'ancienne fenêtre.
+   La règle vit ici et non dans le composant de discussion : `.main-content`
+   appartient au gabarit, un composant frère ne peut pas l'atteindre. */
+@media (min-width: 1281px) {
+  body.chat-docked .main-content { padding-right: 384px; }
+}
