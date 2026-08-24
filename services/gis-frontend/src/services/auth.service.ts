@@ -319,6 +319,8 @@ export class AuthService {
     password: string;
     accountType: 'particulier' | 'societe';
     companyName?: string;
+    /** Tranche déclarée : '1-5', '6-20', '21-50', '51-100', '100+'. */
+    fleetSizeRange?: string;
     phone?: string;
   }): Observable<{ email: string; message: string; emailSent: boolean }> {
     return this.http.post<{ email: string; message: string; emailSent: boolean }>(
