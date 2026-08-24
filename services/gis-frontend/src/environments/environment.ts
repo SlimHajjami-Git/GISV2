@@ -29,6 +29,10 @@ export const environment = {
   // qu aucun domaine .fr ne pointe ici, la liste reste vide et la vitrine
   // France n est accessible que par son adresse /fr.
   europeanHostnames: [] as string[],
+  // Pays preselectionne dans le formulaire d inscription (ISO 3166-1 alpha-2).
+  // PER-DEPLOYMENT : TN ici, FR sur un futur deploiement francais, DZ pour Bougeo.
+  // Son absence vaut TN, le pays historiquement servi.
+  defaultCountry: 'TN',
 
   // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
   // Tunisian carriers here by default; the Algeria/Bougeo build replaces this

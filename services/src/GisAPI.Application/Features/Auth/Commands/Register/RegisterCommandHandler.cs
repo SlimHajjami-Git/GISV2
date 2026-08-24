@@ -107,6 +107,11 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             Type = isCompany ? "transport" : "autre",
             Email = email,
             Phone = request.Phone,
+            // Un code pays inconnu ou absent laisse le defaut de l entite
+            // plutot que d ecrire une valeur fantaisiste en base.
+            Country = string.IsNullOrWhiteSpace(request.Country)
+                ? new Societe().Country
+                : request.Country.Trim().ToUpperInvariant(),
             SubscriptionTypeId = plan.Id,
             IsActive = true,
             SubscriptionStartedAt = now,

@@ -23,7 +23,14 @@ public record RegisterCommand(
     string? CompanyName,
     string? Phone,
     string AccountType = AccountTypes.Individual,
-    string? FleetSizeRange = null
+    string? FleetSizeRange = null,
+    /// <summary>
+    /// Code ISO 3166-1 alpha-2 du pays de la societe (FR, TN, DZ...).
+    /// Facultatif : les clients existants — application mobile comprise —
+    /// n envoient pas ce champ, et doivent continuer a pouvoir s inscrire.
+    /// Absent, le defaut de l entite Societe s applique.
+    /// </summary>
+    string? Country = null
 ) : ICommand<RegisterResult>;
 
 /// <summary>

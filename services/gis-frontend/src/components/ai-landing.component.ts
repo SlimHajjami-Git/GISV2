@@ -51,14 +51,8 @@ interface AssistantResponse {
     <!-- top bar -->
     <header class="topbar">
       <div class="brand">
-        <span class="logo" aria-hidden="true">
-          <svg width="34" height="34" viewBox="0 0 40 40" fill="none">
-            <rect width="40" height="40" rx="10" fill="url(#lg)"/>
-            <path d="M11 22c0-5 4-9 9-9s9 4 9 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
-            <circle cx="20" cy="27" r="2.6" fill="#fff"/>
-            <defs><linearGradient id="lg" x1="0" y1="0" x2="40" y2="40">
-              <stop stop-color="#2f6bff"/><stop offset="1" stop-color="#12d0ff"/></linearGradient></defs>
-          </svg>
+        <span class="logo">
+          <img src="/assets/calypso-logo.svg" alt="Calypso">
         </span>
         <div class="brand-txt">
           <span class="brand-name">Calypso</span>
@@ -193,6 +187,9 @@ interface AssistantResponse {
       padding:20px clamp(18px,4vw,54px); }
     .brand{ display:flex; align-items:center; gap:12px; }
     .logo{ display:grid; place-items:center; filter:drop-shadow(0 6px 18px rgba(47,107,255,.45)); }
+    /* Le logo officiel remplace la pastille en degrade ; l ombre portee est
+       conservee, elle le detache du fond nuit. */
+    .logo img{ height:34px; width:auto; display:block; }
     .brand-txt{ display:flex; flex-direction:column; line-height:1; }
     .brand-name{ font-family:'Sora',sans-serif; font-weight:800; font-size:20px; letter-spacing:-.01em; }
     .brand-badge{ margin-top:4px; font-family:'Rajdhani',sans-serif; font-weight:700; font-size:11px;

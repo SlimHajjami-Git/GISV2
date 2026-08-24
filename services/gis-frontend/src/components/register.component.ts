@@ -32,15 +32,7 @@ import { environment } from '../environments/environment';
       <div class="auth-card">
         <div class="auth-header">
           <div class="logo">
-            <span class="logo-icon">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 13l4 4L19 7"/>
-              </svg>
-            </span>
-            <div class="logo-text">
-              <span class="brand">{{ brand }}</span>
-              <span class="subtitle">Gestion de flotte</span>
-            </div>
+            <img src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
           </div>
           <h1>{{ submitted ? 'Vérifiez votre boîte mail' : 'Créer un compte' }}</h1>
           <p>{{ submitted ? 'Une dernière étape avant de commencer.' : trialDays + " jours d'essai — sans carte bancaire" }}</p>
@@ -123,18 +115,33 @@ import { environment } from '../environments/environment';
                et la question porte sur eux, pas sur une entreprise. -->
           <div class="form-group">
             <label for="fleetSize">Combien de véhicules gérez-vous ?</label>
-            <select id="fleetSize" name="fleetSize" [(ngModel)]="fleetSizeRange" required>
+            <div class="select-wrap">
+              <select id="fleetSize" name="fleetSize" [(ngModel)]="fleetSizeRange" required>
               <option value="" disabled>Choisissez une tranche</option>
               @for (r of fleetSizeOptions; track r) {
                 <option [value]="r">{{ r === '100+' ? '100 et plus' : r + ' véhicules' }}</option>
               }
             </select>
+            </div>
             <small class="hint">Une estimation suffit — vous ajouterez vos véhicules ensuite.</small>
           </div>
+          <div class="form-group">
+            <label for="country">Pays</label>
+            <div class="select-wrap">
+              <select id="country" name="country" [(ngModel)]="country" required>
+                <option value="" disabled>Choisissez un pays</option>
+                @for (c of countries; track c.code) {
+                  <option [value]="c.code">{{ c.name }}</option>
+                }
+              </select>
+            </div>
+          </div>
+
 
           <div class="form-group">
-            <label for="phone">Téléphone <span class="optional">facultatif</span></label>
-            <input type="tel" id="phone" name="phone" [(ngModel)]="phone" [placeholder]="phonePlaceholder" />
+            <label for="phone">Téléphone</label>
+            <input type="tel" id="phone" name="phone" [(ngModel)]="phone"
+                   [placeholder]="phonePlaceholder" required />
           </div>
 
           <div class="form-group">
@@ -251,6 +258,7 @@ import { environment } from '../environments/environment';
 
     .auth-header { margin-bottom: 24px; }
     .logo { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+    .logo img { height: 42px; width: auto; display: block; }
     .logo-icon {
       width: 52px; height: 52px;
       background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
@@ -286,6 +294,50 @@ import { environment } from '../environments/environment';
       border-color: var(--c-indigo);
       box-shadow: 0 0 0 3px rgba(79,70,229,.12);
     }
+    /* ---------- listes déroulantes ----------
+       Le <select> natif dessine sa propre flèche, différente sur chaque
+       navigateur et impossible à mettre au diapason des champs texte. On la
+       supprime (appearance:none) et on la redessine en fond, ce qui donne un
+       rendu identique partout — tout en gardant l élément natif, donc le
+       clavier, la recherche à la frappe et la liste du système sur mobile. */
+    .select-wrap { position: relative; }
+    .form-group select {
+      width: 100%;
+      padding: 13px 40px 13px 15px;
+      background: #f8fafc;
+      border: 1px solid var(--c-border);
+      border-radius: 10px;
+      font-size: 15px;
+      font-family: inherit;
+      color: var(--c-ink);
+      transition: all .2s;
+      box-sizing: border-box;
+      appearance: none;
+      -webkit-appearance: none;
+      cursor: pointer;
+    }
+    .form-group select:hover { border-color: #cbd5e1; }
+    .form-group select:focus {
+      outline: none;
+      background: #fff;
+      border-color: var(--c-indigo);
+      box-shadow: 0 0 0 3px rgba(79,70,229,.12);
+    }
+    /* Le chevron est posé sur l enveloppe et non sur le select : sur le select
+       lui-même, Firefox le recouvre de son propre fond au survol. */
+    .select-wrap::after {
+      content: "";
+      position: absolute; right: 16px; top: 50%;
+      width: 9px; height: 9px; margin-top: -6px;
+      border-right: 2px solid #64748b;
+      border-bottom: 2px solid #64748b;
+      transform: rotate(45deg);
+      pointer-events: none;
+    }
+    .select-wrap:focus-within::after { border-color: var(--c-indigo); }
+    /* La consigne « Choisissez… » reste grise tant que rien n est retenu. */
+    .form-group select:invalid { color: #94a3b8; }
+
     .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--c-sub); line-height: 1.45; }
     .hint.center { text-align: center; margin-top: 12px; }
 
@@ -408,6 +460,33 @@ export class RegisterComponent {
   email = '';
   companyName = '';
   phone = '';
+
+  /**
+   * Pays de la societe, en code ISO 3166-1 alpha-2. Prerempli avec celui du
+   * deploiement : la quasi-totalite des inscriptions vient du pays servi, et
+   * faire choisir chacun dans une liste dont la reponse est presque toujours
+   * la meme est une friction gratuite.
+   */
+  country = (environment as any).defaultCountry || 'TN';
+
+  /** Pays proposes, le pays servi en tete. */
+  readonly countries = [
+    { code: 'TN', name: 'Tunisie' },
+    { code: 'FR', name: 'France' },
+    { code: 'DZ', name: 'Algérie' },
+    { code: 'MA', name: 'Maroc' },
+    { code: 'BE', name: 'Belgique' },
+    { code: 'CH', name: 'Suisse' },
+    { code: 'LU', name: 'Luxembourg' },
+    { code: 'ES', name: 'Espagne' },
+    { code: 'IT', name: 'Italie' },
+    { code: 'DE', name: 'Allemagne' },
+    { code: 'PT', name: 'Portugal' },
+    { code: 'NL', name: 'Pays-Bas' },
+    { code: 'CA', name: 'Canada' },
+    { code: 'SN', name: 'Sénégal' },
+    { code: 'CI', name: 'Côte d\x27Ivoire' }
+  ];
   password = '';
   isLoading = false;
   errorMessage = '';
@@ -443,7 +522,11 @@ export class RegisterComponent {
       && this.password.length >= 10
       // Exigée à l'écran, facultative côté API : le serveur reste compatible
       // avec les clients qui ne l'envoient pas (application mobile notamment).
-      && this.fleetSizeRange.length > 0;
+      && this.fleetSizeRange.length > 0
+      // Telephone EXIGE : c est le seul moyen de rappeler un prospect dont
+      // l adresse rebondit, et le support s en sert quotidiennement.
+      && this.phone.trim().length >= 6
+      && this.country.trim().length > 0;
     // Un professionnel doit nommer sa société ; un particulier n'a rien à saisir.
     return this.accountType === 'societe'
       ? base && this.companyName.trim().length > 0
@@ -453,8 +536,8 @@ export class RegisterComponent {
   onSubmit() {
     if (!this.isValid()) {
       this.errorMessage = this.accountType === 'societe'
-        ? 'Renseignez le nom de votre société, votre identité, votre email et un mot de passe d’au moins 10 caractères.'
-        : 'Renseignez votre prénom, votre nom, votre email et un mot de passe d’au moins 10 caractères.';
+        ? 'Renseignez le nom de votre société, votre identité, votre email, votre téléphone, votre pays et un mot de passe d’au moins 10 caractères.'
+        : 'Renseignez votre prénom, votre nom, votre email, votre téléphone, votre pays et un mot de passe d’au moins 10 caractères.';
       return;
     }
 
@@ -472,7 +555,8 @@ export class RegisterComponent {
       // particulier il n'existe pas, et le serveur l'ignorerait de toute façon.
       companyName: this.accountType === 'societe' ? this.companyName.trim() : undefined,
       fleetSizeRange: this.fleetSizeRange || undefined,
-      phone: this.phone.trim() || undefined
+      phone: this.phone.trim(),
+      country: this.country || undefined
     }).subscribe({
       next: (res) => {
         this.isLoading = false;
