@@ -66,72 +66,42 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       <!-- ════ 2 · KPIs en filets (dans le masthead) ════ -->
       <div class="kpis" [class.k2]="!hasGps">
         <div class="kpi">
-          <span class="kpi-ic" style="background:var(--kpi-veh)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M3 13h18M5 13l1.6-5.2A2 2 0 0 1 8.5 6.4h7a2 2 0 0 1 1.9 1.4L19 13v5h-2.2v-2H7.2v2H5z"/><circle cx="7.8" cy="16" r="1.1"/><circle cx="16.2" cy="16" r="1.1"/></svg>
-          </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">Véhicules</span>
-            <span class="kpi-v">{{ dVehicles }}</span>
-            <span class="kpi-s">flotte totale</span>
-          </span>
+          <span class="kpi-l">Véhicules</span>
+          <span class="kpi-v">{{ dVehicles }}</span>
+          <span class="kpi-s">flotte totale</span>
         </div>
         <ng-container *ngIf="hasGps">
         <div class="kpi">
-          <span class="kpi-ic" style="background:var(--kpi-run)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="2.6"/><path d="M12 3.8V6M12 18v2.2M3.8 12H6M18 12h2.2"/></svg>
-          </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">En circulation</span>
-            <span class="kpi-v">{{ dMoving }}</span>
-            <span class="kpi-s">{{ movingPct }}&nbsp;% de la flotte</span>
-          </span>
+          <span class="kpi-l"><span class="dot" style="background:#34d399"></span>En circulation</span>
+          <span class="kpi-v">{{ dMoving }}</span>
+          <span class="kpi-s">{{ movingPct }}&nbsp;% de la flotte</span>
         </div>
         <div class="kpi">
-          <span class="kpi-ic" style="background:var(--kpi-stop)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M9.5 6.5v11M14.5 6.5v11"/></svg>
-          </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">À l'arrêt</span>
-            <span class="kpi-v">{{ dStopped }}</span>
-            <span class="kpi-s">{{ stoppedPct }}&nbsp;% de la flotte</span>
-          </span>
+          <span class="kpi-l"><span class="dot" style="background:#94a3b8"></span>À l'arrêt</span>
+          <span class="kpi-v">{{ dStopped }}</span>
+          <span class="kpi-s">{{ stoppedPct }}&nbsp;% de la flotte</span>
         </div>
         <div class="kpi">
-          <span class="kpi-ic" style="background:var(--kpi-fuel)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M4.5 20V5a2 2 0 0 1 2-2h5.5a2 2 0 0 1 2 2v15M3.5 20h11.5M16.5 9.5 19 12v5.2a1.5 1.5 0 0 1-3 0V9.5z"/><path d="M7 7.5h4.5"/></svg>
-          </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">Carburant</span>
-            <span class="kpi-v">{{ dFuel | number:'1.0-0' }}<span class="kpi-u">L</span></span>
-            <span class="kpi-s">sur la période</span>
-          </span>
+          <span class="kpi-l">Carburant</span>
+          <span class="kpi-v">{{ dFuel | number:'1.0-0' }}<span class="kpi-u">L</span></span>
+          <span class="kpi-s">sur la période</span>
         </div>
         </ng-container>
         <div class="kpi">
-          <span class="kpi-ic" style="background:var(--kpi-cost)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M16.5 7.2a5.5 5.5 0 0 0-8.6 1.3M7.9 15.5a5.5 5.5 0 0 0 8.6 1.3M5.6 10.4h7.2M5.6 13.6h7.2"/></svg>
+          <span class="kpi-l">Coût total</span>
+          <span class="kpi-v">{{ costValue }}<span class="kpi-u">{{ currencyCode }}</span></span>
+          <span class="kpi-s" *ngIf="costTrend!==null && costTrend!==0">
+            <span class="kchip" [class.kchip-danger]="costTrend>0" [class.kchip-ok]="costTrend<0">
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true" [style.transform]="costTrend<0?'rotate(180deg)':''"><path d="M5 1.6 8.6 7H1.4Z"/></svg>
+              {{ absPct(costTrend) }}&nbsp;%</span>
+            vs préc.
           </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">Coût total</span>
-            <span class="kpi-v">{{ costValue }}<span class="kpi-u">{{ currencyCode }}</span></span>
-            <span class="kpi-s" *ngIf="costTrend!==null && costTrend!==0">
-              <span class="kchip" [class.kchip-danger]="costTrend>0" [class.kchip-ok]="costTrend<0">
-                <svg width="8" height="8" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true" [style.transform]="costTrend<0?'rotate(180deg)':''"><path d="M5 1.6 8.6 7H1.4Z"/></svg>
-                {{ absPct(costTrend) }}&nbsp;%</span>
-              vs préc.
-            </span>
-            <span class="kpi-s" *ngIf="costTrend===null || costTrend===0">sur la période</span>
-          </span>
+          <span class="kpi-s" *ngIf="costTrend===null || costTrend===0">sur la période</span>
         </div>
         <div class="kpi" *ngIf="hasGps">
-          <span class="kpi-ic" style="background:var(--kpi-alert)" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M18 8.5a6 6 0 1 0-12 0c0 7-2.6 8-2.6 8h17.2s-2.6-1-2.6-8M13.7 20.5a2 2 0 0 1-3.4 0"/></svg>
-          </span>
-          <span class="kpi-txt">
-            <span class="kpi-l">Alertes</span>
-            <span class="kpi-v">{{ dAlerts }}</span>
-            <span class="kpi-s">sur la période</span>
-          </span>
+          <span class="kpi-l">Alertes</span>
+          <span class="kpi-v">{{ dAlerts }}</span>
+          <span class="kpi-s">sur la période</span>
         </div>
       </div>
     </header>
@@ -503,12 +473,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       --mast-bg1:#0d1425; --mast-bg2:#16213a; --mast-glow:rgba(99,102,241,.24);
       --mast-ink:#f8fafc; --mast-sub:#94a3b8; --mast-hair:rgba(148,163,184,.16);
       --mast-border:transparent;
-
-      /* Pastilles des KPI. Constantes dans les deux thèmes, comme le reste du
-         masthead : elles se lisent toujours sur la bande carbone, donc les
-         faire basculer avec le thème les désaccorderait de leur fond. */
-      --kpi-veh:#3b82f6; --kpi-run:#10b981; --kpi-stop:#f59e0b;
-      --kpi-fuel:#8b5cf6; --kpi-cost:#e11d48; --kpi-alert:#6366f1;
     }
     :host-context([data-theme="dark"]){
       --ok-600:#34d399; --warn-600:#fbbf24; --bad-600:#f87171;
@@ -638,12 +602,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     /* ── rangée KPI (filets) ── */
     .kpis{display:grid;grid-template-columns:repeat(6,1fr);padding-top:16px}
     .kpis.k2{grid-template-columns:repeat(2,1fr)}
-    .kpi{display:flex;align-items:flex-start;gap:13px;padding:2px 20px 4px;border-left:1px solid var(--mast-hair);min-width:0}
+    .kpi{padding:2px 22px 4px;border-left:1px solid var(--mast-hair);min-width:0}
     .kpi:first-child{border-left:none;padding-left:2px}
-    /* Pastille ronde pleine, icône blanche — d'après la maquette. */
-    .kpi-ic{width:42px;height:42px;border-radius:50%;flex:none;display:grid;place-items:center;margin-top:3px}
-    .kpi-ic svg{width:20px;height:20px;stroke:#fff;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
-    .kpi-txt{display:flex;flex-direction:column;min-width:0}
     .kpi-l{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mast-sub);white-space:nowrap}
     .kpi-l .dot{width:6px;height:6px;border-radius:50%;flex:none}
     .kpi-v{
@@ -883,11 +843,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     @media (max-width:760px){
       .card,.span-6,.span-8{grid-column:span 12}
       .drivers{grid-template-columns:1fr}
-      /* Sur deux colonnes étroites, une pastille de 42px mange la place du
-         chiffre — c'est le chiffre qui doit rester lisible. */
-      .kpi{gap:10px}
-      .kpi-ic{width:34px;height:34px;margin-top:2px}
-      .kpi-ic svg{width:17px;height:17px}
       .mast{padding:18px 16px}
       .mast-title{margin:12px 0 14px}
       .toolbar{gap:12px}
