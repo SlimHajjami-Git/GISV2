@@ -12,6 +12,7 @@ import { FrancePrivacyComponent } from './components/france/france-privacy.compo
 import { FranceLegalComponent } from './components/france/france-legal.component';
 import { FranceRgpdComponent } from './components/france/france-rgpd.component';
 import { FranceCookiesComponent } from './components/france/france-cookies.component';
+import { TestAccueilComponent } from './components/france/test-accueil.component';
 import { RegionService } from './services/region.service';
 import { LoginComponent } from './components/login.component';
 import { ForgotPasswordComponent } from './components/forgot-password.component';
@@ -126,6 +127,10 @@ export const routes: Routes = [
   // vivent sous /fr et non à la racine pour qu'il n'existe qu'UNE adresse par
   // page : deux URL servant le même contenu se pénalisent mutuellement au
   // référencement, et le cahier des charges pose des exigences SEO précises.
+  // Page temoin : reproduction de la capture ACCUEIL a comparer avant
+  // adoption. Hors du site France, pour ne pas melanger les deux.
+  { path: 'testacceuil', component: TestAccueilComponent },
+  { path: 'testaccueil', redirectTo: 'testacceuil' },
   {
     path: 'fr',
     component: FranceShellComponent,
