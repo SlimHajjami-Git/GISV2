@@ -114,7 +114,7 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr {
       margin: 0; background: var(--bg); color: var(--txt);
       font-family: Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
-      font-size: 16.5px; line-height: 1.66; -webkit-font-smoothing: antialiased;
+      font-size: 14.5px; line-height: 1.62; -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
     }
     .fr .shell { max-width: 1320px; margin: 0 auto; padding: 0 40px; }
@@ -123,8 +123,8 @@ import { FranceHeaderComponent } from './france-header.component';
     /* ---------- boutons ---------- */
     .fr .btn {
       display: inline-flex; align-items: center; justify-content: center;
-      font-size: 13.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-      padding: 15px 28px; border-radius: 12px; text-decoration: none;
+      font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+      padding: 12px 22px; border-radius: 10px; text-decoration: none;
       border: 1.5px solid transparent; cursor: pointer;
       transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
     }
@@ -156,8 +156,8 @@ import { FranceHeaderComponent } from './france-header.component';
     @media (max-width: 1080px) { .fr .nav .hide-sm { display: none; } .fr .bar { gap: 16px; } }
 
     /* ---------- rythme des sections ---------- */
-    .fr section { padding: 108px 0; position: relative; }
-    .fr section.tight { padding: 86px 0; }
+    .fr section { padding: 72px 0; position: relative; }
+    .fr section.tight { padding: 58px 0; }
     .fr .band { background: var(--bg); }
     .fr .band-2 { background: var(--bg-2); }
     .fr .band-glow {
@@ -166,12 +166,12 @@ import { FranceHeaderComponent } from './france-header.component';
         radial-gradient(760px 420px at 12% 30%, rgba(59,130,246,.13), transparent 60%),
         var(--bg);
     }
-    .fr .sec-head { max-width: 780px; margin: 0 auto 62px; text-align: center; }
+    .fr .sec-head { max-width: 700px; margin: 0 auto 44px; text-align: center; }
     .fr .sec-head h2 {
-      font-size: clamp(30px, 4.2vw, 44px); font-weight: 800; letter-spacing: -.03em;
-      line-height: 1.14; margin: 0 0 15px; text-wrap: balance; color: #fff;
+      font-size: clamp(23px, 2.85vw, 36px); font-weight: 800; letter-spacing: -.03em;
+      line-height: 1.2; margin: 0 0 12px; text-wrap: balance; color: #fff;
     }
-    .fr .sec-head p { font-size: 17.5px; color: var(--txt-soft); margin: 0; }
+    .fr .sec-head p { font-size: 14px; color: var(--txt-soft); margin: 0; }
     .fr .grad-txt {
       background: var(--grad-soft); -webkit-background-clip: text; background-clip: text;
       color: transparent;
@@ -181,29 +181,29 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .pill {
       display: inline-flex; align-items: center; gap: 9px;
       border: 1px solid rgba(96,165,250,.34); background: rgba(59,130,246,.10);
-      color: var(--blue-2); border-radius: 99px; padding: 8px 17px;
-      font-size: 11.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+      color: var(--blue-2); border-radius: 99px; padding: 6px 14px;
+      font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
     }
 
     /* ---------- HERO ---------- */
-    .fr .hero { padding: 74px 0 0; }
+    .fr .hero { padding: 46px 0 0; }
     .fr .hero-grid {
-      display: grid; grid-template-columns: 1fr 1.22fr; gap: 52px; align-items: center;
+      display: grid; grid-template-columns: 1fr 1.02fr; gap: 40px; align-items: center;
     }
     .fr .hero h1 {
-      font-size: clamp(38px, 5.1vw, 58px); font-weight: 800; letter-spacing: -.035em;
-      line-height: 1.08; margin: 26px 0 22px; text-wrap: balance;
+      font-size: clamp(28px, 3.42vw, 44px); font-weight: 800; letter-spacing: -.03em;
+      line-height: 1.36; margin: 18px 0 16px; text-wrap: balance;
     }
-    .fr .hero p.lede { font-size: 17.5px; color: var(--txt-soft); margin: 0 0 22px; max-width: 52ch; }
+    .fr .hero p.lede { font-size: 14px; color: var(--txt-soft); margin: 0 0 22px; max-width: 52ch; }
     .fr .ai-line {
-      display: flex; align-items: center; gap: 10px; margin: 0 0 30px;
-      color: var(--blue-2); font-weight: 700; font-size: 16px;
+      display: flex; align-items: center; gap: 9px; margin: 0 0 22px;
+      color: var(--blue-2); font-weight: 700; font-size: 14px;
     }
-    .fr .hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 26px; }
-    .fr .badges { display: flex; gap: 26px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+    .fr .hero-cta { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+    .fr .badges { display: flex; gap: 20px; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
     .fr .badges li {
       display: flex; align-items: center; gap: 9px;
-      font-size: 14.5px; color: var(--txt-soft); font-weight: 500;
+      font-size: 12.5px; color: var(--txt-soft); font-weight: 500;
     }
     .fr .badges svg { flex-shrink: 0; }
 
@@ -229,7 +229,7 @@ import { FranceHeaderComponent } from './france-header.component';
       position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
       display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
     }
-    .fr .orbit-core img { width: 230px; height: auto; display: block; }
+    .fr .orbit-core img { width: 178px; height: auto; display: block; }
     .fr .orbit-core span { font-size: 26px; font-weight: 800; letter-spacing: .15em; color: #fff; }
     .fr .o-card {
       position: absolute; width: 30%; min-width: 172px;
@@ -256,7 +256,7 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .c6 { top: 86%; left: 35%; }
 
     /* ---------- bandeau des univers ---------- */
-    .fr .strip-wrap { border-top: 1px solid var(--line); margin-top: 64px; }
+    .fr .strip-wrap { border-top: 1px solid var(--line); margin-top: 42px; }
     .fr .chevron { display: grid; place-items: center; margin: -12px 0 0; }
     .fr .chevron span {
       width: 26px; height: 26px; border-radius: 50%; background: var(--bg);
@@ -264,13 +264,14 @@ import { FranceHeaderComponent } from './france-header.component';
     }
     .fr .strip { display: grid; grid-template-columns: repeat(6, 1fr); }
     .fr .strip a, .fr .strip div {
-      text-align: center; padding: 34px 10px; text-decoration: none;
+      text-align: center; padding: 17px 8px; text-decoration: none;
       border-right: 1px solid var(--line); color: var(--txt-soft);
-      display: flex; flex-direction: column; align-items: center; gap: 12px;
-      font-size: 14.5px; font-weight: 600; transition: color .18s ease, background .18s ease;
+      display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 9px;
+      font-size: 12px; font-weight: 700; letter-spacing: .04em; transition: color .18s ease, background .18s ease;
     }
     .fr .strip > *:last-child { border-right: 0; }
     .fr .strip a:hover { color: #fff; background: rgba(255,255,255,.02); }
+    .fr .strip a svg { width: 19px; height: 19px; flex: none; }
     @media (max-width: 980px) {
       .fr .hero-grid { grid-template-columns: 1fr; gap: 52px; }
       .fr .orbit { aspect-ratio: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -292,11 +293,11 @@ import { FranceHeaderComponent } from './france-header.component';
       display: flex; flex-direction: column; align-items: center; gap: 9px;
     }
     .fr .o-ic {
-      width: 58px; height: 58px; border-radius: 50%;
+      width: 46px; height: 46px; border-radius: 50%;
       display: grid; place-items: center; border: 1.5px solid;
       backdrop-filter: blur(4px);
     }
-    .fr .o-lbl { font-size: 11.5px; font-weight: 800; letter-spacing: .12em; color: var(--txt-soft); white-space: nowrap; }
+    .fr .o-lbl { font-size: 9.5px; font-weight: 800; letter-spacing: .12em; color: var(--txt-soft); white-space: nowrap; }
     .fr .n-t  { left: 50%;  top: 4%;  }
     .fr .n-tr { left: 88%;  top: 27%; }
     .fr .n-br { left: 88%;  top: 73%; }
@@ -306,41 +307,41 @@ import { FranceHeaderComponent } from './france-header.component';
 
     /* ---------- produit reel : texte a gauche, capture a droite ------- */
     .fr .feature-split {
-      display: grid; grid-template-columns: .8fr 1.9fr; gap: 44px; align-items: center;
+      display: grid; grid-template-columns: .8fr 1.9fr; gap: 32px; align-items: center;
       background: var(--surface); border: 1px solid var(--line);
-      border-radius: var(--r); padding: 34px;
+      border-radius: var(--r); padding: 24px;
     }
-    .fr .feature-split h2 { font-size: clamp(26px,3.2vw,36px); font-weight: 800; letter-spacing: -.03em; line-height: 1.16; margin: 0 0 14px; color: #fff; }
-    .fr .feature-split p { color: var(--txt-soft); margin: 0; font-size: 15.5px; }
+    .fr .feature-split h2 { font-size: clamp(21px,2.4vw,30px); font-weight: 800; letter-spacing: -.03em; line-height: 1.16; margin: 0 0 14px; color: #fff; }
+    .fr .feature-split p { color: var(--txt-soft); margin: 0; font-size: 13.5px; }
     @media (max-width: 900px) { .fr .feature-split { grid-template-columns: 1fr; gap: 28px; } }
 
     /* ---------- apercu tarifaire ---------- */
     .fr .pricing-teaser {
       display: grid; grid-template-columns: 1.1fr auto 1.2fr auto auto;
-      gap: 34px; align-items: center;
+      gap: 26px; align-items: center;
       background: linear-gradient(120deg, rgba(79,70,229,.22), rgba(124,58,237,.16));
-      border: 1px solid rgba(139,92,246,.32); border-radius: var(--r); padding: 34px 38px;
+      border: 1px solid rgba(139,92,246,.32); border-radius: var(--r); padding: 26px 28px;
     }
-    .fr .pt-lead h2 { font-size: clamp(24px,2.8vw,32px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
+    .fr .pt-lead h2 { font-size: clamp(19px,2.2vw,27px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
     .fr .pt-price { text-align: center; white-space: nowrap; }
     .fr .pt-from { display: block; font-size: 13px; color: var(--txt-soft); }
-    .fr .pt-n { display: block; font-size: 46px; font-weight: 800; letter-spacing: -.04em; color: #fff; }
+    .fr .pt-n { display: block; font-size: 36px; font-weight: 800; letter-spacing: -.04em; color: #fff; }
     .fr .pt-u { display: block; font-size: 13px; color: var(--txt-soft); }
-    .fr .pt-txt { margin: 0; font-size: 14.5px; color: var(--txt-soft); }
+    .fr .pt-txt { margin: 0; font-size: 12.5px; color: var(--txt-soft); }
     .fr .pt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
-    .fr .pt-list li { display: flex; align-items: center; gap: 9px; font-size: 14px; color: var(--txt-soft); white-space: nowrap; }
+    .fr .pt-list li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--txt-soft); white-space: nowrap; }
     .fr .pt-cta { display: flex; flex-direction: column; gap: 10px; }
     @media (max-width: 1100px) { .fr .pricing-teaser { grid-template-columns: 1fr 1fr; gap: 26px; } }
     @media (max-width: 700px) { .fr .pricing-teaser { grid-template-columns: 1fr; } }
 
     /* ---------- mise en route ---------- */
     .fr .start-block { display: grid; grid-template-columns: .7fr 2.3fr; gap: 40px; align-items: center; }
-    .fr .start-block > h2 { font-size: clamp(24px,3vw,34px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
-    .fr .start-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
-    .fr .si-ic { display: block; width: 34px; height: 34px; margin-bottom: 12px; }
-    .fr .si-ic svg { width: 34px; height: 34px; }
-    .fr .start-item h3 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 7px; color: #fff; }
-    .fr .start-item p { margin: 0; font-size: 13.5px; color: var(--txt-soft); line-height: 1.5; }
+    .fr .start-block > h2 { font-size: clamp(19px,2.3vw,28px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
+    .fr .start-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+    .fr .si-ic { display: block; width: 28px; height: 28px; margin-bottom: 10px; }
+    .fr .si-ic svg { width: 28px; height: 28px; }
+    .fr .start-item h3 { font-size: 11.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 7px; color: #fff; }
+    .fr .start-item p { margin: 0; font-size: 12px; color: var(--txt-soft); line-height: 1.5; }
     @media (max-width: 1000px) { .fr .start-block { grid-template-columns: 1fr; gap: 26px; } .fr .start-grid { grid-template-columns: 1fr 1fr; } }
     @media (max-width: 620px) { .fr .start-grid { grid-template-columns: 1fr; } }
 
@@ -348,10 +349,10 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .final-band {
       display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 34px; align-items: center;
       background: var(--surface); border: 1px solid var(--line);
-      border-radius: var(--r); padding: 34px 38px;
+      border-radius: var(--r); padding: 26px 30px;
     }
-    .fr .final-band h2 { font-size: clamp(23px,2.7vw,31px); font-weight: 800; letter-spacing: -.03em; line-height: 1.2; margin: 0; color: #fff; }
-    .fr .fb-txt { margin: 0; color: var(--txt-soft); font-size: 15.5px; }
+    .fr .final-band h2 { font-size: clamp(19px,2.2vw,26px); font-weight: 800; letter-spacing: -.03em; line-height: 1.2; margin: 0; color: #fff; }
+    .fr .fb-txt { margin: 0; color: var(--txt-soft); font-size: 13px; }
     .fr .fb-cta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
     .fr .fb-cta small { font-size: 12.5px; color: var(--txt-faint); white-space: nowrap; }
     @media (max-width: 950px) { .fr .final-band { grid-template-columns: 1fr; gap: 22px; text-align: center; } }
@@ -360,7 +361,7 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; max-width: 1160px; margin: 0 auto; }
     .fr .card {
       background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
-      padding: 30px 28px; transition: border-color .2s ease, transform .2s ease;
+      padding: 22px 22px; transition: border-color .2s ease, transform .2s ease;
     }
     .fr .card:hover { border-color: var(--line-2); transform: translateY(-3px); }
     .fr .card .ic {
@@ -368,8 +369,8 @@ import { FranceHeaderComponent } from './france-header.component';
       display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
     }
     .fr .card .k { font-size: 11px; font-weight: 800; letter-spacing: .14em; margin-bottom: 9px; }
-    .fr .card h3 { font-size: 17.5px; font-weight: 700; margin: 0 0 9px; color: #fff; }
-    .fr .card p { margin: 0; color: var(--txt-soft); font-size: 15.5px; }
+    .fr .card h3 { font-size: 14.5px; font-weight: 700; margin: 0 0 9px; color: #fff; }
+    .fr .card p { margin: 0; color: var(--txt-soft); font-size: 13px; }
     @media (max-width: 900px) { .fr .cards { grid-template-columns: 1fr; } }
 
     /* ---------- page Fonctionnalités ---------- */
@@ -631,8 +632,8 @@ import { FranceHeaderComponent } from './france-header.component';
     /* ---------- appel à l'action final ---------- */
     .fr .final { text-align: center; }
     .fr .final h2 {
-      font-size: clamp(30px, 4.4vw, 46px); font-weight: 800; letter-spacing: -.03em;
-      margin: 0 0 26px; color: #fff; text-wrap: balance;
+      font-size: clamp(23px, 2.9vw, 36px); font-weight: 800; letter-spacing: -.03em;
+      margin: 0 0 20px; color: #fff; text-wrap: balance;
     }
 
     /* ---------- pied de page ---------- */
