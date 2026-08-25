@@ -29,10 +29,20 @@ export const environment = {
   // qu aucun domaine .fr ne pointe ici, la liste reste vide et la vitrine
   // France n est accessible que par son adresse /fr.
   europeanHostnames: [] as string[],
+  // Duree d essai ANNONCEE sur les ecrans publics. Le document maitre impose
+  // 7 jours et interdit explicitement d afficher 14.
+  //
+  // ATTENTION : le serveur ACCORDE toujours 14 jours (AppRegistration.TrialDays).
+  // L ecart est volontaire et sans danger dans ce sens — le client recoit plus
+  // que promis. L aligner reviendrait a RACCOURCIR l essai, ce qui est une
+  // decision commerciale, pas un reglage d affichage.
+  selfSignupTrialDays: 7,
   // Pays preselectionne dans le formulaire d inscription (ISO 3166-1 alpha-2).
   // PER-DEPLOYMENT : TN ici, FR sur un futur deploiement francais, DZ pour Bougeo.
   // Son absence vaut TN, le pays historiquement servi.
-  defaultCountry: 'TN',
+  // Vide : aucun pays n est presuppose. Un deploiement qui veut preselectionner
+  // le sien pose son code ici.
+  defaultCountry: '',
 
   // Mobile/SIM operators shown when configuring a GPS device. PER-DEPLOYMENT:
   // Tunisian carriers here by default; the Algeria/Bougeo build replaces this

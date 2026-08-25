@@ -10,7 +10,8 @@ import { FranceAutoComponent } from './components/france/france-auto.component';
 import { FranceContactComponent } from './components/france/france-contact.component';
 import { FrancePrivacyComponent } from './components/france/france-privacy.component';
 import { FranceLegalComponent } from './components/france/france-legal.component';
-import { FranceNotFoundComponent } from './components/france/france-not-found.component';
+import { FranceRgpdComponent } from './components/france/france-rgpd.component';
+import { FranceCookiesComponent } from './components/france/france-cookies.component';
 import { RegionService } from './services/region.service';
 import { LoginComponent } from './components/login.component';
 import { ForgotPasswordComponent } from './components/forgot-password.component';
@@ -136,10 +137,12 @@ export const routes: Routes = [
       { path: 'contact', component: FranceContactComponent },
       { path: 'confidentialite', component: FrancePrivacyComponent },
       { path: 'mentions-legales', component: FranceLegalComponent },
-      // Une adresse inconnue SOUS /fr doit rester dans le site France, avec sa
-      // mise en page : la renvoyer vers la 404 générale ferait sortir le
-      // visiteur de la vitrine sans qu'il comprenne pourquoi.
-      { path: '**', component: FranceNotFoundComponent }
+      { path: 'rgpd', component: FranceRgpdComponent },
+      { path: 'cookies', component: FranceCookiesComponent },
+      // Le document maitre range les « pages 404 » parmi les elements
+      // interdits : une adresse inconnue sous /fr ramene a l accueil du site
+      // plutot que d ouvrir une page supplementaire non demandee.
+      { path: '**', redirectTo: '' }
     ]
   },
   { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },

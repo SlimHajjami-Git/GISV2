@@ -46,7 +46,6 @@ import { FranceHeaderComponent } from './france-header.component';
               <a class="brand" routerLink="/fr">
                 <img class="mark" src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
               </a>
-              <p>La solution intelligente pour gérer votre parc automobile.</p>
             </div>
             <div>
               <h4>Produit</h4>
@@ -54,12 +53,12 @@ import { FranceHeaderComponent } from './france-header.component';
                 <li><a routerLink="/fr/fonctionnalites">Fonctionnalités</a></li>
                 <li><a routerLink="/fr/tarifs">Tarifs</a></li>
                 <li><a routerLink="/fr/calypso-auto">Calypso Auto</a></li>
+                <li><a routerLink="/fr/contact">Contact</a></li>
               </ul>
             </div>
             <div>
-              <h4>Société</h4>
+              <h4>Accès</h4>
               <ul>
-                <li><a routerLink="/fr/contact">Contact</a></li>
                 <li><a routerLink="/login">Se connecter</a></li>
                 <li><a routerLink="/inscription">Essayer gratuitement</a></li>
               </ul>
@@ -69,6 +68,8 @@ import { FranceHeaderComponent } from './france-header.component';
               <ul>
                 <li><a routerLink="/fr/mentions-legales">Mentions légales</a></li>
                 <li><a routerLink="/fr/confidentialite">Politique de confidentialité</a></li>
+                <li><a routerLink="/fr/rgpd">RGPD</a></li>
+                <li><a routerLink="/fr/cookies">Cookies</a></li>
               </ul>
             </div>
           </div>
@@ -316,7 +317,10 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .feat-row p { margin: 0; color: var(--txt-soft); font-size: 15.5px; line-height: 1.58; }
     @media (max-width: 900px) { .fr .feat-page { grid-template-columns: 1fr; gap: 40px; } }
 
-    .fr .more { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; max-width: 1060px; margin: 0 auto; }
+    /* Quatre fonctions complementaires depuis que « Application mobile » a ete
+       retiree de la liste commerciale publique : la grille suit, sinon la
+       derniere colonne resterait vide. */
+    .fr .more { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; max-width: 900px; margin: 0 auto; }
     .fr .more-item {
       text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px;
       font-size: 14.5px; font-weight: 600; color: var(--txt-soft);
@@ -349,6 +353,39 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .ticks.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; }
     @media (max-width: 560px) { .fr .ticks.two { grid-template-columns: 1fr; } }
 
+    /* ---------- tarifs : deux cartes ---------- */
+    .fr .plan-top { display: flex; align-items: center; gap: 13px; margin-bottom: 4px; }
+    .fr .plan-ic {
+      width: 46px; height: 46px; border-radius: 50%; flex: none;
+      display: grid; place-items: center;
+      background: rgba(255,255,255,.05); border: 1px solid var(--line-2);
+    }
+    .fr .plan-ic svg { width: 21px; height: 21px; }
+    .fr .price .u { font-size: 14.5px; }
+    .fr .pill-note {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 100%; padding: 12px 16px; margin: 16px 0 22px;
+      border: 1px solid var(--line-2); border-radius: 12px;
+      font-size: 14.5px; font-weight: 700; color: var(--txt-soft);
+    }
+    .fr .pill-note.accent { border-color: rgba(139,92,246,.45); color: var(--violet-2); }
+    /* Le bouton porte deux lignes : l action, puis la reassurance. */
+    .fr .plan-cta { flex-direction: column; gap: 3px; padding: 14px 24px; }
+    .fr .plan-cta small { font-size: 11.5px; font-weight: 600; letter-spacing: 0; text-transform: none; opacity: .82; }
+
+    /* ---------- bandeau de reassurance ---------- */
+    .fr .reassure {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 28px;
+      max-width: 1060px; margin: 40px auto 0; padding: 26px 30px;
+      background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+    }
+    .fr .re-item { display: flex; gap: 16px; align-items: flex-start; }
+    .fr .re-ic { width: 48px; height: 48px; border-radius: 50%; flex: none; display: grid; place-items: center; }
+    .fr .re-ic svg { width: 22px; height: 22px; }
+    .fr .re-item h3 { font-size: 16.5px; font-weight: 700; margin: 0 0 5px; color: #fff; }
+    .fr .re-item p { margin: 0; font-size: 14.5px; color: var(--txt-soft); }
+    @media (max-width: 820px) { .fr .reassure { grid-template-columns: 1fr; gap: 22px; } }
+
     .fr .plans { display: grid; grid-template-columns: repeat(2, 1fr); gap: 26px; max-width: 1000px; margin: 0 auto; }
     .fr .plan {
       background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
@@ -377,6 +414,62 @@ import { FranceHeaderComponent } from './france-header.component';
     @media (max-width: 820px) { .fr .plans { grid-template-columns: 1fr; } }
 
     /* ---------- Calypso Auto ---------- */
+    .fr .auto-title { font-size: clamp(38px,5vw,60px); font-weight: 800; letter-spacing: -.035em; margin: 0 0 14px; color: #fff; }
+    .fr .auto-sub { font-size: clamp(19px,2.2vw,25px); font-weight: 700; color: #fff; margin: 0 0 16px; }
+
+    /* Panneaux d etape. Le vehicule se decrit AVANT la question : les deux
+       blocs sont donc visuellement distincts et ordonnes. */
+    .fr .panel-block {
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--r); padding: 30px 32px; margin-bottom: 22px;
+    }
+    .fr .panel-block h3 { font-size: 19px; font-weight: 700; margin: 0 0 6px; color: #fff; }
+    .fr .panel-lede { color: var(--txt-soft); margin: 0 0 18px; font-size: 15px; }
+    .fr .panel-block > h3 + .veh-grid { margin-top: 22px; }
+    .fr .veh-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 22px; }
+    .fr .veh-field label { display: block; font-size: 12.5px; font-weight: 700; color: var(--txt-soft); margin-bottom: 8px; }
+    .fr .veh-field input, .fr .veh-field select {
+      width: 100%; padding: 12px 14px; font-family: inherit; font-size: 14.5px;
+      color: #fff; background: rgba(0,0,0,.32);
+      border: 1px solid var(--line-2); border-radius: var(--r-sm);
+      box-sizing: border-box; transition: border-color .16s ease;
+    }
+    .fr .veh-field select { appearance: none; -webkit-appearance: none; padding-right: 36px; cursor: pointer; }
+    .fr .veh-field input::placeholder { color: var(--txt-faint); }
+    .fr .veh-field input:focus, .fr .veh-field select:focus { outline: none; border-color: var(--violet); }
+    .fr .select-wrap { position: relative; }
+    .fr .select-wrap::after {
+      content: ""; position: absolute; right: 15px; top: 50%; margin-top: -5px;
+      width: 8px; height: 8px; border-right: 2px solid var(--txt-soft);
+      border-bottom: 2px solid var(--txt-soft); transform: rotate(45deg); pointer-events: none;
+    }
+    @media (max-width: 1100px) { .fr .veh-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 700px) { .fr .veh-grid { grid-template-columns: 1fr 1fr; } }
+
+    /* Zone de question */
+    .fr .ask { display: flex; gap: 12px; align-items: stretch; }
+    .fr .ask input {
+      flex: 1; min-width: 0; padding: 16px 18px; font-family: inherit; font-size: 15.5px;
+      color: #fff; background: rgba(0,0,0,.32);
+      border: 1px solid var(--line-2); border-radius: 12px;
+    }
+    .fr .ask input::placeholder { color: var(--txt-faint); }
+    .fr .ask input:focus { outline: none; border-color: var(--violet); }
+    .fr .ask button {
+      flex: none; width: 54px; border: 0; border-radius: 12px; cursor: pointer;
+      background: var(--grad); color: #fff; display: grid; place-items: center;
+    }
+    .fr .ask button:disabled { opacity: .5; cursor: not-allowed; }
+    .fr .ask button svg { width: 20px; height: 20px; }
+    .fr .chip-q { cursor: pointer; font-family: inherit; }
+    .fr .chip-q:hover:not(:disabled) { border-color: var(--line-2); color: #fff; }
+    .fr .chip-q:disabled { opacity: .5; cursor: not-allowed; }
+    .fr .answer-wait { margin: 20px 0 0; color: var(--txt-soft); font-size: 15px; }
+    .fr .answer {
+      margin-top: 20px; padding: 22px 24px; white-space: pre-wrap; line-height: 1.66;
+      background: rgba(0,0,0,.28); border: 1px solid var(--line-2);
+      border-radius: 12px; color: var(--txt-soft); font-size: 15px;
+    }
     .fr .auto-hero { display: grid; grid-template-columns: 1.05fr .95fr; gap: 64px; align-items: center; max-width: 1120px; margin: 0 auto; }
     .fr .bot-wrap { max-width: 320px; justify-self: center; }
     .fr .chips { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; max-width: 880px; margin: 0 auto; }

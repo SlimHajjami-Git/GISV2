@@ -466,12 +466,16 @@ export class RegisterComponent {
    * faire choisir chacun dans une liste dont la reponse est presque toujours
    * la meme est une friction gratuite.
    */
-  country = (environment as any).defaultCountry || 'TN';
+  // AUCUNE presélection. Un pays par defaut laisserait transparaitre une
+  // origine geographique — ce que le document maitre interdit — et serait
+  // faux pour la majorite des visiteurs d un site qui vise la France.
+  // `defaultCountry` reste lu pour les deploiements qui en posent un.
+  country = (environment as any).defaultCountry || '';
 
   /** Pays proposes, le pays servi en tete. */
   readonly countries = [
-    { code: 'TN', name: 'Tunisie' },
     { code: 'FR', name: 'France' },
+    { code: 'TN', name: 'Tunisie' },
     { code: 'DZ', name: 'Algérie' },
     { code: 'MA', name: 'Maroc' },
     { code: 'BE', name: 'Belgique' },

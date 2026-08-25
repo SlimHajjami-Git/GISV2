@@ -126,26 +126,6 @@ import { RouterLink } from '@angular/router';
           <h2>Et bien plus encore…</h2>
         </div>
         <div class="more rise">
-          <div class="more-item">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0M17 11a3 3 0 1 0-2-5.2M21 20a5 5 0 0 0-3-4.6"/></svg>
-            <span>Gestion multi-utilisateurs</span>
-          </div>
-          <div class="more-item">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-            <span>Historique complet</span>
-          </div>
-          <div class="more-item">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12M8 11l4 4 4-4M4 20h16"/></svg>
-            <span>Export de données</span>
-          </div>
-          <div class="more-item">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0"/></svg>
-            <span>Alertes intelligentes</span>
-          </div>
-          <div class="more-item">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
-            <span>Application mobile</span>
-          </div>
         </div>
         <div class="final" style="margin-top:52px">
           <h2>Prêt à simplifier la gestion de votre parc ?</h2>
