@@ -286,6 +286,76 @@ import { FranceHeaderComponent } from './france-header.component';
       .fr .strip { grid-template-columns: repeat(2, 1fr); }
     }
 
+    /* ---------- accueil : diagramme a six noeuds etiquetes ---------- */
+    .fr .o-node {
+      position: absolute; transform: translate(-50%, -50%);
+      display: flex; flex-direction: column; align-items: center; gap: 9px;
+    }
+    .fr .o-ic {
+      width: 58px; height: 58px; border-radius: 50%;
+      display: grid; place-items: center; border: 1.5px solid;
+      backdrop-filter: blur(4px);
+    }
+    .fr .o-lbl { font-size: 11.5px; font-weight: 800; letter-spacing: .12em; color: var(--txt-soft); white-space: nowrap; }
+    .fr .n-t  { left: 50%;  top: 4%;  }
+    .fr .n-tr { left: 88%;  top: 27%; }
+    .fr .n-br { left: 88%;  top: 73%; }
+    .fr .n-b  { left: 50%;  top: 96%; }
+    .fr .n-bl { left: 12%;  top: 73%; }
+    .fr .n-tl { left: 12%;  top: 27%; }
+
+    /* ---------- produit reel : texte a gauche, capture a droite ------- */
+    .fr .feature-split {
+      display: grid; grid-template-columns: .8fr 1.9fr; gap: 44px; align-items: center;
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--r); padding: 34px;
+    }
+    .fr .feature-split h2 { font-size: clamp(26px,3.2vw,36px); font-weight: 800; letter-spacing: -.03em; line-height: 1.16; margin: 0 0 14px; color: #fff; }
+    .fr .feature-split p { color: var(--txt-soft); margin: 0; font-size: 15.5px; }
+    @media (max-width: 900px) { .fr .feature-split { grid-template-columns: 1fr; gap: 28px; } }
+
+    /* ---------- apercu tarifaire ---------- */
+    .fr .pricing-teaser {
+      display: grid; grid-template-columns: 1.1fr auto 1.2fr auto auto;
+      gap: 34px; align-items: center;
+      background: linear-gradient(120deg, rgba(79,70,229,.22), rgba(124,58,237,.16));
+      border: 1px solid rgba(139,92,246,.32); border-radius: var(--r); padding: 34px 38px;
+    }
+    .fr .pt-lead h2 { font-size: clamp(24px,2.8vw,32px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
+    .fr .pt-price { text-align: center; white-space: nowrap; }
+    .fr .pt-from { display: block; font-size: 13px; color: var(--txt-soft); }
+    .fr .pt-n { display: block; font-size: 46px; font-weight: 800; letter-spacing: -.04em; color: #fff; }
+    .fr .pt-u { display: block; font-size: 13px; color: var(--txt-soft); }
+    .fr .pt-txt { margin: 0; font-size: 14.5px; color: var(--txt-soft); }
+    .fr .pt-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+    .fr .pt-list li { display: flex; align-items: center; gap: 9px; font-size: 14px; color: var(--txt-soft); white-space: nowrap; }
+    .fr .pt-cta { display: flex; flex-direction: column; gap: 10px; }
+    @media (max-width: 1100px) { .fr .pricing-teaser { grid-template-columns: 1fr 1fr; gap: 26px; } }
+    @media (max-width: 700px) { .fr .pricing-teaser { grid-template-columns: 1fr; } }
+
+    /* ---------- mise en route ---------- */
+    .fr .start-block { display: grid; grid-template-columns: .7fr 2.3fr; gap: 40px; align-items: center; }
+    .fr .start-block > h2 { font-size: clamp(24px,3vw,34px); font-weight: 800; letter-spacing: -.03em; line-height: 1.18; margin: 0; color: #fff; }
+    .fr .start-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 26px; }
+    .fr .si-ic { display: block; width: 34px; height: 34px; margin-bottom: 12px; }
+    .fr .si-ic svg { width: 34px; height: 34px; }
+    .fr .start-item h3 { font-size: 13px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; margin: 0 0 7px; color: #fff; }
+    .fr .start-item p { margin: 0; font-size: 13.5px; color: var(--txt-soft); line-height: 1.5; }
+    @media (max-width: 1000px) { .fr .start-block { grid-template-columns: 1fr; gap: 26px; } .fr .start-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 620px) { .fr .start-grid { grid-template-columns: 1fr; } }
+
+    /* ---------- bandeau final ---------- */
+    .fr .final-band {
+      display: grid; grid-template-columns: 1.3fr 1fr auto; gap: 34px; align-items: center;
+      background: var(--surface); border: 1px solid var(--line);
+      border-radius: var(--r); padding: 34px 38px;
+    }
+    .fr .final-band h2 { font-size: clamp(23px,2.7vw,31px); font-weight: 800; letter-spacing: -.03em; line-height: 1.2; margin: 0; color: #fff; }
+    .fr .fb-txt { margin: 0; color: var(--txt-soft); font-size: 15.5px; }
+    .fr .fb-cta { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .fr .fb-cta small { font-size: 12.5px; color: var(--txt-faint); white-space: nowrap; }
+    @media (max-width: 950px) { .fr .final-band { grid-template-columns: 1fr; gap: 22px; text-align: center; } }
+
     /* ---------- cartes génériques ---------- */
     .fr .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; max-width: 1160px; margin: 0 auto; }
     .fr .card {
@@ -530,13 +600,17 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr .contact-form { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 30px; }
     .fr .contact-form label { display: block; font-size: 13.5px; font-weight: 700; margin: 0 0 7px; color: #fff; }
     .fr .contact-form label + input, .fr .contact-form label + textarea { margin-bottom: 18px; }
-    .fr .contact-form input, .fr .contact-form textarea {
+    .fr .contact-form input, .fr .contact-form textarea, .fr .contact-form select {
       width: 100%; border: 1px solid var(--line-2); border-radius: var(--r-sm);
       padding: 12px 15px; font-family: inherit; font-size: 15px; color: #fff;
       background: rgba(0,0,0,.32); transition: border-color .16s ease;
     }
     .fr .contact-form input::placeholder, .fr .contact-form textarea::placeholder { color: var(--txt-faint); }
-    .fr .contact-form input:focus, .fr .contact-form textarea:focus { outline: none; border-color: var(--violet); }
+    /* Le select natif se dessine en blanc sur ce fond sombre : on lui retire
+       son apparence systeme et on redessine la fleche via .select-wrap. */
+    .fr .contact-form select { appearance: none; -webkit-appearance: none; padding-right: 40px; cursor: pointer; }
+    .fr .contact-form select option { background: #0C1225; color: #fff; }
+    .fr .contact-form input:focus, .fr .contact-form textarea:focus, .fr .contact-form select:focus { outline: none; border-color: var(--violet); }
     .fr .contact-form textarea { resize: vertical; }
     @media (max-width: 860px) { .fr .contact-grid { grid-template-columns: 1fr; gap: 36px; } }
 
