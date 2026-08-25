@@ -1,8 +1,9 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
+import { RegionService } from '../services/region.service';
 
 /**
  * Cible du lien de confirmation envoyé par email : /confirmation-email?token=…
@@ -19,7 +20,7 @@ import { environment } from '../environments/environment';
     <div class="auth-page">
       <div class="auth-bg"><div class="bg-glow"></div><div class="bg-dots"></div></div>
 
-      <div class="auth-card" [class.wide]="state === 'ok'">
+      <div class="auth-card" [class.wide]="state === 'ok' && europe">
         <div class="logo">
           <img src="/assets/calypso-logo.svg" alt="Calypso">
         </div>
@@ -35,40 +36,51 @@ import { environment } from '../environments/environment';
                vient de passer en actif. Annoncer « espace activé » juste après
                le formulaire aurait envoyé l'utilisateur vers une connexion qui
                l'aurait refusé. -->
-          <div class="panel ready">
-            <div class="icon ok">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+          @if (europe) {
+            <div class="panel ready">
+              <div class="icon ok">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
+              </div>
+              <h1>Votre compte Calypso est prêt !</h1>
+              <p>Merci de nous avoir rejoints. Votre espace est maintenant activé et prêt à l'emploi.</p>
+  
+              <span class="ok-badge">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+                Activation réussie
+              </span>
+  
+              <h2 class="trial-title">Profitez de {{ trialDays }} jours d'essai gratuit</h2>
+  
+              <div class="trial-grid">
+                <div class="trial-item">
+                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+                  <h3>{{ trialDays }} jours complets</h3>
+                  <p>Testez toutes les fonctionnalités sans aucune limitation.</p>
+                </div>
+                <div class="trial-item">
+                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></span>
+                  <h3>Aucune carte bancaire</h3>
+                  <p>Aucun paiement requis pendant la période d'essai.</p>
+                </div>
+                <div class="trial-item">
+                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><path d="M5 15.5 8.5 19M4.5 19.5 9 15M14 4.5c3.5-1.5 6 1 4.5 4.5-1.2 2.8-4.6 6-8 8.5L7 14C9.5 10.6 11.2 5.7 14 4.5z"/></svg></span>
+                  <h3>Démarrage immédiat</h3>
+                  <p>Accédez à votre espace et commencez dès maintenant.</p>
+                </div>
+              </div>
+  
+              <a routerLink="/login" class="btn-primary">Accéder à Calypso</a>
             </div>
-            <h1>Votre compte Calypso est prêt !</h1>
-            <p>Merci de nous avoir rejoints. Votre espace est maintenant activé et prêt à l'emploi.</p>
-
-            <span class="ok-badge">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
-              Activation réussie
-            </span>
-
-            <h2 class="trial-title">Profitez de {{ trialDays }} jours d'essai gratuit</h2>
-
-            <div class="trial-grid">
-              <div class="trial-item">
-                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
-                <h3>{{ trialDays }} jours complets</h3>
-                <p>Testez toutes les fonctionnalités sans aucune limitation.</p>
+          } @else {
+            <div class="panel">
+              <div class="icon ok">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
               </div>
-              <div class="trial-item">
-                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></span>
-                <h3>Aucune carte bancaire</h3>
-                <p>Aucun paiement requis pendant la période d'essai.</p>
-              </div>
-              <div class="trial-item">
-                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><path d="M5 15.5 8.5 19M4.5 19.5 9 15M14 4.5c3.5-1.5 6 1 4.5 4.5-1.2 2.8-4.6 6-8 8.5L7 14C9.5 10.6 11.2 5.7 14 4.5z"/></svg></span>
-                <h3>Démarrage immédiat</h3>
-                <p>Accédez à votre espace et commencez dès maintenant.</p>
-              </div>
+              <h1>Adresse confirmée</h1>
+              <p>{{ message }}</p>
+              <a routerLink="/login" class="btn-primary">Se connecter</a>
             </div>
-
-            <a routerLink="/login" class="btn-primary">Accéder à Calypso</a>
-          </div>
+          }
         } @else {
           <div class="panel">
             <div class="icon ko">
@@ -169,6 +181,9 @@ import { environment } from '../environments/environment';
   `]
 })
 export class ConfirmEmailComponent implements OnInit {
+  /** Le nouvel ecran de bienvenue n habille que le parcours europeen. */
+  readonly europe = inject(RegionService).isEurope;
+
   state: 'pending' | 'ok' | 'ko' = 'pending';
   message = '';
   brand = (environment as any).brandName || 'Calypso';

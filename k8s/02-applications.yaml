@@ -280,6 +280,14 @@ spec:
                 configMapKeyRef:
                   name: gisv2-config
                   key: GROQ_MODEL
+            # Destinataire du formulaire de contact. Sans cette variable le
+            # point d entree repond 503 et l ecran montre le refus : mieux vaut
+            # un refus visible qu une confirmation pour un message jamais parti.
+            - name: Contact__Recipient
+              valueFrom:
+                configMapKeyRef:
+                  name: gisv2-config
+                  key: CONTACT_RECIPIENT
             # Adresse publique servant à composer les liens envoyés par email
             # (confirmation d'inscription). Doit être une URL réellement
             # joignable : le défaut du code (gpa.belive.tn) n'existe pas en DNS.

@@ -1,10 +1,11 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
+import { Component, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
 import { FranceHeaderComponent } from './france/france-header.component';
+import { RegionService } from '../services/region.service';
 
 /**
  * Inscription libre — jumeau visuel de l'écran de connexion.
@@ -24,7 +25,7 @@ import { FranceHeaderComponent } from './france/france-header.component';
   standalone: true,
   imports: [CommonModule, FormsModule, RouterLink, FranceHeaderComponent],
   template: `
-    <app-france-header></app-france-header>
+    @if (europe) { <app-france-header></app-france-header> }
     <div class="auth-page">
       <div class="auth-bg">
         <div class="bg-glow"></div>
@@ -33,6 +34,9 @@ import { FranceHeaderComponent } from './france/france-header.component';
 
       <div class="auth-card">
         <div class="auth-header">
+          @if (!europe) {
+            <div class="logo"><img src="/assets/calypso-logo.svg" alt="Calypso"></div>
+          }
           <h1>{{ submitted ? 'Vérifiez votre boîte mail' : 'Créer un compte' }}</h1>
           <p>{{ submitted ? 'Une dernière étape avant de commencer.' : trialDays + " jours d'essai — sans carte bancaire" }}</p>
         </div>
@@ -453,6 +457,9 @@ import { FranceHeaderComponent } from './france/france-header.component';
   `]
 })
 export class RegisterComponent {
+  /** Le bandeau commercial n habille que le parcours europeen. */
+  readonly europe = inject(RegionService).isEurope;
+
   accountType: 'particulier' | 'societe' = 'particulier';
   firstName = '';
   lastName = '';

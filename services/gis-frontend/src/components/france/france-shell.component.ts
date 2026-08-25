@@ -5,6 +5,7 @@ import {
   NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet
 } from '@angular/router';
 import { Subscription, filter } from 'rxjs';
+import { RegionService } from '../../services/region.service';
 import { FranceHeaderComponent } from './france-header.component';
 
 /**
@@ -582,11 +583,17 @@ import { FranceHeaderComponent } from './france-header.component';
 export class FranceShellComponent implements AfterViewInit, OnDestroy {
   private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly router = inject(Router);
+  private readonly region = inject(RegionService);
 
   private observer?: IntersectionObserver;
   private nav?: Subscription;
 
   ngAfterViewInit(): void {
+    // Entrer sur le site France suffit a basculer les ecrans partages
+    // (inscription, assistant, confirmation) dans leur habillage europeen,
+    // faute de quoi le parcours se casserait au premier clic sortant.
+    this.region.markFranceVisit();
+
     this.reveal();
     // Les pages sont des enfants du routeur : à chaque navigation, de nouveaux
     // blocs `.rise` apparaissent dans le DOM. Sans ce réabonnement ils

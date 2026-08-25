@@ -42,6 +42,8 @@ export class RegionService {
     return this.region === 'europe';
   }
 
+  private static readonly VISIT_KEY = 'calypso_fr_visit';
+
   private resolve(): Region {
     // Forçage explicite, pour recetter les deux vitrines depuis n'importe où.
     const forced = this.readOverride();
@@ -50,8 +52,37 @@ export class RegionService {
     const host = this.hostname();
     const listed = (environment.europeanHostnames ?? []).some(
       h => host === h.toLowerCase() || host.endsWith('.' + h.toLowerCase()));
+    if (listed) return 'europe';
 
-    return listed ? 'europe' : 'default';
+    // Visite en cours du site France. Indispensable tant qu'aucun domaine
+    // européen ne pointe ici : sans cela, un visiteur qui parcourt /fr et clique
+    // « Essayer gratuitement » atterrirait sur l'inscription tunisienne, et le
+    // parcours se casserait au milieu. La marque est de SESSION — elle disparaît
+    // à la fermeture de l'onglet et n'engage rien pour la visite suivante.
+    return this.visitedFranceSite() ? 'europe' : 'default';
+  }
+
+  /**
+   * Mémorise que le visiteur est entré sur le site France. Appelé par la coque
+   * de ce site, pas ailleurs.
+   */
+  markFranceVisit(): void {
+    try {
+      sessionStorage.setItem(RegionService.VISIT_KEY, '1');
+      // Le cache doit suivre, sinon la valeur calculée avant l'entrée sur le
+      // site resterait « default » pour toute la session.
+      this.cached = 'europe';
+    } catch {
+      // Stockage refusé : on retombe sur le domaine, sans casser la navigation.
+    }
+  }
+
+  private visitedFranceSite(): boolean {
+    try {
+      return sessionStorage.getItem(RegionService.VISIT_KEY) === '1';
+    } catch {
+      return false;
+    }
   }
 
   private hostname(): string {

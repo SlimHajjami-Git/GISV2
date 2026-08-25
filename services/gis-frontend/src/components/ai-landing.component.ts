@@ -1,5 +1,6 @@
-import { Component, NgZone } from '@angular/core';
+import { Component, NgZone, inject } from '@angular/core';
 import { FranceHeaderComponent } from './france/france-header.component';
+import { RegionService } from '../services/region.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -50,7 +51,44 @@ interface AssistantResponse {
     </div>
 
     <!-- top bar -->
-    <app-france-header [connected]="connected" [userName]="userName"></app-france-header>
+    @if (europe) {
+      <app-france-header [connected]="connected" [userName]="userName"></app-france-header>
+    } @else {
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">
+          <svg width="34" height="34" viewBox="0 0 40 40" fill="none">
+            <rect width="40" height="40" rx="10" fill="url(#lg)"/>
+            <path d="M11 22c0-5 4-9 9-9s9 4 9 9" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+            <circle cx="20" cy="27" r="2.6" fill="#fff"/>
+            <defs><linearGradient id="lg" x1="0" y1="0" x2="40" y2="40">
+              <stop stop-color="#2f6bff"/><stop offset="1" stop-color="#12d0ff"/></linearGradient></defs>
+          </svg>
+        </span>
+        <div class="brand-txt">
+          <span class="brand-name">Calypso</span>
+          <span class="brand-badge">Assistant Auto · IA</span>
+        </div>
+      </div>
+      <div class="nav-actions">
+        @if (connected) {
+          <span class="chip-connected" [title]="userName">
+            <span class="cc-dot"></span>
+            <span class="cc-lbl">Connecté<span class="cc-name">{{ userName ? ' · ' + userName : '' }}</span></span>
+          </span>
+        } @else {
+          <button class="btn-login" (click)="goToLogin()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="btn-login-lbl">Se connecter</span>
+          </button>
+        }
+        <button class="btn-calypso" (click)="goToCalypso()">
+          {{ connected ? 'Ouvrir Calypso' : 'Accéder à Calypso' }}
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </header>
+    }
 
     <!-- conversation -->
     <main class="stage" [class.chatting]="messages.length > 0">
@@ -300,6 +338,9 @@ export class AiLandingComponent {
    *  « Accéder à Calypso » doit mener DIRECTEMENT au tableau de bord, pas au
    *  login. Un jeton expiré n'est pas un problème : l'intercepteur le
    *  rafraîchit via le refresh_token en arrivant sur le dashboard. */
+  /** Le bandeau commercial n habille que le parcours europeen. */
+  readonly europe = inject(RegionService).isEurope;
+
   connected = false;
   userName = '';
 
