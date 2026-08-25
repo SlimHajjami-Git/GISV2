@@ -30,7 +30,7 @@ import { FranceHeaderComponent } from './france-header.component';
           <span class="fa-arc left"></span>
           <span class="fa-arc right"></span>
         </div>
-        <div class="fa-inner">
+        <div class="fa-inner" [class.wide]="wide">
           <ng-content></ng-content>
         </div>
       </main>
@@ -230,6 +230,44 @@ import { FranceHeaderComponent } from './france-header.component';
       outline: 2px solid var(--fa-violet2); outline-offset: 3px;
     }
 
+    /* ---------- carte large a deux colonnes (creation de compte) ------- */
+    /* Le conteneur passe a 1160px : la carte de la capture porte le
+       formulaire ET le panneau des benefices cote a cote. */
+    .fr-auth .fa-inner.wide { max-width: 1160px; }
+    .fr-auth .fa-split { display: grid; grid-template-columns: 1.45fr 1fr; }
+    .fr-auth .fa-split > .fa-col-form { padding: 34px 38px; }
+    .fr-auth .fa-split > .fa-col-side {
+      padding: 34px 38px; border-left: 1px solid var(--fa-line);
+      background: rgba(255,255,255,.02);
+    }
+    @media (max-width: 940px) {
+      .fr-auth .fa-split { grid-template-columns: 1fr; }
+      .fr-auth .fa-split > .fa-col-side { border-left: 0; border-top: 1px solid var(--fa-line); }
+    }
+    .fr-auth .fa-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+    @media (max-width: 620px) { .fr-auth .fa-grid2 { grid-template-columns: 1fr; } }
+
+    /* Panneau lateral : illustration puis quatre benefices separes de filets. */
+    .fr-auth .fa-side-art { display: grid; place-items: center; margin-bottom: 26px; }
+    .fr-auth .fa-side-art svg { width: 132px; height: 132px; }
+    .fr-auth .fa-side h3 { font-size: 19px; font-weight: 800; margin: 0 0 22px; text-align: center; color: #fff; }
+    .fr-auth .fa-benefit { display: flex; gap: 14px; align-items: flex-start; padding: 18px 0; }
+    .fr-auth .fa-benefit + .fa-benefit { border-top: 1px solid var(--fa-line); }
+    .fr-auth .fa-benefit-ic {
+      width: 42px; height: 42px; border-radius: 11px; flex: none; display: grid; place-items: center;
+      background: rgba(124,58,237,.14);
+    }
+    .fr-auth .fa-benefit-ic svg { width: 20px; height: 20px; }
+    .fr-auth .fa-benefit h4 { font-size: 14.5px; font-weight: 700; margin: 0 0 5px; color: #fff; }
+    .fr-auth .fa-benefit p { margin: 0; font-size: 13.5px; color: var(--fa-soft); line-height: 1.55; }
+
+    /* Regles de mot de passe : elles passent au vert PENDANT la saisie. */
+    .fr-auth .fa-rules { list-style: none; margin: -8px 0 20px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 9px 20px; }
+    .fr-auth .fa-rules li { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fa-faint); transition: color .16s ease; }
+    .fr-auth .fa-rules svg { width: 14px; height: 14px; flex: none; }
+    .fr-auth .fa-rules li.ok { color: #6EE7B7; }
+    @media (max-width: 620px) { .fr-auth .fa-rules { grid-template-columns: 1fr; } }
+
     /* ---------- pied de page ---------- */
     .fr-auth .fa-foot { background: var(--fa-bg-2); border-top: 1px solid var(--fa-line); padding: 52px 40px 28px; }
     .fr-auth .fa-foot-grid {
@@ -268,6 +306,9 @@ import { FranceHeaderComponent } from './france-header.component';
   `]
 })
 export class FranceAuthComponent {
+  /** Elargit le conteneur pour les ecrans a deux colonnes (creation de compte). */
+  @Input() wide = false;
+
   /** Année du bas de page. Calculée, jamais figée dans le gabarit. */
   readonly year = new Date().getFullYear();
 }

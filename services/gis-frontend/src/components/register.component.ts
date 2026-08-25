@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
-import { FranceHeaderComponent } from './france/france-header.component';
+import { FranceAuthComponent } from './france/france-auth.component';
 import { RegionService } from '../services/region.service';
 
 /**
@@ -23,9 +23,182 @@ import { RegionService } from '../services/region.service';
 @Component({
   selector: 'app-register',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, FranceHeaderComponent],
+  imports: [CommonModule, FormsModule, RouterLink, FranceAuthComponent],
   template: `
-    @if (europe) { <app-france-header></app-france-header> }
+    @if (europe) {
+      <app-france-auth [wide]="true">
+        <h1 class="fa-title">Créez <em>votre compte</em></h1>
+        <p class="fa-sub">Rejoignez Calypso et simplifiez la gestion de votre parc dès aujourd'hui.</p>
+
+        <div class="fa-card" style="padding:0">
+          <div class="fa-split">
+            <!-- ── colonne formulaire ── -->
+            <div class="fa-col-form">
+              @if (!submitted) {
+                <div class="fa-card-head">
+                  <span class="fa-card-ic">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.6"><circle cx="12" cy="9" r="3.4"/><path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/></svg>
+                  </span>
+                  <div>
+                    <h2>Informations du compte</h2>
+                    <p>Tous les champs marqués d'un <span class="req">*</span> sont obligatoires.</p>
+                  </div>
+                </div>
+
+                <div class="fa-grid2">
+                  <div>
+                    <label for="firstName">Prénom <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><circle cx="12" cy="9" r="3.2"/><path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/></svg>
+                      <input id="firstName" name="firstName" type="text" [(ngModel)]="firstName"
+                             placeholder="Votre prénom" autocomplete="given-name" required>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="lastName">Nom <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><circle cx="12" cy="9" r="3.2"/><path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/></svg>
+                      <input id="lastName" name="lastName" type="text" [(ngModel)]="lastName"
+                             placeholder="Votre nom" autocomplete="family-name" required>
+                    </div>
+                  </div>
+                </div>
+
+                <label for="email">E-mail <span class="req">*</span></label>
+                <div class="fa-field">
+                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                  <input id="email" name="email" type="email" [(ngModel)]="email"
+                         placeholder="exemple@domaine.com" autocomplete="email" required>
+                </div>
+
+                <label for="phone">Téléphone <span class="req">*</span></label>
+                <div class="fa-field">
+                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg>
+                  <input id="phone" name="phone" type="tel" [(ngModel)]="phone"
+                         [placeholder]="phonePlaceholder" autocomplete="tel" required>
+                </div>
+
+                @if (accountType === 'societe') {
+                  <label for="companyName">Société <span class="req">*</span></label>
+                  <div class="fa-field">
+                    <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M9 20v-4h6v4M8 10h2M14 10h2M8 13.5h2M14 13.5h2"/></svg>
+                    <input id="companyName" name="companyName" type="text" [(ngModel)]="companyName"
+                           placeholder="Nom de votre société" autocomplete="organization" required>
+                  </div>
+                }
+
+                <div class="fa-grid2">
+                  <div>
+                    <label for="country">Pays <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
+                      <select id="country" name="country" [(ngModel)]="country" required>
+                        <option value="" disabled>Sélectionnez votre pays</option>
+                        @for (c of countries; track c.code) {
+                          <option [value]="c.code">{{ c.name }}</option>
+                        }
+                      </select>
+                      <span class="fa-chev"></span>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="fleetSize">Nombre de véhicules <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><path d="M3 13h18M5 13l1.6-5.2A2 2 0 0 1 8.5 6.4h7a2 2 0 0 1 1.9 1.4L19 13v5h-2.2v-2H7.2v2H5z"/></svg>
+                      <select id="fleetSize" name="fleetSize" [(ngModel)]="fleetSizeRange" required>
+                        <option value="" disabled>Choisissez une tranche</option>
+                        @for (r of fleetSizeOptions; track r) {
+                          <option [value]="r">{{ r === '100+' ? '100 et plus' : r + ' véhicules' }}</option>
+                        }
+                      </select>
+                      <span class="fa-chev"></span>
+                    </div>
+                  </div>
+                </div>
+
+                <label for="password">Mot de passe <span class="req">*</span></label>
+                <div class="fa-field">
+                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+                  <input id="password" name="password" [type]="showPassword ? 'text' : 'password'"
+                         [(ngModel)]="password" placeholder="Créez un mot de passe" autocomplete="new-password" required>
+                  <button type="button" class="fa-eye" (click)="showPassword = !showPassword"
+                          [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                  </button>
+                </div>
+
+                <ul class="fa-rules">
+                  <li [class.ok]="password.length >= 10">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                    Au moins 10 caractères
+                  </li>
+                  <li [class.ok]="hasUpper">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                    Inclure une majuscule
+                  </li>
+                  <li [class.ok]="hasLower">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                    Inclure une minuscule
+                  </li>
+                  <li [class.ok]="hasDigitOrSymbol">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+                    Inclure un chiffre ou un symbole
+                  </li>
+                </ul>
+
+                @if (errorMessage) { <div class="fa-error">{{ errorMessage }}</div> }
+
+                <button type="button" class="fa-btn grad" [disabled]="isLoading || !isValid()" (click)="onSubmit()">
+                  {{ isLoading ? 'Création du compte…' : 'Créer mon compte' }}
+                </button>
+
+                <p class="fa-foot-note">
+                  Vous avez déjà un compte ? <a routerLink="/login" class="fa-link">Se connecter</a>
+                </p>
+              } @else {
+                <div class="fa-ok">{{ resultMessage }}</div>
+                <p style="color:#9AA7BD;font-size:14.5px;line-height:1.6;margin:0 0 20px">
+                  Ouvrez le lien de confirmation reçu par e-mail pour activer votre compte.
+                </p>
+                <a routerLink="/login" class="fa-btn line">Retour à la connexion</a>
+              }
+            </div>
+
+            <!-- ── colonne bénéfices ── -->
+            <div class="fa-col-side fa-side">
+              <div class="fa-side-art" aria-hidden="true">
+                <svg viewBox="0 0 140 140" fill="none">
+                  <circle cx="70" cy="70" r="60" stroke="rgba(139,92,246,.28)" stroke-width="1" stroke-dasharray="5 7"/>
+                  <circle cx="70" cy="70" r="44" stroke="rgba(167,139,250,.5)" stroke-width="1.5"/>
+                  <circle cx="70" cy="66" r="12" stroke="#A78BFA" stroke-width="2"/>
+                  <path d="M50 94a20 20 0 0 1 40 0" stroke="#A78BFA" stroke-width="2" stroke-linecap="round"/>
+                  <circle cx="103" cy="97" r="12" fill="#0C1225" stroke="#A78BFA" stroke-width="2"/>
+                  <path d="M103 92v10M98 97h10" stroke="#A78BFA" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </div>
+              <h3>Pourquoi créer un compte ?</h3>
+
+              <div class="fa-benefit">
+                <span class="fa-benefit-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 20h8M12 17v3"/></svg></span>
+                <div><h4>Accès complet</h4><p>Profitez de toutes les fonctionnalités de Calypso.</p></div>
+              </div>
+              <div class="fa-benefit">
+                <span class="fa-benefit-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><path d="M12 3l7.5 3v6c0 4.4-3.1 7.6-7.5 9-4.4-1.4-7.5-4.6-7.5-9V6z"/><path d="m9 12 2 2 4-4.5"/></svg></span>
+                <div><h4>Données sécurisées</h4><p>Vos données sont protégées avec les plus hauts standards.</p></div>
+              </div>
+              <div class="fa-benefit">
+                <span class="fa-benefit-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><path d="M6.5 18a4.5 4.5 0 0 1 .3-9 6 6 0 0 1 11.4 1.5 3.75 3.75 0 0 1-.7 7.5z"/></svg></span>
+                <div><h4>Accessible partout</h4><p>Accédez à votre espace depuis n'importe où, à tout moment.</p></div>
+              </div>
+              <div class="fa-benefit">
+                <span class="fa-benefit-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                <div><h4>Alertes en temps réel</h4><p>Recevez des notifications et restez informé en temps réel.</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </app-france-auth>
+    } @else {
     <div class="auth-page">
       <div class="auth-bg">
         <div class="bg-glow"></div>
@@ -206,6 +379,7 @@ import { RegionService } from '../services/region.service';
         </div>
       </div>
     </div>
+    }
   `,
   styles: [`
     /* Charte « Calypso Command », identique à l'écran de connexion : les deux
@@ -459,6 +633,15 @@ import { RegionService } from '../services/region.service';
 export class RegisterComponent {
   /** Le bandeau commercial n habille que le parcours europeen. */
   readonly europe = inject(RegionService).isEurope;
+
+  /** Bascule de visibilite du mot de passe, comme sur la capture validee. */
+  showPassword = false;
+
+  /* Les regles s allument PENDANT la saisie : la contrainte se lit quand elle
+     sert encore, pas apres un refus. */
+  get hasUpper(): boolean { return /[A-Z]/.test(this.password); }
+  get hasLower(): boolean { return /[a-z]/.test(this.password); }
+  get hasDigitOrSymbol(): boolean { return /[0-9]|[^A-Za-z0-9]/.test(this.password); }
 
   accountType: 'particulier' | 'societe' = 'particulier';
   firstName = '';
