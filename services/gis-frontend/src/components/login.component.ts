@@ -1,5 +1,7 @@
-import { Component, ChangeDetectorRef } from '@angular/core';
+import { Component, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FranceAuthComponent } from './france/france-auth.component';
+import { RegionService } from '../services/region.service';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
@@ -8,8 +10,69 @@ import { environment } from '../environments/environment';
 @Component({
   selector: 'app-login',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [CommonModule, FormsModule, RouterLink, FranceAuthComponent],
   template: `
+    @if (europe) {
+      <app-france-auth>
+        <div class="fa-badge">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.6" stroke-linecap="round">
+            <circle cx="12" cy="9" r="3.4"/>
+            <path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/>
+          </svg>
+        </div>
+
+        <h1 class="fa-title">Se <em>connecter</em></h1>
+        <p class="fa-sub">Accédez à votre espace Calypso et gérez votre parc en toute simplicité.</p>
+
+        <div class="fa-card">
+          <form (ngSubmit)="onSubmit()">
+            <label for="email">E-mail <span class="req">*</span></label>
+            <div class="fa-field">
+              <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+              <input id="email" name="email" type="email" autocomplete="email"
+                     [(ngModel)]="email" placeholder="votre@email.com" required>
+            </div>
+
+            <label for="password">Mot de passe <span class="req">*</span></label>
+            <div class="fa-field">
+              <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+              <input id="password" name="password" [type]="showPassword ? 'text' : 'password'"
+                     autocomplete="current-password" [(ngModel)]="password"
+                     placeholder="Votre mot de passe" required>
+              <button type="button" class="fa-eye" (click)="showPassword = !showPassword"
+                      [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+              </button>
+            </div>
+
+            <div class="fa-row">
+              <label class="fa-check">
+                <input type="checkbox" name="remember" [(ngModel)]="rememberMe">
+                Se souvenir de moi
+              </label>
+              <a routerLink="/mot-de-passe-oublie" class="fa-link">Mot de passe oublié ?</a>
+            </div>
+
+            @if (errorMessage) { <div class="fa-error">{{ errorMessage }}</div> }
+
+            <button type="submit" class="fa-btn grad" [disabled]="isLoading">
+              {{ isLoading ? 'Connexion…' : 'Se connecter' }}
+            </button>
+          </form>
+
+          @if (signupEnabled) {
+            <div class="fa-or">ou</div>
+            <a routerLink="/inscription" class="fa-btn line">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="9" cy="9" r="3.2"/><path d="M3 19a6 6 0 0 1 12 0M18 8v6M21 11h-6"/></svg>
+              Créer un compte
+            </a>
+            <p class="fa-foot-note">
+              Pas encore de compte ? <a routerLink="/inscription" class="fa-link">Créez-en un</a> en quelques clics.
+            </p>
+          }
+        </div>
+      </app-france-auth>
+    } @else {
     <div class="auth-page">
       <div class="auth-bg">
         <div class="bg-glow"></div>
@@ -125,6 +188,7 @@ import { environment } from '../environments/environment';
         </div>
       </div>
     </div>
+    }
   `,
   styles: [`
     /* Charte « Calypso Command » — plein écran carbone signature,
@@ -293,6 +357,12 @@ import { environment } from '../environments/environment';
   `]
 })
 export class LoginComponent {
+  /** L habillage commercial n est servi qu au parcours europeen. */
+  readonly europe = inject(RegionService).isEurope;
+
+  /** Bascule de visibilite du mot de passe, comme sur la capture validee. */
+  showPassword = false;
+
   email = '';
   password = '';
   rememberMe = false;
