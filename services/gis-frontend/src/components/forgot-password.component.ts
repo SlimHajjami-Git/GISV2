@@ -1,12 +1,12 @@
 import { Component, inject } from '@angular/core';
-import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../environments/environment';
+import { FranceAuthComponent } from './france/france-auth.component';
 
 /**
- * Écran « mot de passe oublié » : saisie de l'adresse, envoi du lien.
+ * Écran « Mot de passe oublié ? », d'après la capture validée.
  *
  * <p>L'écran <b>ne dit jamais</b> si l'adresse est connue. Ce n'est pas une
  * imprécision : afficher « adresse inconnue » transformerait la page en
@@ -17,107 +17,72 @@ import { environment } from '../environments/environment';
 @Component({
   selector: 'app-forgot-password',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink],
+  imports: [FormsModule, RouterLink, FranceAuthComponent],
   template: `
-    <div class="auth-page">
-      <div class="auth-card">
-        <div class="auth-header">
-          <div class="logo">
-            <img src="/assets/calypso-logo.svg" alt="Calypso">
-          </div>
-          <h1>{{ sent ? 'Vérifiez votre boîte mail' : 'Mot de passe oublié' }}</h1>
-          <p>
-            {{ sent
-              ? 'Si un compte correspond à cette adresse, le lien vient de partir.'
-              : 'Indiquez votre adresse : nous vous enverrons un lien pour en choisir un nouveau.' }}
-          </p>
-        </div>
+    <app-france-auth>
+      <div class="fa-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7" stroke-linecap="round">
+          <rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/>
+          <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/>
+          <path d="M12 14v2.5"/>
+        </svg>
+      </div>
 
+      <h1 class="fa-title">Mot de passe <em>oublié&nbsp;?</em></h1>
+      <p class="fa-sub">
+        Pas de souci ! Saisissez votre adresse e-mail ci-dessous.<br>
+        Nous vous enverrons un lien pour réinitialiser votre mot de passe.
+      </p>
+
+      <div class="fa-card">
         @if (!sent) {
+          <div class="fa-card-head">
+            <span class="fa-card-ic">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+            </span>
+            <div>
+              <h2>Votre e-mail <span class="req">*</span></h2>
+              <p>Saisissez l'adresse e-mail associée à votre compte Calypso.</p>
+            </div>
+          </div>
+
           <form (ngSubmit)="submit()">
-            <div class="form-group">
-              <label for="email">Adresse email</label>
+            <div class="fa-field">
+              <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
               <input id="email" name="email" type="email" autocomplete="email"
-                     [(ngModel)]="email" placeholder="vous@exemple.com" required />
+                     [(ngModel)]="email" placeholder="exemple@domaine.com" required>
             </div>
 
-            @if (error) {
-              <div class="error-message">{{ error }}</div>
-            }
+            @if (error) { <div class="fa-error">{{ error }}</div> }
 
-            <button type="submit" class="btn-primary btn-full"
-                    [disabled]="loading || !email.trim()">
-              {{ loading ? 'Envoi…' : 'Envoyer le lien' }}
+            <button type="submit" class="fa-btn grad" [disabled]="loading || !email.trim()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/></svg>
+              {{ loading ? 'Envoi…' : 'Réinitialiser mon mot de passe' }}
             </button>
           </form>
         } @else {
-          <div class="sent-box">
-            <p>
-              Le lien est valable <strong>une heure</strong> et ne peut servir
-              qu'une seule fois.
-            </p>
-            <p class="muted">
-              Rien reçu ? Regardez dans les indésirables. Le courriel peut mettre
-              quelques minutes à arriver.
-            </p>
-            <button type="button" class="btn-ghost btn-full" (click)="again()">
-              Réessayer avec une autre adresse
-            </button>
+          <div class="fa-ok">
+            Si un compte est associé à cette adresse, le lien vient d'y être envoyé.
           </div>
+          <p style="color:#9AA7BD;font-size:14.5px;line-height:1.6;margin:0 0 20px">
+            Le lien est valable <strong style="color:#fff">une heure</strong> et ne peut
+            servir qu'une seule fois. Rien reçu ? Regardez dans les indésirables :
+            le courriel peut mettre quelques minutes à arriver.
+          </p>
+          <button type="button" class="fa-btn line" (click)="again()">
+            Réessayer avec une autre adresse
+          </button>
         }
 
-        <div class="auth-footer">
-          <p><a routerLink="/login" class="link">Retour à la connexion</a></p>
-        </div>
+        <div class="fa-or">ou</div>
+
+        <a routerLink="/login" class="fa-btn line">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+          Retour à la connexion
+        </a>
       </div>
-    </div>
-  `,
-  styles: [`
-    :host { display: block; }
-    .auth-page {
-      min-height: 100vh; display: grid; place-items: center;
-      background: #f1f5f9; padding: 24px; font-family: Inter, system-ui, sans-serif;
-    }
-    .auth-card {
-      width: 100%; max-width: 430px; background: #fff; border-radius: 18px;
-      padding: 38px 34px; box-shadow: 0 1px 2px rgba(15,23,42,.05), 0 22px 48px -20px rgba(15,23,42,.22);
-    }
-    .auth-header { text-align: center; margin-bottom: 26px; }
-    .logo img { height: 42px; width: auto; display: block; margin: 0 auto 20px; }
-    .auth-header h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin: 0 0 8px; }
-    .auth-header p { font-size: 14.5px; color: #64748b; margin: 0; line-height: 1.55; }
-    .form-group { margin-bottom: 18px; }
-    label { display: block; font-size: 13.5px; font-weight: 600; color: #334155; margin-bottom: 7px; }
-    input {
-      width: 100%; padding: 13px 15px; background: #f8fafc; border: 1px solid #e2e8f0;
-      border-radius: 10px; font-size: 15px; color: #0f172a; box-sizing: border-box;
-      transition: all .2s; font-family: inherit;
-    }
-    input:focus { outline: none; background: #fff; border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
-    .btn-primary {
-      background: #4f46e5; color: #fff; border: 0; border-radius: 10px;
-      padding: 13px 20px; font-size: 15px; font-weight: 600; cursor: pointer;
-      font-family: inherit; transition: background .2s;
-    }
-    .btn-primary:hover:not(:disabled) { background: #4338ca; }
-    .btn-primary:disabled { opacity: .55; cursor: not-allowed; }
-    .btn-ghost {
-      background: #fff; color: #334155; border: 1px solid #e2e8f0; border-radius: 10px;
-      padding: 12px 20px; font-size: 14.5px; font-weight: 600; cursor: pointer; font-family: inherit;
-    }
-    .btn-ghost:hover { border-color: #cbd5e1; }
-    .btn-full { width: 100%; }
-    .error-message {
-      background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
-      border-radius: 10px; padding: 11px 14px; font-size: 14px; margin-bottom: 16px;
-    }
-    .sent-box p { font-size: 14.5px; color: #334155; line-height: 1.6; margin: 0 0 12px; }
-    .sent-box .muted { color: #64748b; font-size: 13.5px; margin-bottom: 20px; }
-    .auth-footer { text-align: center; margin-top: 22px; }
-    .auth-footer p { font-size: 14px; color: #64748b; margin: 0; }
-    .link { color: #4f46e5; text-decoration: none; font-weight: 600; }
-    .link:hover { text-decoration: underline; }
-  `]
+    </app-france-auth>
+  `
 })
 export class ForgotPasswordComponent {
   private readonly http = inject(HttpClient);
