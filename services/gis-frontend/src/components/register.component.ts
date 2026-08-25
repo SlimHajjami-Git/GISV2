@@ -510,7 +510,23 @@ export class RegisterComponent {
 
   brand = (environment as any).brandName || 'Calypso';
   // Purement informatif : la durée qui fait foi est celle du serveur.
-  trialDays = (environment as any).selfSignupTrialDays || 14;
+  /**
+   * Durée d'essai ANNONCÉE. Elle dépend du parcours, et pas par coquetterie.
+   *
+   * <p>Le document maître impose 7 jours sur le site France et interdit
+   * d'afficher 14. Mais le serveur en ACCORDE 14
+   * (<c>AppRegistration.TrialDays</c>). Afficher 7 partout revenait à annoncer
+   * aux prospects tunisiens la moitié de ce qu'ils reçoivent réellement —
+   * une sous-promesse gratuite face à la concurrence.</p>
+   *
+   * <p>D'où deux valeurs : 7 sur le parcours européen, où la règle prime et où
+   * l'écart joue en faveur du client ; la durée réelle ailleurs, où rien
+   * n'oblige à se sous-vendre. Aucun visiteur ne reçoit moins que ce qui lui a
+   * été annoncé.</p>
+   */
+  readonly trialDays = this.europe
+    ? ((environment as any).selfSignupTrialDays || 7)
+    : ((environment as any).actualTrialDays || 14);
   // Indicatif PAR DÉPLOIEMENT : le repli garde le format algérien d'origine,
   // pour que Bougeo/DZ reste inchangé sans toucher à sa copie locale.
   phonePlaceholder = (environment as any).phonePlaceholder || '+213 5 00 00 00 00';

@@ -37,6 +37,12 @@ export const environment = {
   // que promis. L aligner reviendrait a RACCOURCIR l essai, ce qui est une
   // decision commerciale, pas un reglage d affichage.
   selfSignupTrialDays: 7,
+
+  // Duree REELLEMENT accordee par le serveur (AppRegistration.TrialDays).
+  // Sert a ne pas se sous-vendre hors du parcours europeen : la ou aucune
+  // regle n impose 7 jours, autant annoncer ce qui est vraiment offert.
+  // A GARDER ALIGNEE sur le serveur — sinon on promet plus que l on donne.
+  actualTrialDays: 14,
   // Pays preselectionne dans le formulaire d inscription (ISO 3166-1 alpha-2).
   // PER-DEPLOYMENT : TN ici, FR sur un futur deploiement francais, DZ pour Bougeo.
   // Son absence vaut TN, le pays historiquement servi.
