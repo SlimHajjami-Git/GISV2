@@ -19,17 +19,9 @@ import { environment } from '../environments/environment';
     <div class="auth-page">
       <div class="auth-bg"><div class="bg-glow"></div><div class="bg-dots"></div></div>
 
-      <div class="auth-card">
+      <div class="auth-card" [class.wide]="state === 'ok'">
         <div class="logo">
-          <span class="logo-icon">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M5 13l4 4L19 7"/>
-            </svg>
-          </span>
-          <div class="logo-text">
-            <span class="brand">{{ brand }}</span>
-            <span class="subtitle">Gestion de flotte</span>
-          </div>
+          <img src="/assets/calypso-logo.svg" alt="Calypso">
         </div>
 
         @if (state === 'pending') {
@@ -38,13 +30,44 @@ import { environment } from '../environments/environment';
             <h1>Confirmation en cours…</h1>
           </div>
         } @else if (state === 'ok') {
-          <div class="panel">
+          <!-- C'EST ICI que l'écran « Votre compte Calypso est prêt ! » a sa
+               place, et pas après l'inscription : à cet instant précis le compte
+               vient de passer en actif. Annoncer « espace activé » juste après
+               le formulaire aurait envoyé l'utilisateur vers une connexion qui
+               l'aurait refusé. -->
+          <div class="panel ready">
             <div class="icon ok">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
             </div>
-            <h1>Adresse confirmée</h1>
-            <p>{{ message }}</p>
-            <a routerLink="/login" class="btn-primary">Se connecter</a>
+            <h1>Votre compte Calypso est prêt !</h1>
+            <p>Merci de nous avoir rejoints. Votre espace est maintenant activé et prêt à l'emploi.</p>
+
+            <span class="ok-badge">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+              Activation réussie
+            </span>
+
+            <h2 class="trial-title">Profitez de {{ trialDays }} jours d'essai gratuit</h2>
+
+            <div class="trial-grid">
+              <div class="trial-item">
+                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
+                <h3>{{ trialDays }} jours complets</h3>
+                <p>Testez toutes les fonctionnalités sans aucune limitation.</p>
+              </div>
+              <div class="trial-item">
+                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></span>
+                <h3>Aucune carte bancaire</h3>
+                <p>Aucun paiement requis pendant la période d'essai.</p>
+              </div>
+              <div class="trial-item">
+                <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><path d="M5 15.5 8.5 19M4.5 19.5 9 15M14 4.5c3.5-1.5 6 1 4.5 4.5-1.2 2.8-4.6 6-8 8.5L7 14C9.5 10.6 11.2 5.7 14 4.5z"/></svg></span>
+                <h3>Démarrage immédiat</h3>
+                <p>Accédez à votre espace et commencez dès maintenant.</p>
+              </div>
+            </div>
+
+            <a routerLink="/login" class="btn-primary">Accéder à Calypso</a>
           </div>
         } @else {
           <div class="panel">
@@ -60,6 +83,29 @@ import { environment } from '../environments/environment';
     </div>
   `,
   styles: [`
+    /* ---------- écran « Votre compte Calypso est prêt ! » ---------- */
+    .panel.ready { max-width: 720px; }
+    .ok-badge {
+      display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 26px;
+      padding: 8px 16px; border-radius: 999px;
+      background: rgba(16,185,129,.12); border: 1px solid rgba(52,211,153,.35);
+      color: #34d399; font-size: 13px; font-weight: 600;
+    }
+    .trial-title { font-size: 21px; font-weight: 700; margin: 0 0 24px; color: #0f172a; }
+    .trial-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 28px; }
+    .trial-item { padding: 0 18px; }
+    .trial-item + .trial-item { border-left: 1px solid var(--c-border); }
+    .ti-ic {
+      width: 52px; height: 52px; border-radius: 50%; margin: 0 auto 14px;
+      display: grid; place-items: center; background: rgba(99,102,241,.10);
+    }
+    .ti-ic svg { width: 23px; height: 23px; }
+    .trial-item h3 { font-size: 14.5px; font-weight: 700; margin: 0 0 6px; color: #0f172a; }
+    .trial-item p { font-size: 13px; line-height: 1.5; color: var(--c-sub); margin: 0; }
+    @media (max-width: 640px) {
+      .trial-grid { grid-template-columns: 1fr; gap: 22px; }
+      .trial-item + .trial-item { border-left: 0; border-top: 1px solid var(--c-border); padding-top: 22px; }
+    }
     .auth-page {
       --c-indigo: #4f46e5; --c-ink: #0f172a; --c-sub: #64748b; --c-border: #e6eaf2;
       min-height: 100vh; display: flex; align-items: center; justify-content: center;
@@ -76,6 +122,8 @@ import { environment } from '../environments/environment';
       background-image: radial-gradient(rgba(255,255,255,.05) 1px, transparent 1px);
       background-size: 40px 40px;
     }
+    .auth-card.wide { width: 720px; }
+    .logo img { height: 42px; width: auto; display: block; margin: 0 auto; }
     .auth-card {
       width: 440px; max-width: 100%; padding: 44px 40px; box-sizing: border-box;
       background: #fff; border-radius: 18px; position: relative; z-index: 1;
@@ -124,6 +172,9 @@ export class ConfirmEmailComponent implements OnInit {
   state: 'pending' | 'ok' | 'ko' = 'pending';
   message = '';
   brand = (environment as any).brandName || 'Calypso';
+
+  /** Durée annoncée de l essai. Le document maitre impose 7 jours. */
+  trialDays = (environment as any).selfSignupTrialDays || 7;
 
   constructor(
     private route: ActivatedRoute,

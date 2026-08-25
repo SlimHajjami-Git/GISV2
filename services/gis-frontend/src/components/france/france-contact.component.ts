@@ -1,4 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { environment } from '../../environments/environment';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -11,11 +13,16 @@ import { RouterLink } from '@angular/router';
  * Une version antérieure de cette page portait un bloc « à communiquer » :
  * il est supprimé — l'emplacement lui-même n'a pas lieu d'être.</p>
  *
- * <p>Le formulaire n'est pas encore relié : aucun point d'entrée de contact
- * n'existe côté API. Un formulaire qui affiche « message envoyé » sans rien
- * envoyer est pire que pas de formulaire du tout — il fait perdre des demandes
- * clients en silence. L'écran de confirmation prévu par la spécification n'est
- * donc montré que lorsqu'un envoi a réellement abouti.</p>
+ * <p>Le formulaire transmet réellement, via <c>POST /api/contact</c>. Le
+ * destinataire est une configuration serveur et n'est jamais exposé au
+ * navigateur — c'est ce qui permet au formulaire d'être le seul canal public
+ * sans qu'aucune adresse n'apparaisse.</p>
+ *
+ * <p>L'écran « Message envoyé ! » n'apparaît QUE sur un succès réel. Un
+ * formulaire qui confirme sans transmettre fait perdre des demandes clients en
+ * silence, et personne ne s'en aperçoit avant des semaines : tant que le
+ * destinataire n'est pas configuré, le serveur répond une erreur visible et
+ * l'écran la montre.</p>
  */
 @Component({
   selector: 'app-france-contact',
@@ -58,13 +65,12 @@ import { RouterLink } from '@angular/router';
                       placeholder="Votre message…"></textarea>
 
             <button class="btn btn-grad" type="submit" style="width:100%"
-                    [disabled]="!valid()">Envoyer le message</button>
+                    [disabled]="loading || !valid()">
+              {{ loading ? 'Envoi…' : 'Envoyer le message' }}
+            </button>
 
-            @if (attempted) {
-              <p class="legal-warn" style="margin-top:18px" role="status">
-                L'envoi n'est pas encore raccordé : aucune boîte de réception n'a
-                été définie pour ce site. Votre message n'a donc pas été transmis.
-              </p>
+            @if (erreur) {
+              <p class="legal-warn" style="margin-top:18px" role="status">{{ erreur }}</p>
             }
           </form>
         } @else {
@@ -88,18 +94,21 @@ import { RouterLink } from '@angular/router';
   `
 })
 export class FranceContactComponent {
+  private readonly http = inject(HttpClient);
+
   nom = '';
   email = '';
   telephone = '';
   sujet = '';
   message = '';
 
-  attempted = false;
+  /** Vrai pendant l envoi : le bouton se verrouille pour eviter un doublon. */
+  loading = false;
+  erreur = '';
   sent = false;
 
-  /** Sujets proposés. Aucun ne suppose un pays ni un canal direct. */
   readonly sujets = [
-    'Demande d\'information',
+    'Demande d information',
     'Demande de démonstration',
     'Question sur les tarifs',
     'Support technique',
@@ -116,9 +125,30 @@ export class FranceContactComponent {
 
   submit(event: Event): void {
     event.preventDefault();
-    // Tant qu'aucune destination n'existe, on le dit plutôt que de basculer
-    // sur l'écran « Message envoyé ! » — qui affirmerait une transmission
-    // n'ayant pas eu lieu.
-    this.attempted = true;
+    if (this.loading || !this.valid()) return;
+
+    this.loading = true;
+    this.erreur = '';
+
+    this.http.post<{ success: boolean; message: string }>(
+      `${environment.apiUrl}/contact`,
+      {
+        nom: this.nom.trim(),
+        email: this.email.trim(),
+        telephone: this.telephone.trim(),
+        sujet: this.sujet,
+        message: this.message.trim()
+      }
+    ).subscribe({
+      // L ecran de confirmation n apparait QUE sur un succes reel : afficher
+      // « Message envoye ! » sans transmission ferait perdre la demande en
+      // silence, et personne ne s en apercevrait.
+      next: () => { this.loading = false; this.sent = true; },
+      error: (err) => {
+        this.loading = false;
+        this.erreur = err?.error?.message
+          || "Votre message n a pas pu etre transmis. Reessayez dans un instant.";
+      }
+    });
   }
 }

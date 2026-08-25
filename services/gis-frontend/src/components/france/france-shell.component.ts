@@ -500,6 +500,21 @@ import { FranceHeaderComponent } from './france-header.component';
     .fr details .ans { padding: 0 22px 20px; color: var(--txt-soft); margin: 0; }
     .fr details .ans a { color: var(--blue-2); }
 
+    /* Formulaire seul, sans colonne de coordonnees : le document maitre
+       interdit tout bloc de contact direct. */
+    .fr .contact-form.solo { max-width: 640px; margin: 0 auto; }
+
+    /* Etat « Message envoye ! » */
+    .fr .sent-state { max-width: 560px; margin: 0 auto; text-align: center; }
+    .fr .sent-ic {
+      width: 74px; height: 74px; border-radius: 50%; margin: 0 auto 24px;
+      display: grid; place-items: center;
+      background: rgba(52,211,153,.12); border: 1px solid rgba(52,211,153,.35);
+    }
+    .fr .sent-ic svg { width: 34px; height: 34px; }
+    .fr .sent-state h2 { font-size: clamp(28px,4vw,40px); font-weight: 800; letter-spacing: -.03em; margin: 0 0 14px; color: #fff; }
+    .fr .sent-state p { color: var(--txt-soft); margin: 0 0 30px; font-size: 16.5px; }
+
     /* ---------- contact ---------- */
     .fr .contact-grid { display: grid; grid-template-columns: .85fr 1.15fr; gap: 56px; max-width: 1120px; margin: 0 auto; align-items: start; }
     .fr .contact-info { display: flex; flex-direction: column; gap: 26px; }
