@@ -52,19 +52,9 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
           </ul>
         </div>
 
-        <div class="fh-diag" aria-label="Les six univers couverts par Calypso">
-          <span class="fh-ring r1"></span>
-          <span class="fh-ring r2"></span>
-          <span class="fh-glow"></span>
-          <div class="fh-core">
-            <img src="/assets/calypso-logo.svg" alt="Calypso">
-          </div>
-          <div class="fh-node n1"><span class="i" style="border-color:rgba(96,165,250,.5);background:rgba(59,130,246,.13)"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0 4.6 5.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3a4 4 0 0 0-1.8-2.9z"/></svg></span><span class="l">ENTRETIEN</span></div>
-          <div class="fh-node n2"><span class="i" style="border-color:rgba(52,211,153,.5);background:rgba(52,211,153,.13)"><svg viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h13M17 9l2.5 2.5V17a1.5 1.5 0 0 1-3 0V9z"/></svg></span><span class="l">CARBURANT</span></div>
-          <div class="fh-node n3"><span class="i" style="border-color:rgba(167,139,250,.5);background:rgba(139,92,246,.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg></span><span class="l">RÉPARATION</span></div>
-          <div class="fh-node n4"><span class="i" style="border-color:rgba(96,165,250,.5);background:rgba(59,130,246,.13)"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span><span class="l">ÉCHÉANCE</span></div>
-          <div class="fh-node n5"><span class="i" style="border-color:rgba(236,72,153,.45);background:rgba(236,72,153,.13)"><svg viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.8"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8A3 3 0 0 0 8 18a3 3 0 0 0 4-1V4.9A3 3 0 0 0 9 4zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8A3 3 0 0 1 16 18a3 3 0 0 1-4-1"/></svg></span><span class="l">IA</span></div>
-          <div class="fh-node n6"><span class="i" style="border-color:rgba(129,140,248,.5);background:rgba(99,102,241,.15)"><svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="1.8"><path d="M3 13h18M5 13l1.6-5.2A2 2 0 0 1 8.5 6.4h7a2 2 0 0 1 1.9 1.4L19 13v5h-2.2v-2H7.2v2H5z"/><circle cx="7.8" cy="16" r="1.1"/><circle cx="16.2" cy="16" r="1.1"/></svg></span><span class="l">PARC</span></div>
+        <div class="fh-diag" aria-hidden="true">
+          <img src="/assets/fr-home-diagram.png"
+               alt="Les six univers couverts par Calypso : entretien, carburant, réparation, échéance, IA, parc">
         </div>
       </section>
 
@@ -85,7 +75,7 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
           <p>Découvrez Calypso à travers<br>son interface réelle.</p>
         </div>
         <div class="fh-prod-shot">
-          <img src="/assets/france/produit-tableau-de-bord-sombre.webp"
+          <img src="/assets/fr-home-dashboard.png"
                alt="Tableau de bord Calypso : véhicules, coût total, consommation, alertes,
                     répartition des coûts, entretiens et échéances à venir.">
         </div>
@@ -111,6 +101,20 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
           <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8"><path d="M4 20V9M10 20V4M16 20v-7M22 20H2"/></svg></span>
           <h3>COMPRENDRE</h3>
           <p>Coûts, dépenses, consommation<br>et informations du parc.</p>
+        </div>
+        <div class="fh-anti-ia">
+          <header>
+            <span class="av"><svg viewBox="0 0 24 24" fill="none" stroke="#C4B5FD" stroke-width="1.6"><rect x="5" y="8" width="14" height="10" rx="3"/><path d="M12 8V5.5M10.5 4.5h3"/><circle cx="9.5" cy="12.5" r="1" fill="#C4B5FD"/><circle cx="14.5" cy="12.5" r="1" fill="#C4B5FD"/><path d="M9.5 15.5h5"/></svg></span>
+            <h3>Assistant IA Calypso</h3>
+            <span class="x" aria-hidden="true">×</span>
+          </header>
+          <div class="bd">
+            <b>Analyse terminée</b>
+            <p>3 véhicules présentent des anomalies de consommation.</p>
+            <p>2 entretiens importants à venir cette semaine.</p>
+            <p>Coût carburant en hausse de 12% vs mois précédent.</p>
+          </div>
+          <span class="see">Voir les détails</span>
         </div>
       </div>
 
@@ -205,35 +209,9 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
     .fh-badges svg { width: calc(13 * var(--u)); height: calc(13 * var(--u)); flex: none; }
 
     /* ── DIAGRAMME : x 520..990, y 75..470 ── */
-    .fh-diag { position: absolute; left: 50.7813cqw;
-      margin-left: calc((44.9219cqw - 460 * var(--u)) / 2); top: calc(17.5 * var(--u)); width: calc(460 * var(--u)); height: calc(375.6 * var(--u)); }
-    .fh-ring { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-      border-radius: 50%; border: 1px solid rgba(96,165,250,.16); }
-    .fh-ring.r1 { width: calc(300 * var(--u)); height: calc(300 * var(--u)); border-color: rgba(139,92,246,.22); }
-    .fh-ring.r2 { width: calc(220 * var(--u)); height: calc(220 * var(--u)); border-style: dashed; border-color: rgba(148,163,184,.14); }
-    .fh-glow {
-      position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
-      width: calc(240 * var(--u)); height: calc(240 * var(--u)); border-radius: 50%;
-      background: radial-gradient(circle, rgba(79,70,229,.26) 0%, transparent 68%);
-    }
-    .fh-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); }
-    .fh-core img { width: calc(150 * var(--u)); height: auto; display: block; }
-    .fh-node {
-      position: absolute; transform: translate(-50%,-50%);
-      display: flex; flex-direction: column; align-items: center; gap: calc(7 * var(--u));
-    }
-    .fh-node .i {
-      width: calc(46 * var(--u)); height: calc(46 * var(--u)); border-radius: 50%;
-      display: grid; place-items: center; border: 1.5px solid;
-    }
-    .fh-node .i svg { width: calc(21 * var(--u)); height: calc(21 * var(--u)); }
-    .fh-node .l { font-size: calc(9 * var(--u)); font-weight: 800; letter-spacing: .1em; color: #9AA7BD; white-space: nowrap; }
-    .fh-node.n1 { left: 50%;  top: 8%;  }
-    .fh-node.n2 { left: 86%;  top: 29%; }
-    .fh-node.n3 { left: 86%;  top: 71%; }
-    .fh-node.n4 { left: 50%;  top: 92%; }
-    .fh-node.n5 { left: 14%;  top: 71%; }
-    .fh-node.n6 { left: 14%;  top: 29%; }
+    .fh-diag { position: absolute; left: 50.293cqw;
+      margin-left: calc((47.363cqw - 485 * var(--u)) / 2); top: calc(4 * var(--u)); width: calc(485 * var(--u)); }
+    .fh-diag img { width: 100%; height: auto; display: block; }
 
     /* ── PANNEAUX : 953 px de large, 14 px d'écart ── */
     .fh-panel {
@@ -246,27 +224,81 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
     /* Bandeau : h 62 */
     .fh-strip { min-height: calc(62 * var(--u)); display: grid; grid-template-columns: repeat(6,1fr); }
     .fh-strip a {
-      display: flex; align-items: center; justify-content: center; gap: calc(8 * var(--u));
+      position: relative;
+      display: flex; align-items: center; justify-content: center; gap: calc(10 * var(--u));
       color: #9AA7BD; font-size: calc(11 * var(--u)); font-weight: 700; letter-spacing: .06em;
       border-right: 1px solid rgba(255,255,255,.075);
     }
     .fh-strip a:last-child { border-right: 0; }
     .fh-strip a:hover { color: #fff; }
-    .fh-strip svg { width: calc(17 * var(--u)); height: calc(17 * var(--u)); flex: none; }
+    .fh-strip svg {
+      width: calc(26 * var(--u)); height: calc(26 * var(--u)); flex: none;
+      padding: calc(5 * var(--u)); border-radius: calc(7 * var(--u));
+    }
+    .fh-strip a:nth-child(1) svg { background: rgba(59,130,246,.13); }
+    .fh-strip a:nth-child(2) svg { background: rgba(139,92,246,.15); }
+    .fh-strip a:nth-child(3) svg { background: rgba(45,212,191,.12); }
+    .fh-strip a:nth-child(4) svg { background: rgba(99,102,241,.15); }
+    .fh-strip a:nth-child(5) svg { background: rgba(59,130,246,.13); }
+    .fh-strip a:nth-child(6) svg { background: rgba(236,72,153,.13); }
+    /* Souligne colore sous chaque univers, releve sur la maquette. */
+    .fh-strip a::after {
+      content: ''; position: absolute; bottom: calc(7 * var(--u)); left: 50%;
+      transform: translateX(-50%); width: calc(46 * var(--u)); height: calc(2.5 * var(--u));
+      border-radius: 2px;
+    }
+    .fh-strip a:nth-child(1)::after { background: #3B82F6; }
+    .fh-strip a:nth-child(2)::after { background: #8B5CF6; }
+    .fh-strip a:nth-child(3)::after { background: #2DD4BF; }
+    .fh-strip a:nth-child(4)::after { background: #6366F1; }
+    .fh-strip a:nth-child(5)::after { background: #3B82F6; }
+    .fh-strip a:nth-child(6)::after { background: #EC4899; }
 
     /* Produit : h 302 */
-    .fh-prod { min-height: calc(302 * var(--u)); display: grid; grid-template-columns: 24.4141cqw 1fr; gap: calc(22 * var(--u)); padding: calc(22 * var(--u)); }
+    .fh-prod {
+      min-height: calc(302 * var(--u)); display: grid;
+      grid-template-columns: calc(208 * var(--u)) 1fr; gap: 0;
+      padding: calc(6 * var(--u)) calc(13 * var(--u));
+      background: linear-gradient(105deg, rgba(37,64,143,.22), rgba(255,255,255,.028) 45%);
+    }
+    .fh-prod-txt { padding-left: calc(15 * var(--u)); align-self: center; }
     .fh-prod-txt { align-self: center; }
     .fh-prod-txt h2 { margin: 0; font-size: calc(22 * var(--u)); line-height: calc(29 * var(--u)); font-weight: 800; letter-spacing: -.03em; }
     .fh-prod-txt p { margin: calc(20 * var(--u)) 0 0; font-size: calc(13 * var(--u)); line-height: calc(20 * var(--u)); color: #9AA7BD; }
-    .fh-prod-shot { height: calc(258 * var(--u)); overflow: hidden; border-radius: calc(10 * var(--u)); border: 1px solid rgba(255,255,255,.12); }
-    .fh-prod-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
+    .fh-prod-shot { align-self: center; }
+    .fh-prod-shot img { width: 100%; height: auto; display: block; }
 
     /* Anticipation : h 156, texte + 3 cartes */
-    .fh-anti { min-height: calc(156 * var(--u)); display: grid; grid-template-columns: 34.668cqw repeat(3,1fr); gap: calc(14 * var(--u)); padding: calc(18 * var(--u)); }
-    .fh-anti-txt h2 { margin: 0; font-size: calc(19 * var(--u)); line-height: calc(25 * var(--u)); font-weight: 800; letter-spacing: -.03em; }
+    .fh-anti {
+      min-height: calc(156 * var(--u)); display: grid;
+      grid-template-columns: calc(212 * var(--u)) repeat(3, calc(139 * var(--u))) 1fr;
+      gap: calc(13 * var(--u)); padding: calc(14 * var(--u));
+    }
+    .fh-anti-ia {
+      position: relative; display: flex; flex-direction: column;
+      background: rgba(23,30,58,.55); border: 1px solid rgba(139,92,246,.3);
+      border-radius: calc(10 * var(--u)); padding: calc(6 * var(--u)) calc(10 * var(--u));
+    }
+    .fh-anti-ia header { display: flex; align-items: center; gap: calc(8 * var(--u)); }
+    .fh-anti-ia .av {
+      width: calc(22 * var(--u)); height: calc(22 * var(--u)); border-radius: 50%; flex: none;
+      background: rgba(139,92,246,.25); display: grid; place-items: center;
+    }
+    .fh-anti-ia .av svg { width: calc(15 * var(--u)); height: calc(15 * var(--u)); }
+    .fh-anti-ia h3 { margin: 0; font-size: calc(10 * var(--u)); font-weight: 800; }
+    .fh-anti-ia .x { margin-left: auto; color: #6B7A94; font-size: calc(13 * var(--u)); line-height: 1; }
+    .fh-anti-ia .bd { margin-top: calc(4 * var(--u)); }
+    .fh-anti-ia b { display: block; font-size: calc(8 * var(--u)); color: #C7D2E4; margin-bottom: calc(2 * var(--u)); }
+    .fh-anti-ia .bd p { margin: 0 0 calc(1.5 * var(--u)); font-size: calc(7.5 * var(--u)); line-height: calc(9.5 * var(--u)); color: #9AA7BD; }
+    .fh-anti-ia .see {
+      align-self: flex-end; margin-top: auto;
+      background: #3B82F6; color: #fff; border-radius: calc(5 * var(--u));
+      padding: calc(2 * var(--u)) calc(7 * var(--u));
+      font-size: calc(7.5 * var(--u)); font-weight: 700;
+    }
+    .fh-anti-txt h2 { margin: 0; font-size: calc(19 * var(--u)); line-height: calc(22 * var(--u)); font-weight: 800; letter-spacing: -.03em; }
     .fh-anti-txt h2 .g2 { color: #C084FC; }
-    .fh-anti-txt p { margin: calc(12 * var(--u)) 0 0; font-size: calc(10.5 * var(--u)); line-height: calc(15 * var(--u)); color: #9AA7BD; }
+    .fh-anti-txt p { margin: calc(8 * var(--u)) 0 0; font-size: calc(10.5 * var(--u)); line-height: calc(13.5 * var(--u)); color: #9AA7BD; }
     .fh-anti-card {
       background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07);
       border-radius: calc(10 * var(--u)); padding: calc(14 * var(--u)) calc(12 * var(--u)); text-align: center;
@@ -312,6 +344,7 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
     .fh-final-cta small { font-size: calc(10 * var(--u)); color: #6B7A94; white-space: nowrap; }
 
 
+
     /* Sous 700 px, la maquette de bureau ne tient plus : on rend la main à une
        pile verticale plutôt que de réduire jusqu'à l'illisible. Une réduction
        proportionnelle jusqu'au téléphone donnerait un titre de 12 px. */
@@ -322,7 +355,7 @@ import { Fr2HeaderComponent, Fr2FooterComponent } from './fr2-chrome.component';
       .fh-strip, .fh-prod, .fh-anti, .fh-price, .fh-start, .fh-final { min-height: 0; }
       .fh-strip { grid-template-columns: repeat(3, 1fr); }
       .fh-strip a:nth-child(3) { border-right: 0; }
-      .fh-prod, .fh-anti, .fh-price, .fh-start, .fh-final { grid-template-columns: 1fr; }
+      .fh-prod, .fh-anti, .fh-price, .fh-start, .fh-final { grid-template-columns: 1fr !important; }
       .fh-prod, .fh-price, .fh-start, .fh-final { padding: calc(40.96 * var(--u)); }
     }`]
 })

@@ -140,6 +140,10 @@ export class Fr2DecoComponent {}
             <div>
               <img class="fl" src="/assets/calypso-logo.svg" alt="Calypso">
               <p>La solution intelligente pour<br>gérer votre parc automobile.</p>
+              <div class="fr2-soc">
+                <span aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 8.5H3.8V20h2.7zM5.1 7.3a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2zM20.2 13.7c0-3-1.6-4.4-3.7-4.4a3.2 3.2 0 0 0-2.9 1.6V8.5H11V20h2.7v-6c0-1.6.8-2.5 2-2.5s1.8.9 1.8 2.5v6h2.7z"/></svg></span>
+                <a href="mailto:contact@belive.tn" aria-label="Écrire à Calypso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg></a>
+              </div>
             </div>
             <div>
               <h4>PRODUIT</h4>
@@ -258,7 +262,19 @@ export class Fr2DecoComponent {}
     .fr2-ft h4 { margin: 0 0 calc(8 * var(--uc)); font-size: calc(10 * var(--uc)); font-weight: 800; letter-spacing: .1em; color: #A78BFA; }
     .fr2-ft-grid a { display: block; font-size: calc(11 * var(--uc)); line-height: calc(15 * var(--uc)); color: #9AA7BD; margin-bottom: calc(5 * var(--uc)); }
     .fr2-ft-grid a:hover { color: #fff; }
-    .fr2-ft-b { margin-top: calc(14 * var(--uc)); padding-top: calc(12 * var(--uc)); border-top: 1px solid rgba(255,255,255,.07); font-size: calc(10.5 * var(--uc)); color: #6B7A94; }
+    .fr2-ft-b {
+      margin-top: calc(14 * var(--uc)); padding-top: calc(12 * var(--uc));
+      border-top: 1px solid rgba(255,255,255,.07);
+      font-size: calc(10.5 * var(--uc)); color: #6B7A94;
+      text-align: center; /* centre, comme sur la maquette */
+    }
+    .fr2-soc { display: flex; gap: calc(8 * var(--uc)); margin-top: calc(10 * var(--uc)); }
+    .fr2-soc span, .fr2-soc a {
+      width: calc(22 * var(--uc)); height: calc(22 * var(--uc)); border-radius: calc(5 * var(--uc));
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1);
+      display: grid; place-items: center; color: #C7D2E4;
+    }
+    .fr2-soc svg { width: calc(11 * var(--uc)); height: calc(11 * var(--uc)); }
 
     /* ── riche (authentification / contact) — maquette 1402 ── */
     .fr2-fr { position: relative; z-index: 1; margin-top: auto; padding: calc(30 * var(--uc)) 3.3cqw calc(16 * var(--uc)); border-top: 1px solid rgba(255,255,255,.07); background: rgba(3,5,12,.55); }
