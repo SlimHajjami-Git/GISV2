@@ -158,6 +158,10 @@ export class Fr2LegalFrameComponent {}
             <p>Nous collectons uniquement les données nécessaires au fonctionnement de nos services :
                informations de compte, données techniques, données d'utilisation et données liées
                à la gestion de votre flotte.</p>
+            <p>À votre arrivée sur le site, votre adresse IP est convertie en code pays sur nos
+               propres serveurs afin de présenter l'interface régionale adaptée. Cette conversion
+               est instantanée : l'adresse n'est ni conservée, ni journalisée, ni transmise à des
+               tiers — seul le pays en résulte, gardé le temps de votre session.</p>
           </div>
         </div>
         <div class="fl2-row">

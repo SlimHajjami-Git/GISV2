@@ -15,12 +15,14 @@ export type Region = 'europe' | 'default';
  * France. Le fuseau ne dit pas où se trouve le visiteur, il dit comment sa
  * machine a été configurée — ce n'est pas la même question.</p>
  *
- * <p>L'adresse IP répondrait, elle, à la bonne question, mais c'est une donnée
- * personnelle : il faudrait la déclarer et la confier à un tiers, sur le site
- * même qui promet de protéger les données. Le domaine, lui, ne décrit personne
- * et ne se trompe jamais : quand un domaine français pointera vers ce serveur,
- * il suffira de l'ajouter à <code>europeanHostnames</code>. En attendant, la
- * vitrine reste joignable par son adresse propre, <code>/fr</code>.</p>
+ * <p><b>Second signal : le pays de l'adresse IP</b>, résolu par NOTRE API sur
+ * une base locale (DB-IP Lite) — aucun tiers appelé, adresse ni conservée ni
+ * journalisée, la politique de confidentialité le mentionne. La réponse (le
+ * pays seul) est gardée pour la SESSION. Ce signal est demandé par la page
+ * d'aiguillage au premier chargement ; s'il tarde ou échoue, l'accueil
+ * habituel s'affiche — un Européen a toujours /fr en un clic, l'inverse
+ * serait plus coûteux. Quand un domaine européen pointera ici, le domaine
+ * (<code>europeanHostnames</code>) restera prioritaire et instantané.</p>
  *
  * <p><b>Hors de la page publique, ce service ne décide de rien.</b> Une fois
  * l'utilisateur connecté, c'est le pays de sa société qui fait foi : sans quoi
@@ -54,12 +56,50 @@ export class RegionService {
       h => host === h.toLowerCase() || host.endsWith('.' + h.toLowerCase()));
     if (listed) return 'europe';
 
+    // Pays resolu par l'API plus tot dans la session (voir resolveByCountry).
+    const geo = this.readGeo();
+    if (geo === 'europe') return 'europe';
+
     // Visite en cours du site France. Indispensable tant qu'aucun domaine
     // européen ne pointe ici : sans cela, un visiteur qui parcourt /fr et clique
     // « Essayer gratuitement » atterrirait sur l'inscription tunisienne, et le
     // parcours se casserait au milieu. La marque est de SESSION — elle disparaît
     // à la fermeture de l'onglet et n'engage rien pour la visite suivante.
     return this.visitedFranceSite() ? 'europe' : 'default';
+  }
+
+  private static readonly GEO_KEY = 'calypso_region_geo';
+
+  /**
+   * Interroge l'API pour connaître la région du pays de l'appelant, et met le
+   * résultat en cache de SESSION. Appelée par la page d'aiguillage uniquement.
+   * Ne lève jamais : en cas d'échec ou de délai dépassé, la région courante
+   * (donc « default », sauf autre signal) est renvoyée telle quelle.
+   */
+  async resolveByCountry(timeoutMs = 600): Promise<Region> {
+    if (this.region === 'europe') return 'europe';
+    if (this.readGeo() !== null) return this.region;
+    try {
+      const rep = await fetch(environment.apiUrl + '/public/region',
+        { signal: AbortSignal.timeout(timeoutMs) });
+      if (!rep.ok) return this.region;
+      const data = await rep.json() as { region?: string };
+      const region: Region = data.region === 'europe' ? 'europe' : 'default';
+      try { sessionStorage.setItem(RegionService.GEO_KEY, region); } catch {}
+      this.cached = null; // la prochaine lecture retraverse resolve()
+      return region;
+    } catch {
+      return this.region;
+    }
+  }
+
+  private readGeo(): Region | null {
+    try {
+      const v = sessionStorage.getItem(RegionService.GEO_KEY);
+      return v === 'europe' || v === 'default' ? v : null;
+    } catch {
+      return null;
+    }
   }
 
   /**

@@ -9,7 +9,7 @@ import { Fr2AutoComponent } from './components/france/fr2-auto.component';
 import { FranceContactComponent } from './components/france/france-contact.component';
 import { FrancePrivacyComponent, FranceLegalComponent, FranceRgpdComponent, FranceCookiesComponent } from './components/france/fr2-legal-pages.component';
 import { TestAccueilComponent } from './components/france/test-accueil.component';
-import { RegionService } from './services/region.service';
+import { RegionGateComponent } from './components/region-gate.component';
 import { LoginComponent } from './components/login.component';
 import { ForgotPasswordComponent } from './components/forgot-password.component';
 import { ResetPasswordComponent } from './components/reset-password.component';
@@ -97,27 +97,17 @@ const subscriptionModuleEnabled = (environment as any).subscriptionModule !== fa
 // recevaient la vitrine France. Le fuseau ne dit pas où est le visiteur, il dit
 // comment sa machine a été réglée.
 //
-// L'adresse IP répondrait à la bonne question mais c'est une donnée personnelle.
-// Le domaine, lui, ne décrit personne et ne se trompe pas : quand un domaine
-// français pointera ici, il suffira de l'ajouter à la liste. Tant qu'elle est
-// vide, la vitrine reste joignable par sa propre adresse, /fr.
-//
-// Le service est instancié directement — la table de routes est évaluée au
-// chargement du module, avant que l'injecteur d'Angular n'existe. Le service
-// n'a aucune dépendance, ce qui rend l'appel sûr.
-const franceSiteForVisitor = new RegionService().isEurope;
+// La racine est aiguillée par RegionGateComponent : signaux immédiats
+// (domaine, forçage, session) d'abord, puis pays de l'adresse IP via l'API
+// (résolution locale côté serveur, sans tiers ni conservation). La table de
+// routes reste statique — c'est le composant qui décide, pas la table.
 
 export const routes: Routes = [
   // Public routes (no auth required)
   // When enabled, the AI automobile assistant is the first page users land on
   // (pre-login); "Accéder à Calypso" routes to /login and the former marketing
   // landing stays reachable at /accueil.
-  {
-    path: '',
-    ...(franceSiteForVisitor
-      ? { redirectTo: 'fr', pathMatch: 'full' as const }
-      : { component: aiLandingEnabled ? AiLandingComponent : LandingComponent })
-  },
+  { path: '', component: RegionGateComponent },
   // Le site commercial France : une coque (en-tête, pied de page, feuille de
   // style) et huit pages enfants, conformément au cahier des charges. Elles
   // vivent sous /fr et non à la racine pour qu'il n'existe qu'UNE adresse par
