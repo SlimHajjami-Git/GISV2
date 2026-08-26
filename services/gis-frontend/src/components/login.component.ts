@@ -14,17 +14,16 @@ import { environment } from '../environments/environment';
   template: `
     @if (europe) {
       <app-france-auth>
-        <div class="fa-badge">
-          <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.6" stroke-linecap="round">
-            <circle cx="12" cy="9" r="3.4"/>
-            <path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/>
-          </svg>
-        </div>
-
         <h1 class="fa-title">Se <em>connecter</em></h1>
         <p class="fa-sub">Accédez à votre espace Calypso et gérez votre parc en toute simplicité.</p>
 
         <div class="fa-card">
+          <div class="fa-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.6" stroke-linecap="round">
+              <circle cx="12" cy="9" r="3.4"/>
+              <path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/>
+            </svg>
+          </div>
           <form (ngSubmit)="onSubmit()">
             <label for="email">E-mail <span class="req">*</span></label>
             <div class="fa-field">

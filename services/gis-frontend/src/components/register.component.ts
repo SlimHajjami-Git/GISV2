@@ -47,45 +47,46 @@ import { RegionService } from '../services/region.service';
 
                 <div class="fa-grid2">
                   <div>
-                    <label for="firstName">Prénom <span class="req">*</span></label>
+                    <label for="fullName">Nom et prénom <span class="req">*</span></label>
                     <div class="fa-field">
                       <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><circle cx="12" cy="9" r="3.2"/><path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/></svg>
-                      <input id="firstName" name="firstName" type="text" [(ngModel)]="firstName"
-                             placeholder="Votre prénom" autocomplete="given-name" required>
+                      <input id="fullName" name="fullName" type="text" [(ngModel)]="fullName"
+                             placeholder="Votre nom et prénom" autocomplete="name" required>
                     </div>
                   </div>
                   <div>
-                    <label for="lastName">Nom <span class="req">*</span></label>
+                    <label for="email">E-mail <span class="req">*</span></label>
                     <div class="fa-field">
-                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><circle cx="12" cy="9" r="3.2"/><path d="M5.5 19.5a6.8 6.8 0 0 1 13 0"/></svg>
-                      <input id="lastName" name="lastName" type="text" [(ngModel)]="lastName"
-                             placeholder="Votre nom" autocomplete="family-name" required>
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                      <input id="email" name="email" type="email" [(ngModel)]="email"
+                             placeholder="exemple@domaine.com" autocomplete="email" required>
                     </div>
                   </div>
                 </div>
 
-                <label for="email">E-mail <span class="req">*</span></label>
-                <div class="fa-field">
-                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
-                  <input id="email" name="email" type="email" [(ngModel)]="email"
-                         placeholder="exemple@domaine.com" autocomplete="email" required>
-                </div>
-
-                <label for="phone">Téléphone <span class="req">*</span></label>
-                <div class="fa-field">
-                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg>
-                  <input id="phone" name="phone" type="tel" [(ngModel)]="phone"
-                         [placeholder]="phonePlaceholder" autocomplete="tel" required>
-                </div>
-
-                @if (accountType === 'societe') {
-                  <label for="companyName">Société <span class="req">*</span></label>
-                  <div class="fa-field">
-                    <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M9 20v-4h6v4M8 10h2M14 10h2M8 13.5h2M14 13.5h2"/></svg>
-                    <input id="companyName" name="companyName" type="text" [(ngModel)]="companyName"
-                           placeholder="Nom de votre société" autocomplete="organization" required>
+                <label for="phoneLocal">Téléphone <span class="req">*</span></label>
+                <div class="fa-dial">
+                  <div class="cc fa-field">
+                    <select name="dialCode" [(ngModel)]="dialCode" aria-label="Indicatif du pays">
+                      @for (d of dialCodes; track d.code) {
+                        <option [value]="d.code">{{ d.flag }} {{ d.code }}</option>
+                      }
+                    </select>
+                    <span class="fa-chev"></span>
                   </div>
-                }
+                  <div class="fa-field">
+                    <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></svg>
+                    <input id="phoneLocal" name="phoneLocal" type="tel" [(ngModel)]="phoneLocal"
+                           placeholder="6 12 34 56 78" autocomplete="tel-national" required>
+                  </div>
+                </div>
+
+                <label for="companyName">Société</label>
+                <div class="fa-field">
+                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="4" y="6" width="16" height="14" rx="2"/><path d="M9 20v-4h6v4M8 10h2M14 10h2M8 13.5h2M14 13.5h2"/></svg>
+                  <input id="companyName" name="companyName" type="text" [(ngModel)]="companyName"
+                         placeholder="Nom de votre société (optionnel)" autocomplete="organization">
+                </div>
 
                 <div class="fa-grid2">
                   <div>
@@ -102,29 +103,40 @@ import { RegionService } from '../services/region.service';
                     </div>
                   </div>
                   <div>
-                    <label for="fleetSize">Nombre de véhicules <span class="req">*</span></label>
+                    <label for="jobTitle">Fonction</label>
                     <div class="fa-field">
-                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><path d="M3 13h18M5 13l1.6-5.2A2 2 0 0 1 8.5 6.4h7a2 2 0 0 1 1.9 1.4L19 13v5h-2.2v-2H7.2v2H5z"/></svg>
-                      <select id="fleetSize" name="fleetSize" [(ngModel)]="fleetSizeRange" required>
-                        <option value="" disabled>Choisissez une tranche</option>
-                        @for (r of fleetSizeOptions; track r) {
-                          <option [value]="r">{{ r === '100+' ? '100 et plus' : r + ' véhicules' }}</option>
-                        }
-                      </select>
-                      <span class="fa-chev"></span>
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7"/></svg>
+                      <input id="jobTitle" name="jobTitle" type="text" [(ngModel)]="jobTitle"
+                             placeholder="Votre fonction (optionnel)" autocomplete="organization-title">
                     </div>
                   </div>
                 </div>
 
-                <label for="password">Mot de passe <span class="req">*</span></label>
-                <div class="fa-field">
-                  <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
-                  <input id="password" name="password" [type]="showPassword ? 'text' : 'password'"
-                         [(ngModel)]="password" placeholder="Créez un mot de passe" autocomplete="new-password" required>
-                  <button type="button" class="fa-eye" (click)="showPassword = !showPassword"
-                          [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
-                  </button>
+                <div class="fa-grid2">
+                  <div>
+                    <label for="password">Mot de passe <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+                      <input id="password" name="password" [type]="showPassword ? 'text' : 'password'"
+                             [(ngModel)]="password" placeholder="Créez un mot de passe" autocomplete="new-password" required>
+                      <button type="button" class="fa-eye" (click)="showPassword = !showPassword"
+                              [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label for="passwordConfirm">Confirmer le mot de passe <span class="req">*</span></label>
+                    <div class="fa-field">
+                      <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
+                      <input id="passwordConfirm" name="passwordConfirm" [type]="showPassword2 ? 'text' : 'password'"
+                             [(ngModel)]="passwordConfirm" placeholder="Confirmez votre mot de passe" autocomplete="new-password" required>
+                      <button type="button" class="fa-eye" (click)="showPassword2 = !showPassword2"
+                              [attr.aria-label]="showPassword2 ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
                 <ul class="fa-rules">
@@ -146,9 +158,15 @@ import { RegionService } from '../services/region.service';
                   </li>
                 </ul>
 
+                <label class="fa-check" style="margin-top:14px;align-items:flex-start">
+                  <input type="checkbox" name="acceptTerms" [(ngModel)]="acceptTerms">
+                  <span>J'accepte les <a routerLink="/fr/mentions-legales" class="fa-link">Conditions d'utilisation</a>
+                  et la <a routerLink="/fr/confidentialite" class="fa-link">Politique de confidentialité</a> <span class="req">*</span></span>
+                </label>
+
                 @if (errorMessage) { <div class="fa-error">{{ errorMessage }}</div> }
 
-                <button type="button" class="fa-btn grad" [disabled]="isLoading || !isValid()" (click)="onSubmit()">
+                <button type="button" class="fa-btn grad" [disabled]="isLoading || !isValidEu()" (click)="onSubmitEu()">
                   {{ isLoading ? 'Création du compte…' : 'Créer mon compte' }}
                 </button>
 
@@ -644,6 +662,35 @@ export class RegisterComponent {
   get hasDigitOrSymbol(): boolean { return /[0-9]|[^A-Za-z0-9]/.test(this.password); }
 
   accountType: 'particulier' | 'societe' = 'particulier';
+
+  /* ── Champs propres au parcours europeen (capture CREER UN COMPTE) ──
+     La maquette reunit nom et prenom en un champ et ajoute indicatif,
+     confirmation et CGU ; l'API, elle, ne change pas : onSubmitEu() traduit. */
+  fullName = '';
+  phoneLocal = '';
+  dialCode = '+33';
+  jobTitle = '';
+  passwordConfirm = '';
+  showPassword2 = false;
+  acceptTerms = false;
+
+  /** Indicatifs proposes — la France d'abord, c'est le marche vise. */
+  readonly dialCodes = [
+    { code: '+33',  flag: 'FR' },
+    { code: '+32',  flag: 'BE' },
+    { code: '+41',  flag: 'CH' },
+    { code: '+352', flag: 'LU' },
+    { code: '+49',  flag: 'DE' },
+    { code: '+34',  flag: 'ES' },
+    { code: '+39',  flag: 'IT' },
+    { code: '+351', flag: 'PT' },
+    { code: '+31',  flag: 'NL' },
+    { code: '+44',  flag: 'GB' },
+    { code: '+216', flag: 'TN' },
+    { code: '+213', flag: 'DZ' },
+    { code: '+212', flag: 'MA' }
+  ];
+
   firstName = '';
   lastName = '';
   email = '';
@@ -724,6 +771,39 @@ export class RegisterComponent {
     private cdr: ChangeDetectorRef
   ) {}
 
+  /** Validite du formulaire europeen — memes exigences serveur, presentation maquette. */
+  isValidEu(): boolean {
+    return this.fullName.trim().length > 1
+      && this.email.trim().length > 0
+      && this.phoneLocal.trim().length >= 6
+      && this.country.trim().length > 0
+      && this.password.length >= 10
+      && this.password === this.passwordConfirm
+      && this.acceptTerms;
+  }
+
+  /** Traduit la maquette vers l'API : scinde le nom, compose le telephone. */
+  onSubmitEu(): void {
+    if (!this.isValidEu()) {
+      this.errorMessage = this.password !== this.passwordConfirm
+        ? 'Les deux mots de passe ne correspondent pas.'
+        : !this.acceptTerms
+          ? 'Vous devez accepter les conditions pour continuer.'
+          : 'Renseignez les champs obligatoires : identite, e-mail, telephone, pays et mot de passe (10 caracteres minimum).';
+      return;
+    }
+    // « Nom et prenom » en un champ : le premier mot sert de prenom, le reste
+    // de nom. Un seul mot vaut pour les deux — le serveur exige chacun.
+    const parts = this.fullName.trim().split(/s+/);
+    this.firstName = parts[0];
+    this.lastName = parts.length > 1 ? parts.slice(1).join(' ') : parts[0];
+    this.phone = this.dialCode + ' ' + this.phoneLocal.trim();
+    // Une societe nommee fait un compte professionnel ; sinon particulier.
+    this.accountType = this.companyName.trim() ? 'societe' : 'particulier';
+    this.fleetSizeRange = '';
+    this.onSubmit();
+  }
+
   isValid(): boolean {
     const base = this.firstName.trim().length > 0
       && this.lastName.trim().length > 0
@@ -731,7 +811,7 @@ export class RegisterComponent {
       && this.password.length >= 10
       // Exigée à l'écran, facultative côté API : le serveur reste compatible
       // avec les clients qui ne l'envoient pas (application mobile notamment).
-      && this.fleetSizeRange.length > 0
+      && (this.europe || this.fleetSizeRange.length > 0)
       // Telephone EXIGE : c est le seul moyen de rappeler un prospect dont
       // l adresse rebondit, et le support s en sert quotidiennement.
       && this.phone.trim().length >= 6

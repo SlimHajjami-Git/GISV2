@@ -2,16 +2,12 @@ import { Routes } from '@angular/router';
 import { environment } from './environments/environment';
 import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
-import { FranceShellComponent } from './components/france/france-shell.component';
-import { FranceHomeComponent } from './components/france/france-home.component';
-import { FranceFeaturesComponent } from './components/france/france-features.component';
-import { FrancePricingComponent } from './components/france/france-pricing.component';
-import { FranceAutoComponent } from './components/france/france-auto.component';
+import { Fr2HomeComponent } from './components/france/fr2-home.component';
+import { Fr2FeaturesComponent } from './components/france/fr2-features.component';
+import { Fr2PricingComponent } from './components/france/fr2-pricing.component';
+import { Fr2AutoComponent } from './components/france/fr2-auto.component';
 import { FranceContactComponent } from './components/france/france-contact.component';
-import { FrancePrivacyComponent } from './components/france/france-privacy.component';
-import { FranceLegalComponent } from './components/france/france-legal.component';
-import { FranceRgpdComponent } from './components/france/france-rgpd.component';
-import { FranceCookiesComponent } from './components/france/france-cookies.component';
+import { FrancePrivacyComponent, FranceLegalComponent, FranceRgpdComponent, FranceCookiesComponent } from './components/france/fr2-legal-pages.component';
 import { TestAccueilComponent } from './components/france/test-accueil.component';
 import { RegionService } from './services/region.service';
 import { LoginComponent } from './components/login.component';
@@ -133,12 +129,11 @@ export const routes: Routes = [
   { path: 'testaccueil', redirectTo: 'testacceuil' },
   {
     path: 'fr',
-    component: FranceShellComponent,
     children: [
-      { path: '', component: FranceHomeComponent },
-      { path: 'fonctionnalites', component: FranceFeaturesComponent },
-      { path: 'tarifs', component: FrancePricingComponent },
-      { path: 'calypso-auto', component: FranceAutoComponent },
+      { path: '', component: Fr2HomeComponent },
+      { path: 'fonctionnalites', component: Fr2FeaturesComponent },
+      { path: 'tarifs', component: Fr2PricingComponent },
+      { path: 'calypso-auto', component: Fr2AutoComponent },
       { path: 'contact', component: FranceContactComponent },
       { path: 'confidentialite', component: FrancePrivacyComponent },
       { path: 'mentions-legales', component: FranceLegalComponent },

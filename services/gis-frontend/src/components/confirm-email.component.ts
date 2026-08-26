@@ -1,5 +1,6 @@
 import { Component, OnInit, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FranceAuthComponent } from './france/france-auth.component';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
@@ -15,8 +16,58 @@ import { RegionService } from '../services/region.service';
 @Component({
   selector: 'app-confirm-email',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [CommonModule, RouterLink, FranceAuthComponent],
   template: `
+    @if (europe && state === 'ok') {
+      <app-france-auth [perks]="true">
+        <div class="fa-badge fa-badge-lg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8" stroke-linecap="round"><path d="m6 12.5 4 4L18.5 8"/></svg>
+        </div>
+        <h1 class="fa-title">Votre compte <em>Calypso</em> est prêt&nbsp;!</h1>
+        <p class="fa-sub">
+          Merci de nous avoir rejoints.<br>
+          Votre espace est maintenant activé et prêt à l'emploi.
+        </p>
+
+        <div class="fa-card fa-ready">
+          <span class="ok-pill">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
+            Activation réussie
+          </span>
+          <h2 class="fa-ready-t">Profitez de <em>{{ trialDays }} jours</em> d'essai gratuit</h2>
+
+          <div class="fa-trial">
+            <div class="it">
+              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M9.5 14.5l1.7 1.7 3.3-3.7"/></svg></span>
+              <h3>{{ trialDays }} jours complets</h3>
+              <p>Testez toutes les fonctionnalités<br>sans aucune limitation.</p>
+            </div>
+            <div class="it">
+              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6 15.5h4"/></svg></span>
+              <h3>Aucune carte bancaire</h3>
+              <p>Aucun paiement requis<br>pendant la période d'essai.</p>
+            </div>
+            <div class="it">
+              <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><path d="M14 4c3 .5 5.5 3 6 6l-8.5 8.5-5.5-5.5zM6 15l-2 5 5-2M13.5 8.5a1.5 1.5 0 1 0 2 2"/></svg></span>
+              <h3>Démarrage immédiat</h3>
+              <p>Accédez à votre espace et<br>commencez dès maintenant.</p>
+            </div>
+          </div>
+
+          <p class="fa-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 8v.5M12 11v5"/></svg>
+            À la fin de votre essai, choisissez l'offre qui vous convient<br>
+            ou continuez gratuitement avec vos données.
+          </p>
+
+          <a routerLink="/login" class="fa-btn grad fa-go">
+            Accéder à Calypso
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+          </a>
+          <p class="fa-mailnote">Un <em>e-mail récapitulatif</em> vient de vous être envoyé.</p>
+        </div>
+      </app-france-auth>
+    } @else {
     <div class="auth-page">
       <div class="auth-bg"><div class="bg-glow"></div><div class="bg-dots"></div></div>
 
@@ -36,42 +87,7 @@ import { RegionService } from '../services/region.service';
                vient de passer en actif. Annoncer « espace activé » juste après
                le formulaire aurait envoyé l'utilisateur vers une connexion qui
                l'aurait refusé. -->
-          @if (europe) {
-            <div class="panel ready">
-              <div class="icon ok">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
-              </div>
-              <h1>Votre compte Calypso est prêt !</h1>
-              <p>Merci de nous avoir rejoints. Votre espace est maintenant activé et prêt à l'emploi.</p>
-  
-              <span class="ok-badge">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg>
-                Activation réussie
-              </span>
-  
-              <h2 class="trial-title">Profitez de {{ trialDays }} jours d'essai gratuit</h2>
-  
-              <div class="trial-grid">
-                <div class="trial-item">
-                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg></span>
-                  <h3>{{ trialDays }} jours complets</h3>
-                  <p>Testez toutes les fonctionnalités sans aucune limitation.</p>
-                </div>
-                <div class="trial-item">
-                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></span>
-                  <h3>Aucune carte bancaire</h3>
-                  <p>Aucun paiement requis pendant la période d'essai.</p>
-                </div>
-                <div class="trial-item">
-                  <span class="ti-ic"><svg viewBox="0 0 24 24" fill="none" stroke="#818cf8" stroke-width="1.8"><path d="M5 15.5 8.5 19M4.5 19.5 9 15M14 4.5c3.5-1.5 6 1 4.5 4.5-1.2 2.8-4.6 6-8 8.5L7 14C9.5 10.6 11.2 5.7 14 4.5z"/></svg></span>
-                  <h3>Démarrage immédiat</h3>
-                  <p>Accédez à votre espace et commencez dès maintenant.</p>
-                </div>
-              </div>
-  
-              <a routerLink="/login" class="btn-primary">Accéder à Calypso</a>
-            </div>
-          } @else {
+
             <div class="panel">
               <div class="icon ok">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
@@ -80,7 +96,6 @@ import { RegionService } from '../services/region.service';
               <p>{{ message }}</p>
               <a routerLink="/login" class="btn-primary">Se connecter</a>
             </div>
-          }
         } @else {
           <div class="panel">
             <div class="icon ko">
@@ -93,8 +108,50 @@ import { RegionService } from '../services/region.service';
         }
       </div>
     </div>
+    }
   `,
   styles: [`
+    /* ── Ecran « compte pret » (capture 1122 x 1402, portee a l'echelle --a) ── */
+    .fa-badge-lg { width: calc(110 * var(--a)); height: calc(110 * var(--a)); }
+    .fa-badge-lg svg { width: calc(52 * var(--a)); height: calc(52 * var(--a)); }
+    .fa-ready { width: calc(886 * var(--a)); text-align: center; padding: calc(36 * var(--a)) calc(52 * var(--a)) calc(40 * var(--a)); }
+    .ok-pill {
+      display: inline-flex; align-items: center; gap: calc(8 * var(--a));
+      padding: calc(8 * var(--a)) calc(18 * var(--a)); border-radius: 999px;
+      background: rgba(16,185,129,.1); border: 1px solid rgba(52,211,153,.4);
+      color: #34D399; font-size: calc(13 * var(--a)); font-weight: 700;
+    }
+    .ok-pill svg { width: calc(15 * var(--a)); height: calc(15 * var(--a)); }
+    .fa-ready-t { margin: calc(22 * var(--a)) 0 0; font-size: calc(28 * var(--a)); font-weight: 800; color: #fff; letter-spacing: -.02em; }
+    .fa-ready-t em { font-style: normal; color: #A78BFA; }
+    .fa-trial { display: grid; grid-template-columns: repeat(3,1fr); margin-top: calc(34 * var(--a)); }
+    .fa-trial .it { padding: 0 calc(22 * var(--a)); }
+    .fa-trial .it + .it { border-left: 1px solid rgba(255,255,255,.09); }
+    .fa-trial .ic {
+      width: calc(90 * var(--a)); height: calc(90 * var(--a)); border-radius: 50%;
+      margin: 0 auto; display: grid; place-items: center;
+      background: rgba(139,92,246,.1); border: 1px solid rgba(167,139,250,.3);
+    }
+    .fa-trial .ic svg { width: calc(38 * var(--a)); height: calc(38 * var(--a)); }
+    .fa-trial h3 { margin: calc(20 * var(--a)) 0 0; font-size: calc(16 * var(--a)); font-weight: 800; color: #fff; }
+    .fa-trial p { margin: calc(10 * var(--a)) 0 0; font-size: calc(13 * var(--a)); line-height: calc(19 * var(--a)); color: #9AA7BD; }
+    .fa-note {
+      display: flex; align-items: center; justify-content: center; gap: calc(12 * var(--a));
+      margin: calc(30 * var(--a)) 0 0; padding-top: calc(24 * var(--a));
+      border-top: 1px solid rgba(255,255,255,.08);
+      font-size: calc(13.5 * var(--a)); line-height: calc(20 * var(--a)); color: #C7D2E4;
+      text-align: left;
+    }
+    .fa-note svg { width: calc(22 * var(--a)); height: calc(22 * var(--a)); flex: none; }
+    .fa-go { min-height: calc(58 * var(--a)); font-size: calc(17 * var(--a)); border-radius: calc(12 * var(--a)); }
+    .fa-mailnote { margin: calc(18 * var(--a)) 0 0; font-size: calc(13.5 * var(--a)); color: #9AA7BD; }
+    .fa-mailnote em { font-style: normal; color: #A78BFA; }
+    @media (max-width: 820px) {
+      .fa-ready { width: calc(654 * var(--a)); }
+      .fa-trial { grid-template-columns: 1fr; gap: calc(22 * var(--a)); }
+      .fa-trial .it + .it { border-left: 0; border-top: 1px solid rgba(255,255,255,.09); padding-top: calc(20 * var(--a)); }
+    }
+
     /* ---------- écran « Votre compte Calypso est prêt ! » ---------- */
     .panel.ready { max-width: 720px; }
     .ok-badge {

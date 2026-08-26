@@ -32,9 +32,10 @@ import { FranceAuthComponent } from './france/france-auth.component';
         </svg>
       </div>
 
-      <h1 class="fa-title">Réinitialiser le <em>mot de passe</em></h1>
+      <h1 class="fa-title">Réinitialisez <em>votre mot de passe</em></h1>
       <p class="fa-sub">
-        Choisissez un mot de passe que vous n'utilisez nulle part ailleurs.
+        Choisissez un nouveau mot de passe sécurisé<br>
+        pour accéder à votre espace Calypso.
       </p>
 
       <div class="fa-card">
@@ -49,7 +50,7 @@ import { FranceAuthComponent } from './france/france-auth.component';
           <div class="fa-field">
             <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
             <input id="pwd" name="pwd" [type]="show ? 'text' : 'password'" autocomplete="new-password"
-                   [(ngModel)]="password" placeholder="Créez un mot de passe" required>
+                   [(ngModel)]="password" placeholder="Entrez votre nouveau mot de passe" required>
             <button type="button" class="fa-eye" (click)="show = !show"
                     [attr.aria-label]="show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
@@ -60,24 +61,45 @@ import { FranceAuthComponent } from './france/france-auth.component';
           <div class="fa-field">
             <svg class="pre" viewBox="0 0 24 24" fill="none" stroke="#6B7A94" stroke-width="1.8"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
             <input id="pwd2" name="pwd2" [type]="show ? 'text' : 'password'" autocomplete="new-password"
-                   [(ngModel)]="confirm" placeholder="Confirmez le mot de passe" required>
+                   [(ngModel)]="confirm" placeholder="Confirmez votre nouveau mot de passe" required>
+            <button type="button" class="fa-eye" (click)="show = !show"
+                    [attr.aria-label]="show ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+            </button>
           </div>
 
-          <ul class="pw-rules">
+          <p class="fa-must">Votre mot de passe doit :</p>
+          <ul class="fa-rules three">
             <li [class.ok]="password.length >= 10">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-              Au moins 10 caractères
+              Contenir au moins 10 caractères
+            </li>
+            <li [class.ok]="hasUpper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              Inclure au moins une majuscule
+            </li>
+            <li [class.ok]="hasSpecial">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              Inclure au moins un caractère spécial
+            </li>
+            <li [class.ok]="hasLower">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              Inclure au moins une minuscule
+            </li>
+            <li [class.ok]="hasDigit">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
+              Inclure au moins un chiffre
             </li>
             <li [class.ok]="password.length > 0 && password === confirm">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>
-              Les deux saisies correspondent
+              Correspondre dans les deux champs
             </li>
           </ul>
 
           @if (error) { <div class="fa-error">{{ error }}</div> }
 
           <button type="button" class="fa-btn grad" [disabled]="loading || !valid()" (click)="submit()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"/></svg>
             {{ loading ? 'Enregistrement…' : 'Enregistrer mon nouveau mot de passe' }}
           </button>
         } @else {
@@ -133,6 +155,11 @@ export class ResetPasswordComponent implements OnInit {
       this.router.navigate([], { replaceUrl: true, queryParams: {}, relativeTo: this.route });
     }
   }
+
+  get hasUpper(): boolean { return /[A-Z]/.test(this.password); }
+  get hasLower(): boolean { return /[a-z]/.test(this.password); }
+  get hasDigit(): boolean { return /[0-9]/.test(this.password); }
+  get hasSpecial(): boolean { return /[^A-Za-z0-9]/.test(this.password); }
 
   valid(): boolean {
     return this.password.length >= 10 && this.password === this.confirm;
