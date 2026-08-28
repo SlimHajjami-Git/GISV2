@@ -34,7 +34,10 @@ public class EmailService : IEmailService
                 EnableSsl = useSsl,
                 DeliveryMethod = SmtpDeliveryMethod.Network,
                 UseDefaultCredentials = false,
-                Timeout = 15000
+                // Le relais Topnet depasse parfois 13 s ; a 15 s de limite, ces
+                // envois partaient en echec silencieux (« courriel assurance
+                // jamais recu », recette du 28/08/2026).
+                Timeout = 30000
             };
             // Le relais Topnet (port 25) fonctionne SANS authentification : il relaie
             // selon l'IP du serveur. On n'attache des identifiants que si un utilisateur

@@ -370,7 +370,16 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       result = result.filter(e => e.label.toLowerCase().includes(q) || e.vehiclePlate.toLowerCase().includes(q));
     }
     if (this.filterVehicleId) result = result.filter(e => e.vehicleId === parseInt(this.filterVehicleId));
-    if (this.filterCategory) result = result.filter(e => e.category === this.filterCategory);
+    if (this.filterCategory) {
+      // « entretien » et « maintenance » sont un seul univers metier : le
+      // tableau de bord les agrege sous « Entretien », mais la depense creee
+      // par le module maintenance porte le code « maintenance » — filtrer sur
+      // l un sans l autre affichait une page vide (recette du 28/08/2026).
+      const wanted = this.filterCategory === 'entretien'
+        ? ['entretien', 'maintenance']
+        : [this.filterCategory];
+      result = result.filter(e => wanted.includes(e.category));
+    }
     if (this.filterMonth) {
       const [year, month] = this.filterMonth.split('-').map(Number);
       result = result.filter(e => { const d = new Date(e.date); return d.getFullYear() === year && d.getMonth() + 1 === month; });
@@ -866,7 +875,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     // popup, etc.).
     const labels: Record<string, string> = {
       'carburant': 'Carburant', 'fuel': 'Carburant',
-      'entretien': 'Entretien', 'maintenance': 'Maintenance',
+      'entretien': 'Entretien', 'maintenance': 'Entretien',
       'reparation': 'Réparation',
       'insurance': 'Assurance', 'assurance': 'Assurance',
       'technical_inspection': 'Visite technique',

@@ -212,7 +212,7 @@ public class PredictiveAlertService : BackgroundService
             // Dedup on (companyId, type, driver.Id) — same pattern as vehicle docs but keyed
             // on driver so two drivers in the same company don't race-condition each other.
             var alreadySent = await HasRecentNotification(context, companyId,
-                "driver_permit_expiry", driver.Id, "driver_permit", ct);
+                "driver_permit_expiry", driver.Id, "Permis conducteur", ct);
             if (alreadySent) continue;
 
             await SendToCompanyAdmins(context, notifService, companyId,
@@ -389,12 +389,17 @@ public class PredictiveAlertService : BackgroundService
         string type, int vehicleId, string keyword, CancellationToken ct, TimeSpan? dedupWindow = null)
     {
         var cutoff = DateTime.UtcNow - (dedupWindow ?? TimeSpan.FromHours(CHECK_INTERVAL_HOURS));
+        // Le mot-cle etait accepte mais IGNORE : un vehicule dont l assurance
+        // ET la vignette expirent n alertait que pour le premier document du
+        // cycle, l autre restant supprime a chaque tour (constate en recette
+        // le 28/08/2026). Le titre porte le nom du document : il discrimine.
         return await context.Notifications
             .IgnoreQueryFilters()
             .AsNoTracking()
             .AnyAsync(n => n.CompanyId == companyId
                 && n.Type == type
                 && n.ReferenceId == vehicleId
+                && (keyword == "" || n.Title.Contains(keyword))
                 && n.CreatedAt >= cutoff, ct);
     }
 
