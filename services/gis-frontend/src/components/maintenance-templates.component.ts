@@ -710,7 +710,7 @@ interface FlatRow {
     .empty-state p { margin:0; font-size:12px; }
 
     /* Panels */
-    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; justify-content:flex-end; z-index:1000; }
+    .overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); display:flex; justify-content:flex-end; z-index:1200; /* > 1100 : la barre du haut masquait l en-tete du tiroir */ }
     .panel { width:100%; max-width:460px; height:100vh; background:white; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,.1); }
     /* Calypso 6 (P6): "Dépasse le menu" — long template names with long
        priority/active badges were leaking past the gradient header. Cap to

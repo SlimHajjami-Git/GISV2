@@ -364,6 +364,28 @@ public class DashboardService : IDashboardService
             }
         }
 
+        // Vehicules SANS boitier : la courbe est alimentee par les pleins saisis
+        // dans le menu Carburant (recette client du 26/08/2026 — l'abonnement
+        // « gestion sans GPS » voyait un graphique vide alors que les pleins
+        // etaient enregistres). Ce sont des litres factures, pas une estimation.
+        var manualVehicleIds = vehicles.Where(v => !v.GpsDeviceId.HasValue).Select(v => v.Id).ToList();
+        if (manualVehicleIds.Count > 0)
+        {
+            var manualDaily = await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.CompanyId == companyId && f.VehicleId != null
+                            && manualVehicleIds.Contains(f.VehicleId.Value)
+                            && f.InvoiceDate >= fuelStartDate && f.InvoiceDate <= fuelEndDate)
+                .GroupBy(f => f.InvoiceDate.Date)
+                .Select(g => new { Day = g.Key, Liters = g.Sum(x => (decimal?)x.Volume) ?? 0m })
+                .ToListAsync();
+            foreach (var m in manualDaily)
+            {
+                var dayKey = m.Day.ToString("yyyy-MM-dd");
+                dailyFleetFuel[dayKey] = dailyFleetFuel.GetValueOrDefault(dayKey) + m.Liters;
+            }
+            fleetTotalLiters += manualDaily.Sum(m => m.Liters);
+        }
+
         var chartDays = Enumerable.Range(0, Math.Min(fuelDays, 30))
             .Select(i => fuelEndDate.AddDays(-((Math.Min(fuelDays, 30) - 1) - i)).ToString("yyyy-MM-dd"))
             .ToList();
@@ -440,7 +462,7 @@ public class DashboardService : IDashboardService
                 fleetTotalKm,
                 chartDays,
                 chartValues,
-                estimated = true // GPS-sensor-derived estimate — flagged so the UI can label it (fuel-reliability work = tasks 31-33)
+                estimated = batchFuelResults.Count > 0 // capteur GPS -> estime ; pleins saisis seuls -> chiffres factures
             },
             drivingScores,
             healthData = new { healthy, attention, unhealthy },

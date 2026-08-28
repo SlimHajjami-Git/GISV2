@@ -666,7 +666,7 @@ export interface VehicleDocument {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1200; /* > 1100 : la barre du haut collante masquait le haut du modal */
       padding: 20px;
     }
 

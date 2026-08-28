@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, provideZoneChangeDetection } from '@angular/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideRouter, RouterOutlet } from '@angular/router';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
@@ -27,6 +27,12 @@ export class App implements OnInit, OnDestroy {
 
 bootstrapApplication(App, {
   providers: [
+    // Angular 21 est « zoneless » par defaut : sans ce fournisseur, zone.js est
+    // charge mais IGNORE, et seule une interaction (clic, saisie) rafraichit la
+    // vue — un retour HTTP ou un await laissent l ecran fige. Constate en prod
+    // le 26/08/2026 (« Envoi… » bloque, page noire sur l aiguillage regional).
+    // L application est ecrite en style zone : on reactive explicitement.
+    provideZoneChangeDetection(),
     provideRouter(routes),
     provideHttpClient(withInterceptors([authInterceptor]))
   ],

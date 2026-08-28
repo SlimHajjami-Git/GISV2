@@ -340,7 +340,18 @@ import { RegionService } from '../services/region.service';
 
           <div class="form-group">
             <label for="password">Mot de passe</label>
-            <input type="password" id="password" name="password" [(ngModel)]="password" placeholder="••••••••••" required />
+            <div class="pwd-wrap">
+              <input [type]="showPassword ? 'text' : 'password'" id="password" name="password"
+                     [(ngModel)]="password" autocomplete="new-password" required />
+              <button type="button" class="pwd-eye" (click)="showPassword = !showPassword"
+                      [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'">
+                @if (showPassword) {
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/><path d="m4 20 16-16"/></svg>
+                } @else {
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                }
+              </button>
+            </div>
             <small class="hint">Au moins 10 caractères, mêlant minuscules, majuscules, chiffres ou symboles.</small>
           </div>
 
@@ -534,6 +545,14 @@ import { RegionService } from '../services/region.service';
     .form-group select:invalid { color: #94a3b8; }
 
     .hint { display: block; margin-top: 6px; font-size: 12px; color: var(--c-sub); line-height: 1.45; }
+    .pwd-wrap { position: relative; }
+    .pwd-wrap input { width: 100%; padding-right: 42px; }
+    .pwd-eye {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: 0; padding: 4px; cursor: pointer;
+      color: var(--c-sub); display: grid; place-items: center;
+    }
+    .pwd-eye:hover { color: var(--c-ink, #1f2937); }
     .hint.center { text-align: center; margin-top: 12px; }
 
     .type-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }

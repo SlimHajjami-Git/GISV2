@@ -34,7 +34,8 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
   'fuel': { label: 'Carburant', icon: '⛽' },
   'tires': { label: 'Pneumatiques', icon: '🛞' },
   'service': { label: 'Service', icon: '🛠️' },
-  'general': { label: 'Général', icon: '📦' }
+  'general': { label: 'Général', icon: '📦' },
+  'other': { label: 'Autres', icon: '📋' }
 };
 
 @Component({
@@ -75,6 +76,7 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
             <option value="fuel">⛽ Carburant</option>
             <option value="tires">🛞 Pneumatiques</option>
             <option value="service">🛠️ Service</option>
+            <option value="other">📋 Autres</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterGarages()">
             <option value="">Tous les statuts</option>
@@ -672,7 +674,7 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1200; /* > 1100 : la barre du haut collante masquait le haut du modal */
     }
 
     .modal-content {

@@ -16,6 +16,8 @@ const ALERT_TYPES: Record<string, string> = {
   'taxe_circulation': 'Taxe Circulation',
   'visite_technique': 'Visite Technique',
   'entretien': 'Entretien',
+  // Permis conducteur — expiration surveillee par PredictiveAlertService.
+  'permis': 'Permis',
   // Server-side accident detection (AccidentDetectionService, V7 MEMS filter)
   // routes its email fan-out through this alert_type.
   'accident': 'Accident'
@@ -511,7 +513,7 @@ const ALERT_TYPES: Record<string, string> = {
       position: fixed; inset: 0;
       background: rgba(15, 23, 42, 0.55);
       display: flex; align-items: center; justify-content: center;
-      z-index: 1000;
+      z-index: 1200; /* > 1100 : la barre du haut collante masquait le haut du modal */
       backdrop-filter: blur(2px);
     }
     .ae-dialog {

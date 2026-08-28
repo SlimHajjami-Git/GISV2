@@ -351,7 +351,8 @@ public class AiChatController : ControllerBase
             Plate = vehicle.Plate,
             Status = vehicle.Status,
             InsuranceExpiry = vehicle.InsuranceExpiry,
-            TechnicalInspectionExpiry = vehicle.TechnicalInspectionExpiry
+            TechnicalInspectionExpiry = vehicle.TechnicalInspectionExpiry,
+            HasGpsDevice = vehicle.GpsDeviceId.HasValue
         };
 
         // Recent maintenance records (last 10)
@@ -548,7 +549,18 @@ public class AiChatController : ControllerBase
             sb.AppendLine($"Expiration contrôle technique: {ctx.TechnicalInspectionExpiry.Value:dd/MM/yyyy}");
 
         // ═══ DRIVING STATS (30 days) ═══
-        if (ctx.DrivingStats != null)
+        // Vehicule gere SANS boitier GPS : ni trajets ni capteurs n existent.
+        // On le dit une fois au modele plutot que d aligner des sections vides
+        // qu il commenterait (« verifier le capteur ») a tort.
+        if (!ctx.HasGpsDevice)
+        {
+            sb.AppendLine();
+            sb.AppendLine("NOTE: Ce véhicule est géré SANS boîtier GPS (offre gestion de parc). " +
+                "Aucune donnée de trajets, de vitesse ou de capteur carburant n'existe et c'est NORMAL : " +
+                "ne recommande jamais de vérifier un capteur ou un boîtier. " +
+                "Appuie-toi sur les pleins saisis, les entretiens et les dépenses.");
+        }
+        else if (ctx.DrivingStats != null)
         {
             var ds = ctx.DrivingStats;
             sb.AppendLine();
@@ -599,7 +611,9 @@ public class AiChatController : ControllerBase
             sb.AppendLine("Aucun plein de carburant saisi manuellement sur cette période.");
         }
 
-        // ═══ FUEL - GPS SENSOR RECORDS ═══
+        // ═══ FUEL - GPS SENSOR RECORDS ═══ (uniquement si un boitier existe)
+        if (ctx.HasGpsDevice)
+        {
         sb.AppendLine();
         sb.AppendLine("═══ DONNÉES CAPTEUR CARBURANT GPS (automatique, 30 derniers jours) ═══");
         if (ctx.FuelRecords.Count > 0)
@@ -657,6 +671,7 @@ public class AiChatController : ControllerBase
         else
         {
             sb.AppendLine("Aucune donnée capteur carburant disponible. Le véhicule n'a peut-être pas de capteur de carburant ou il est hors service.");
+        }
         }
 
         // ═══ MAINTENANCE ═══
@@ -1044,6 +1059,7 @@ public record FleetReportAskRequest(string Question, string? ReportContext);
 public class VehicleDiagnosticContext
 {
     public string Name { get; set; } = "";
+    public bool HasGpsDevice { get; set; }
     public string? Brand { get; set; }
     public string? Model { get; set; }
     public string Type { get; set; } = "";

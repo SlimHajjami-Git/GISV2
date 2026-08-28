@@ -30,7 +30,8 @@ export const SUPPLIER_TYPES = [
   { value: 'fuel', label: '⛽ Carburant', icon: '⛽' },
   { value: 'tires', label: '🛞 Pneumatiques', icon: '🛞' },
   { value: 'service', label: '🛠️ Service', icon: '🛠️' },
-  { value: 'general', label: '📦 Général', icon: '📦' }
+  { value: 'general', label: '📦 Général', icon: '📦' },
+  { value: 'other', label: '📋 Autres', icon: '📋' }
 ];
 
 @Component({
@@ -105,6 +106,7 @@ export const SUPPLIER_TYPES = [
                   <option value="tires">🛞 Pneumatiques</option>
                   <option value="service">🛠️ Service</option>
                   <option value="general">📦 Général</option>
+                  <option value="other">📋 Autres</option>
                 </select>
               </div>
             </div>

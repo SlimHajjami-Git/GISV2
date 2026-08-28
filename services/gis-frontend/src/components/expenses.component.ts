@@ -216,7 +216,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     forkJoin({
       costs: this.apiService.getCosts(),
       fuelEntries: this.apiService.getFuelEntries({ pageSize: 200 }),
-      repairs: this.apiService.getRepairs({ pageSize: 200 })
+      repairs: this.apiService.getRepairs({ pageSize: 200 }),
+      // Les mensualites de credit/leasing sont derivees des vehicules : elles
+      // n'existent dans aucune table de depenses (recette client du 26/08/2026 —
+      // « douze echeances payees, zero depense affichee »).
+      vehicles: this.apiService.getVehicles()
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         const allExpenses: Expense[] = [];
@@ -300,6 +304,38 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             createdAt: new Date(r.createdAt || r.repairDate),
             sourceTable: 'repairs'
           });
+        });
+
+        // Mensualites de credit/leasing echues — meme calcul que l'echeancier
+        // de la fiche vehicule (jour de paiement plafonne au 28, une ligne par
+        // mois ecoule depuis le debut du contrat). Seules les echeances dues a
+        // ce jour figurent dans les depenses : l'avenir n'est pas une depense.
+        ((result as any).vehicles || []).forEach((v: any) => {
+          if (v.acquisitionType !== 'leasing' || !v.leasingMonthlyPayment
+              || !v.leasingDurationMonths || !v.leasingStartDate) return;
+          const start = new Date(String(v.leasingStartDate).slice(0, 10) + 'T00:00:00');
+          if (isNaN(start.getTime())) return;
+          const payDay = Math.min(v.leasingPaymentDay || 1, 28);
+          const now = new Date();
+          for (let i = 0; i < v.leasingDurationMonths; i++) {
+            const due = new Date(start.getFullYear(), start.getMonth() + i, payDay);
+            if (due > now) break;
+            allExpenses.push({
+              id: 'leasing_' + v.id + '_' + (i + 1),
+              vehicleId: v.id,
+              vehiclePlate: v.plate || '',
+              vehicleName: v.name || '',
+              category: 'credit',
+              label: 'Mensualité crédit/leasing ' + (i + 1) + '/' + v.leasingDurationMonths,
+              quantity: 1,
+              unitPrice: v.leasingMonthlyPayment,
+              totalAmount: v.leasingMonthlyPayment,
+              date: due,
+              description: 'Échéance générée depuis le contrat du véhicule',
+              createdAt: due,
+              sourceTable: 'leasing'
+            });
+          }
         });
 
         this.expenses = allExpenses;
@@ -840,6 +876,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       'peage': 'Péage', 'toll': 'Péage',
       'stationnement': 'Stationnement', 'parking': 'Parking',
       'amende': 'Amende',
+      'credit': 'Crédit / Leasing',
       'autre': 'Autre',
       // Calypso 7 — accident-driven categories.
       'repair': 'Réparation accident',

@@ -58,8 +58,12 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
             "Renewing {Type} for vehicle {VehicleId} (company {CompanyId}): {OldExpiry} → {NewExpiry}",
             request.DocumentType, vehicle.Id, vehicle.CompanyId, oldExpiry, expiryDateUtc);
 
-        // Create VehicleCost record for the renewal
-        var cost = new VehicleCost
+        // Create VehicleCost record for the renewal. Montant absent ou nul :
+        // la date d'expiration est mise a jour SANS creer de depense — une
+        // ligne a zero fausserait les totaux (recette client du 26/08/2026).
+        VehicleCost? cost = null;
+        if (request.Amount > 0)
+        cost = new VehicleCost
         {
             VehicleId = request.VehicleId,
             Type = request.DocumentType,
@@ -73,7 +77,7 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
             CompanyId = companyId
         };
 
-        _context.VehicleCosts.Add(cost);
+        if (cost is not null) _context.VehicleCosts.Add(cost);
 
         // Update vehicle expiry date based on document type
         switch (request.DocumentType)
@@ -118,9 +122,10 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         _logger.LogInformation(
             "Renewal saved: cost.Id={CostId}, rowsAffected={RowsAffected}, vehicle.{Type}Expiry now={NewExpiry}",
-            cost.Id, rowsAffected, request.DocumentType, expiryDateUtc);
+            cost?.Id ?? 0, rowsAffected, request.DocumentType, expiryDateUtc);
 
-        return cost.Id;
+        // 0 = renouvellement sans depense (montant facultatif).
+        return cost?.Id ?? 0;
     }
 
     private static string GetDocumentTypeLabel(string type) => type switch

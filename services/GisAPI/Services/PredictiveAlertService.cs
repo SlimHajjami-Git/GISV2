@@ -66,7 +66,7 @@ public class PredictiveAlertService : BackgroundService
             }
 
             // Driver permit expiries — not attached to any vehicle, so run once per company.
-            await CheckDriverPermitExpiry(context, notifService, companyId, ct);
+            await CheckDriverPermitExpiry(context, notifService, alertDispatcher, companyId, ct);
         }
 
         _logger.LogInformation("PredictiveAlertService completed check for {Count} companies", companies.Count);
@@ -164,11 +164,11 @@ public class PredictiveAlertService : BackgroundService
 
     /// <summary>
     /// Notifies company admins when a driver's driving-licence (permis conducteur)
-    /// is expired, or expires within 15 / 30 days. Admin-only in-app notification —
-    /// there's no dedicated <c>alert_emails</c> type for this yet.
+    /// is expired, or expires within 15 / 30 days. In-app notification for admins +
+    /// email fan-out to the alert_emails recipients of type "permis".
     /// </summary>
     private async Task CheckDriverPermitExpiry(GisDbContext context, INotificationService notifService,
-        int companyId, CancellationToken ct)
+        IAlertEmailDispatcher alertDispatcher, int companyId, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         var in15Days = now.AddDays(15);
@@ -220,6 +220,21 @@ public class PredictiveAlertService : BackgroundService
                 $"Permis conducteur: {fullName}",
                 message,
                 priority, "driver", driver.Id, "/documents?type=driver_permit", ct);
+
+            // Fan-out courriel vers les destinataires configures (type « permis »,
+            // ajoute a la recette client du 26/08/2026). Pas de drapeau par
+            // utilisateur : alert_emails + repli administrateurs, comme « accident ».
+            try
+            {
+                await alertDispatcher.DispatchAsync(
+                    companyId, "permis", $"Permis conducteur: {fullName}", message,
+                    "/documents?type=driver_permit", ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Failed to dispatch permis alert email for company {CompanyId}", companyId);
+            }
         }
     }
 

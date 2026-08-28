@@ -656,7 +656,7 @@ interface Vehicle {
     .empty-state h3 { margin:0 0 8px; color:#1e293b; }
     .empty-state p { margin:0; font-size:13px; }
 
-    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; justify-content:flex-end; z-index:1000; }
+    .overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); display:flex; justify-content:flex-end; z-index:1200; /* > 1100 : la barre du haut masquait l en-tete du tiroir */ }
     .panel { width:560px; max-width:100%; background:white; display:flex; flex-direction:column; box-shadow:-4px 0 20px rgba(0,0,0,0.15); }
     .panel-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:#1e3a5f; color:white; }
     .panel-header.view { background:#2563eb; }

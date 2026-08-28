@@ -116,9 +116,9 @@ export interface RenewalFormData {
 
             <div class="form-row two-cols">
               <div class="form-group">
-                <label for="amount">Montant payé <span class="required-star">*</span></label>
+                <label for="amount">Montant payé <span class="optional-hint">(facultatif)</span></label>
                 <div class="input-with-suffix">
-                  <input type="number" id="amount" name="amount" [(ngModel)]="formData.amount" required
+                  <input type="number" id="amount" name="amount" [(ngModel)]="formData.amount"
                          placeholder="0.00" class="form-control" min="0" step="0.01">
                   <span class="suffix">{{ currencyCode }}</span>
                 </div>
@@ -1134,7 +1134,9 @@ export class DocumentRenewalPopupComponent implements OnChanges {
   }
 
   onSubmit(): void {
-    if (!this.document || !this.formData.amount || !this.formData.newExpiryDate) return;
+    // Le montant est facultatif (recette client du 26/08/2026) : changer la
+    // date d'une vignette sans en connaître le prix est un cas réel.
+    if (!this.document || !this.formData.newExpiryDate) return;
 
     this.saving = true;
 

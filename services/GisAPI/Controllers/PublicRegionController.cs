@@ -1,3 +1,4 @@
+using GisAPI.Domain.Common;
 using MaxMind.GeoIP2;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,17 +26,6 @@ namespace GisAPI.Controllers;
 [Route("api/public")]
 public class PublicRegionController : ControllerBase
 {
-    /// <summary>
-    /// Pays servis par la vitrine européenne. Union européenne, AELE et
-    /// Royaume-Uni : le périmètre commercial du cahier des charges.
-    /// </summary>
-    private static readonly HashSet<string> EuropeanCountries = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "AD", "AT", "BE", "BG", "CH", "CY", "CZ", "DE", "DK", "EE", "ES", "FI",
-        "FR", "GB", "GR", "HR", "HU", "IE", "IS", "IT", "LI", "LT", "LU", "LV",
-        "MC", "MT", "NL", "NO", "PL", "PT", "RO", "SE", "SI", "SK", "SM"
-    };
-
     // Le lecteur est coûteux à ouvrir et sûr en concurrence : un seul pour
     // toute la vie du processus. Lazy pour que l'API démarre même sans le
     // fichier — l'aiguillage se dégrade, le reste de l'application vit.
@@ -61,7 +51,7 @@ public class PublicRegionController : ControllerBase
                 country = response?.Country?.IsoCode;
         }
 
-        var region = country is not null && EuropeanCountries.Contains(country)
+        var region = EuropeanCountries.Contains(country)
             ? "europe"
             : "default";
 

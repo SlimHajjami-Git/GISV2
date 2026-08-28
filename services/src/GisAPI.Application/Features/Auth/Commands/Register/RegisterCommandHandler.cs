@@ -126,7 +126,13 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             FleetSizeRange = FleetSizeRanges.IsValid(request.FleetSizeRange)
                 ? request.FleetSizeRange
                 : null,
-            Settings = new SocieteSettings()
+            // Un compte europeen est facture en euros et vit a l heure de Paris :
+            // c est ce reglage qui fait afficher « € » partout dans l application
+            // (AuthUser.currency -> pipe monetaire), y compris sur l ecran
+            // d abonnement (recette client du 26/08/2026).
+            Settings = EuropeanCountries.Contains(request.Country)
+                ? new SocieteSettings { Currency = "EUR", Timezone = "Europe/Paris" }
+                : new SocieteSettings()
         };
         _context.Societes.Add(societe);
         await _context.SaveChangesAsync(ct);

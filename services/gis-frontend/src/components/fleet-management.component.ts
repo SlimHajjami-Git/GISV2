@@ -5,6 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
+import { PermissionService } from '../services/permission.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 
@@ -1084,7 +1085,7 @@ interface PartPricing {
       display: flex;
       align-items: center;
       justify-content: center;
-      z-index: 1000;
+      z-index: 1200; /* > 1100 : la barre du haut collante masquait le haut du modal */
     }
 
     .modal {
@@ -1827,7 +1828,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
     });
   }
 
-  constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService, private userPrefs: UserPreferencesService) {}
+  constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService, private userPrefs: UserPreferencesService, private permissions: PermissionService) {}
 
   /** 'mph' when the operator's profile speed unit is mph, else 'km/h'. */
   get speedUnitLabel(): string {
@@ -1850,6 +1851,13 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    // Abonnement « gestion de parc sans GPS » : limites de vitesse, prix des
+    // pièces et contrôle à distance reposent sur le boîtier — retirés (recette
+    // client du 26/08/2026). La détection passe par le module Monitoring,
+    // le marqueur d un abonnement avec GPS.
+    if (!this.permissions.hasModuleAccess('monitoring')) {
+      this.tabs = this.tabs.filter(t => !['speed', 'parts', 'remote'].includes(t.id));
+    }
     this.loadTabData();
   }
 

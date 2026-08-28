@@ -129,7 +129,40 @@ import { environment } from '../environments/environment';
             </section>
           }
 
-          <!-- Grille des offres -->
+          <!-- Grille des offres. Compte europeen (monnaie EUR) : les deux
+             formules du site France, tarifees PAR VEHICULE — la grille des
+             plans locaux en dinars n a aucun sens pour lui (recette client
+             du 26/08/2026). La souscription passe par un conseiller : ces
+             offres se facturent au nombre de vehicules reel. -->
+          @if (isEuroAccount) {
+          <section class="card">
+            <h3 class="card-title">Nos formules</h3>
+            <div class="plans plans-euro">
+              <article class="plan is-current">
+                <header><h4>Abonnement annuel</h4><span class="badge">Recommandé</span></header>
+                <div class="price"><strong>3 €</strong><span>/ véhicule / mois</span></div>
+                <p class="price-alt">Facturation annuelle</p>
+                <ul class="plan-limits">
+                  <li>Toutes les fonctionnalités</li>
+                  <li>Véhicules illimités</li>
+                  <li>7 jours d'essai gratuits</li>
+                </ul>
+                <a class="btn-plan buy" href="mailto:contact@belive.tn?subject=Abonnement%20annuel%20Calypso">Nous contacter</a>
+              </article>
+              <article class="plan">
+                <header><h4>Abonnement semestriel</h4></header>
+                <div class="price"><strong>4 €</strong><span>/ véhicule / mois</span></div>
+                <p class="price-alt">Facturation semestrielle</p>
+                <ul class="plan-limits">
+                  <li>Toutes les fonctionnalités</li>
+                  <li>Véhicules illimités</li>
+                  <li>Sans engagement pendant l'essai</li>
+                </ul>
+                <a class="btn-plan" href="mailto:contact@belive.tn?subject=Abonnement%20semestriel%20Calypso">Nous contacter</a>
+              </article>
+            </div>
+          </section>
+          } @else {
           <section class="card">
             <h3 class="card-title">Nos formules</h3>
             <div class="plans">
@@ -208,6 +241,7 @@ import { environment } from '../environments/environment';
               </div>
             </div>
           </section>
+          }
         }
       </div>
     </app-layout>
@@ -347,6 +381,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
 
   loading = true;
   plans: any[] = [];
+  /** Compte facture en euros (Societe.Settings.Currency) : offre europeenne. */
+  isEuroAccount = false;
   currentPlan: any = null;
   usage: any = null;
   expiresAt: string | null = null;
@@ -374,6 +410,7 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    this.isEuroAccount = this.authService.getCurrentUserSync()?.currency === 'EUR';
     this.apiService.getCurrentSubscription().pipe(takeUntil(this.destroy$)).subscribe({
       next: (res: any) => {
         this.currentPlan = res?.subscriptionType ?? null;

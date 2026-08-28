@@ -268,7 +268,7 @@ type NotifBucket = Notification | NotifThreadGroup;
           </button>
 
           <!-- Offline Vehicles Bell (same look as notification bell, red badge when vehicles are offline) -->
-          <app-offline-vehicles-bell></app-offline-vehicles-bell>
+          @if (hasModule('monitoring')) {<app-offline-vehicles-bell></app-offline-vehicles-bell>}
 
           <!-- Notification Bell -->
           <div class="notification-wrapper">
@@ -298,10 +298,10 @@ type NotifBucket = Notification | NotifThreadGroup;
               <div class="notif-tabs">
                 <button class="tab-btn" [class.active]="activeNotifTab === 'all'" (click)="setNotifTab('all')">Tout<span class="tab-count">{{ notifTabCount('all') }}</span></button>
                 <button class="tab-btn critical" [class.active]="activeNotifTab === 'critical'" [class.empty]="notifTabCount('critical') === 0" (click)="setNotifTab('critical')">Critiques<span class="tab-count">{{ notifTabCount('critical') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" [class.empty]="notifTabCount('geofence') === 0" (click)="setNotifTab('geofence')">Géofences<span class="tab-count">{{ notifTabCount('geofence') }}</span></button>
+                @if (hasModule('geofences')) {<button class="tab-btn" [class.active]="activeNotifTab === 'geofence'" [class.empty]="notifTabCount('geofence') === 0" (click)="setNotifTab('geofence')">Géofences<span class="tab-count">{{ notifTabCount('geofence') }}</span></button>}
                 <button class="tab-btn" [class.active]="activeNotifTab === 'driving'" [class.empty]="notifTabCount('driving') === 0" (click)="setNotifTab('driving')">Conduite<span class="tab-count">{{ notifTabCount('driving') }}</span></button>
                 <button class="tab-btn" [class.active]="activeNotifTab === 'maintenance'" [class.empty]="notifTabCount('maintenance') === 0" (click)="setNotifTab('maintenance')">Maintenance<span class="tab-count">{{ notifTabCount('maintenance') }}</span></button>
-                <button class="tab-btn" [class.active]="activeNotifTab === 'tours'" [class.empty]="notifTabCount('tours') === 0" (click)="setNotifTab('tours')">Tournées<span class="tab-count">{{ notifTabCount('tours') }}</span></button>
+                @if (hasModule('tours')) {<button class="tab-btn" [class.active]="activeNotifTab === 'tours'" [class.empty]="notifTabCount('tours') === 0" (click)="setNotifTab('tours')">Tournées<span class="tab-count">{{ notifTabCount('tours') }}</span></button>}
                 <button class="tab-btn" [class.active]="activeNotifTab === 'system'" [class.empty]="notifTabCount('system') === 0" (click)="setNotifTab('system')">Système<span class="tab-count">{{ notifTabCount('system') }}</span></button>
               </div>
 
