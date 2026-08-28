@@ -126,12 +126,22 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             FleetSizeRange = FleetSizeRanges.IsValid(request.FleetSizeRange)
                 ? request.FleetSizeRange
                 : null,
-            // Un compte europeen est facture en euros et vit a l heure de Paris :
-            // c est ce reglage qui fait afficher « € » partout dans l application
-            // (AuthUser.currency -> pipe monetaire), y compris sur l ecran
-            // d abonnement (recette client du 26/08/2026).
-            Settings = EuropeanCountries.Contains(request.Country)
-                ? new SocieteSettings { Currency = "EUR", Timezone = "Europe/Paris" }
+            // L offre « gestion de parc sans GPS » est le produit europeen :
+            // sa monnaie par defaut est l EURO, quel que soit le pays saisi
+            // (decision client du 28/08/2026). C est ce reglage qui fait
+            // afficher « € » partout (AuthUser.currency -> pipe monetaire),
+            // y compris sur l ecran d abonnement. Le fuseau, lui, suit le
+            // pays : un compte tunisien sur l offre GPA reste a l heure de
+            // Tunis. Les clients installes (offres GPS) sont crees par un
+            // administrateur, pas ici — ils gardent la monnaie locale.
+            Settings = !plan.GpsTracking || EuropeanCountries.Contains(request.Country)
+                ? new SocieteSettings
+                {
+                    Currency = "EUR",
+                    Timezone = EuropeanCountries.Contains(request.Country)
+                        ? "Europe/Paris"
+                        : new SocieteSettings().Timezone
+                }
                 : new SocieteSettings()
         };
         _context.Societes.Add(societe);
