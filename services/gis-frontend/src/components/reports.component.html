@@ -411,6 +411,19 @@
               </div>
             }
           </div>
+        } @else if (selectedTemplate?.type === 'monthly' && monthlyReport && monthlyReport.executiveSummary.totalVehicles === 0) {
+          <!-- Flotte vide : le rapport renvoie une structure valide mais sans
+               aucun véhicule (ex. compte de gestion sans GPS pas encore peuplé).
+               On l'affiche clairement plutôt que des graphiques et tableaux vides. -->
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">📊</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Aucun véhicule dans la flotte</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              Le rapport mensuel s'appuie sur les véhicules de votre parc. Ajoutez au moins
+              un véhicule (menu Véhicules) pour générer des statistiques d'utilisation,
+              de coûts et de consommation.
+            </p>
+          </div>
         } @else if (selectedTemplate?.type === 'monthly' && monthlyReport) {
           <!-- ========== MONTHLY REPORT DEDICATED SECTION ========== -->
           <div class="monthly-report-workspace">

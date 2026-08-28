@@ -913,9 +913,24 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
         sb.AppendLine();
 
-        // Per-vehicle summary (compressed)
+        // Per-vehicle detail — PLAFONNÉ. L'offre Groq (tier on_demand) est limitée
+        // à 8000 tokens/minute : le détail complet d'une grande flotte (HERTZ =
+        // 251 véhicules) dépassait la limite -> 413 « Request too large », rapport
+        // en échec. On ne détaille donc que les véhicules qui APPELLENT l'attention
+        // (santé faible/critique, entretien en retard, alertes, ou coût élevé),
+        // plafonnés à 25 ; les autres sont résumés en une ligne agrégée à la fin.
+        const int MaxDetailed = 25;
+        var notable = vehicleDetails
+            .OrderByDescending(v => (v.healthLevel == "critical" || v.healthLevel == "poor" ? 1000 : 0)
+                                    + v.overdueSchedules * 200 + v.alertCount * 20 + (double)v.totalCosts / 100.0)
+            .Take(MaxDetailed).ToList();
+        var notableIds = notable.Select(v => v.id).ToHashSet();
+        var rest = vehicleDetails.Where(v => !notableIds.Contains(v.id)).ToList();
+
         sb.AppendLine("═══ DÉTAIL PAR VÉHICULE ═══");
-        foreach (var v in vehicleDetails)
+        if (rest.Count > 0)
+            sb.AppendLine($"(Flotte de {vehicleDetails.Count} véhicules — détail des {notable.Count} plus notables ci-dessous ; les {rest.Count} autres sont résumés à la fin.)");
+        foreach (var v in notable)
         {
             sb.AppendLine($"▸ {v.name} ({v.plate}) | {v.brand} {v.model} {v.year} | {v.type} | {v.fuelType} | {v.mileage:N0} km | Statut: {v.status}");
             sb.AppendLine($"  Santé: {v.healthScore}/100 ({v.healthLevel}) | Score conduite: {v.drivingScore}/100 | Alertes: {v.alertCount}");
@@ -927,6 +942,16 @@ public class AiChatController : ControllerBase
                 sb.AppendLine($"  Avertissements: {string.Join("; ", v.warnings.Take(3))}");
             if (v.topRepairs.Count > 0)
                 sb.AppendLine($"  Dernières réparations: {string.Join(", ", v.topRepairs.Select(r => $"{r.description} ({r.cost} {AppCurrency.Default}, {r.date})"))}");
+        }
+
+        if (rest.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"═══ RESTE DE LA FLOTTE ({rest.Count} véhicules, agrégé) ═══");
+            sb.AppendLine($"Distance cumulée: {rest.Sum(v => v.distance):N0} km | Trajets: {rest.Sum(v => v.tripCount)} | Coûts cumulés: {rest.Sum(v => v.totalCosts):N0} {AppCurrency.Default}");
+            sb.AppendLine($"Santé moyenne: {(rest.Any() ? rest.Average(v => v.healthScore) : 0):F0}/100 | Entretiens en retard: {rest.Sum(v => v.overdueSchedules)} | Alertes: {rest.Sum(v => v.alertCount)}");
+            var byModel = rest.GroupBy(v => $"{v.brand} {v.model}").OrderByDescending(g => g.Count()).Take(8);
+            sb.AppendLine("Répartition marque/modèle: " + string.Join(", ", byModel.Select(g => $"{g.Key.Trim()} ×{g.Count()}")));
         }
 
         var userMessage = request.Question ?? @"Génère un rapport d'analyse de flotte complet et structuré. Inclus:
@@ -959,7 +984,9 @@ Calendrier recommandé pour les 3 prochains mois.";
 
         try
         {
-            var llmResponse = await _llmService.ChatAsync(sb.ToString(), new List<LlmMessage> { new("user", userMessage) }, 8000);
+            // max_tokens sous la limite TPM de l'offre (8000/min) : la réponse
+            // (2500) + le contexte du prompt doivent tenir dans une minute de budget.
+            var llmResponse = await _llmService.ChatAsync(sb.ToString(), new List<LlmMessage> { new("user", userMessage) }, 2500);
 
             var result = new
             {
@@ -1036,8 +1063,10 @@ Calendrier recommandé pour les 3 prochains mois.";
 
         try
         {
+            // 2000 tokens de réponse : contexte tronqué (3000 car.) + 20 véhicules
+            // + réponse restent sous la limite TPM de l'offre (8000/min).
             var llmResponse = await _llmService.ChatAsync(sb.ToString(),
-                new List<LlmMessage> { new("user", request.Question) }, 4000);
+                new List<LlmMessage> { new("user", request.Question) }, 2000);
 
             return Ok(new { answer = llmResponse.Content, tokensUsed = llmResponse.TokensUsed });
         }
