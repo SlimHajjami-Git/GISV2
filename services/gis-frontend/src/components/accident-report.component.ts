@@ -527,6 +527,26 @@ interface ImpactProfile {
             </ng-container>
 
             <ng-template #activeSynth>
+              <!-- Accident DECLARE (sans boitier ou saisi a la main) : rapport
+                   generique. Aucune gravite affirmee, aucune « analyse » : le
+                   systeme n a rien mesure (recette client du 28/08/2026). -->
+              <ng-container *ngIf="origin === 'manual'; else detectedSynth">
+                <p class="lead">
+                  Votre véhicule <strong>{{ vehicleLabel }}</strong> a fait l'objet d'une
+                  <strong>déclaration d'accident</strong> le
+                  <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
+                  <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
+                  <strong>{{ locationGovernorate }}</strong></ng-container>.
+                </p>
+                <p *ngIf="phase2.description">
+                  Description déclarée : «&nbsp;{{ phase2.description }}&nbsp;»
+                </p>
+                <p>
+                  Ce rapport rassemble les informations déclarées et suit les étapes du
+                  dossier (constat, expertise, réparation, assurance) détaillées ci-dessus.
+                </p>
+              </ng-container>
+              <ng-template #detectedSynth>
               <p class="lead">
                 Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
                 <strong class="hl">accident grave</strong> le
@@ -540,6 +560,7 @@ interface ImpactProfile {
                 <strong>{{ synthesisText || 'impact violent détecté' }}</strong>. Les éléments qui conduisent à ce
                 diagnostic sont détaillés dans les pages suivantes.
               </p>
+              </ng-template>
             </ng-template>
           </section>
 
@@ -568,9 +589,9 @@ interface ImpactProfile {
                   <div class="loc-v loc-coords">{{ coordsKnown ? (impactLat.toFixed(5) + ' °N · ' + impactLon.toFixed(5) + ' °E') : '—' }}</div>
                 </div>
                 <div class="loc-note">
-                  Le point rouge sur la carte ci-contre indique l'emplacement exact où l'impact
-                  a été détecté. Le tracé en pointillés, lorsqu'il apparaît, représente le
-                  trajet emprunté par le véhicule dans les heures qui ont précédé.
+                  {{ origin === 'manual'
+                     ? "Le point rouge sur la carte ci-contre indique l'emplacement déclaré de l'accident."
+                     : "Le point rouge sur la carte ci-contre indique l'emplacement exact où l'impact a été détecté. Le tracé en pointillés, lorsqu'il apparaît, représente le trajet emprunté par le véhicule dans les heures qui ont précédé." }}
                 </div>
               </div>
               <div class="loc-map">
@@ -579,6 +600,7 @@ interface ImpactProfile {
             </div>
           </section>
 
+          <ng-container *ngIf="origin !== 'manual'">
           <hr class="rule"/>
 
           <!-- Ce qui s'est passé -->
@@ -747,6 +769,7 @@ interface ImpactProfile {
               </div>
             </div>
           </section>
+          </ng-container>
 
           <hr class="rule"/>
 
@@ -1806,6 +1829,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * fallback scenario (no :accidentId in the URL).
    */
   status: 'pending' | 'confirmed' | 'dismissed' | null = null;
+  /** 'manual' = accident declare (souvent vehicule sans boitier) : rapport generique. */
+  origin: 'auto' | 'manual' = 'auto';
   decidedByName: string | null = null;
   decidedAtFormatted: string | null = null;
   towDetectedAtFormatted: string | null = null;
@@ -1956,6 +1981,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     // fallback Confirmer / Fausse alerte buttons.
     this.accidentEventId = dto.id;
     this.status = dto.status ?? 'pending';
+    this.origin = dto.origin === 'manual' ? 'manual' : 'auto';
     this.decidedByName = dto.decidedByName ?? null;
     this.decidedAtFormatted = this.formatShortDateTime(dto.decidedAt);
     this.towDetectedAtFormatted = this.formatShortDateTime(dto.towDetectedAt);
