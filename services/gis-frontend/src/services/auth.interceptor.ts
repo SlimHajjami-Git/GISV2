@@ -37,9 +37,18 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // d'abonnement et le cloisonnement par société. Symptôme (recette 28/08/2026) :
   // un compte suspendu « reprenait le contrôle » via Réessayer, en opérant en
   // réalité comme l'administrateur. Chaque espace n'utilise donc que SON jeton.
+  // Données de RÉFÉRENCE globales en lecture seule (marques/modèles de véhicules) :
+  // ni tenant, ni mutation, ni sensibles. Le popup véhicule partagé les charge
+  // aussi bien dans l'app client que dans l'espace admin. On y tolère donc le
+  // repli sur admin_token quand aucune session client n'existe — sans risque
+  // (un GET de marques ne fuite rien et ne contourne aucun abonnement), ce qui
+  // évite un 401 qui déconnecterait l'administrateur.
+  const isReferenceGet = req.method === 'GET' && /\/api\/brands(\/|$|\?)/.test(req.url);
   const token = isAdminRoute
     ? localStorage.getItem('admin_token')
-    : localStorage.getItem('auth_token');
+    : isReferenceGet
+      ? (localStorage.getItem('auth_token') || localStorage.getItem('admin_token'))
+      : localStorage.getItem('auth_token');
 
   // Proactive refresh: if token is expiring soon, refresh before sending the request.
   // UNIQUEMENT hors espace admin : ce flux rafraîchit la session UTILISATEUR et
@@ -123,6 +132,19 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         }
 
         // ── Session UTILISATEUR : flux existant ──
+        // Garde-fou : un 401 sur une route CLIENT alors qu'AUCUNE session
+        // utilisateur n'existe (pas d'auth_token) ne doit RIEN détruire. Ce cas
+        // survient dans l'espace admin : un composant partagé (ex. le popup
+        // véhicule qui charge /api/brands) émet un appel « route client » ; en
+        // session admin pure, auth_token est absent -> 401. Avant, cet appel
+        // empruntait admin_token en secours (faille corrigée) ; désormais il
+        // échoue proprement, mais il ne doit SURTOUT PAS appeler logout(), qui
+        // effacerait admin_token et déconnecterait l'administrateur (régression
+        // « clic sur une société -> déconnexion », 28/08/2026).
+        if (!localStorage.getItem('auth_token')) {
+          return throwError(() => error);
+        }
+
         // Token expired — try to refresh
         if (!isRefreshing) {
           isRefreshing = true;
