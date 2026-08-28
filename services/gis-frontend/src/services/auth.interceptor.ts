@@ -30,9 +30,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // /auth/impersonate est déclenché depuis l'espace /admin (super-admin) -> doit
   // utiliser le admin_token, sinon le backend reçoit un token non-system_admin (400).
   const isAdminRoute = req.url.includes('/api/admin') || req.url.includes('/auth/impersonate');
+  // Le repli croisé était une FAILLE : une route client (non-admin) prenait le
+  // jeton admin en secours. Si une session system_admin traînait dans le
+  // navigateur (onglet /admin) et que le jeton client manquait, les requêtes
+  // « client » partaient avec le jeton system_admin — qui CONTOURNE le blocage
+  // d'abonnement et le cloisonnement par société. Symptôme (recette 28/08/2026) :
+  // un compte suspendu « reprenait le contrôle » via Réessayer, en opérant en
+  // réalité comme l'administrateur. Chaque espace n'utilise donc que SON jeton.
   const token = isAdminRoute
-    ? (localStorage.getItem('admin_token') || localStorage.getItem('auth_token'))
-    : (localStorage.getItem('auth_token') || localStorage.getItem('admin_token'));
+    ? localStorage.getItem('admin_token')
+    : localStorage.getItem('auth_token');
 
   // Proactive refresh: if token is expiring soon, refresh before sending the request.
   // UNIQUEMENT hors espace admin : ce flux rafraîchit la session UTILISATEUR et

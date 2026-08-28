@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using GisAPI.Attributes;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
@@ -114,6 +115,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPost]
+    [RequireAdmin] // création de société hors tenant — réservé au system_admin
     public async Task<ActionResult<CompanyDto>> CreateCompany([FromBody] CreateCompanyRequest request)
     {
         if (await _context.Societes.AnyAsync(c => c.Email == request.Email))
@@ -188,6 +190,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [RequireAdmin] // modification d'une société arbitraire — réservé au system_admin
     public async Task<ActionResult<CompanyDto>> UpdateCompany(int id, [FromBody] UpdateCompanyRequest request)
     {
         var company = await _context.Societes
@@ -248,7 +251,13 @@ public class CompanyController : ControllerBase
         });
     }
 
+    // Ces mutations agissent sur une société ARBITRAIRE désignée par {id}, sans
+    // rapport avec celle de l'appelant : réservées au system_admin (une IDOR
+    // sinon — tout utilisateur authentifié pouvait suspendre/activer n'importe
+    // quelle société). Non référencées par le front (l'admin passe par
+    // /api/admin/company/*) ; conservées et verrouillées par prudence.
     [HttpPost("{id}/suspend")]
+    [RequireAdmin]
     public async Task<ActionResult> SuspendCompany(int id)
     {
         var company = await _context.Societes.FindAsync(id);
@@ -270,6 +279,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpPost("{id}/activate")]
+    [RequireAdmin] // même IDOR que suspend — réservé au system_admin
     public async Task<ActionResult> ActivateCompany(int id)
     {
         var company = await _context.Societes.FindAsync(id);
@@ -291,6 +301,7 @@ public class CompanyController : ControllerBase
     }
 
     [HttpDelete("{id}")]
+    [RequireAdmin] // suppression d'une société arbitraire — réservé au system_admin
     public async Task<ActionResult> DeleteCompany(int id)
     {
         var company = await _context.Societes
