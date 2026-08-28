@@ -985,7 +985,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     const el=this.mapRef?.nativeElement;
     if(!el||this.fleetMap)return;
     this.fleetMap=L.map(el,{zoomControl:true,attributionControl:false}).setView([34.0,9.0],5);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(this.fleetMap);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(this.fleetMap); // Carto tatoue « API KEY REQUIRED » depuis 08/2026
     this.fleetMarkers=L.layerGroup().addTo(this.fleetMap);
     setTimeout(()=>this.fleetMap?.invalidateSize(),400);
     this.loadMapPositions();

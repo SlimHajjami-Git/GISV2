@@ -2125,8 +2125,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     }).setView([this.impactLat, this.impactLon], 14);
 
     // Clean light basemap — CartoDB Positron
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-      attribution: '© OpenStreetMap · © CARTO',
+    // Carto tatoue « API KEY REQUIRED » depuis 08/2026 — OSM sans cle.
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
       maxZoom: 19,
     }).addTo(this.map);
 

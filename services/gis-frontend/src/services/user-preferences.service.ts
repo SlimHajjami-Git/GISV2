@@ -239,15 +239,19 @@ export class UserPreferencesService {
       case 'en':
       case 'auto':
       default:
-        return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+        // Carto exige desormais une cle d'API : ses tuiles arrivent tatouees
+        // « API KEY REQUIRED » (constate en production le 28/08/2026).
+        // OpenStreetMap standard, sans cle, le remplace.
+        return 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
     }
   }
 
   /** Subdomain list for the active provider — Leaflet needs this matched to the URL. */
   getTileSubdomains(style: MapStyle = this.current.mapStyle,
                     language: MapLanguage = this.current.mapLanguage): string {
-    if (style !== 'streets') return 'abc';
-    return language === 'auto' || language === 'en' ? 'abcd' : 'abc';
+    // Les « abcd » etaient les sous-domaines de Carto ; OpenStreetMap n a que
+    // a, b, c — un quart des tuiles partait vers un hote inexistant.
+    return 'abc';
   }
 
   // ---------------------------------------------------------------------------
