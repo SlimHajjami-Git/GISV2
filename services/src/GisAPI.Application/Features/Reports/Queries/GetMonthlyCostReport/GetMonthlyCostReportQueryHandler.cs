@@ -73,14 +73,30 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .Select(f => new { f.VehicleId, f.TotalAmount, f.Volume })
             .ToListAsync(ct);
 
-        // 3. Fetch maintenance logs from /entretien page's table (maintenance_logs)
+        // 3. Coûts d'entretien — MÊME source que le tableau de bord, sinon le
+        //    rapport affiche « Entretiens à 0 » alors que le dashboard montre le
+        //    montant (recette client du 25/08/2026). Un entretien saisi depuis
+        //    l'écran écrit DEUX lignes : une VehicleCost (type « maintenance »)
+        //    ET un MaintenanceLog qui la référence par CostId. Pour ne pas
+        //    doubler : on prend les VehicleCosts type maintenance/entretien,
+        //    plus SEULEMENT les MaintenanceLogs sans coût rattaché (CostId null)
+        //    — les entretiens anciens/importés qui n'ont pas de ligne de dépense.
+        var maintenanceCosts = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId
+                     && vehicleIds.Contains(c.VehicleId)
+                     && (c.Type == "maintenance" || c.Type == "entretien")
+                     && c.Date >= startDate && c.Date < endDate)
+            .Select(c => new { c.VehicleId, ActualCost = c.Amount })
+            .ToListAsync(ct);
         var maintenanceLogs = await _context.MaintenanceLogs.AsNoTracking()
             .Where(m => m.CompanyId == companyId
                      && vehicleIds.Contains(m.VehicleId)
+                     && m.CostId == null
                      && m.DoneDate >= startDate
                      && m.DoneDate < endDate)
             .Select(m => new { m.VehicleId, m.ActualCost })
             .ToListAsync(ct);
+        maintenanceLogs = maintenanceLogs.Concat(maintenanceCosts).ToList();
 
         // 4. Fetch repairs from /reparation page's table (repairs)
         var repairs = await _context.Repairs.AsNoTracking()

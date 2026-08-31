@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { MockDataService } from '../services/mock-data.service';
 import { ApiService } from '../services/api.service';
+import { PermissionService } from '../services/permission.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
@@ -39,7 +40,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
               <div class="settings-group">
                 <h3>Alertes en temps réel</h3>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">Excès de vitesse</span>
                     <span class="setting-desc">Notification quand un véhicule dépasse la limite</span>
@@ -49,7 +50,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">Entrée/Sortie de zone</span>
                     <span class="setting-desc">Notification lors du franchissement d'une geofence</span>
@@ -59,7 +60,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">Arrêt prolongé</span>
                     <span class="setting-desc">Notification si un véhicule est à l'arrêt trop longtemps</span>
@@ -925,8 +926,14 @@ export class SettingsComponent implements OnInit {
     private router: Router,
     private dataService: MockDataService,
     private api: ApiService,
-    private userPrefs: UserPreferencesService
+    private userPrefs: UserPreferencesService,
+    private permissions: PermissionService
   ) {}
+
+  // Offre « sans GPS » (GPA) : les alertes temps réel liées au boîtier
+  // (vitesse, géofence, arrêt) n'ont pas lieu d'être ; on ne garde que la
+  // Maintenance (recette client du 25/08/2026). hasGps suit l'abonnement.
+  get hasGps(): boolean { return this.permissions.hasModuleAccess('monitoring'); }
 
   ngOnInit() {
     if (!this.dataService.isAuthenticated()) {

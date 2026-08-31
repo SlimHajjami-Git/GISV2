@@ -86,6 +86,20 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             UpdatedAt = DateTime.UtcNow
         };
 
+        // Contrôle du kilométrage : un relevé au compteur ne peut pas être
+        // INFÉRIEUR au kilométrage actuel du véhicule — un compteur ne recule
+        // pas (recette client du 25/08/2026 : « le kilométrage du 27 inférieur
+        // à celui du 25 »). On refuse la saisie avec un message explicite plutôt
+        // que de l'accepter en silence. Le zéro / l'absence de relevé restent
+        // permis (le compteur est simplement inchangé).
+        if (vehicle != null && request.OdometerKm.HasValue
+            && request.OdometerKm.Value > 0 && request.OdometerKm.Value < vehicle.Mileage)
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur au kilométrage " +
+                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+        }
+
         _context.FuelEntries.Add(entry);
 
         // Le relevé au compteur fait avancer le kilométrage du véhicule.

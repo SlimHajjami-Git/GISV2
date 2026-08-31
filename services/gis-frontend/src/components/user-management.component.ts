@@ -6,6 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ToastService } from '../services/toast.service';
+import { PermissionService, ModuleKey } from '../services/permission.service';
 import { AlertEmailsComponent } from './alert-emails.component';
 
 interface Role {
@@ -333,7 +334,7 @@ interface VehicleOption {
                   </h3>
                   <p class="section-hint">Cochez les modules auxquels cet utilisateur aura accès. Le tableau de bord est toujours accessible.</p>
                   <div class="permissions-grid">
-                    <label class="perm-check">
+                    <label class="perm-check" *ngIf="hasGps">
                       <input type="checkbox" [(ngModel)]="userForm.canMonitoring">
                       <span class="perm-label">📍 Monitoring GPS</span>
                       <span class="perm-desc">Suivi en temps réel sur carte</span>
@@ -363,11 +364,11 @@ interface VehicleOption {
                         </div>
                       </div>
                       <div class="sub-perm-grid">
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('trips')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportTrips">
                           <span>🛣️ Trajets</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('stops')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportStops">
                           <span>🅿️ Arrêts</span>
                         </label>
@@ -375,27 +376,27 @@ interface VehicleOption {
                           <input type="checkbox" [(ngModel)]="userForm.canReportMileage">
                           <span>📏 Kilométrique</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('mileage_period')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMileagePeriod">
                           <span>📈 Km par période</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('daily')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportDaily">
                           <span>📅 Journalier</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('speed')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportSpeed">
                           <span>🏎️ Vitesse</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('speed_infraction')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportSpeedInfraction">
                           <span>⚠️ Infractions vitesse</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('driving_behavior')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportDrivingBehavior">
                           <span>🚦 Comportement</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('fuel')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportFuel">
                           <span>⛽ Carburant</span>
                         </label>
@@ -417,7 +418,7 @@ interface VehicleOption {
                         </label>
                       </div>
                     </div>
-                    <label class="perm-check">
+                    <label class="perm-check" *ngIf="canModule('geofences')">
                       <input type="checkbox" [(ngModel)]="userForm.canGeofences">
                       <span class="perm-label">🗺️ Géofences</span>
                       <span class="perm-desc">Zones géographiques</span>
@@ -457,12 +458,12 @@ interface VehicleOption {
                       <span class="perm-label">🚛 Gestion flotte</span>
                       <span class="perm-desc">Configuration avancée du parc</span>
                     </label>
-                    <label class="perm-check">
+                    <label class="perm-check" *ngIf="canModule('tours')">
                       <input type="checkbox" [(ngModel)]="userForm.canTours">
                       <span class="perm-label">🗺️ Tournées</span>
                       <span class="perm-desc">Gestion des tournées</span>
                     </label>
-                    <label class="perm-check">
+                    <label class="perm-check" *ngIf="hasGps">
                       <input type="checkbox" [(ngModel)]="userForm.canPlayback">
                       <span class="perm-label">⏪ Tracer Playback</span>
                       <span class="perm-desc">Lecture historique des trajets</span>
@@ -1926,8 +1927,16 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     private router: Router,
     private apiService: ApiService,
     private toast: ToastService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private permissions: PermissionService
   ) {}
+
+  // Offre « sans GPS » (GPA) : les fonctions liées au boîtier ne doivent pas
+  // apparaître dans la grille de permissions à l'ajout d'un utilisateur
+  // (recette client du 25/08/2026). On s'aligne sur l'abonnement de la société.
+  get hasGps(): boolean { return this.permissions.hasModuleAccess('monitoring'); }
+  canModule(m: string): boolean { return this.permissions.hasModuleAccess(m as ModuleKey); }
+  canReport(k: string): boolean { return this.permissions.hasReportAccess(k); }
 
   ngOnInit() {
     if (!this.apiService.isAuthenticated()) {
