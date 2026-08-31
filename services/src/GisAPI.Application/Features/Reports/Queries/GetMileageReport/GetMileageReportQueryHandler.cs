@@ -45,7 +45,23 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
 
         if (!vehicle.GpsDeviceId.HasValue)
         {
-            return new MileageReportDto
+            // Véhicule SANS boîtier (offre GPA) : le kilométrage est dérivé des
+            // relevés au compteur saisis à chaque plein (recette client du
+            // 25/08/2026 — « les trois champs n'affichent rien »). On prend le
+            // premier et le dernier relevé de la période ; leur écart est la
+            // distance parcourue. Sans relevé (ou un seul), pas de distance
+            // calculable -> HasData=false, comme avant.
+            var sd = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+            var ed = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
+            var readings = await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.VehicleId == request.VehicleId
+                            && f.OdometerKm != null && f.OdometerKm > 0
+                            && f.InvoiceDate >= sd && f.InvoiceDate < ed)
+                .OrderBy(f => f.InvoiceDate)
+                .Select(f => new { f.InvoiceDate, Km = f.OdometerKm!.Value })
+                .ToListAsync(ct);
+
+            var dto = new MileageReportDto
             {
                 VehicleId = request.VehicleId,
                 VehicleName = vehicle.Name,
@@ -54,8 +70,28 @@ public class GetMileageReportQueryHandler : IRequestHandler<GetMileageReportQuer
                 VehicleType = vehicle.Type,
                 StartDate = request.StartDate,
                 EndDate = request.EndDate,
-                HasData = false
+                HasData = readings.Count >= 2
             };
+
+            if (readings.Count >= 2)
+            {
+                var start = (double)readings.First().Km;
+                var end = (double)readings.Last().Km;
+                var diff = Math.Max(0, end - start);
+                dto.StartOdometerKm = Math.Round(start, 2);
+                dto.EndOdometerKm = Math.Round(end, 2);
+                dto.OdometerDifferenceKm = Math.Round(diff, 2);
+                dto.TotalDistanceKm = Math.Round(diff, 2);
+                var days = Math.Max(1, (request.EndDate.Date - request.StartDate.Date).Days + 1);
+                dto.AverageDailyKm = Math.Round(diff / days, 2);
+                dto.DailyBreakdown = readings.Select(r => new DailyMileageDto
+                {
+                    Date = r.InvoiceDate.Date,
+                    EndOdometerKm = (double)r.Km
+                }).ToList();
+            }
+
+            return dto;
         }
 
         // DB stores local time directly (no timezone offset)
@@ -281,16 +317,22 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 
         var vehicles = await vehiclesQuery.ToListAsync(ct);
-        if (vehicles.Count == 0) return new List<MileageReportDto>();
+        // NB : on ne sort plus si vehicles est vide — une société « sans GPS »
+        // n'a que des véhicules sans boîtier, traités par le bloc dérivé en fin
+        // de méthode. startDate/endDate sont déclarés ici car les deux blocs
+        // (GPS et dérivé) les utilisent.
+        var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
+        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
 
+        var reports = new List<MileageReportDto>();
+        if (vehicles.Count > 0)
+        {
         // Auparavant : une requête MediatR PAR véhicule, chacune rapatriant
         // toutes ses positions (période courante + période de comparaison).
         // Sur un parc de 14 véhicules cela suffisait à saturer les 512 Mi du pod.
         // Désormais : DEUX requêtes agrégées pour l'ensemble du parc.
         var deviceIds = vehicles.Select(v => v.GpsDeviceId!.Value).Distinct().ToArray();
 
-        var startDate = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
-        var endDate = DateTime.SpecifyKind(request.EndDate.Date.AddDays(1), DateTimeKind.Utc);
         var periodDays = (request.EndDate - request.StartDate).Days + 1;
         var previousStart = DateTime.SpecifyKind(request.StartDate.AddDays(-periodDays), DateTimeKind.Utc);
         var previousEnd = DateTime.SpecifyKind(request.StartDate.Date, DateTimeKind.Utc);
@@ -302,7 +344,6 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
             .ToDictionary(g => g.Key, g => g.ToList());
         var previousByDevice = previousTotals.ToDictionary(t => t.DeviceId, t => t.DistanceKm);
 
-        var reports = new List<MileageReportDto>();
         foreach (var vehicle in vehicles)
         {
             var deviceId = vehicle.GpsDeviceId!.Value;
@@ -327,6 +368,60 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
             reports.Add(GetMileageReportQueryHandler.BuildReport(
                 vehicle, request.StartDate, request.EndDate, rows,
                 prevKm > 0 ? prevKm : null));
+        }
+        } // fin du traitement des véhicules AVEC boîtier
+
+        // Véhicules SANS boîtier (offre GPA) : le kilométrage est dérivé des
+        // relevés au compteur saisis aux pleins, comme pour le rapport d'un
+        // véhicule unique. Sans ce bloc, le rapport « tous véhicules » d'une
+        // société GPA serait vide (recette client du 25/08/2026).
+        var noGpsQuery = _context.Vehicles.AsNoTracking()
+            .Include(v => v.AssignedDriver)
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId == null);
+        if (request.VehicleIds != null && request.VehicleIds.Length > 0)
+            noGpsQuery = noGpsQuery.Where(v => request.VehicleIds.Contains(v.Id));
+        var noGpsVehicles = await noGpsQuery.ToListAsync(ct);
+
+        if (noGpsVehicles.Count > 0)
+        {
+            var noGpsIds = noGpsVehicles.Select(v => v.Id).ToList();
+            var readingsByVehicle = (await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.VehicleId != null && noGpsIds.Contains(f.VehicleId.Value)
+                            && f.OdometerKm != null && f.OdometerKm > 0
+                            && f.InvoiceDate >= startDate && f.InvoiceDate < endDate)
+                .Select(f => new { VehicleId = f.VehicleId!.Value, f.InvoiceDate, Km = f.OdometerKm!.Value })
+                .ToListAsync(ct))
+                .GroupBy(r => r.VehicleId)
+                .ToDictionary(g => g.Key, g => g.OrderBy(r => r.InvoiceDate).ToList());
+
+            var totalDays = Math.Max(1, (request.EndDate.Date - request.StartDate.Date).Days + 1);
+            foreach (var vehicle in noGpsVehicles)
+            {
+                var dto = new MileageReportDto
+                {
+                    VehicleId = vehicle.Id,
+                    VehicleName = vehicle.Name,
+                    Plate = vehicle.Plate,
+                    DriverName = vehicle.AssignedDriver?.FullName,
+                    VehicleType = vehicle.Type,
+                    StartDate = request.StartDate,
+                    EndDate = request.EndDate,
+                    HasData = false
+                };
+                if (readingsByVehicle.TryGetValue(vehicle.Id, out var rd) && rd.Count >= 2)
+                {
+                    var start = (double)rd.First().Km;
+                    var end = (double)rd.Last().Km;
+                    var diff = Math.Max(0, end - start);
+                    dto.HasData = true;
+                    dto.StartOdometerKm = Math.Round(start, 2);
+                    dto.EndOdometerKm = Math.Round(end, 2);
+                    dto.OdometerDifferenceKm = Math.Round(diff, 2);
+                    dto.TotalDistanceKm = Math.Round(diff, 2);
+                    dto.AverageDailyKm = Math.Round(diff / totalDays, 2);
+                }
+                reports.Add(dto);
+            }
         }
 
         return reports;

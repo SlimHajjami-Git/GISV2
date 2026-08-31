@@ -271,6 +271,18 @@
             <h3>Générer un rapport</h3>
             <p>Sélectionnez un template et un véhicule, puis cliquez sur Exécuter</p>
           </div>
+        } @else if ((selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel') && monthlyCostReport && (monthlyCostReport.vehicles?.length ?? 0) === 0) {
+          <!-- Aucune donnée pour la période/le compte : message clair plutôt que
+               des cartes à zéro (recette client du 25/08/2026). -->
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">⛽</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Aucune donnée sur cette période</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              Ce rapport s'appuie sur les pleins et coûts saisis pour le mois sélectionné.
+              Vérifiez le mois choisi, ou saisissez des pleins (menu Carburant) et des
+              entretiens pour ce mois.
+            </p>
+          </div>
         } @else if ((selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel') && monthlyCostReport) {
           <!-- ========== MONTHLY COST / FUEL REPORT ========== -->
           <div class="monthly-cost-report-workspace">

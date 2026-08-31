@@ -1311,6 +1311,22 @@ export class ApiService {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
+  // ── Import / export des données (Excel) — DataPortController ──
+  exportDataset(): Observable<Blob> {
+    return this.http.get(`${this.API_URL}/dataport/export`, { headers: this.getHeaders(), responseType: 'blob' });
+  }
+  downloadImportTemplate(): Observable<Blob> {
+    return this.http.get(`${this.API_URL}/dataport/template`, { headers: this.getHeaders(), responseType: 'blob' });
+  }
+  importDataset(file: File): Observable<any> {
+    const form = new FormData();
+    form.append('file', file);
+    // Pas de headers ici : l'intercepteur pose le jeton, et le navigateur pose
+    // lui-même le Content-Type multipart avec le bon boundary (un Content-Type
+    // manuel casserait l'upload du fichier).
+    return this.http.post(`${this.API_URL}/dataport/import`, form);
+  }
+
   changePassword(payload: { currentPassword: string; newPassword: string }): Observable<any> {
     return this.http.post<any>(`${this.API_URL}/auth/change-password`, payload, { headers: this.getHeaders() });
   }

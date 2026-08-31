@@ -286,6 +286,41 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </div>
 
             <!-- Security Settings -->
+            <!-- ══ Données : import / export Excel (recette client du 25/08/2026) ══ -->
+            <div class="panel-section" *ngIf="activeTab === 'data'">
+              <h2>Données</h2>
+              <p class="section-desc">Exportez votre parc, vos entretiens et vos pleins, ou importez-les en masse depuis un fichier Excel.</p>
+
+              <div class="settings-group">
+                <h3>Exporter</h3>
+                <p class="section-desc" style="margin-top:0">Télécharge un fichier Excel avec trois feuilles : Véhicules, Entretiens, Carburant.</p>
+                <button class="btn-primary" (click)="exportData()" [disabled]="dataBusy">
+                  {{ dataBusy ? 'Préparation…' : 'Exporter mes données (Excel)' }}
+                </button>
+              </div>
+
+              <div class="settings-group">
+                <h3>Importer</h3>
+                <p class="section-desc" style="margin-top:0">
+                  Téléchargez d'abord le modèle, complétez-le, puis importez-le. Rien n'est écrasé :
+                  seuls de nouveaux enregistrements sont créés. Un matricule déjà présent est ignoré.
+                </p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+                  <button class="btn-secondary" (click)="downloadTemplate()" [disabled]="dataBusy">Télécharger le modèle</button>
+                  <input type="file" #importFile accept=".xlsx" (change)="onImportFileSelected($event)" style="display:none">
+                  <button class="btn-primary" (click)="importFile.click()" [disabled]="dataBusy">
+                    {{ dataBusy ? 'Import en cours…' : 'Importer un fichier Excel' }}
+                  </button>
+                </div>
+                <div *ngIf="importResult" class="settings-group" style="margin-top:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:12px">
+                  <strong>{{ importResult.message }}</strong>
+                  <ul *ngIf="importResult.notes?.length" style="margin:8px 0 0;padding-left:18px;color:#64748b;font-size:13px">
+                    <li *ngFor="let n of importResult.notes">{{ n }}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
             <div class="panel-section" *ngIf="activeTab === 'security'">
               <h2>Sécurité</h2>
               <p class="section-desc">Protégez votre compte et vos données</p>
@@ -843,7 +878,8 @@ export class SettingsComponent implements OnInit {
   tabs = [
     { id: 'notifications', label: 'Notifications', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>' },
     { id: 'display', label: 'Affichage', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>' },
-    { id: 'security', label: 'Sécurité', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' }
+    { id: 'security', label: 'Sécurité', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' },
+    { id: 'data', label: 'Données', icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>' }
   ];
 
   settings = {
@@ -1031,8 +1067,43 @@ export class SettingsComponent implements OnInit {
     }
   }
 
-  exportData(type: string) {
-    alert(`Export des ${type} en cours...`);
+  dataBusy = false;
+  importResult: { message: string; notes?: string[] } | null = null;
+
+  exportData() {
+    this.dataBusy = true;
+    this.api.exportDataset().subscribe({
+      next: (blob) => { this.saveBlob(blob, `calypso-donnees-${new Date().toISOString().slice(0,10)}.xlsx`); this.dataBusy = false; },
+      error: () => { this.dataBusy = false; alert("L'export a échoué. Réessayez."); }
+    });
+  }
+
+  downloadTemplate() {
+    this.dataBusy = true;
+    this.api.downloadImportTemplate().subscribe({
+      next: (blob) => { this.saveBlob(blob, 'calypso-modele-import.xlsx'); this.dataBusy = false; },
+      error: () => { this.dataBusy = false; alert("Le téléchargement du modèle a échoué."); }
+    });
+  }
+
+  onImportFileSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // permet de ré-importer le même fichier
+    if (!file) return;
+    this.dataBusy = true;
+    this.importResult = null;
+    this.api.importDataset(file).subscribe({
+      next: (res: any) => { this.importResult = res; this.dataBusy = false; },
+      error: (err) => { this.dataBusy = false; alert(err?.error?.message || "L'import a échoué. Vérifiez le fichier."); }
+    });
+  }
+
+  private saveBlob(blob: Blob, name: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   clearAlerts() {
