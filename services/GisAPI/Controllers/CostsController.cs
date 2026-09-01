@@ -227,6 +227,38 @@ public class CostsController : ControllerBase
         return Ok(cost);
     }
 
+    /// <summary>
+    /// Entretiens (maintenance_logs) qui n'ont PAS de ligne de dépense associée
+    /// (CostId null) — ceux saisis depuis la page Entretien sans passer par une
+    /// dépense. Le tableau de bord les compte dans le coût de maintenance ; la
+    /// page Dépenses les ignorait, d'où un écart entre les deux écrans (recette
+    /// client du 25/08/2026 : « Pas le même montant »). Cet endpoint permet à la
+    /// page Dépenses de les afficher aussi, pour que les deux écrans coïncident.
+    /// Le libellé vient du modèle d'entretien (Template.Name).
+    /// </summary>
+    [HttpGet("maintenance-logs-unlinked")]
+    public async Task<ActionResult> GetUnlinkedMaintenanceLogs()
+    {
+        var companyId = GetCompanyId();
+        var logs = await _context.MaintenanceLogs.AsNoTracking()
+            .Where(m => m.Vehicle!.CompanyId == companyId
+                        && m.CostId == null && m.ActualCost > 0)
+            .OrderByDescending(m => m.DoneDate)
+            .Select(m => new
+            {
+                m.Id,
+                m.VehicleId,
+                VehicleName = m.Vehicle!.Name,
+                VehiclePlate = m.Vehicle!.Plate,
+                Label = m.Template != null ? m.Template.Name : "Entretien",
+                Amount = m.ActualCost,
+                Date = m.DoneDate,
+                m.DoneKm
+            })
+            .ToListAsync();
+        return Ok(logs);
+    }
+
     [HttpGet("summary")]
     public async Task<ActionResult> GetCostSummary(
         [FromQuery] DateTime? startDate = null,
