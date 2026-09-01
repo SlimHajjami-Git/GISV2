@@ -1602,6 +1602,11 @@ export class ApiService {
     return this.http.post<{ costId: number; message: string }>(`${this.API_URL}/documents/vehicle/${vehicleId}/renew`, request, { headers: this.getHeaders() });
   }
 
+  // Corriger la date d'une échéance (bouton « Modifier ») sans renouvellement ni dépense.
+  updateDocumentExpiry(vehicleId: number, documentType: string, expiryDate: string): Observable<any> {
+    return this.http.put(`${this.API_URL}/documents/vehicle/${vehicleId}/expiry`, { documentType, expiryDate }, { headers: this.getHeaders() });
+  }
+
   getRenewalHistory(vehicleId: number): Observable<RenewalHistoryDto[]> {
     return this.http.get<RenewalHistoryDto[]>(`${this.API_URL}/documents/vehicle/${vehicleId}/history`, { headers: this.getHeaders() });
   }

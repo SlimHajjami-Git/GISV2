@@ -79,6 +79,18 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Corrige la date d'échéance d'un document (bouton « Modifier ») sans créer
+    /// de renouvellement ni de dépense — pour rectifier une saisie.
+    /// </summary>
+    [HttpPut("vehicle/{vehicleId}/expiry")]
+    public async Task<ActionResult> UpdateExpiry(int vehicleId, [FromBody] UpdateExpiryRequest request)
+    {
+        await _mediator.Send(new UpdateDocumentExpiryCommand(
+            vehicleId, request.DocumentType, request.ExpiryDate));
+        return Ok(new { Message = "Échéance mise à jour" });
+    }
+
+    /// <summary>
     /// Get renewal history for a vehicle
     /// </summary>
     [HttpGet("vehicle/{vehicleId}/history")]
@@ -110,4 +122,9 @@ public record RenewDocumentRequest(
     string? Provider,
     string? Notes,
     string? DocumentUrl
+);
+
+public record UpdateExpiryRequest(
+    string DocumentType,
+    DateTime ExpiryDate
 );

@@ -172,6 +172,12 @@ export interface VehicleDocument {
                   <span *ngIf="!doc.lastRenewalCost" class="no-data">-</span>
                 </td>
                 <td class="actions-cell">
+                  <button *ngIf="doc.type !== 'driver_permit'" class="btn-action edit" (click)="openEditPopup(doc)" title="Modifier l'échéance">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
+                    </svg>
+                  </button>
                   <button *ngIf="doc.type !== 'driver_permit'" class="btn-action renew" (click)="openRenewalPopup(doc)" title="Renouveler">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="1 4 1 10 7 10"/>
@@ -216,6 +222,32 @@ export interface VehicleDocument {
         (closed)="closeRenewalPopup()"
         (saved)="onRenewalSaved($event)"
       />
+
+      <!-- Modifier l'échéance (correction de date, sans renouvellement) -->
+      <div class="edit-overlay" *ngIf="isEditOpen" (click)="closeEdit()">
+        <div class="edit-modal" (click)="$event.stopPropagation()">
+          <div class="edit-head">
+            <h2>Modifier l'échéance</h2>
+            <button class="edit-close" (click)="closeEdit()" title="Fermer">×</button>
+          </div>
+          <div class="edit-body" *ngIf="editDoc">
+            <p class="edit-sub">
+              {{ getTypeIcon(editDoc.type) }} {{ getTypeLabel(editDoc.type) }}
+              · {{ editDoc.vehicleName }}<span *ngIf="editDoc.vehiclePlate"> ({{ editDoc.vehiclePlate }})</span>
+            </p>
+            <label for="editExpiry">Date d'expiration</label>
+            <input id="editExpiry" type="date" [(ngModel)]="editDate">
+            <p class="edit-hint">Corrige la date sans créer de renouvellement ni de dépense.</p>
+            <p class="edit-error" *ngIf="editError">{{ editError }}</p>
+          </div>
+          <div class="edit-foot">
+            <button class="edit-cancel" (click)="closeEdit()" [disabled]="editSaving">Annuler</button>
+            <button class="edit-save" (click)="saveEdit()" [disabled]="editSaving || !editDate">
+              {{ editSaving ? 'Enregistrement…' : 'Enregistrer' }}
+            </button>
+          </div>
+        </div>
+      </div>
 
       <!-- Historique des renouvellements -->
       <div class="hist-overlay" *ngIf="isHistoryOpen" (click)="closeHistory()">
@@ -636,6 +668,12 @@ export interface VehicleDocument {
       color: #7c3aed;
     }
 
+    .btn-action.edit:hover {
+      background: #fef3c7;
+      border-color: #f59e0b;
+      color: #d97706;
+    }
+
     /* Empty State */
     .empty-state {
       text-align: center;
@@ -719,6 +757,145 @@ export interface VehicleDocument {
     }
 
     .hist-close:hover { background: #e2e8f0; }
+
+    /* ── Popup « Modifier l'échéance » ── */
+    .edit-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1200;
+      padding: 20px;
+    }
+
+    .edit-modal {
+      background: #fff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .edit-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 20px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .edit-head h2 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+
+    .edit-close {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      font-size: 20px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #475569;
+      flex-shrink: 0;
+    }
+
+    .edit-close:hover { background: #e2e8f0; }
+
+    .edit-body {
+      padding: 18px 20px 4px;
+    }
+
+    .edit-sub {
+      margin: 0 0 16px;
+      font-size: 13px;
+      color: #64748b;
+    }
+
+    .edit-body label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+
+    .edit-body input[type="date"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 14px;
+      color: #0f172a;
+      box-sizing: border-box;
+    }
+
+    .edit-body input[type="date"]:focus {
+      outline: none;
+      border-color: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+    }
+
+    .edit-hint {
+      margin: 8px 0 0;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+
+    .edit-error {
+      margin: 10px 0 0;
+      font-size: 13px;
+      color: #be1e2d;
+    }
+
+    .edit-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 16px 20px 20px;
+    }
+
+    .edit-cancel {
+      padding: 9px 16px;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #475569;
+      cursor: pointer;
+    }
+
+    .edit-cancel:hover:not(:disabled) { background: #e2e8f0; }
+
+    .edit-save {
+      padding: 9px 18px;
+      background: #2563eb;
+      border: 1px solid #2563eb;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    .edit-save:hover:not(:disabled) { background: #1d4ed8; }
+
+    .edit-save:disabled,
+    .edit-cancel:disabled { opacity: 0.6; cursor: not-allowed; }
 
     .hist-body {
       padding: 16px 20px 20px;
@@ -1107,6 +1284,48 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   closeRenewalPopup(): void {
     this.isRenewalPopupOpen = false;
     this.selectedDocument = null;
+  }
+
+  // ── Modifier l'échéance (correction de date, sans renouvellement) ──
+  isEditOpen = false;
+  editDoc: VehicleDocument | null = null;
+  editDate = '';
+  editSaving = false;
+  editError = '';
+
+  openEditPopup(doc: VehicleDocument): void {
+    if (doc.type === 'driver_permit') return;
+    this.editDoc = doc;
+    // Pré-remplit avec la date actuelle au format yyyy-MM-dd attendu par <input type=date>.
+    const d = new Date(doc.expiryDate);
+    this.editDate = isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    this.editError = '';
+    this.isEditOpen = true;
+  }
+
+  closeEdit(): void {
+    this.isEditOpen = false;
+    this.editDoc = null;
+    this.editSaving = false;
+    this.editError = '';
+  }
+
+  saveEdit(): void {
+    if (!this.editDoc || !this.editDate) return;
+    this.editSaving = true;
+    this.editError = '';
+    this.apiService.updateDocumentExpiry(this.editDoc.vehicleId, this.editDoc.type, this.editDate).subscribe({
+      next: () => {
+        this.editSaving = false;
+        this.isEditOpen = false;
+        this.editDoc = null;
+        this.loadDocuments();
+      },
+      error: (err) => {
+        this.editSaving = false;
+        this.editError = err?.error?.message || "La modification a échoué. Réessayez.";
+      }
+    });
   }
 
   onRenewalSaved(event: any): void {
