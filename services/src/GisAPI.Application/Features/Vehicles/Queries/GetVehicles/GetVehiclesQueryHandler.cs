@@ -102,7 +102,13 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 v.TechnicalInspectionExpiry,
                 v.TaxExpiry,
                 v.RegistrationExpiry,
-                v.TransportPermitExpiry
+                v.TransportPermitExpiry,
+                // Acquisition / crédit-leasing (échéancier → dépenses)
+                v.AcquisitionType,
+                v.LeasingMonthlyPayment,
+                v.LeasingDurationMonths,
+                v.LeasingStartDate,
+                v.LeasingPaymentDay
             ));
 
         var result = await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);

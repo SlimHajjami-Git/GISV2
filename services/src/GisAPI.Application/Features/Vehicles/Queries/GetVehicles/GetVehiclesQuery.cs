@@ -36,7 +36,16 @@ public record VehicleDto(
     DateTime? TechnicalInspectionExpiry,
     DateTime? TaxExpiry,
     DateTime? RegistrationExpiry,
-    DateTime? TransportPermitExpiry
+    DateTime? TransportPermitExpiry,
+    // Acquisition / crédit-leasing : l'écran Dépenses génère les lignes
+    // « Mensualité crédit/leasing » depuis CETTE liste — sans ces champs,
+    // aucune échéance payée n'apparaissait dans les dépenses (recette
+    // client 01/09/2026). Le détail /vehicles/{id} les portait déjà.
+    string? AcquisitionType = null,
+    decimal? LeasingMonthlyPayment = null,
+    int? LeasingDurationMonths = null,
+    DateTime? LeasingStartDate = null,
+    int? LeasingPaymentDay = null
 );
 
 public record GpsDeviceDto(
