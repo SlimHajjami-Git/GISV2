@@ -95,13 +95,32 @@ public class SubscriptionsController : ControllerBase
             .Where(g => g.CompanyId == companyId)
             .CountAsync();
 
+        // Montant dû. Recette 01/09/2026 : l'écran affichait 299 € (forfait
+        // d'origine figé sur la société) au lieu de 3 € × 2 véhicules × 12 mois.
+        // SubscriptionPricing recalcule à chaque lecture pour les plans tarifés
+        // par véhicule — même formule que le bandeau facturation sys_admin.
+        var plan = company.SubscriptionType;
+        var nextPaymentAmount = GisAPI.Application.Common
+            .SubscriptionPricing.AmountDue(company, vehicleCount);
+
+        // En période d'essai gratuit : offre en libre-service, rien n'a jamais
+        // été réglé, ET l'échéance posée a la taille d'un essai (≤ 31 jours
+        // depuis le départ). Cette dernière borne évite d'étiqueter « essai »
+        // un client GPA installé à la main avec un an d'échéance : ses
+        // règlements se font hors application, LastPaymentAt peut rester vide
+        // à vie (cf. commentaire de IsSelfServiceSubscription).
+        var isTrial = GisAPI.Application.Features.Auth.Commands.Login
+            .LoginCommandHandler.IsSelfServiceSubscription(company)
+            && company.LastPaymentAt == null
+            && company.SubscriptionExpiresAt.HasValue
+            && (company.SubscriptionExpiresAt.Value - company.SubscriptionStartedAt).TotalDays <= 31;
+
         return Ok(new
         {
             SubscriptionType = company.SubscriptionType,
-            // L'écran d'abonnement a besoin du montant dû et du rythme de
-            // facturation : sans eux il devait deviner un prix à partir de la
-            // grille, alors que la société porte la valeur qui fait foi.
-            company.NextPaymentAmount,
+            NextPaymentAmount = nextPaymentAmount,
+            PricePerVehicle = plan?.PricePerVehicle ?? false,
+            IsTrial = isTrial,
             company.BillingCycle,
             company.SubscriptionStatus,
             company.LastPaymentAt,

@@ -300,7 +300,9 @@ spec:
             - name: Registration__DefaultPlanCode
               value: "plan-basique"
             - name: Registration__TrialDays
-              value: "14"
+              # 7 jours : c'est ce que promettent le site et l'écran d'abonnement
+              # (« 7 jours d'essai gratuits ») — recette client 01/09/2026.
+              value: "7"
             # CORS — allow both internal K8s and external domain.
             # Les entrées *.calypso.com d'origine visaient des domaines FICTIFS
             # (jamais en DNS) ; remplacées par le vrai domaine servi en HTTPS.

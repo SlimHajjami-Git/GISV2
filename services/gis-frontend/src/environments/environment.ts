@@ -32,17 +32,14 @@ export const environment = {
   // Duree d essai ANNONCEE sur les ecrans publics. Le document maitre impose
   // 7 jours et interdit explicitement d afficher 14.
   //
-  // ATTENTION : le serveur ACCORDE toujours 14 jours (AppRegistration.TrialDays).
-  // L ecart est volontaire et sans danger dans ce sens — le client recoit plus
-  // que promis. L aligner reviendrait a RACCOURCIR l essai, ce qui est une
-  // decision commerciale, pas un reglage d affichage.
+  // Depuis la recette client du 01/09/2026, le serveur accorde 7 jours
+  // (AppRegistration.TrialDays / Registration__TrialDays) — ce que le site
+  // promet. Les deux valeurs ci-dessous sont donc alignees.
   selfSignupTrialDays: 7,
 
   // Duree REELLEMENT accordee par le serveur (AppRegistration.TrialDays).
-  // Sert a ne pas se sous-vendre hors du parcours europeen : la ou aucune
-  // regle n impose 7 jours, autant annoncer ce qui est vraiment offert.
   // A GARDER ALIGNEE sur le serveur — sinon on promet plus que l on donne.
-  actualTrialDays: 14,
+  actualTrialDays: 7,
   // Pays preselectionne dans le formulaire d inscription (ISO 3166-1 alpha-2).
   // PER-DEPLOYMENT : TN ici, FR sur un futur deploiement francais, DZ pour Bougeo.
   // Son absence vaut TN, le pays historiquement servi.

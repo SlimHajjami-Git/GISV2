@@ -277,6 +277,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyPrice).HasColumnName("monthly_price").HasPrecision(10, 2);
         modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyPrice).HasColumnName("quarterly_price").HasPrecision(10, 2);
         modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyPrice).HasColumnName("yearly_price").HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.PricePerVehicle).HasColumnName("price_per_vehicle");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyDurationDays).HasColumnName("monthly_duration_days");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyDurationDays).HasColumnName("quarterly_duration_days");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyDurationDays).HasColumnName("yearly_duration_days");

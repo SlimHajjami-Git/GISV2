@@ -91,6 +91,16 @@ public class CreateSubscriptionOrderCommandHandler
         if (amount <= 0m)
             throw new DomainException("Ce cycle de facturation n'est pas disponible pour cette offre.");
 
+        // Plan tarifé PAR VÉHICULE : le prix du cycle s'entend par véhicule,
+        // la commande porte donc prix × parc réel (au moins 1). Le filtre de
+        // tenant scope déjà Vehicles sur la société du client connecté.
+        if (plan.PricePerVehicle)
+        {
+            var vehicleCount = await _context.Vehicles
+                .CountAsync(v => v.CompanyId == companyId, ct);
+            amount *= Math.Max(1, vehicleCount);
+        }
+
         // Une seule commande en attente à la fois : deux commandes validées coup
         // sur coup factureraient deux fois. Le client modifie en annulant d'abord.
         var pending = await _context.SubscriptionOrders

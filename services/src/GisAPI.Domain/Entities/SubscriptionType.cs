@@ -15,6 +15,15 @@ public class SubscriptionType : Entity
     public decimal QuarterlyPrice { get; set; }
     public decimal YearlyPrice { get; set; }
 
+    /// <summary>
+    /// Tarification PAR VÉHICULE : les prix des cycles ci-dessus s'entendent par
+    /// véhicule, et le montant dû = prix du cycle × nombre de véhicules de la
+    /// société (au moins 1). false = forfait classique. Porté par l'offre GPA
+    /// européenne : 3 €/véhicule/mois en engagement annuel (recette 01/09/2026 —
+    /// « 3 € × 2 véhicules × 12 mois = 72 € », pas un forfait figé).
+    /// </summary>
+    public bool PricePerVehicle { get; set; } = false;
+
     // Duration in days for each billing cycle
     public int MonthlyDurationDays { get; set; } = 30;
     public int QuarterlyDurationDays { get; set; } = 90;

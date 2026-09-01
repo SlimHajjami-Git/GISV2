@@ -44,7 +44,12 @@ import { environment } from '../environments/environment';
           <section class="card current" [class.expiring]="daysRemaining !== null && daysRemaining <= 7">
             <div class="current-main">
               <span class="label">Offre en cours</span>
-              <h2>{{ currentPlan?.name || 'Aucune offre active' }}</h2>
+              <h2>
+                {{ currentPlan?.name || 'Aucune offre active' }}
+                @if (isTrial) {
+                  <span class="trial-badge">Essai gratuit</span>
+                }
+              </h2>
               @if (currentPlan?.description) {
                 <p class="desc">{{ currentPlan.description }}</p>
               }
@@ -52,7 +57,9 @@ import { environment } from '../environments/environment';
 
             <div class="current-facts">
               <div class="fact">
-                <span class="fact-label">Échéance</span>
+                <!-- En essai, « Échéance » laissait croire à un abonnement payant
+                     déjà engagé ; c'est la fin de l'essai qui est affichée. -->
+                <span class="fact-label">{{ isTrial ? "Fin de l'essai gratuit" : 'Échéance' }}</span>
                 @if (expiresAt) {
                   <span class="fact-value">{{ expiresAt | date:'dd MMMM yyyy' }}</span>
                   @if (daysRemaining !== null) {
@@ -65,10 +72,18 @@ import { environment } from '../environments/environment';
                 }
               </div>
               <div class="fact">
-                <span class="fact-label">Prochain règlement</span>
+                <span class="fact-label">{{ isTrial ? "Règlement à la souscription" : 'Prochain règlement' }}</span>
                 @if (nextPaymentAmount != null) {
                   <span class="fact-value">{{ nextPaymentAmount | appCurrency }}</span>
                   <span class="fact-note">{{ billingCycleLabel }}</span>
+                  <!-- Plan tarifé par véhicule : montrer le détail du calcul pour
+                       que le montant ne tombe pas du ciel (3 € × N véhicules × 12). -->
+                  @if (pricePerVehicle && perVehicleUnitMonthly != null) {
+                    <span class="fact-note">
+                      {{ perVehicleUnitMonthly | appCurrency }} / véhicule / mois
+                      × {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}@if (cycleMonths > 1) { × {{ cycleMonths }} mois}
+                    </span>
+                  }
                 } @else {
                   <span class="fact-value muted">—</span>
                 }
@@ -172,12 +187,22 @@ import { environment } from '../environments/environment';
                     <h4>{{ p.name }}</h4>
                     @if (p.id === currentPlan?.id) { <span class="badge">Votre offre</span> }
                   </header>
+                  <!-- Plan tarifé PAR VÉHICULE : le prix du cycle est unitaire.
+                       Sans le dire — et sans montrer le montant pour LE parc du
+                       client — l'écran annoncerait 36 là où la commande créée
+                       vaut 36 × N véhicules (recette 01/09/2026). -->
                   <div class="price">
                     <strong>{{ p.yearlyPrice | appCurrency }}</strong>
-                    <span>/ an</span>
+                    <span>{{ p.pricePerVehicle ? '/ véhicule / an' : '/ an' }}</span>
                   </div>
                   @if (p.monthlyPrice > 0) {
-                    <p class="price-alt">ou {{ p.monthlyPrice | appCurrency }} / mois</p>
+                    <p class="price-alt">ou {{ p.monthlyPrice | appCurrency }} {{ p.pricePerVehicle ? '/ véhicule / mois' : '/ mois' }}</p>
+                  }
+                  @if (p.pricePerVehicle) {
+                    <p class="price-alt fleet-estimate">
+                      Pour votre parc ({{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}) :
+                      {{ p.yearlyPrice * vehiclesBilled | appCurrency }} / an
+                    </p>
                   }
                   <ul class="plan-limits">
                     <li>{{ p.maxVehicles }} véhicules</li>
@@ -206,6 +231,12 @@ import { environment } from '../environments/environment';
             @if (purchasePlan) {
               <div class="purchase-panel">
                 <h4>Commander « {{ purchasePlan.name }} »</h4>
+                @if (purchasePlan.pricePerVehicle) {
+                  <p class="order-hint">
+                    Tarif par véhicule — montants calculés pour votre parc de
+                    {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}.
+                  </p>
+                }
                 <div class="cycle-choices">
                   @for (c of availableCycles(purchasePlan); track c.value) {
                     <label class="cycle" [class.active]="selectedCycle === c.value">
@@ -267,6 +298,19 @@ import { environment } from '../environments/environment';
     .current.expiring { border-color: #fca5a5; }
     .current-main .label { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4f46e5; }
     .current-main h2 { font-size: 22px; font-weight: 800; color: var(--text-primary, #0f172a); margin: 6px 0 4px; }
+    .trial-badge {
+      display: inline-block;
+      vertical-align: middle;
+      margin-left: 8px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      background: #ecfdf5;
+      border: 1px solid #6ee7b7;
+      color: #047857;
+    }
     .current-main .desc { margin: 0; font-size: 13.5px; color: var(--text-secondary, #64748b); max-width: 46ch; }
 
     .current-facts { display: flex; gap: 34px; }
@@ -388,6 +432,10 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   expiresAt: string | null = null;
   nextPaymentAmount: number | null = null;
   billingCycle: string | null = null;
+  /** Essai gratuit en cours (offre libre-service jamais réglée) — serveur. */
+  isTrial = false;
+  /** Plan tarifé par véhicule : le montant affiché = prix × parc réel. */
+  pricePerVehicle = false;
 
   // ── Achat en libre-service ──
   orders: SubscriptionOrder[] = [];
@@ -418,6 +466,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
         this.expiresAt = res?.expiresAt ?? null;
         this.nextPaymentAmount = res?.nextPaymentAmount ?? null;
         this.billingCycle = res?.billingCycle ?? null;
+        this.isTrial = !!res?.isTrial;
+        this.pricePerVehicle = !!res?.pricePerVehicle;
         this.loading = false;
         this.cdr.detectChanges();
       },
@@ -464,12 +514,18 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     }
   }
 
-  /** Les cycles proposables pour un plan : un cycle à 0 n'est pas vendable. */
+  /**
+   * Les cycles proposables pour un plan : un cycle à 0 n'est pas vendable.
+   * Pour un plan tarifé PAR VÉHICULE, le prix affiché est celui que le serveur
+   * facturera réellement (prix du cycle × parc, au moins 1 véhicule) — montrer
+   * le prix unitaire au moment où le client s'engage serait mensonger.
+   */
   availableCycles(plan: any): Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> {
+    const factor = plan?.pricePerVehicle ? this.vehiclesBilled : 1;
     const all: Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> = [
-      { value: 'monthly', label: 'Mensuel', price: plan?.monthlyPrice ?? 0 },
-      { value: 'quarterly', label: 'Trimestriel', price: plan?.quarterlyPrice ?? 0 },
-      { value: 'yearly', label: 'Annuel', price: plan?.yearlyPrice ?? 0 }
+      { value: 'monthly', label: 'Mensuel', price: (plan?.monthlyPrice ?? 0) * factor },
+      { value: 'quarterly', label: 'Trimestriel', price: (plan?.quarterlyPrice ?? 0) * factor },
+      { value: 'yearly', label: 'Annuel', price: (plan?.yearlyPrice ?? 0) * factor }
     ];
     return all.filter(c => c.price > 0);
   }
@@ -533,6 +589,31 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
       case 'yearly': return 'facturation annuelle';
       default: return '';
     }
+  }
+
+  /** Véhicules facturés : le parc réel, au moins 1 (miroir du calcul serveur). */
+  get vehiclesBilled(): number {
+    return Math.max(1, this.usage?.vehicles?.current ?? 1);
+  }
+
+  /** Mois couverts par le cycle de facturation (casse serveur normalisée). */
+  get cycleMonths(): number {
+    switch ((this.billingCycle || 'yearly').toLowerCase()) {
+      case 'monthly': return 1;
+      case 'quarterly': return 3;
+      default: return 12;
+    }
+  }
+
+  /**
+   * Prix mensuel par véhicule, retrouvé depuis le montant du cycle pour que le
+   * détail affiché (« 3 € / véhicule / mois × 2 véhicules × 12 mois ») colle
+   * toujours au montant serveur, quel que soit le tarif du plan.
+   */
+  get perVehicleUnitMonthly(): number | null {
+    if (!this.pricePerVehicle || this.nextPaymentAmount == null) return null;
+    const unit = this.nextPaymentAmount / this.vehiclesBilled / this.cycleMonths;
+    return Math.round(unit * 100) / 100;
   }
 
   /** Les quotas du plan, mis en regard de la consommation réelle. */

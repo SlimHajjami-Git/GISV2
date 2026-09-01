@@ -55,8 +55,19 @@ public class SubscriptionMonitoringService : BackgroundService
 
         var now = DateTime.UtcNow;
         var societes = await db.Societes.AsNoTracking()
+            .Include(s => s.SubscriptionType)
             .Where(s => s.SubscriptionExpiresAt != null)
             .ToListAsync(ct);
+
+        // Parc par société : le « à encaisser » des plans tarifés PAR VÉHICULE
+        // se recalcule (SubscriptionPricing), la colonne figée mentirait dès
+        // qu'un véhicule est ajouté. IgnoreQueryFilters : service de fond, sans
+        // tenant — le filtre global ne doit rien décider ici.
+        var vehicleCounts = await db.Vehicles.AsNoTracking()
+            .IgnoreQueryFilters()
+            .GroupBy(v => v.CompanyId)
+            .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.CompanyId, g => g.Count, ct);
 
         var atRisk = societes
             .Select(s => (Societe: s, State: SubscriptionPolicy.Evaluate(s, now)))
@@ -78,7 +89,9 @@ public class SubscriptionMonitoringService : BackgroundService
         var lines = atRisk.Take(10).Select(x =>
         {
             var s = x.Societe;
-            var amount = s.NextPaymentAmount is decimal a and > 0 ? $" — {a:N0} à encaisser" : "";
+            var amount = GisAPI.Application.Common.SubscriptionPricing.AmountDue(
+                    s, vehicleCounts.GetValueOrDefault(s.Id)) is decimal a and > 0
+                ? $" — {a:N0} à encaisser" : "";
             return x.State.Reason switch
             {
                 "grace" => $"{s.Name} : EXPIRÉ, grâce {x.State.GraceDaysLeft} j restants (impayé{amount})",

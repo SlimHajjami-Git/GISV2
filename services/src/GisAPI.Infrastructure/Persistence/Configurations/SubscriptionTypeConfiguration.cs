@@ -21,6 +21,7 @@ public class SubscriptionTypeConfiguration : IEntityTypeConfiguration<Subscripti
         builder.Property(s => s.MonthlyPrice).HasColumnName("monthly_price");
         builder.Property(s => s.QuarterlyPrice).HasColumnName("quarterly_price");
         builder.Property(s => s.YearlyPrice).HasColumnName("yearly_price");
+        builder.Property(s => s.PricePerVehicle).HasColumnName("price_per_vehicle");
         builder.Property(s => s.MonthlyDurationDays).HasColumnName("monthly_duration_days");
         builder.Property(s => s.QuarterlyDurationDays).HasColumnName("quarterly_duration_days");
         builder.Property(s => s.YearlyDurationDays).HasColumnName("yearly_duration_days");

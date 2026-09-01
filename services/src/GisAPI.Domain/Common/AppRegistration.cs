@@ -34,8 +34,12 @@ public static class AppRegistration
     /// Durée de l'essai, en jours. Une inscription pose TOUJOURS une date
     /// d'expiration : une société sans échéance n'est jamais bloquée, n'apparaît
     /// pas dans la supervision, et rend l'écran de paiement décoratif.
+    ///
+    /// 7 jours : c'est ce que promettent le site public et l'écran d'abonnement
+    /// (« 7 jours d'essai gratuits ») — le défaut historique de 14 les
+    /// contredisait (recette client 01/09/2026).
     /// </summary>
-    public static int TrialDays { get; set; } = 14;
+    public static int TrialDays { get; set; } = 7;
 
     /// <summary>
     /// Durée de validité du lien de confirmation d'adresse email, en heures.

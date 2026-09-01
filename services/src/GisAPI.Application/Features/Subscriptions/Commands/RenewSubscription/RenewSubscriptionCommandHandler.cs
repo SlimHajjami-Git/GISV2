@@ -55,6 +55,19 @@ public class RenewSubscriptionCommandHandler : IRequestHandler<RenewSubscription
                     daysToAdd = subscriptionType.YearlyDurationDays > 0 ? subscriptionType.YearlyDurationDays : 365;
                     break;
             }
+
+            // Plan tarifé PAR VÉHICULE (offre GPA) : le prix du cycle s'entend
+            // par véhicule — on facture le parc réel, au moins 1.
+            // IgnoreQueryFilters : ce chemin est emprunté par le sys_admin
+            // (mark-paid, confirmation de commande) dont le filtre de tenant ne
+            // pointe pas sur la société renouvelée ; le CompanyId est explicite.
+            if (subscriptionType.PricePerVehicle)
+            {
+                var vehicleCount = await _context.Vehicles
+                    .IgnoreQueryFilters()
+                    .CountAsync(v => v.CompanyId == societe.Id, ct);
+                amount *= Math.Max(1, vehicleCount);
+            }
         }
 
         // Calculate new expiration from current expiration or now

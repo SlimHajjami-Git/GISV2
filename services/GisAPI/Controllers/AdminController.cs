@@ -301,7 +301,20 @@ public class AdminController : ControllerBase
     public async Task<ActionResult> GetBillingOverview()
     {
         var now = DateTime.UtcNow;
-        var societes = await _context.Societes.AsNoTracking().ToListAsync();
+        var societes = await _context.Societes.AsNoTracking()
+            .Include(s => s.SubscriptionType)
+            .ToListAsync();
+
+        // Parc par société : nécessaire au montant des plans tarifés PAR
+        // VÉHICULE (SubscriptionPricing) — sans lui, l'admin réclamerait un
+        // montant différent de celui que l'écran client affiche.
+        // IgnoreQueryFilters : le filtre de tenant pointe sur la société du
+        // sys_admin, pas sur celles listées ici.
+        var vehicleCounts = await _context.Vehicles.AsNoTracking()
+            .IgnoreQueryFilters()
+            .GroupBy(v => v.CompanyId)
+            .Select(g => new { CompanyId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(g => g.CompanyId, g => g.Count);
 
         var items = societes
             .Select(s => new { Societe = s, State = Application.Common.SubscriptionPolicy.Evaluate(s, now) })
@@ -318,7 +331,8 @@ public class AdminController : ControllerBase
                 daysRemaining = x.State.DaysRemaining,
                 graceDaysLeft = x.State.GraceDaysLeft,
                 unpaid = x.State.Reason is "grace" or "expired",
-                amountDue = x.Societe.NextPaymentAmount,
+                amountDue = Application.Common.SubscriptionPricing.AmountDue(
+                    x.Societe, vehicleCounts.GetValueOrDefault(x.Societe.Id)),
                 lastPaymentAt = x.Societe.LastPaymentAt,
                 subscriptionStatus = x.Societe.SubscriptionStatus,
                 isActive = x.Societe.IsActive,

@@ -36,7 +36,7 @@ GisAPI.Domain.Common.AppRegistration.SelfSignupEnabled =
 GisAPI.Domain.Common.AppRegistration.DefaultPlanCode =
     builder.Configuration["Registration:DefaultPlanCode"] ?? "plan-basique";
 GisAPI.Domain.Common.AppRegistration.TrialDays =
-    builder.Configuration.GetValue("Registration:TrialDays", 14);
+    builder.Configuration.GetValue("Registration:TrialDays", 7);
 GisAPI.Domain.Common.AppRegistration.EmailConfirmationHours =
     builder.Configuration.GetValue("Registration:EmailConfirmationHours", 48);
 
@@ -1031,9 +1031,14 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
                 Code = "plan-basique",
                 Description = "Gestion de parc sans GPS - Véhicules et maintenance uniquement",
                 TargetCompanyType = "all",
-                MonthlyPrice = 29.00m,
-                QuarterlyPrice = 79.00m,
-                YearlyPrice = 299.00m,
+                // Tarifs PAR VÉHICULE (PricePerVehicle) : 3 €/véhicule/mois en
+                // engagement annuel (36/an), 4 € sans engagement — alignés sur
+                // l'offre GPA du site. Les anciens forfaits 29/79/299 dataient
+                // d'un modèle abandonné (recette client 01/09/2026).
+                MonthlyPrice = 4.00m,
+                QuarterlyPrice = 12.00m,
+                YearlyPrice = 36.00m,
+                PricePerVehicle = true,
                 MaxVehicles = 15,
                 MaxUsers = 3,
                 MaxGpsDevices = 0,
