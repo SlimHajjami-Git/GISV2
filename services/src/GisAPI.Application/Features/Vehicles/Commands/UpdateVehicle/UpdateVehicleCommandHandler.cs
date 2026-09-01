@@ -35,7 +35,18 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         vehicle.Year = request.Year;
         vehicle.Color = request.Color;
         vehicle.Status = request.Status;
-        vehicle.Mileage = request.Mileage;
+        // Kilométrage : un compteur ne recule pas (recette client du 25/08/2026,
+        // « toujours vérifier si nouveau kilométrage > ancien »). On refuse une
+        // valeur inférieure à l'actuelle ; une valeur à 0 = champ non renseigné,
+        // on conserve alors le kilométrage existant plutôt que de l'écraser.
+        if (request.Mileage > 0 && request.Mileage < vehicle.Mileage)
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
+                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+        }
+        if (request.Mileage > 0)
+            vehicle.Mileage = request.Mileage;
         if (request.FuelType != null) vehicle.FuelType = request.FuelType;
         vehicle.FuelTankCapacity = request.FuelTankCapacity;
         vehicle.AssignedDriverId = request.AssignedDriverId;

@@ -3118,7 +3118,9 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error updating vehicle:', err);
-          alert('Erreur lors de la mise à jour du véhicule');
+          // Message précis du serveur (ex. contrôle du kilométrage décroissant)
+          // plutôt qu'un texte générique.
+          alert(err?.error?.message || 'Erreur lors de la mise à jour du véhicule');
         }
       });
     } else {
@@ -3129,7 +3131,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error creating vehicle:', err);
-          alert('Erreur lors de la création du véhicule');
+          alert(err?.error?.message || 'Erreur lors de la création du véhicule');
         }
       });
     }
