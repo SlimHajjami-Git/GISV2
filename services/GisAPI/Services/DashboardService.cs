@@ -125,20 +125,17 @@ public class DashboardService : IDashboardService
                 .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
-            // Un entretien enregistré depuis l'écran écrit DEUX lignes pour une
-            // seule dépense : une VehicleCost (type « maintenance ») et un
-            // MaintenanceLog qui la référence par CostId. Additionner les deux
-            // tables doublait donc chaque entretien dans le coût affiché.
-            // On prend la dépense (VehicleCost) comme source, et on n'ajoute que
-            // les journaux SANS coût rattaché — les entretiens plus anciens ou
-            // importés, qui eux n'ont pas de ligne de dépense correspondante.
+            // Source de vérité UNIQUE des entretiens : la dépense (VehicleCost
+            // type « maintenance »). Un entretien saisi depuis l'écran crée
+            // toujours une VehicleCost + un MaintenanceLog qui la référence
+            // (CostId) ; compter aussi les journaux doublait, et compter les
+            // journaux SANS dépense faisait réapparaître des entretiens dont la
+            // dépense avait été supprimée (résidus). On s'en tient donc aux
+            // VehicleCosts — cohérent avec la page Dépenses et le rapport de
+            // coûts (recette client du 25/08/2026).
             maintenanceCost = await _context.VehicleCosts.AsNoTracking()
                 .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-            maintenanceCost += await _context.MaintenanceLogs.AsNoTracking()
-                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd
-                            && m.ActualCost > 0 && m.CostId == null)
-                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
 
             repairCost = await _context.Repairs.AsNoTracking()
                 .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)

@@ -654,10 +654,6 @@ export class ApiService {
 
   // ==================== COSTS ====================
 
-  getUnlinkedMaintenanceLogs(): Observable<any[]> {
-    return this.http.get<any[]>(this.API_URL + '/costs/maintenance-logs-unlinked', { headers: this.getHeaders() });
-  }
-
   getCosts(filters?: { vehicleId?: number; type?: string; startDate?: Date; endDate?: Date }): Observable<any[]> {
     if (this.isMockUser()) {
       return this.mockDataService.getVehicleCosts();

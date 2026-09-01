@@ -217,11 +217,6 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       costs: this.apiService.getCosts(),
       fuelEntries: this.apiService.getFuelEntries({ pageSize: 200 }),
       repairs: this.apiService.getRepairs({ pageSize: 200 }),
-      // Entretiens saisis via la page Entretien SANS dépense liée (CostId null) :
-      // le tableau de bord les compte, la page Dépenses les ignorait -> écart de
-      // montant entre les deux écrans (recette client du 25/08/2026). On les
-      // ajoute ici pour que les deux coïncident.
-      maintenanceLogs: this.apiService.getUnlinkedMaintenanceLogs(),
       // Les mensualites de credit/leasing sont derivees des vehicules : elles
       // n'existent dans aucune table de depenses (recette client du 26/08/2026 —
       // « douze echeances payees, zero depense affichee »).
@@ -341,27 +336,6 @@ export class ExpensesComponent implements OnInit, OnDestroy {
               sourceTable: 'leasing'
             });
           }
-        });
-
-        // Entretiens saisis via la page Entretien sans dépense liée (CostId
-        // null) — comptés par le tableau de bord, désormais affichés ici aussi
-        // pour que les deux écrans montrent le même total (recette 25/08/2026).
-        ((result as any).maintenanceLogs || []).forEach((m: any) => {
-          allExpenses.push({
-            id: 'maintlog_' + m.id,
-            vehicleId: m.vehicleId,
-            vehiclePlate: m.vehiclePlate || '',
-            vehicleName: m.vehicleName || '',
-            category: 'entretien',
-            label: m.label || 'Entretien',
-            quantity: 1,
-            unitPrice: m.amount,
-            totalAmount: m.amount,
-            date: new Date(m.date),
-            description: m.label,
-            createdAt: new Date(m.date),
-            sourceTable: 'maintenancelogs'
-          });
         });
 
         this.expenses = allExpenses;
