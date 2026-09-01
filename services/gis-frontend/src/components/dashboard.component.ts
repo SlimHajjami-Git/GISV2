@@ -256,6 +256,82 @@ import { AppLayoutComponent } from './shared/app-layout.component';
         <div class="empty" *ngIf="!deadlines.length"><span>Aucune échéance sous 60 jours</span></div>
       </section>
 
+      <!-- ════ Offre GPA (sans boîtier GPS) : widgets alimentés par des données
+           réelles NON-GPS — carburant saisi, éco-conduite dérivée, notifications.
+           Ils remplacent les cartes GPS masquées ci-dessous. ════ -->
+      <ng-container *ngIf="!hasGps">
+
+      <!-- ── Carburant (pleins saisis, sans GPS) ── -->
+      <section class="card acc-cyan span-8 anim" style="--i:7">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3.5 20h11"/><path d="M15 9h2.2a1.8 1.8 0 0 1 1.8 1.8V17a1.5 1.5 0 0 0 3 0v-6.4L19.5 8"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Carburant</div><h2>Carburant</h2></div>
+          <div class="head-right"><span class="chip" *ngIf="realFuel"><b class="num">{{ realFuel.totalFuelCost | appCurrency:0 }}</b></span></div>
+        </div>
+        <div class="rows" *ngIf="realFuel && realFuel.totalLiters">
+          <div class="row"><div class="grow"><div class="t1">Litres consommés</div></div><div class="val num">{{ realFuel.totalLiters | number:'1.0-0' }} L</div></div>
+          <div class="row"><div class="grow"><div class="t1">Distance parcourue</div></div><div class="val num">{{ realFuel.totalDistanceKm | number:'1.0-0' }} km</div></div>
+          <div class="row"><div class="grow"><div class="t1">Consommation moyenne</div></div><div class="val num">{{ realFuel.fleetConsumptionPer100Km != null ? (realFuel.fleetConsumptionPer100Km | number:'1.1-1') + ' L/100' : '—' }}</div></div>
+          <div class="row"><div class="grow"><div class="t1">Coût par km</div></div><div class="val num">{{ realFuel.fleetCostPerKm != null ? (realFuel.fleetCostPerKm | appCurrency:3) : '—' }}</div></div>
+        </div>
+        <div class="gpa-note" *ngIf="realFuel && realFuel.entriesWithoutOdometer > 0">
+          {{ realFuel.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le kilométrage au plein pour la consommation.
+        </div>
+        <div class="empty" *ngIf="realFuel && !realFuel.totalLiters"><span>Aucun plein saisi sur la période</span></div>
+        <div class="empty" *ngIf="!realFuel"><span>Chargement…</span></div>
+      </section>
+
+      <!-- ── Éco-conduite (indicateur dérivé du carburant, sans GPS) ── -->
+      <section class="card acc-green span-4 anim" style="--i:8">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Conduite</div><h2>Éco-conduite</h2></div>
+        </div>
+        <div class="rows" *ngIf="ecoRows.length">
+          <div *ngFor="let e of ecoRows" class="row">
+            <span class="plate">{{ e.plate }}</span>
+            <div class="grow">
+              <div class="eco-dots" *ngIf="e.rating">
+                <i *ngFor="let d of [1,2,3,4,5]" [class.on]="d<=e.rating" [ngClass]="'r'+e.rating"></i>
+              </div>
+              <div class="t2" *ngIf="!e.rating">données insuffisantes</div>
+            </div>
+            <span class="val num sm" *ngIf="e.consumption != null">{{ e.consumption | number:'1.1-1' }}<small> L/100</small></span>
+            <span class="val num sm muted" *ngIf="e.consumption == null">—</span>
+          </div>
+        </div>
+        <div class="gpa-note">Basé sur la consommation réelle des pleins saisis.</div>
+        <div class="empty" *ngIf="!ecoRows.length"><span>Aucune donnée carburant</span></div>
+      </section>
+
+      <!-- ── Notifications (échéances, entretien, admin — sans GPS) ── -->
+      <section class="card acc-amber span-12 anim" style="--i:9">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Suivi</div><h2>Notifications</h2></div>
+          <div class="head-right">
+            <span class="chip down" *ngIf="notifsUnread>0">{{ notifsUnread }} non lues</span>
+            <div class="pager" *ngIf="notifs.length>5">
+              <button type="button" (click)="notifsP=notifsP-1" [disabled]="notifsP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+              <span class="num">{{ notifsP+1 }}&thinsp;/&thinsp;{{ Math.ceil(notifs.length/5) }}</span>
+              <button type="button" (click)="notifsP=notifsP+1" [disabled]="(notifsP+1)*5>=notifs.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="rows" *ngIf="notifs.length">
+          <div *ngFor="let n of pNotifs" class="row" [class.is-new]="!n.isRead">
+            <span class="al-ic" [class.dang]="n.priority==='urgent'||n.priority==='high'" [class.info]="n.priority!=='urgent'&&n.priority!=='high'">
+              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.2"/></svg>
+            </span>
+            <div class="grow"><div class="t1">{{ n.title }}</div><div class="t2">{{ n.message }}</div></div>
+            <span class="t2 num nof">{{ n.createdAt | date:'dd/MM HH:mm' }}</span>
+          </div>
+        </div>
+        <div class="empty" *ngIf="!notifs.length"><span>Aucune notification</span></div>
+      </section>
+
+      </ng-container>
+
       <ng-container *ngIf="hasGps">
       <!-- ── Répartition par type ── -->
       <section class="card acc-slate spend types anim" style="--i:7">
@@ -741,6 +817,16 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     .score.sm{font-size:13px}
     .tint-ok{color:var(--ok-600)}.tint-warn{color:var(--warn-600)}.tint-bad{color:var(--bad-600)}
 
+    /* Offre GPA (sans GPS) : puces éco-conduite + note explicative */
+    .row .val.sm{font-size:12px}
+    .row .val.muted{color:var(--text-muted)}
+    .eco-dots{display:flex;gap:4px}
+    .eco-dots i{width:9px;height:9px;border-radius:50%;background:var(--chip-bg);border:1px solid var(--border-color);flex:none}
+    .eco-dots i.on.r5,.eco-dots i.on.r4{background:var(--ok-600);border-color:var(--ok-600)}
+    .eco-dots i.on.r3{background:var(--warn-600);border-color:var(--warn-600)}
+    .eco-dots i.on.r2,.eco-dots i.on.r1{background:var(--bad-600);border-color:var(--bad-600)}
+    .gpa-note{margin-top:10px;padding:8px 11px;background:var(--chip-bg);border:1px solid var(--border-color);border-radius:9px;color:var(--text-muted);font-size:11.5px;line-height:1.35}
+
     .drivers{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
     .driver{
       display:flex;align-items:center;gap:10px;min-width:0;
@@ -935,6 +1021,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     return Math.round(v).toLocaleString('fr-FR');
   }
 
+  // ── Widgets offre GPA (sans GPS) : carburant réel, éco-conduite, notifications ──
+  realFuel:any=null;
+  ecoRows:{plate:string;consumption:number|null;rating:number;label:string}[]=[];
+  notifs:any[]=[]; notifsUnread=0; notifsP=0;
+
   scP=0;unP=0;fuP=0;alertsP=0;trP=0;drP=0;
   get pScores(){return this.drivingScores.slice(this.scP*5,this.scP*5+5);}
   get pUnits(){return this.topUnits.slice(this.unP*5,this.unP*5+5);}
@@ -942,6 +1033,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get pagedAlerts(){return this.alerts.slice(this.alertsP*5,this.alertsP*5+5);}
   get pTrips(){return this.recentTrips.slice(this.trP*5,this.trP*5+5);}
   get pDrv(){return this.drivers.slice(this.drP*8,this.drP*8+8);}
+  get pNotifs(){return this.notifs.slice(this.notifsP*5,this.notifsP*5+5);}
 
   constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef,private userPrefs:UserPreferencesService,private permissionService:PermissionService){}
 
@@ -971,6 +1063,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     this.setRangeFor(this.selectedPeriod);
     this.loadAll();
     this.loadDeadlines();
+    // Widgets propres à l'offre sans GPS (indépendants de la période pour les
+    // notifications ; le carburant réel suit la période via loadAll).
+    if(!this.hasGps) this.loadNotifs();
     this.wire();
   }
 
@@ -1133,6 +1228,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   loadAll(){
+    // Offre sans GPS : le carburant réel (pleins saisis) remplace la conso GPS ;
+    // il suit la période affichée.
+    if(!this.hasGps) this.loadFuelReal();
     const custom=this.selectedPeriod==='custom'&&!!this.fromDate&&!!this.toDate;
     this.apiService.getDashboardAll(custom?'custom':this.selectedPeriod,custom?this.fromDate:undefined,custom?this.toDate:undefined)
       .pipe(takeUntil(this.destroy$)).subscribe({
@@ -1181,6 +1279,52 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   fuelC(c:number):string{return c<=6?'#059669':c<=8?'#d97706':'#dc2626';}
   tintCls(level:number):string{return level===0?'tint-ok':level===1?'tint-warn':'tint-bad';}
 
+  // ── Chargements offre GPA (sans GPS) ──
+  private loadFuelReal(){
+    this.apiService.getRealFuelConsumption(this.fromDate||undefined,this.toDate||undefined)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+      next:(r:any)=>{
+        this.realFuel=r||{totalLiters:0,vehicles:[]};
+        // Éco-conduite : note dérivée de la conso réelle (L/100). Aucun capteur —
+        // l'échelle est indicative et le chiffre réel reste affiché à côté.
+        const vs=(r?.vehicles||[]);
+        this.ecoRows=vs.map((v:any)=>{
+          const c=(v.consumptionPer100Km!=null)?Number(v.consumptionPer100Km):null;
+          const r2=this.ecoRating(c);
+          return {plate:v.plate||v.vehicleName||'—',consumption:c,rating:r2,label:this.ecoLabel(r2)};
+        }).sort((a:any,b:any)=>(b.rating-a.rating));
+        this.cdr.detectChanges();
+      },
+      error:()=>{ this.realFuel={totalLiters:0,vehicles:[]}; this.ecoRows=[]; }
+    });
+  }
+
+  /** Note éco 1..5 depuis la consommation L/100 (0 = indéterminée). Échelle
+   *  indicative véhicule léger — le nombre réel est toujours montré. */
+  private ecoRating(c:number|null):number{
+    if(c==null||!(c>0)) return 0;
+    if(c<=5.5) return 5;
+    if(c<=7) return 4;
+    if(c<=8.5) return 3;
+    if(c<=10.5) return 2;
+    return 1;
+  }
+  private ecoLabel(r:number):string{return ['—','Très élevée','Élevée','Moyenne','Bonne','Excellente'][r]||'—';}
+
+  private loadNotifs(){
+    this.apiService.getNotifications(undefined,undefined,30).pipe(takeUntil(this.destroy$)).subscribe({
+      next:(res:any)=>{
+        // L'endpoint peut renvoyer soit un tableau, soit { items: [...] }.
+        const list=Array.isArray(res)?res:(res?.items||[]);
+        this.notifs=list.slice().sort((a:any,b:any)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
+        this.notifsUnread=this.notifs.filter(n=>!n.isRead).length;
+        this.notifsP=0;
+        this.cdr.detectChanges();
+      },
+      error:()=>{ this.notifs=[]; this.notifsUnread=0; }
+    });
+  }
+
   private readonly accCycle=['acc-indigo','acc-cyan','acc-green','acc-amber','acc-slate'];
   accFor(i:number):string{return this.accCycle[i%this.accCycle.length];}
 
@@ -1197,7 +1341,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  private resetPagers(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;}
+  private resetPagers(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;this.notifsP=0;}
 
   onPeriodClick(p:string){
     this.selectedPeriod=p;
