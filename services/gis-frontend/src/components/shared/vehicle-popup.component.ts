@@ -1104,7 +1104,16 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   /**
    * Build the leasing payment schedule between the start date and the
    * configured number of months. Past payments are flagged so the table
-   * can render them dimmed; the current month is highlighted.
+   * can render them dimmed; the next payment due is highlighted.
+   *
+   * Statuts (recette client 01/09/2026) : une mensualité est réputée « Payé »
+   * DÈS QUE sa date est atteinte — même règle que l'écran Dépenses, qui compte
+   * l'échéance en dépense ce jour-là. L'ancienne fenêtre (« Payé » seulement
+   * quand l'échéance SUIVANTE arrivait) laissait la mensualité du 18/08
+   * affichée « En cours » un mois entier. « En cours » = la prochaine
+   * mensualité à payer ; le reste = « À venir ». Aucun paiement réel n'étant
+   * enregistré (pas d'entité d'échéance côté serveur), « Payé » reste une
+   * présomption calendaire.
    */
   getPaymentSchedule(): { index: number; date: string; isPast: boolean; isCurrent: boolean }[] {
     const duration = this.formData.leasingDurationMonths;
@@ -1112,22 +1121,31 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     const payDay = this.formData.leasingPaymentDay || 1;
     if (!duration || !startStr) return [];
 
-    const start = new Date(startStr + 'T00:00:00');
+    const start = new Date(String(startStr).slice(0, 10) + 'T00:00:00');
     if (isNaN(start.getTime())) return [];
     const now = new Date();
     const out: { index: number; date: string; isPast: boolean; isCurrent: boolean }[] = [];
 
+    // clamp to 28 to avoid month overflow on Feb / 30-day months.
+    const day = Math.min(payDay, 28);
+    // Si le jour de paiement du mois de départ précède la date de début du
+    // contrat, la 1re mensualité tombe le mois suivant — un contrat signé le
+    // 18/05 avec prélèvement le 14 ne génère pas d'échéance « payée » au
+    // 14/05, antérieure au contrat. (Même règle dans expenses.component.ts.)
+    const offset = day < start.getDate() ? 1 : 0;
+
     for (let i = 0; i < duration; i++) {
-      // clamp to 28 to avoid month overflow on Feb / 30-day months.
-      const d = new Date(start.getFullYear(), start.getMonth() + i, Math.min(payDay, 28));
-      const next = new Date(start.getFullYear(), start.getMonth() + i + 1, Math.min(payDay, 28));
+      const d = new Date(start.getFullYear(), start.getMonth() + i + offset, day);
       out.push({
         index: i + 1,
         date: d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' }),
-        isPast: d < now && next <= now,
-        isCurrent: d <= now && next > now
+        isPast: d <= now,
+        isCurrent: false
       });
     }
+    // La prochaine mensualité à payer est « En cours ».
+    const current = out.find(p => !p.isPast);
+    if (current) current.isCurrent = true;
     return out;
   }
 

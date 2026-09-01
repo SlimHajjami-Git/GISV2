@@ -316,9 +316,13 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           const start = new Date(String(v.leasingStartDate).slice(0, 10) + 'T00:00:00');
           if (isNaN(start.getTime())) return;
           const payDay = Math.min(v.leasingPaymentDay || 1, 28);
+          // 1re mensualite le mois SUIVANT quand le jour de paiement du mois de
+          // depart precede la date de debut du contrat — meme regle que
+          // l'echeancier de la fiche vehicule (vehicle-popup.component.ts).
+          const offset = payDay < start.getDate() ? 1 : 0;
           const now = new Date();
           for (let i = 0; i < v.leasingDurationMonths; i++) {
-            const due = new Date(start.getFullYear(), start.getMonth() + i, payDay);
+            const due = new Date(start.getFullYear(), start.getMonth() + i + offset, payDay);
             if (due > now) break;
             allExpenses.push({
               id: 'leasing_' + v.id + '_' + (i + 1),
