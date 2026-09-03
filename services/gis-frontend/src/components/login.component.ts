@@ -110,14 +110,31 @@ import { environment } from '../environments/environment';
 
           <div class="form-group">
             <label for="password">Mot de passe</label>
-            <input
-              type="password"
-              id="password"
-              [(ngModel)]="password"
-              name="password"
-              placeholder="••••••••"
-              required
-            />
+            <!-- Œil afficher/masquer : sur mobile surtout, saisir un mot de passe
+                 à l'aveugle est la première cause d'échec de connexion. Le
+                 formulaire du parcours Europe l'avait déjà. -->
+            <div class="pw-field">
+              <input
+                [type]="showPassword ? 'text' : 'password'"
+                id="password"
+                [(ngModel)]="password"
+                name="password"
+                placeholder="••••••••"
+                autocomplete="current-password"
+                required
+              />
+              <button type="button" class="pw-eye" (click)="showPassword = !showPassword"
+                      [attr.aria-label]="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
+                      [attr.aria-pressed]="showPassword">
+                <svg *ngIf="!showPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>
+                </svg>
+                <svg *ngIf="showPassword" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M2 12s3.6-6.5 10-6.5c1.7 0 3.2.5 4.5 1.1M22 12s-3.6 6.5-10 6.5c-1.7 0-3.2-.5-4.5-1.1"/>
+                  <path d="M3 3l18 18"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div class="form-options">
@@ -271,6 +288,29 @@ import { environment } from '../environments/environment';
       transition: all .2s;
       box-sizing: border-box;
     }
+    /* Champ mot de passe avec bouton œil : le bouton se superpose à droite,
+       et l'input réserve la place pour ne pas passer sous l'icône. */
+    .pw-field { position: relative; }
+    .pw-field input { padding-right: 46px; }
+    .pw-eye {
+      position: absolute;
+      top: 50%;
+      right: 6px;
+      transform: translateY(-50%);
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      padding: 0;
+      cursor: pointer;
+      color: #6B7A94;
+    }
+    .pw-eye svg { width: 19px; height: 19px; }
+    .pw-eye:hover { color: var(--c-indigo); background: #eef2ff; }
+    .pw-eye:focus-visible { outline: 2px solid var(--c-indigo); outline-offset: 1px; }
     .form-group input:focus {
       outline: none;
       background: #fff;
