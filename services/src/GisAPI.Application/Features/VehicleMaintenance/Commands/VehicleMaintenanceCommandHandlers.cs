@@ -244,6 +244,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         // Create MaintenanceLog
         var log = new MaintenanceLog
         {
+            // MaintenanceLog n'implémente pas ITenantEntity : le stamping
+            // automatique de SaveChangesAsync ne le renseigne pas, et la colonne
+            // vaut donc 0 sur tout l'historique (constaté le 03/09/2026). On
+            // l'écrit explicitement pour que les nouvelles lignes soient au moins
+            // rattachables à leur société.
+            CompanyId = companyId,
             VehicleId = request.VehicleId,
             TemplateId = request.TemplateId,
             ScheduleId = schedule.Id,

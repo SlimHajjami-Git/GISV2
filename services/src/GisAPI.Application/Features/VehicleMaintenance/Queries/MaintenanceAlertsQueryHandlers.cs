@@ -348,7 +348,6 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
 
     public async Task<List<MaintenanceLogReportDto>> Handle(GetAllMaintenanceLogsQuery request, CancellationToken ct)
     {
-        // MaintenanceLog n'a PAS de filtre global de société : filtre companyId obligatoire.
         var companyId = _tenant.CompanyId ?? 0;
 
         // Fuite constatée : ce rapport listait l'entretien de TOUT le parc alors qu'un
@@ -356,46 +355,93 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
         // (scope == null => administrateur de société : aucun filtre supplémentaire).
         var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
 
-        var query = _context.MaintenanceLogs
-            .Include(l => l.Vehicle)
-            .Include(l => l.Template)
-            .Include(l => l.Supplier)
+        // ── Entretiens RÉALISÉS = les DÉPENSES d'entretien ──────────────────
+        //
+        // La source est VehicleCost (type maintenance), pas MaintenanceLog, pour
+        // deux raisons constatées en production le 03/09/2026 :
+        //
+        //  1. `maintenance_logs.company_id` vaut 0 sur la TOTALITÉ de la table
+        //     (47 lignes, 6 mois, toutes sociétés) : MaintenanceLog n'implémente
+        //     pas ITenantEntity, donc le stamping automatique de SaveChangesAsync
+        //     ne le renseigne jamais. Le filtre `l.CompanyId == companyId` ne
+        //     matchait donc AUCUNE ligne et le rapport sortait vide pour tous les
+        //     clients — seuls les entretiens PLANIFIÉS s'affichaient, avec un coût
+        //     « — » et un kilométrage qui est en réalité celui de la prochaine
+        //     échéance (next_due_km).
+        //  2. Un MaintenanceLog n'existe que pour les entretiens passés par
+        //     « marquer fait ». Ceux saisis depuis l'écran Dépenses et ceux venus
+        //     de l'import Excel n'en ont pas : 23 dépenses (3 892 €) restaient
+        //     invisibles même en corrigeant le point 1.
+        //
+        // La dépense est la source de vérité unique du coût d'entretien (décision
+        // du commit 4540744, qui a aligné tableau de bord / entretiens / dépenses).
+        // Ce rapport s'y aligne à son tour. Le log éventuellement lié n'est plus
+        // utilisé que pour enrichir la ligne (modèle d'entretien, kilométrage).
+        var costsQuery = _context.VehicleCosts
+            .Include(c => c.Vehicle)
             .AsNoTracking()
-            .Where(l => l.CompanyId == companyId);
+            .Where(c => c.CompanyId == companyId
+                     && (c.Type == "maintenance" || c.Type == "entretien"));
 
         if (scope is not null)
-            query = query.Where(l => scope.Contains(l.VehicleId));
+            costsQuery = costsQuery.Where(c => scope.Contains(c.VehicleId));
 
         if (request.VehicleId.HasValue)
-            query = query.Where(l => l.VehicleId == request.VehicleId.Value);
+            costsQuery = costsQuery.Where(c => c.VehicleId == request.VehicleId.Value);
 
         if (request.StartDate.HasValue)
-            query = query.Where(l => l.DoneDate >= request.StartDate.Value);
+            costsQuery = costsQuery.Where(c => c.Date >= request.StartDate.Value);
 
         if (request.EndDate.HasValue)
-            query = query.Where(l => l.DoneDate <= request.EndDate.Value);
+            costsQuery = costsQuery.Where(c => c.Date <= request.EndDate.Value);
 
-        var logs = await query
-            .OrderByDescending(l => l.DoneDate)
+        var costs = await costsQuery
+            .OrderByDescending(c => c.Date)
             .ToListAsync(ct);
 
-        var result = logs.Select(l => new MaintenanceLogReportDto(
-            l.Id,
-            l.VehicleId,
-            l.Vehicle?.Name ?? $"Véhicule {l.VehicleId}",
-            l.Vehicle?.Plate,
-            l.TemplateId,
-            l.Template?.Name ?? "Général",
-            l.Template?.Category,
-            l.DoneDate,
-            l.DoneKm,
-            l.ActualCost,
-            l.LaborCost,
-            l.PartsCost,
-            l.Supplier?.Name,
-            l.Notes,
-            "completed"
-        )).ToList();
+        // Logs liés à ces dépenses : ils portent le modèle d'entretien et le
+        // relevé kilométrique du jour de l'intervention. Jointure par cost_id,
+        // sans filtre de société (la colonne n'est pas fiable, cf. plus haut) —
+        // le périmètre est déjà borné par les dépenses retenues.
+        var costIds = costs.Select(c => c.Id).ToList();
+        var linkedLogs = costIds.Count == 0
+            ? new List<GisAPI.Domain.Entities.MaintenanceLog>()
+            : await _context.MaintenanceLogs
+                .Include(l => l.Template)
+                .Include(l => l.Supplier)
+                .AsNoTracking()
+                .Where(l => l.CostId != null && costIds.Contains(l.CostId.Value))
+                .ToListAsync(ct);
+        var logByCostId = linkedLogs
+            .GroupBy(l => l.CostId!.Value)
+            .ToDictionary(g => g.Key, g => g.First());
+
+        var result = costs.Select(c =>
+        {
+            logByCostId.TryGetValue(c.Id, out var log);
+            // Le libellé d'une dépense issue de « marquer fait » est préfixé
+            // « Entretien: » — inutile de le répéter dans une colonne Type.
+            var label = (c.Description ?? string.Empty).StartsWith("Entretien: ")
+                ? c.Description!.Substring("Entretien: ".Length)
+                : c.Description;
+            return new MaintenanceLogReportDto(
+                c.Id,
+                c.VehicleId,
+                c.Vehicle?.Name ?? $"Véhicule {c.VehicleId}",
+                c.Vehicle?.Plate,
+                log?.TemplateId ?? 0,
+                log?.Template?.Name ?? (string.IsNullOrWhiteSpace(label) ? "Général" : label!),
+                log?.Template?.Category,
+                c.Date,
+                c.Mileage ?? log?.DoneKm ?? 0,
+                c.Amount,
+                log?.LaborCost,
+                log?.PartsCost,
+                log?.Supplier?.Name,
+                log?.Notes,
+                "completed"
+            );
+        }).ToList();
 
         // Also surface PLANNED/scheduled maintenances (entretiens créés/assignés mais pas encore
         // "marqués faits"). They live in VehicleMaintenanceSchedule (tenant auto-filtré) et étaient
