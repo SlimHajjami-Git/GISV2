@@ -23,7 +23,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
         <div class="settings-content">
           <div class="settings-nav">
             <button 
-              *ngFor="let tab of tabs" 
+              *ngFor="let tab of visibleTabs"
               class="nav-item" 
               [class.active]="activeTab === tab.id"
               (click)="activeTab = tab.id">
@@ -104,7 +104,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">Notifications SMS</span>
                     <span class="setting-desc">Recevoir les alertes critiques par SMS</span>
@@ -114,7 +114,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">📧 Rapport journalier de la flotte</span>
                     <span class="setting-desc">Recevoir par email le rapport d'activité de toute la flotte chaque jour à 06:00 (heure TN)</span>
@@ -124,7 +124,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     <span class="slider"></span>
                   </label>
                 </div>
-                <div class="setting-item" *ngIf="settings.notifications.dailyFleetReport">
+                <div class="setting-item" *ngIf="hasGps && settings.notifications.dailyFleetReport">
                   <div class="setting-info">
                     <span class="setting-label">Aperçu immédiat</span>
                     <span class="setting-desc">{{ dailyReportTestMsg || 'Recevez tout de suite un aperçu par email, sans attendre 06:00 (valide aussi le SMTP)' }}</span>
@@ -133,7 +133,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                     {{ dailyReportTestSending ? 'Envoi…' : 'Recevoir un aperçu' }}
                   </button>
                 </div>
-                <div class="setting-item" *ngIf="currentUserEmail === 'admin@belive.tn'">
+                <div class="setting-item" *ngIf="hasGps && currentUserEmail === 'admin@belive.tn'">
                   <div class="setting-info">
                     <span class="setting-label">🧪 Test → karim.hajjami@gmail.com</span>
                     <span class="setting-desc">{{ ownerTestMsg || 'Envoie le rapport journalier de la flotte à karim.hajjami@gmail.com (réservé admin@belive.tn)' }}</span>
@@ -144,7 +144,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
               </div>
 
-              <div class="settings-group">
+              <div class="settings-group" *ngIf="hasGps">
                 <h3>Heures silencieuses</h3>
                 <div class="setting-item">
                   <div class="setting-info">
@@ -170,7 +170,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </div>
 
             <!-- Display Settings -->
-            <div class="panel-section" *ngIf="activeTab === 'display'">
+            <div class="panel-section" *ngIf="hasGps && activeTab === 'display'">
               <h2>Affichage</h2>
               <p class="section-desc">Personnalisez l'apparence de l'application</p>
 
@@ -344,7 +344,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
               </div>
 
-              <div class="settings-group">
+              <div class="settings-group" *ngIf="hasGps">
                 <h3>Authentification à deux facteurs</h3>
                 <div class="setting-item">
                   <div class="setting-info">
@@ -360,7 +360,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
               <div class="settings-group">
                 <h3>Sessions</h3>
-                <div class="setting-item">
+                <div class="setting-item" *ngIf="hasGps">
                   <div class="setting-info">
                     <span class="setting-label">Déconnexion automatique</span>
                     <span class="setting-desc">Se déconnecter après une période d'inactivité</span>
@@ -971,11 +971,24 @@ export class SettingsComponent implements OnInit {
   // Maintenance (recette client du 25/08/2026). hasGps suit l'abonnement.
   get hasGps(): boolean { return this.permissions.hasModuleAccess('monitoring'); }
 
+  /**
+   * Offre sans GPS (GPA) : l'onglet « Affichage » ne pilote que la carte de
+   * monitoring (style, langue, libellés, clustering) et le thème — sans boîtier
+   * il n'a plus d'objet (recette client du 03/09/2026).
+   */
+  get visibleTabs() {
+    return this.hasGps ? this.tabs : this.tabs.filter(t => t.id !== 'display');
+  }
+
   ngOnInit() {
     if (!this.dataService.isAuthenticated()) {
       this.router.navigate(['/login']);
       return;
     }
+
+    // L'onglet « Affichage » n'existe pas sans GPS : un état résiduel pointant
+    // dessus afficherait un panneau vide.
+    if (!this.hasGps && this.activeTab === 'display') this.activeTab = 'notifications';
 
     // Calypso 9 p5 — read the display block from the central preferences
     // service instead of a write-only localStorage key. Notifications /

@@ -26,7 +26,7 @@
               </svg>
             </button>
             <div class="dropdown-menu" *ngIf="showTemplateDropdown">
-              <div class="dropdown-category">
+              <div class="dropdown-category" *ngIf="getTemplatesByCategory('gps').length">
                 <span class="category-title">📊 Analyse GPS</span>
                 <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('gps')" (click)="selectTemplateFromDropdown(t)">
                   <span class="item-icon">{{ t.icon }}</span>
@@ -36,7 +36,7 @@
                   </div>
                 </div>
               </div>
-              <div class="dropdown-category">
+              <div class="dropdown-category" *ngIf="getTemplatesByCategory('costs').length">
                 <span class="category-title">💰 Coûts & Dépenses</span>
                 <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('costs')" (click)="selectTemplateFromDropdown(t)">
                   <span class="item-icon">{{ t.icon }}</span>
@@ -46,7 +46,7 @@
                   </div>
                 </div>
               </div>
-              <div class="dropdown-category">
+              <div class="dropdown-category" *ngIf="getTemplatesByCategory('stats').length">
                 <span class="category-title">📈 Statistiques</span>
                 <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('stats')" (click)="selectTemplateFromDropdown(t)">
                   <span class="item-icon">{{ t.icon }}</span>
@@ -56,7 +56,7 @@
                   </div>
                 </div>
               </div>
-              <div class="dropdown-category">
+              <div class="dropdown-category" *ngIf="getTemplatesByCategory('ai').length">
                 <span class="category-title">🤖 Intelligence Artificielle</span>
                 <div class="dropdown-item" *ngFor="let t of getTemplatesByCategory('ai')" (click)="selectTemplateFromDropdown(t)">
                   <span class="item-icon">{{ t.icon }}</span>

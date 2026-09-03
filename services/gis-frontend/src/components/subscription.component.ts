@@ -624,11 +624,15 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
       const max = node?.max ?? 0;
       return { label, current, max, pct: max > 0 ? Math.min(100, (current / max) * 100) : 0 };
     };
-    return [
+    const rows = [
       build('Véhicules', this.usage.vehicles),
       build('Utilisateurs', this.usage.users),
       build('Boîtiers GPS', this.usage.devices),
       build('Géofences', this.usage.geofences)
     ];
+    // Une offre sans GPS plafonne les boîtiers et les géofences à 0 : afficher
+    // « 0 / non inclus » ne renseigne sur rien et encombre l'écran (recette
+    // client du 03/09/2026). On ne garde que les quotas réellement applicables.
+    return rows.filter(r => r.max > 0);
   }
 }

@@ -5,6 +5,7 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ApiService } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { PermissionService } from '../services/permission.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 
 interface ProfileModel {
@@ -182,7 +183,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
           </article>
 
           <!-- Regional -->
-          <article class="section-card" style="--stagger:3">
+          <article class="section-card" style="--stagger:3" *ngIf="hasGps">
             <header class="section-head">
               <div class="section-medal gradient-violet">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -242,7 +243,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
           </article>
 
           <!-- Units -->
-          <article class="section-card" style="--stagger:4">
+          <article class="section-card" style="--stagger:4" *ngIf="hasGps">
             <header class="section-head">
               <div class="section-medal gradient-emerald">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -306,8 +307,13 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
             </div>
           </header>
           <div class="section-body">
+            <!-- « Géofencing + Documents + Remorquage » a été SCINDÉE : sans
+                 boîtier, le géofencing et le remorquage n'existent pas, mais les
+                 échéances de documents (assurance, vignette, visite technique)
+                 sont au cœur de l'offre GPA. Les regrouper masquait le réglage
+                 des documents avec celui du GPS. -->
             <div class="alert-grid">
-              <label class="alert-check">
+              <label class="alert-check" *ngIf="hasGps">
                 <input type="checkbox" [(ngModel)]="alertPrefs.vitesse">
                 <div class="alert-info">
                   <span class="alert-title">🏎️ Vitesse</span>
@@ -315,13 +321,20 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                 </div>
               </label>
               <label class="alert-check">
-                <input type="checkbox" [(ngModel)]="alertPrefs.geofencingDocsTow">
+                <input type="checkbox" [(ngModel)]="alertPrefs.documents">
                 <div class="alert-info">
-                  <span class="alert-title">🗺️ Géofencing + Documents + Remorquage</span>
-                  <span class="alert-desc">Franchissement zone, échéance doc, remorquage</span>
+                  <span class="alert-title">📄 Documents</span>
+                  <span class="alert-desc">Assurance, vignette, visite technique</span>
                 </div>
               </label>
-              <label class="alert-check">
+              <label class="alert-check" *ngIf="hasGps">
+                <input type="checkbox" [(ngModel)]="alertPrefs.geofencing">
+                <div class="alert-info">
+                  <span class="alert-title">🗺️ Géofencing + Remorquage</span>
+                  <span class="alert-desc">Franchissement de zone, remorquage</span>
+                </div>
+              </label>
+              <label class="alert-check" *ngIf="hasGps">
                 <input type="checkbox" [(ngModel)]="alertPrefs.offline">
                 <div class="alert-info">
                   <span class="alert-title">🔌 Offline</span>
@@ -384,8 +397,9 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
           </div>
         </article>
 
-        <!-- Rapport d'accident quick link -->
-        <article class="section-card" style="--stagger:7; margin-top:20px;">
+        <!-- Rapport d'accident quick link — la détection d'accident repose sur
+             l'accéléromètre du boîtier : sans GPS, aucun rapport n'existe. -->
+        <article class="section-card" style="--stagger:7; margin-top:20px;" *ngIf="hasGps">
           <header class="section-head">
             <div class="section-medal gradient-amber" style="background:linear-gradient(140deg,#f87171 0%,#dc2626 100%);">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1052,9 +1066,14 @@ export class ProfileComponent implements OnInit {
   passwordMessage: { type: 'success' | 'error'; text: string } | null = null;
 
   // Alert preferences (local-only right now; read by notification bell to filter types)
+  // `geofencingDocsTow` (ancienne case groupée) est remplacée par deux réglages
+  // distincts : `documents` (échéances, cœur de l'offre GPA) et `geofencing`
+  // (zones + remorquage, qui supposent un boîtier). La reprise de l'ancienne
+  // valeur se fait dans loadProfile().
   alertPrefs = {
     vitesse: true,
-    geofencingDocsTow: true,
+    documents: true,
+    geofencing: true,
     offline: true,
     entretiens: true
   };
@@ -1079,11 +1098,18 @@ export class ProfileComponent implements OnInit {
     temperatureUnit: 'C'
   };
 
+  /**
+   * Offre sans GPS (GPA) : tout ce qui suppose un boîtier disparaît de l'écran
+   * (recette client du 03/09/2026). Même critère que les autres écrans.
+   */
+  get hasGps(): boolean { return this.permissions.hasModuleAccess('monitoring'); }
+
   constructor(
     private router: Router,
     private authService: AuthService,
     private apiService: ApiService,
-    private userPrefs: UserPreferencesService
+    private userPrefs: UserPreferencesService,
+    private permissions: PermissionService
   ) {
     // Seed the currency selector with the active currency so the form never
     // shows a hardcoded default; loadProfile() re-syncs from the service.
@@ -1136,7 +1162,17 @@ export class ProfileComponent implements OnInit {
     try {
       const storedAlerts = localStorage.getItem(ALERT_PREFS_KEY);
       if (storedAlerts) {
-        Object.assign(this.alertPrefs, JSON.parse(storedAlerts));
+        const stored = JSON.parse(storedAlerts);
+        // Migration de l'ancienne case groupée : un utilisateur qui avait coupé
+        // « Géofencing + Documents + Remorquage » ne voulait pas forcément couper
+        // ses échéances de documents — on ne reprend son choix que pour le
+        // géofencing, et les documents restent activés (rien ne disparaît sans
+        // qu'il l'ait demandé explicitement).
+        if (stored.geofencingDocsTow !== undefined && stored.geofencing === undefined) {
+          stored.geofencing = stored.geofencingDocsTow;
+        }
+        delete stored.geofencingDocsTow;
+        Object.assign(this.alertPrefs, stored);
       }
     } catch {
       /* keep defaults */

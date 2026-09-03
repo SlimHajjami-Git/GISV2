@@ -1646,13 +1646,23 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
         case 'speed_alert':
         case 'speeding':
           return prefs.vitesse !== false;
+        // Échéances de documents : réglage PROPRE, séparé du géofencing depuis
+        // le 03/09/2026. `documents` absent (préférences enregistrées avant la
+        // scission) ⇒ on affiche : on ne masque jamais une échéance sans un
+        // choix explicite de l'utilisateur.
+        case 'document_expiry':
+          return prefs.documents !== false;
+        // Géofencing et remorquage : n'existent qu'avec un boîtier.
+        // `geofence_event` et `accident_tow_detected` sont les types réellement
+        // émis par le backend ; ils manquaient, donc la case ne filtrait rien.
+        case 'geofence_event':
         case 'geofence_violation':
         case 'geofence_entry':
         case 'geofence_exit':
-        case 'document_expiry':
         case 'tow_detected':
         case 'accident_tow':
-          return prefs.geofencingDocsTow !== false;
+        case 'accident_tow_detected':
+          return prefs.geofencing !== false && prefs.geofencingDocsTow !== false;
         case 'offline_vehicle':
         case 'vehicle_offline':
           return prefs.offline !== false;
