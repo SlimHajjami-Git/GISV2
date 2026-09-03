@@ -11,6 +11,15 @@
 
 Tout le reste passe (exit 0), et toute erreur interne (stdin vide, JSON invalide, stdin jamais fermé — le hook se termine seul au bout de 5 s) laisse passer plutôt que de tout bloquer. Rejouer la table de cas : `node .claude/hooks/guard-bash.js --test`.
 
+## Faux positifs à connaître (le hook lit le TEXTE de la commande)
+
+Le garde-fou n'analyse pas ce que la commande *fait*, seulement ce qu'elle *contient*. Écrire un **texte** qui mentionne un motif interdit déclenche donc un blocage, même si rien n'est exécuté. Cas rencontrés en vrai, tous les deux légitimes :
+
+- rédiger de la documentation ou une fiche mémoire citant `psql` et `TRUNCATE` dans un `cat > fichier <<'EOF' … EOF` ;
+- un **message de commit** décrivant les règles (`git commit -m "… migrations EF …"`).
+
+La parade n'est pas de contourner le garde-fou mais d'éviter de faire transiter ce texte par une ligne de commande : écrire le fichier avec l'outil **Write**, et passer un message de commit long par `git commit -F <fichier>`. C'est le comportement voulu : mieux vaut un faux positif qu'un `DELETE` silencieux en production.
+
 ## Commandes auto-autorisées (`permissions.allow` de `.claude/settings.json`)
 
 La liste blanche ne contient que des commandes en lecture seule (`git status|log|diff|show|…`, `ls`, `cat`, `grep`, `rg`, `kubectl get pods|deployments|svc|nodes`, `kubectl describe|logs`, `kubectl rollout status`) plus trois exceptions assumées : **`dotnet build`, `dotnet test` et `npm run build`**. Ces trois-là **écrivent** bien sur le disque (`bin/`, `obj/`, `dist/`), mais uniquement des artefacts de compilation ignorés par git et jamais committés — le gain (compiler et tester sans prompt à chaque itération) l'emporte sur le risque. Le hook `guard-bash.js` s'applique de toute façon à ces commandes comme à toutes les autres.
