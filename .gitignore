@@ -64,3 +64,6 @@ prod-*.sql
 # Temp files
 *.tmp
 *.bak
+
+# Réglages Claude Code propres à chaque machine (jamais versionnés)
+.claude/settings.local.json

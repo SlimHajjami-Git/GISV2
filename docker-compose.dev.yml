@@ -1,0 +1,91 @@
+# docker-compose.dev.yml — infrastructure LOCALE de développement, rien d'autre.
+#
+# Ne démarre que les trois briques dont l'API a besoin : PostgreSQL/PostGIS,
+# RabbitMQ et Redis. Les applications elles-mêmes tournent hors Docker, avec
+# rechargement à chaud :
+#   - API .NET     : cd services/GisAPI && dotnet run        → http://localhost:5020
+#   - Angular      : cd services/gis-frontend && npm start   → http://localhost:4200
+#   - Ingest Rust  : cd services/gps-ingest-rust && cargo run (optionnel)
+#
+# Usage :
+#   docker compose -f docker-compose.dev.yml up -d
+#   bash scripts/init-local-db.sh                        # schéma (copié du serveur de test) + migrations SQL
+#   docker compose -f docker-compose.dev.yml down        # conserve les données
+#   docker compose -f docker-compose.dev.yml down -v     # repart de zéro
+#
+# Les identifiants ci-dessous sont ceux attendus PAR DÉFAUT par
+# services/GisAPI/appsettings.json (Host=localhost;Port=5433;...;Password=postgres,
+# RabbitMQ guest/guest, Redis localhost:6379). Ce sont des valeurs de dev local,
+# jamais celles d'un serveur. Si vous en changez une ici, changez-la aussi
+# dans appsettings.json (ou via une variable d'environnement ConnectionStrings__DefaultConnection).
+#
+# Pour la pile complète en conteneurs (API, frontend, ingest, Valhalla, Nominatim),
+# voir docker-compose.yaml ; pour la prod, docker-compose.prod.yml et k8s/.
+
+name: gisv2-dev
+
+services:
+  postgres:
+    # Même image qu'en production (docker-compose.prod.yml) : PostGIS est requis.
+    image: postgis/postgis:16-3.4-alpine
+    container_name: gisv2-postgres
+    environment:
+      POSTGRES_DB: gis_v2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      # 5433 côté hôte : c'est le port attendu par appsettings.json (pas 5432,
+      # pour ne pas entrer en conflit avec un PostgreSQL déjà installé sur le poste).
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gis_v2"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: gisv2-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+      # Repris de docker-compose.yaml ; l'image officielle autorise déjà guest
+      # en loopback, ligne conservée par prudence.
+      RABBITMQ_LOOPBACK_USERS: none
+    ports:
+      - "5672:5672"     # AMQP (API .NET et ingest Rust)
+      - "15672:15672"   # console web http://localhost:15672 (guest / guest)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: gisv2-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  rabbitmq_data:
+  redis_data:
