@@ -7321,17 +7321,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const cost = record.actualCost || record.totalCost || 0;
       // Only DONE maintenances carry a real cost; planned ones must not show one.
       const isDone = record.status === 'completed' || record.status === 'done';
+      // Une ligne PLANIFIÉE porte la PROCHAINE échéance (date et kilométrage
+      // prévus), pas une intervention. Affichée comme « 🟢 OK » avec un
+      // kilométrage nu, elle se lisait comme un entretien réel sans coût
+      // (recette client du 03/09/2026 : « rien ne s'affiche »). On la nomme
+      // pour ce qu'elle est.
+      const plannedLabel = record.status === 'overdue' ? '🔴 En retard'
+        : record.status === 'critical' ? '🟠 Critique'
+        : '📅 Planifié';
+      const km = record.doneKm ? record.doneKm.toLocaleString('fr-FR') : null;
       return {
         vehicleName: record.vehicleName || record.plate || `Véhicule ${record.vehicleId}`,
         vehicleId: record.vehicleId,
         date: this.formatDateTime(record.doneDate || record.date),
         type: record.templateName || record.category || record.type || 'Général',
-        description: record.notes || record.description || '-',
-        status: this.getMaintenanceStatusLabel(record.status),
+        description: record.notes || record.description || (isDone ? '-' : 'Prochaine échéance'),
+        status: isDone ? this.getMaintenanceStatusLabel(record.status) : plannedLabel,
         statusKey: record.status,
         cost: isDone ? cost : 0,
         costFormatted: isDone ? this.formatCurrency(cost) : '—',
-        mileage: record.doneKm ? `${record.doneKm.toLocaleString('fr-FR')} km` : '-',
+        mileage: km ? (isDone ? `${km} km` : `prévu à ${km} km`) : '-',
         mileageValue: record.doneKm || 0,
         supplierName: record.supplierName || '-'
       };
