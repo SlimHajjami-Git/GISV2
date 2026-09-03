@@ -1003,6 +1003,7 @@ export class AdminSubscriptionsComponent implements OnInit, OnDestroy {
     switch (cycle) {
       case 'monthly': return 'Mensuel';
       case 'quarterly': return 'Trimestriel';
+      case 'semiannual': return 'Semestriel';
       case 'yearly': return 'Annuel';
       default: return cycle;
     }

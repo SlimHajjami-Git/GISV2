@@ -1037,6 +1037,9 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
                 // d'un modèle abandonné (recette client 01/09/2026).
                 MonthlyPrice = 4.00m,
                 QuarterlyPrice = 12.00m,
+                // Semestriel : 4 €/véhicule/mois × 6 mois. Seul plan à porter ce
+                // cycle — ailleurs, 0 vaut « non vendable ».
+                SemiannualPrice = 24.00m,
                 YearlyPrice = 36.00m,
                 PricePerVehicle = true,
                 MaxVehicles = 15,

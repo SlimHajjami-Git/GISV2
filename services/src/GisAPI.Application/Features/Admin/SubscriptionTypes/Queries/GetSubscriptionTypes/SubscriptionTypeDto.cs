@@ -9,9 +9,13 @@ public class SubscriptionTypeDto
     public string TargetCompanyType { get; set; } = "all";
     public decimal MonthlyPrice { get; set; }
     public decimal QuarterlyPrice { get; set; }
+    // Cycle semestriel (6 mois) : un prix à 0 signifie « non vendable pour ce
+    // plan » — la commande refuse un montant nul.
+    public decimal SemiannualPrice { get; set; }
     public decimal YearlyPrice { get; set; }
     public int MonthlyDurationDays { get; set; }
     public int QuarterlyDurationDays { get; set; }
+    public int SemiannualDurationDays { get; set; }
     public int YearlyDurationDays { get; set; }
     public int MaxVehicles { get; set; }
     public int MaxUsers { get; set; }

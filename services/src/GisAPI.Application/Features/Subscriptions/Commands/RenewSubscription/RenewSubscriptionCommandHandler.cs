@@ -49,6 +49,13 @@ public class RenewSubscriptionCommandHandler : IRequestHandler<RenewSubscription
                     amount = subscriptionType.QuarterlyPrice;
                     daysToAdd = subscriptionType.QuarterlyDurationDays > 0 ? subscriptionType.QuarterlyDurationDays : 90;
                     break;
+                // AVANT le default, impérativement : sans ce cas, une commande
+                // semestrielle payée 6 mois tombait dans « yearly » et
+                // prolongeait l'abonnement d'un AN au tarif de l'année.
+                case "semiannual":
+                    amount = subscriptionType.SemiannualPrice;
+                    daysToAdd = subscriptionType.SemiannualDurationDays > 0 ? subscriptionType.SemiannualDurationDays : 180;
+                    break;
                 case "yearly":
                 default:
                     amount = subscriptionType.YearlyPrice;

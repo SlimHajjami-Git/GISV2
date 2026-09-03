@@ -2506,3 +2506,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Exports Excel / PDF / CSV — un groupe compact dans chaque barre d'outils */
+.export-btn-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.export-btn-group .export-btn-sm[disabled] { opacity: .5; cursor: not-allowed; }
+.report-toolbar-export { display: flex; justify-content: flex-end; margin: 0 0 12px; }

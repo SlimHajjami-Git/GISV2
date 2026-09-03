@@ -13,6 +13,13 @@ public class SubscriptionType : Entity
     // Pricing
     public decimal MonthlyPrice { get; set; }
     public decimal QuarterlyPrice { get; set; }
+    /// <summary>
+    /// Prix du cycle SEMESTRIEL (6 mois). 0 = cycle non vendable pour ce plan :
+    /// un tarif absent n'est pas un cadeau, la commande le refuse. Tarif
+    /// commercial à part entière, jamais déduit de l'annuel (offre GPA :
+    /// 4 €/véhicule/mois × 6 = 24, là où l'annuel descend à 3 €/mois).
+    /// </summary>
+    public decimal SemiannualPrice { get; set; }
     public decimal YearlyPrice { get; set; }
 
     /// <summary>
@@ -27,6 +34,7 @@ public class SubscriptionType : Entity
     // Duration in days for each billing cycle
     public int MonthlyDurationDays { get; set; } = 30;
     public int QuarterlyDurationDays { get; set; } = 90;
+    public int SemiannualDurationDays { get; set; } = 180;
     public int YearlyDurationDays { get; set; } = 365;
 
     // Limits

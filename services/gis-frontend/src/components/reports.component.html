@@ -7,6 +7,25 @@
 }
 
 <ng-template #reportsContent>
+<ng-template #exportButtons>
+  <!-- Recette client 03/09/2026 : les trois formats sur tous les rapports.
+       Un seul gabarit, posé à chaque barre d'outils via ngTemplateOutlet. -->
+  <div class="export-btn-group" role="group" aria-label="Exporter le rapport">
+    <button type="button" class="export-btn-sm" [disabled]="!reportGenerated" (click)="exportReport('xlsx')" title="Exporter en Excel">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+      Excel
+    </button>
+    <button type="button" class="export-btn-sm" [disabled]="!reportGenerated" (click)="exportReport('pdf')" title="Exporter en PDF">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      PDF
+    </button>
+    <button type="button" class="export-btn-sm" [disabled]="!reportGenerated" (click)="exportReport('csv')" title="Exporter en CSV">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      CSV
+    </button>
+  </div>
+</ng-template>
+
   <div class="reports-page">
     <div class="reports-layout">
       <!-- SIDEBAR GAUCHE -->
@@ -286,6 +305,7 @@
         } @else if ((selectedTemplate?.type === 'monthly-costs' || selectedTemplate?.type === 'monthly-fuel') && monthlyCostReport) {
           <!-- ========== MONTHLY COST / FUEL REPORT ========== -->
           <div class="monthly-cost-report-workspace">
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
             <!-- Summary stats cards -->
             <div class="stats-cards-row">
               @if (monthlyCostReportType === 'costs') {
@@ -471,10 +491,7 @@
             <!-- Data Table -->
             <ui-card title="Rapport mensuel flotte" [showHeader]="true" [noPadding]="true">
               <div card-actions>
-                <button class="export-btn-sm" (click)="exportReport('pdf')">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Télécharger PDF
-                </button>
+                <ng-container *ngTemplateOutlet="exportButtons"></ng-container>
               </div>
               <div class="monthly-table-wrapper">
                 <table class="data-table monthly-table">
@@ -527,6 +544,7 @@
               </div>
             } @else if (aiFleetReport) {
               <!-- KPI Summary -->
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
               <div class="ai-kpi-row">
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalVehicles }}</span><span class="ai-kpi-lbl">Véhicules</span></div>
                 <div class="ai-kpi"><span class="ai-kpi-val">{{ aiFleetReport.fleetSummary.totalDistance | appDistance:0 }}</span><span class="ai-kpi-lbl">Distance</span></div>
@@ -693,13 +711,7 @@
                   <span class="section-title">⛽ Estimation Carburant</span>
                 </div>
                 <div class="toolbar-right">
-                  <button class="export-btn-sm" (click)="exportReport('pdf')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Télécharger PDF
-                  </button>
+                  <ng-container *ngTemplateOutlet="exportButtons"></ng-container>
                 </div>
               </div>
               <!-- KPI Cards -->
@@ -866,6 +878,7 @@
 
             <!-- Carburant réel vs GPS : courbe du niveau de réservoir + pleins facturés posés dessus (single vehicle only) -->
             <div *ngIf="selectedTemplate?.type === 'fuel-comparison' && reportGenerated" class="fuel-comparison-section" style="margin-bottom:16px;">
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
 
               <!-- En-tête : titre + explication en une phrase -->
               <div style="padding:14px 16px;background:var(--bg-card,#fff);border:1px solid var(--border-color,#e2e8f0);border-radius:12px;margin-bottom:12px;">
@@ -1272,13 +1285,7 @@
                   <span class="section-title">{{ selectedTemplate?.name || 'Données' }}</span>
                 </div>
                 <div class="toolbar-right">
-                  <button class="export-btn-sm" (click)="exportReport('pdf')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                      <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
-                    </svg>
-                    Télécharger PDF
-                  </button>
+                  <ng-container *ngTemplateOutlet="exportButtons"></ng-container>
                 </div>
               </div>
               <div class="table-wrapper">

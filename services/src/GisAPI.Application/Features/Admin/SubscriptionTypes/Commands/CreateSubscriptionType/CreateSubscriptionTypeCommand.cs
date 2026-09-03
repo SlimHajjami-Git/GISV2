@@ -63,7 +63,10 @@ public record CreateSubscriptionTypeCommand(
     // par arguments POSITIONNELS, une insertion au milieu decalerait
     // silencieusement tous les drapeaux suivants.
     bool? ModuleFuel = null,
-    bool? ModuleTours = null
+    bool? ModuleTours = null,
+    // Cycle semestriel (6 mois) : meme raison, EN FIN de liste.
+    decimal? SemiannualPrice = null,
+    int? SemiannualDurationDays = null
 ) : IRequest<SubscriptionTypeDto>;
 
 public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscriptionTypeCommand, SubscriptionTypeDto>
@@ -91,9 +94,13 @@ public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscr
             TargetCompanyType = request.TargetCompanyType ?? "all",
             MonthlyPrice = request.MonthlyPrice,
             QuarterlyPrice = request.QuarterlyPrice ?? request.MonthlyPrice * 3 * 0.9m,
+            // Pas de tarif semestriel inventé : sans prix explicite le cycle
+            // reste à 0, c'est-à-dire non vendable pour ce plan.
+            SemiannualPrice = request.SemiannualPrice ?? 0m,
             YearlyPrice = request.YearlyPrice ?? request.MonthlyPrice * 12 * 0.8m,
             MonthlyDurationDays = request.MonthlyDurationDays ?? 30,
             QuarterlyDurationDays = request.QuarterlyDurationDays ?? 90,
+            SemiannualDurationDays = request.SemiannualDurationDays ?? 180,
             YearlyDurationDays = request.YearlyDurationDays ?? 365,
             MaxVehicles = request.MaxVehicles ?? 10,
             MaxUsers = request.MaxUsers ?? 5,
@@ -156,9 +163,11 @@ public class CreateSubscriptionTypeCommandHandler : IRequestHandler<CreateSubscr
             TargetCompanyType = subscriptionType.TargetCompanyType,
             MonthlyPrice = subscriptionType.MonthlyPrice,
             QuarterlyPrice = subscriptionType.QuarterlyPrice,
+            SemiannualPrice = subscriptionType.SemiannualPrice,
             YearlyPrice = subscriptionType.YearlyPrice,
             MonthlyDurationDays = subscriptionType.MonthlyDurationDays,
             QuarterlyDurationDays = subscriptionType.QuarterlyDurationDays,
+            SemiannualDurationDays = subscriptionType.SemiannualDurationDays,
             YearlyDurationDays = subscriptionType.YearlyDurationDays,
             MaxVehicles = subscriptionType.MaxVehicles,
             MaxUsers = subscriptionType.MaxUsers,

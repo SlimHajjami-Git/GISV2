@@ -1,7 +1,9 @@
+using ClosedXML.Excel;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using System.Text.Json;
 using MediatR;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Infrastructure.Persistence;
@@ -721,6 +723,136 @@ public class ReportsController : ControllerBase
 
         return Ok(result);
     }
+
+    // ==================== EXPORT EXCEL GÉNÉRIQUE ====================
+
+    /// <summary>
+    /// Met en forme en .xlsx les lignes que le client a déjà à l'écran.
+    ///
+    /// <para>Recette client : « dans tous les rapports il faut avoir un export
+    /// Excel, PDF et csv ». Cet endpoint est volontairement générique — il ne
+    /// lit AUCUNE donnée et n'interroge pas la base : il ne fait que mettre en
+    /// forme le tableau envoyé par le navigateur. Un endpoint Excel par rapport
+    /// aurait dupliqué 17 fois la même logique de colonnes, déjà portée par le
+    /// front pour le PDF et le CSV.</para>
+    ///
+    /// <para>N'exige donc aucune permission de rapport particulière : le filtre
+    /// générique /api/reports (module Rapports) du PermissionMiddleware suffit,
+    /// puisque le contenu vient de l'appelant lui-même.</para>
+    /// </summary>
+    [HttpPost("export/xlsx")]
+    public IActionResult ExportXlsx([FromBody] XlsxExportRequest request)
+    {
+        if (request?.Columns == null || request.Columns.Count == 0)
+            return BadRequest(new { message = "Aucune colonne à exporter." });
+
+        // Bornes anti-abus : au-delà, le classeur ne serait de toute façon plus
+        // exploitable et la génération monopoliserait la mémoire du pod.
+        if (request.Columns.Count > MaxExportColumns)
+            return BadRequest(new { message = $"Trop de colonnes ({request.Columns.Count}), maximum {MaxExportColumns}." });
+
+        var rows = request.Rows ?? new List<Dictionary<string, JsonElement>>();
+        if (rows.Count > MaxExportRows)
+            return BadRequest(new { message = $"Trop de lignes ({rows.Count}), maximum {MaxExportRows}." });
+
+        var title = string.IsNullOrWhiteSpace(request.Title) ? "Rapport" : request.Title.Trim();
+
+        using var workbook = new XLWorkbook();
+        var sheet = workbook.Worksheets.Add(SafeSheetName(title));
+
+        for (var i = 0; i < request.Columns.Count; i++)
+        {
+            var cell = sheet.Cell(1, i + 1);
+            cell.Value = request.Columns[i].Header ?? string.Empty;
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e3a5f");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        for (var r = 0; r < rows.Count; r++)
+        {
+            for (var c = 0; c < request.Columns.Count; c++)
+            {
+                var key = request.Columns[c].DataKey;
+                if (string.IsNullOrEmpty(key) || !rows[r].TryGetValue(key, out var value)) continue;
+                WriteCell(sheet.Cell(r + 2, c + 1), value);
+            }
+        }
+
+        sheet.SheetView.FreezeRows(1);
+
+        // L'ajustement automatique relit chaque cellule : on le borne aux
+        // premières lignes, suffisantes pour dimensionner, sinon un export de
+        // 50 000 lignes passerait plus de temps à mesurer qu'à écrire.
+        var lastMeasuredRow = Math.Min(rows.Count + 1, 200);
+        for (var c = 1; c <= request.Columns.Count; c++)
+        {
+            var column = sheet.Column(c);
+            column.AdjustToContents(1, lastMeasuredRow);
+            if (column.Width > 60) column.Width = 60;
+            if (column.Width < 10) column.Width = 10;
+        }
+
+        using var stream = new MemoryStream();
+        workbook.SaveAs(stream);
+        return File(stream.ToArray(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            $"{SafeFileName(title)}.xlsx");
+    }
+
+    private const int MaxExportRows = 50_000;
+    private const int MaxExportColumns = 100;
+
+    /// <summary>Écrit la valeur JSON telle quelle : un nombre reste un nombre
+    /// pour qu'Excel puisse l'additionner, le reste part en texte.</summary>
+    private static void WriteCell(IXLCell cell, JsonElement value)
+    {
+        switch (value.ValueKind)
+        {
+            case JsonValueKind.Number:
+                if (value.TryGetDouble(out var number)) cell.Value = number;
+                else cell.Value = value.GetRawText();
+                break;
+            case JsonValueKind.True:
+                cell.Value = "Oui";
+                break;
+            case JsonValueKind.False:
+                cell.Value = "Non";
+                break;
+            case JsonValueKind.Null:
+            case JsonValueKind.Undefined:
+                break;
+            case JsonValueKind.String:
+                cell.Value = value.GetString() ?? string.Empty;
+                break;
+            default:
+                cell.Value = value.GetRawText();
+                break;
+        }
+    }
+
+    /// <summary>Excel refuse les caractères []:*?/\ et plafonne à 31 caractères.</summary>
+    private static string SafeSheetName(string title)
+    {
+        var cleaned = new string(title.Where(ch => !"[]:*?/\\".Contains(ch)).ToArray()).Trim();
+        if (cleaned.Length == 0) cleaned = "Rapport";
+        return cleaned.Length > 31 ? cleaned[..31] : cleaned;
+    }
+
+    private static string SafeFileName(string title)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(title.Where(ch => !invalid.Contains(ch)).ToArray()).Trim();
+        return cleaned.Length == 0 ? "rapport" : cleaned;
+    }
+
+    public record XlsxExportColumn(string Header, string DataKey);
+
+    /// <summary>Lignes libres : chaque clé correspond au DataKey d'une colonne.</summary>
+    public record XlsxExportRequest(
+        string? Title,
+        List<XlsxExportColumn> Columns,
+        List<Dictionary<string, JsonElement>>? Rows);
 }
 
 public record CreateReportRequest(

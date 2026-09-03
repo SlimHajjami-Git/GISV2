@@ -1245,7 +1245,7 @@ export class ApiService {
   // depuis le plan et le cycle — un montant venu du client serait un prix
   // libre-service.
 
-  createSubscriptionOrder(subscriptionTypeId: number, billingCycle: 'monthly' | 'quarterly' | 'yearly'): Observable<SubscriptionOrder> {
+  createSubscriptionOrder(subscriptionTypeId: number, billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly'): Observable<SubscriptionOrder> {
     return this.http.post<SubscriptionOrder>(`${this.API_URL}/subscriptions/orders`,
       { subscriptionTypeId, billingCycle }, { headers: this.getHeaders() });
   }
@@ -4154,7 +4154,8 @@ export interface SubscriptionOrder {
   subscriptionTypeId: number;
   planName: string;
   planCode: string;
-  billingCycle: 'monthly' | 'quarterly' | 'yearly';
+  // semiannual = 6 mois, cycle vendable au même titre que les autres.
+  billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
   amount: number;
   // cancelled = annulée par le client ; rejected = refusée par la plateforme (motif dans note).
   status: 'pending' | 'confirmed' | 'cancelled' | 'rejected';

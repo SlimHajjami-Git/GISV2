@@ -2448,8 +2448,12 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   }
 
   get cycleLabel(): string {
-    return this.subBillingCycle === 'monthly' ? 'Mensuel'
-      : this.subBillingCycle === 'quarterly' ? 'Trimestriel' : 'Annuel';
+    switch (this.subBillingCycle) {
+      case 'monthly': return 'Mensuel';
+      case 'quarterly': return 'Trimestriel';
+      case 'semiannual': return 'Semestriel';
+      default: return 'Annuel';
+    }
   }
 
   saveSubscriptionExpiry() {

@@ -82,6 +82,7 @@ public class CreateSubscriptionOrderCommandHandler
         {
             "monthly" => plan.MonthlyPrice,
             "quarterly" => plan.QuarterlyPrice,
+            "semiannual" => plan.SemiannualPrice,
             "yearly" => plan.YearlyPrice,
             _ => throw new DomainException("Cycle de facturation invalide.")
         };

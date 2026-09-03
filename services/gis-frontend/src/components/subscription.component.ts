@@ -7,6 +7,9 @@ import { ApiService, SubscriptionOrder } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
 
+/** Cycles de facturation connus du serveur ; semiannual = 6 mois. */
+type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
+
 /**
  * Abonnement & paiement.
  *
@@ -147,39 +150,71 @@ import { environment } from '../environments/environment';
           <!-- Grille des offres. Compte europeen (monnaie EUR) : les deux
              formules du site France, tarifees PAR VEHICULE — la grille des
              plans locaux en dinars n a aucun sens pour lui (recette client
-             du 26/08/2026). La souscription passe par un conseiller : ces
-             offres se facturent au nombre de vehicules reel. -->
-          @if (isEuroAccount) {
+             du 26/08/2026).
+             Ces deux formules ne sont pas deux offres mais DEUX CYCLES du meme
+             plan GPA : elles s achetent donc comme le reste, par le panneau de
+             commande ci-dessous. Les liens « Nous contacter » qui les tenaient
+             lieu de bouton renvoyaient le client vers un mail alors que la
+             commande en ligne existe (recette client du 03/09/2026). -->
           <section class="card">
             <h3 class="card-title">Nos formules</h3>
+
+            @if (isEuroAccount) {
             <div class="plans plans-euro">
               <article class="plan is-current">
                 <header><h4>Abonnement annuel</h4><span class="badge">Recommandé</span></header>
-                <div class="price"><strong>3 €</strong><span>/ véhicule / mois</span></div>
+                <!-- Prix repris du plan serveur, jamais écrit en dur : la carte
+                     et le montant commandé ne peuvent pas diverger. -->
+                @if (euroUnitMonthly('yearly') !== null) {
+                  <div class="price">
+                    <strong>{{ euroUnitMonthly('yearly') | appCurrency }}</strong><span>/ véhicule / mois</span>
+                  </div>
+                }
                 <p class="price-alt">Facturation annuelle</p>
+                @if (euroCycleTotal('yearly') !== null) {
+                  <p class="price-alt fleet-estimate">
+                    Pour votre parc ({{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}) :
+                    {{ euroCycleTotal('yearly') | appCurrency }} / an
+                  </p>
+                }
                 <ul class="plan-limits">
                   <li>Toutes les fonctionnalités</li>
                   <li>Véhicules illimités</li>
                   <li>7 jours d'essai gratuits</li>
                 </ul>
-                <a class="btn-plan buy" href="mailto:contact@belive.tn?subject=Abonnement%20annuel%20Calypso">Nous contacter</a>
+                <button class="btn-plan buy"
+                        [disabled]="busy || !!pendingOrder || !canBuyCycle(euroPlan, 'yearly')"
+                        (click)="openPurchase(euroPlan, 'yearly')">
+                  {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                </button>
               </article>
               <article class="plan">
                 <header><h4>Abonnement semestriel</h4></header>
-                <div class="price"><strong>4 €</strong><span>/ véhicule / mois</span></div>
+                @if (euroUnitMonthly('semiannual') !== null) {
+                  <div class="price">
+                    <strong>{{ euroUnitMonthly('semiannual') | appCurrency }}</strong><span>/ véhicule / mois</span>
+                  </div>
+                }
                 <p class="price-alt">Facturation semestrielle</p>
+                @if (euroCycleTotal('semiannual') !== null) {
+                  <p class="price-alt fleet-estimate">
+                    Pour votre parc ({{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}) :
+                    {{ euroCycleTotal('semiannual') | appCurrency }} / semestre
+                  </p>
+                }
                 <ul class="plan-limits">
                   <li>Toutes les fonctionnalités</li>
                   <li>Véhicules illimités</li>
                   <li>Sans engagement pendant l'essai</li>
                 </ul>
-                <a class="btn-plan" href="mailto:contact@belive.tn?subject=Abonnement%20semestriel%20Calypso">Nous contacter</a>
+                <button class="btn-plan buy"
+                        [disabled]="busy || !!pendingOrder || !canBuyCycle(euroPlan, 'semiannual')"
+                        (click)="openPurchase(euroPlan, 'semiannual')">
+                  {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                </button>
               </article>
             </div>
-          </section>
-          } @else {
-          <section class="card">
-            <h3 class="card-title">Nos formules</h3>
+            } @else {
             <div class="plans">
               @for (p of plans; track p.id) {
                 <article class="plan" [class.is-current]="p.id === currentPlan?.id">
@@ -225,9 +260,11 @@ import { environment } from '../environments/environment';
                 </article>
               }
             </div>
+            }
 
-            <!-- Panneau d'achat : choix du cycle, montant calculé par le serveur
-                 à la commande — l'affichage ici n'est qu'un aperçu. -->
+            <!-- Panneau d'achat, COMMUN aux deux grilles : c'est lui qui mène à
+                 createSubscriptionOrder. Choix du cycle, montant calculé par le
+                 serveur à la commande — l'affichage ici n'est qu'un aperçu. -->
             @if (purchasePlan) {
               <div class="purchase-panel">
                 <h4>Commander « {{ purchasePlan.name }} »</h4>
@@ -272,7 +309,6 @@ import { environment } from '../environments/environment';
               </div>
             </div>
           </section>
-          }
         }
       </div>
     </app-layout>
@@ -440,7 +476,7 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   // ── Achat en libre-service ──
   orders: SubscriptionOrder[] = [];
   purchasePlan: any = null;
-  selectedCycle: 'monthly' | 'quarterly' | 'yearly' = 'yearly';
+  selectedCycle: BillingCycle = 'yearly';
   busy = false;
   purchaseError: string | null = null;
 
@@ -509,6 +545,7 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     switch (cycle) {
       case 'monthly': return 'mensuel';
       case 'quarterly': return 'trimestriel';
+      case 'semiannual': return 'semestriel';
       case 'yearly': return 'annuel';
       default: return cycle;
     }
@@ -520,22 +557,55 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
    * facturera réellement (prix du cycle × parc, au moins 1 véhicule) — montrer
    * le prix unitaire au moment où le client s'engage serait mensonger.
    */
-  availableCycles(plan: any): Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> {
+  availableCycles(plan: any): Array<{ value: BillingCycle; label: string; price: number }> {
     const factor = plan?.pricePerVehicle ? this.vehiclesBilled : 1;
-    const all: Array<{ value: 'monthly' | 'quarterly' | 'yearly'; label: string; price: number }> = [
+    const all: Array<{ value: BillingCycle; label: string; price: number }> = [
       { value: 'monthly', label: 'Mensuel', price: (plan?.monthlyPrice ?? 0) * factor },
       { value: 'quarterly', label: 'Trimestriel', price: (plan?.quarterlyPrice ?? 0) * factor },
+      { value: 'semiannual', label: 'Semestriel', price: (plan?.semiannualPrice ?? 0) * factor },
       { value: 'yearly', label: 'Annuel', price: (plan?.yearlyPrice ?? 0) * factor }
     ];
     return all.filter(c => c.price > 0);
   }
 
-  openPurchase(plan: any): void {
+  /** Ce cycle est-il vendable pour ce plan ? (prix renseigné côté serveur) */
+  canBuyCycle(plan: any, cycle: BillingCycle): boolean {
+    return this.availableCycles(plan).some(c => c.value === cycle);
+  }
+
+  /**
+   * Le plan derrière les deux formules européennes : elles ne décrivent pas
+   * deux offres mais DEUX CYCLES du même plan GPA, le seul que le serveur
+   * autorise à l'achat en ligne. Celui du compte s'il convient, sinon celui de
+   * la grille renvoyée par le serveur.
+   */
+  get euroPlan(): any | null {
+    if (this.isPurchasable(this.currentPlan)) return this.currentPlan;
+    return this.plans.find(p => this.isPurchasable(p)) ?? null;
+  }
+
+  /** Montant du cycle pour LE parc du client — ce que le serveur facturera. */
+  euroCycleTotal(cycle: BillingCycle): number | null {
+    return this.availableCycles(this.euroPlan).find(c => c.value === cycle)?.price ?? null;
+  }
+
+  /** Le même montant ramené au véhicule et au mois, comme l'annonce la vitrine. */
+  euroUnitMonthly(cycle: BillingCycle): number | null {
+    const total = this.euroCycleTotal(cycle);
+    if (total == null) return null;
+    return Math.round((total / this.vehiclesBilled / this.monthsOf(cycle)) * 100) / 100;
+  }
+
+  openPurchase(plan: any, cycle?: BillingCycle): void {
+    if (!plan) return;
     this.purchasePlan = plan;
     this.purchaseError = null;
     const cycles = this.availableCycles(plan);
-    // Par défaut l'annuel (le moins cher au mois), sinon le premier disponible.
-    this.selectedCycle = cycles.some(c => c.value === 'yearly') ? 'yearly' : (cycles[0]?.value ?? 'yearly');
+    // Le cycle demandé (carte « annuel » ou « semestriel ») fait foi s'il est
+    // vendable ; sinon l'annuel (le moins cher au mois), sinon le premier.
+    const wanted = cycle && cycles.some(c => c.value === cycle) ? cycle : null;
+    this.selectedCycle = wanted
+      ?? (cycles.some(c => c.value === 'yearly') ? 'yearly' : (cycles[0]?.value ?? 'yearly'));
   }
 
   confirmPurchase(): void {
@@ -586,6 +656,7 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     switch (this.billingCycle) {
       case 'monthly': return 'facturation mensuelle';
       case 'quarterly': return 'facturation trimestrielle';
+      case 'semiannual': return 'facturation semestrielle';
       case 'yearly': return 'facturation annuelle';
       default: return '';
     }
@@ -598,9 +669,19 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
 
   /** Mois couverts par le cycle de facturation (casse serveur normalisée). */
   get cycleMonths(): number {
-    switch ((this.billingCycle || 'yearly').toLowerCase()) {
+    return this.monthsOf(this.billingCycle);
+  }
+
+  /**
+   * Mois couverts par un cycle. Le semestre DOIT être ici : sans lui il tombait
+   * dans le repli annuel et le détail affichait « 2 € / véhicule / mois × 12 »
+   * pour un abonnement facturé 4 € × 6 mois.
+   */
+  private monthsOf(cycle: string | null): number {
+    switch ((cycle || 'yearly').toLowerCase()) {
       case 'monthly': return 1;
       case 'quarterly': return 3;
+      case 'semiannual': return 6;
       default: return 12;
     }
   }

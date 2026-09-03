@@ -8,6 +8,7 @@ import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { PdfExportService } from '../services/pdf-export.service';
+import { ReportExportService, ReportExportConfig } from '../services/report-export.service';
 import { ReportStateService } from '../services/report-state.service';
 import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
@@ -429,6 +430,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     private appRef: ApplicationRef,
     private adminService: AdminService,
     private pdfExportService: PdfExportService,
+    private reportExportService: ReportExportService,
     private sanitizer: DomSanitizer,
     private reportStateService: ReportStateService,
     private permissionService: PermissionService,
@@ -5489,6 +5491,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Export du rapport affiché. Recette client du 03/09/2026 : « dans tous les
+   * rapports il faut avoir un export Excel, PDF et csv ». Le paramètre
+   * `format` existait mais n'était jamais lu — tout partait en PDF. Le rapport
+   * décrit désormais ses colonnes et ses lignes UNE fois (buildExportConfig),
+   * et le format ne change que la sortie.
+   */
   exportReport(format: string) {
     if (!this.selectedTemplate || !this.reportGenerated) return;
 
@@ -5507,17 +5516,38 @@ export class ReportsComponent implements OnInit, OnDestroy {
       dateRange = new Date(this.dailyReportDate).toLocaleDateString('fr-FR');
     }
 
-    // Monthly report special handling
-    if (type === 'monthly' && this.monthlyReport) {
-      this.exportMonthlyReportPdf();
-      return;
-    }
+    const config = this.buildExportConfig(type, vehicleName, dateRange);
+    if (!config) return;
+    this.dispatchExport(format, config);
+  }
 
-    // Fuel estimation special handling
-    if (type === 'fuel-estimation' && this.fuelEstimationReport) {
-      this.exportFuelEstimationPdf(vehicleName, dateRange);
-      return;
+  /** Une seule description par rapport, trois sorties. */
+  private dispatchExport(format: string, config: ReportExportConfig): void {
+    switch ((format || 'pdf').toLowerCase()) {
+      case 'csv':
+        this.reportExportService.exportCsv(config);
+        break;
+      case 'xlsx':
+      case 'excel':
+        this.reportExportService.exportXlsx(config);
+        break;
+      default:
+        this.pdfExportService.exportReport(config);
     }
+  }
+
+  /**
+   * Colonnes + lignes du rapport courant. Les rapports qui n'alimentent pas le
+   * tableau générique (`tableData`) — mensuel flotte, estimation carburant,
+   * coûts/carburant mensuels, carburant réel vs GPS, IA flotte — décrivent
+   * leurs colonnes ici, à partir des données déjà affichées à l'écran.
+   */
+  private buildExportConfig(type: string, vehicleName: string, dateRange: string): ReportExportConfig | null {
+    if (type === 'monthly' && this.monthlyReport) return this.buildMonthlyExport();
+    if (type === 'fuel-estimation' && this.fuelEstimationReport) return this.buildFuelEstimationExport(vehicleName, dateRange);
+    if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport();
+    if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
+    if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
 
     const allVehicles = !this.selectedVehicleId;
     const options: any = { allVehicles };
@@ -5527,25 +5557,181 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const formatters = this.pdfExportService.getFormattersForReport(type);
 
     // Calypso 7 (correction client) : pour le rapport trajets on retire
-    // les pseudo-lignes day-header et les separateurs « Arret » ; le PDF
+    // les pseudo-lignes day-header et les separateurs « Arret » ; l'export
     // ne contient que les vrais trajets, plus lisible.
-    const pdfData = type === 'trips'
+    const data = type === 'trips'
       ? this.tableData.filter((r: any) => r && r.isTrip === true)
       : this.tableData.filter((r: any) => r && r.isDayHeader !== true);
 
-    this.pdfExportService.exportReport({
+    return {
       title: this.selectedTemplate.name,
       vehicleName,
       dateRange,
       statistics: this.statisticsData,
       columns,
-      data: pdfData,
+      data,
       formatters
-    });
+    };
   }
 
-  private exportMonthlyReportPdf() {
-    if (!this.monthlyReport) return;
+  /** Coûts mensuels / carburant mensuel : mêmes colonnes que le tableau à l'écran. */
+  private buildMonthlyCostExport(): ReportExportConfig | null {
+    const r = this.monthlyCostReport;
+    if (!r) return null;
+    const cur = this.getCurrencyCode();
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const isCosts = this.monthlyCostReportType === 'costs';
+
+    const columns = isCosts
+      ? [
+          { header: 'Département', dataKey: 'departmentName' },
+          { header: 'Conducteur', dataKey: 'driverName' },
+          { header: 'Véhicule', dataKey: 'vehicle' },
+          { header: 'KM', dataKey: 'km' },
+          { header: `Carburant (${cur})`, dataKey: 'fuelCost' },
+          { header: `Entretien (${cur})`, dataKey: 'maintenanceCost' },
+          { header: `Réparation (${cur})`, dataKey: 'repairCost' },
+          { header: `Total (${cur})`, dataKey: 'totalCost' },
+          { header: 'Coût/KM', dataKey: 'costPerKm' },
+          { header: 'Carb./100KM', dataKey: 'fuelPer100Km' },
+          { header: 'Ent+Rép/100KM', dataKey: 'maintRepairPer100Km' }
+        ]
+      : [
+          { header: 'Département', dataKey: 'departmentName' },
+          { header: 'Conducteur', dataKey: 'driverName' },
+          { header: 'Véhicule', dataKey: 'vehicle' },
+          { header: 'KM', dataKey: 'km' },
+          { header: 'KM PR', dataKey: 'kmPr' },
+          { header: 'C. Total (L)', dataKey: 'fuelLiters' },
+          { header: 'C. PR (L)', dataKey: 'fuelLitersPr' },
+          { header: 'C/100KM', dataKey: 'consumptionPer100Km' },
+          { header: 'C/100KM PR', dataKey: 'consumptionPrPer100Km' }
+        ];
+
+    const data = (r.vehicles || []).map((v: any) => ({
+      departmentName: v.departmentName || '-',
+      driverName: v.driverName || '-',
+      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : (v.vehicleName || '-'),
+      km: n2(v.km),
+      kmPr: n2(v.kmPr),
+      fuelCost: n2(v.fuelCostDzd),
+      maintenanceCost: n2(v.maintenanceCostDzd),
+      repairCost: n2(v.repairCostDzd),
+      totalCost: n2(v.totalCostDzd),
+      costPerKm: n2(v.costPerKm),
+      fuelPer100Km: n2(v.fuelPer100Km),
+      maintRepairPer100Km: n2(v.maintenanceRepairPer100Km),
+      fuelLiters: n2(v.fuelLiters),
+      fuelLitersPr: n2(v.fuelLitersPr),
+      consumptionPer100Km: n2(v.consumptionPer100Km),
+      consumptionPrPer100Km: n2(v.consumptionPrPer100Km)
+    }));
+
+    const statistics: Record<string, string> = isCosts
+      ? {
+          'KM total': String(n2(r.totalKm)),
+          [`Carburant (${cur})`]: String(n2(r.totalFuelCostDzd)),
+          [`Entretien (${cur})`]: String(n2(r.totalMaintenanceCostDzd)),
+          [`Réparation (${cur})`]: String(n2(r.totalRepairCostDzd)),
+          [`Total (${cur})`]: String(n2(r.totalCostDzd))
+        }
+      : {
+          'KM total': String(n2(r.totalKm)),
+          'Carburant (L)': String(n2(r.totalFuelLiters))
+        };
+
+    return {
+      title: this.selectedTemplate?.name || (isCosts ? 'Coûts mensuel par véhicule' : 'Consommation carburant mensuel'),
+      dateRange: r.reportPeriod || `${r.monthName || ''} ${r.year || ''}`.trim(),
+      statistics,
+      columns,
+      data
+    };
+  }
+
+  /** Carburant réel vs GPS : la liste des pleins facturés, avec le bilan de couverture. */
+  private buildFuelComparisonExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+    const a: any = this.comparisonAudit;
+    if (!a) return null;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const fmtDate = (iso: string | null) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? String(iso) : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+    };
+
+    const columns = [
+      { header: 'Date', dataKey: 'date' },
+      { header: 'Litres', dataKey: 'liters' },
+      { header: `Montant (${this.getCurrencyCode()})`, dataKey: 'cost' },
+      { header: 'Station', dataKey: 'station' }
+    ];
+    const data = (a.cardFills || []).map((f: any) => ({
+      date: fmtDate(f.date),
+      liters: n2(f.liters),
+      cost: n2(f.cost),
+      station: f.station || '-'
+    }));
+
+    const totalBilled = (a.cardFills || []).reduce((s: number, f: any) => s + (Number(f.liters) || 0), 0);
+    const statistics: Record<string, string> = { 'Pleins facturés': String(data.length), 'Litres facturés': String(n2(totalBilled)) };
+    if (a.hasSensor) {
+      statistics['Détecté par la jauge (L)'] = String(n2(a.totalDetectedLiters));
+      if (a.coveragePercent != null) statistics['Couverture (%)'] = String(n2(a.coveragePercent));
+    } else {
+      statistics['Jauge'] = 'Aucun capteur de carburant sur ce véhicule';
+    }
+
+    return { title: 'Carburant réel vs GPS', vehicleName, dateRange, statistics, columns, data };
+  }
+
+  /** Rapport IA flotte : le détail par véhicule, avec les chiffres clés en tête. */
+  private buildAiFleetExport(): ReportExportConfig | null {
+    const r: any = this.aiFleetReport;
+    if (!r) return null;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const columns = [
+      { header: 'Véhicule', dataKey: 'name' },
+      { header: 'Plaque', dataKey: 'plate' },
+      { header: 'Marque', dataKey: 'brand' },
+      { header: 'Modèle', dataKey: 'model' },
+      { header: 'Année', dataKey: 'year' },
+      { header: 'Kilométrage', dataKey: 'mileage' },
+      { header: 'Santé (/100)', dataKey: 'healthScore' },
+      { header: 'Niveau', dataKey: 'healthLevel' },
+      { header: 'Score conduite', dataKey: 'drivingScore' },
+      { header: 'Conso (L/100)', dataKey: 'fuelConsumption' },
+      { header: `Coûts (${this.getCurrencyCode()})`, dataKey: 'totalCosts' },
+      { header: 'Alertes', dataKey: 'alertCount' }
+    ];
+    const data = (r.vehicleDetails || []).map((v: any) => ({
+      name: v.name || '-',
+      plate: v.plate || '-',
+      brand: v.brand || '',
+      model: v.model || '',
+      year: v.year ?? '',
+      mileage: n2(v.mileage),
+      healthScore: n2(v.healthScore),
+      healthLevel: v.healthLevel || '',
+      drivingScore: n2(v.drivingScore),
+      fuelConsumption: n2(v.fuelConsumption),
+      totalCosts: n2(v.totalCosts),
+      alertCount: v.alertCount ?? 0
+    }));
+    const s = r.fleetSummary || {};
+    const statistics: Record<string, string> = {
+      'Véhicules': String(s.totalVehicles ?? data.length),
+      'Distance (km)': String(n2(s.totalDistance)),
+      [`Coûts (${this.getCurrencyCode()})`]: String(n2(s.totalCosts)),
+      'Santé moyenne (/100)': String(n2(s.avgHealthScore)),
+      'Alertes': String(s.totalAlerts ?? 0),
+      'Entretiens en retard': String(s.overdueSchedules ?? 0)
+    };
+    return { title: 'Rapport IA Flotte', statistics, columns, data };
+  }
+
+  private buildMonthlyExport(): ReportExportConfig | null {
+    if (!this.monthlyReport) return null;
     const r = this.monthlyReport;
     const columns = [
       { header: 'Véhicule', dataKey: 'vehicleName' },
@@ -5567,7 +5753,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     })) || [];
 
     const monthLabel = this.monthlyMonths.find((m: any) => m.value === this.selectedMonthlyMonth)?.label || '';
-    this.pdfExportService.exportReport({
+    return {
       title: 'Rapport mensuel flotte',
       subtitle: `${monthLabel} ${this.selectedMonthlyYear}`,
       dateRange: `${monthLabel} ${this.selectedMonthlyYear}`,
@@ -5578,12 +5764,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       },
       columns,
       data
-    });
+    };
   }
 
-  private exportFuelEstimationPdf(vehicleName: string, dateRange: string) {
+  private buildFuelEstimationExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
     const report = this.fuelEstimationReport;
-    if (!report) return;
+    if (!report) return null;
     const columns = [
       { header: 'Véhicule', dataKey: 'vehicleName' },
       { header: 'Plaque', dataKey: 'plate' },
@@ -5601,14 +5787,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       consumption: (v.consumptionPer100km || 0).toFixed(1)
     })) || [];
 
-    this.pdfExportService.exportReport({
+    return {
       title: 'Estimation coûts carburant',
       vehicleName,
       dateRange,
       statistics: this.statisticsData,
       columns,
       data
-    });
+    };
   }
 
   private formatDuration(seconds: number): string {

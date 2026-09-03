@@ -63,7 +63,10 @@ public record UpdateSubscriptionTypeCommand(
     // par arguments POSITIONNELS, une insertion au milieu decalerait
     // silencieusement tous les drapeaux suivants.
     bool? ModuleFuel = null,
-    bool? ModuleTours = null
+    bool? ModuleTours = null,
+    // Cycle semestriel (6 mois) : meme raison, EN FIN de liste.
+    decimal? SemiannualPrice = null,
+    int? SemiannualDurationDays = null
 ) : IRequest<SubscriptionTypeDto>;
 
 public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscriptionTypeCommand, SubscriptionTypeDto>
@@ -91,10 +94,12 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
         
         if (request.MonthlyPrice.HasValue) subscriptionType.MonthlyPrice = request.MonthlyPrice.Value;
         if (request.QuarterlyPrice.HasValue) subscriptionType.QuarterlyPrice = request.QuarterlyPrice.Value;
+        if (request.SemiannualPrice.HasValue) subscriptionType.SemiannualPrice = request.SemiannualPrice.Value;
         if (request.YearlyPrice.HasValue) subscriptionType.YearlyPrice = request.YearlyPrice.Value;
-        
+
         if (request.MonthlyDurationDays.HasValue) subscriptionType.MonthlyDurationDays = request.MonthlyDurationDays.Value;
         if (request.QuarterlyDurationDays.HasValue) subscriptionType.QuarterlyDurationDays = request.QuarterlyDurationDays.Value;
+        if (request.SemiannualDurationDays.HasValue) subscriptionType.SemiannualDurationDays = request.SemiannualDurationDays.Value;
         if (request.YearlyDurationDays.HasValue) subscriptionType.YearlyDurationDays = request.YearlyDurationDays.Value;
         
         if (request.MaxVehicles.HasValue) subscriptionType.MaxVehicles = request.MaxVehicles.Value;
@@ -159,9 +164,11 @@ public class UpdateSubscriptionTypeCommandHandler : IRequestHandler<UpdateSubscr
             TargetCompanyType = subscriptionType.TargetCompanyType,
             MonthlyPrice = subscriptionType.MonthlyPrice,
             QuarterlyPrice = subscriptionType.QuarterlyPrice,
+            SemiannualPrice = subscriptionType.SemiannualPrice,
             YearlyPrice = subscriptionType.YearlyPrice,
             MonthlyDurationDays = subscriptionType.MonthlyDurationDays,
             QuarterlyDurationDays = subscriptionType.QuarterlyDurationDays,
+            SemiannualDurationDays = subscriptionType.SemiannualDurationDays,
             YearlyDurationDays = subscriptionType.YearlyDurationDays,
             MaxVehicles = subscriptionType.MaxVehicles,
             MaxUsers = subscriptionType.MaxUsers,

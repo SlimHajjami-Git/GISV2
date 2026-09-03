@@ -47,6 +47,7 @@ public class CreateCompanyCommandHandler : IRequestHandler<CreateCompanyCommand,
         {
             "monthly" => subscriptionType.MonthlyDurationDays,
             "quarterly" => subscriptionType.QuarterlyDurationDays,
+            "semiannual" => subscriptionType.SemiannualDurationDays,
             "yearly" => subscriptionType.YearlyDurationDays,
             _ => subscriptionType.YearlyDurationDays
         };
@@ -57,6 +58,7 @@ public class CreateCompanyCommandHandler : IRequestHandler<CreateCompanyCommand,
         {
             "monthly" => subscriptionType.MonthlyPrice,
             "quarterly" => subscriptionType.QuarterlyPrice,
+            "semiannual" => subscriptionType.SemiannualPrice,
             "yearly" => subscriptionType.YearlyPrice,
             _ => subscriptionType.YearlyPrice
         };

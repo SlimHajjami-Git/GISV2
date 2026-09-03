@@ -276,10 +276,12 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<SubscriptionType>().Property(s => s.TargetCompanyType).HasColumnName("target_company_type");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyPrice).HasColumnName("monthly_price").HasPrecision(10, 2);
         modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyPrice).HasColumnName("quarterly_price").HasPrecision(10, 2);
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.SemiannualPrice).HasColumnName("semiannual_price").HasPrecision(10, 2);
         modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyPrice).HasColumnName("yearly_price").HasPrecision(10, 2);
         modelBuilder.Entity<SubscriptionType>().Property(s => s.PricePerVehicle).HasColumnName("price_per_vehicle");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MonthlyDurationDays).HasColumnName("monthly_duration_days");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.QuarterlyDurationDays).HasColumnName("quarterly_duration_days");
+        modelBuilder.Entity<SubscriptionType>().Property(s => s.SemiannualDurationDays).HasColumnName("semiannual_duration_days");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.YearlyDurationDays).HasColumnName("yearly_duration_days");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxVehicles).HasColumnName("max_vehicles");
         modelBuilder.Entity<SubscriptionType>().Property(s => s.MaxUsers).HasColumnName("max_users");

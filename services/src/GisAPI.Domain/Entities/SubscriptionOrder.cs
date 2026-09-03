@@ -22,7 +22,7 @@ public class SubscriptionOrder : TenantEntity
     public int SubscriptionTypeId { get; set; }
     public SubscriptionType? SubscriptionType { get; set; }
 
-    /// <summary>monthly | quarterly | yearly.</summary>
+    /// <summary>monthly | quarterly | semiannual (6 mois) | yearly.</summary>
     public string BillingCycle { get; set; } = "yearly";
 
     /// <summary>Montant dû, figé à la commande (devise du déploiement).</summary>

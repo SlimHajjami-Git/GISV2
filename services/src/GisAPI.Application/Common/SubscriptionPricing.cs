@@ -26,6 +26,7 @@ public static class SubscriptionPricing
         {
             "monthly" => plan.MonthlyPrice,
             "quarterly" => plan.QuarterlyPrice,
+            "semiannual" => plan.SemiannualPrice,
             _ => plan.YearlyPrice
         };
 
