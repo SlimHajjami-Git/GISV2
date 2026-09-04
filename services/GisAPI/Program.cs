@@ -1035,8 +1035,8 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
                 // engagement annuel (36/an), 4 € sans engagement — alignés sur
                 // l'offre GPA du site. Les anciens forfaits 29/79/299 dataient
                 // d'un modèle abandonné (recette client 01/09/2026).
-                MonthlyPrice = 4.00m,
-                QuarterlyPrice = 12.00m,
+                MonthlyPrice = 0m,      // cycle non propose (recette 04/09/2026)
+                QuarterlyPrice = 0m,    // cycle non propose (recette 04/09/2026)
                 // Semestriel : 4 €/véhicule/mois × 6 mois. Seul plan à porter ce
                 // cycle — ailleurs, 0 vaut « non vendable ».
                 SemiannualPrice = 24.00m,
