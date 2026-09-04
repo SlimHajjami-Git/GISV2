@@ -1116,7 +1116,7 @@ export class ApiService {
     if (this.isMockUser()) {
       return of({
         vehicleStatus: { stopped: 0, ignitionOn: 0, moving: 0, maintenance: 0, noGps: 0 },
-        expenses: { fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 },
+        expenses: { fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, acquisitionCost: 0, totalCost: 0 },
         fuelConsumption: { vehicleStats: [], fleetTotalLiters: 0, fleetTotalKm: 0, chartDays: [], chartValues: [] },
         drivingScores: [], healthData: { healthy: 0, attention: 0, unhealthy: 0 },
         topUnits: [], geofences: [], alerts: [], recentTrips: [], drivers: []
@@ -2115,10 +2115,11 @@ export class ApiService {
 
   // ==================== FUEL ENTRIES MANAGEMENT ====================
 
-  getFuelEntries(options: { fuelTypeId?: number; vehiclePlate?: string; startDate?: string; endDate?: string; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelEntriesResult> {
+  getFuelEntries(options: { fuelTypeId?: number; vehiclePlate?: string; vehicleId?: number; startDate?: string; endDate?: string; page?: number; pageSize?: number } = {}): Observable<PaginatedFuelEntriesResult> {
     let params = new HttpParams();
     if (options.fuelTypeId) params = params.set('fuelTypeId', options.fuelTypeId.toString());
     if (options.vehiclePlate) params = params.set('vehiclePlate', options.vehiclePlate);
+    if (options.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
     if (options.startDate) params = params.set('startDate', options.startDate);
     if (options.endDate) params = params.set('endDate', options.endDate);
     if (options.page) params = params.set('page', options.page.toString());

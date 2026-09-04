@@ -342,6 +342,32 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           }
         });
 
+        // Apport (contrat de financement) ou achat comptant : une dépense datée
+        // du jour de l'acquisition. Absente jusqu'ici — le client ne retrouvait
+        // pas ses 3 000 EUR d'apport dans les dépenses (recette du 04/09/2026).
+        // Même règle que le tableau de bord (AcquisitionSchedule côté serveur).
+        ((result as any).vehicles || []).forEach((v: any) => {
+          if (!(v.purchasePrice > 0) || !v.purchaseDate) return;
+          const when = new Date(String(v.purchaseDate).slice(0, 10) + 'T00:00:00');
+          if (isNaN(when.getTime()) || when > new Date()) return;
+          const isLeasing = v.acquisitionType === 'leasing';
+          allExpenses.push({
+            id: 'acquisition_' + v.id,
+            vehicleId: v.id,
+            vehiclePlate: v.plate || '',
+            vehicleName: v.name || '',
+            category: isLeasing ? 'credit' : 'achat',
+            label: isLeasing ? 'Apport crédit/leasing' : 'Achat véhicule',
+            quantity: 1,
+            unitPrice: v.purchasePrice,
+            totalAmount: v.purchasePrice,
+            date: when,
+            description: isLeasing ? 'Apport initial du contrat de financement' : 'Prix d\'achat du véhicule',
+            createdAt: when,
+            sourceTable: 'acquisition'
+          });
+        });
+
         this.expenses = allExpenses;
         this.filterExpenses();
         this.loading = false;
@@ -890,6 +916,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       'stationnement': 'Stationnement', 'parking': 'Parking',
       'amende': 'Amende',
       'credit': 'Crédit / Leasing',
+      'achat': 'Achat véhicule',
       'autre': 'Autre',
       // Calypso 7 — accident-driven categories.
       'repair': 'Réparation accident',

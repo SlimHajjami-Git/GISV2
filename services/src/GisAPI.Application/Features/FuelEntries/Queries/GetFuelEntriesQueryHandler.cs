@@ -54,6 +54,9 @@ public class GetFuelEntriesQueryHandler : IRequestHandler<GetFuelEntriesQuery, P
         if (request.FuelTypeId.HasValue)
             query = query.Where(e => e.FuelTypeId == request.FuelTypeId.Value);
 
+        if (request.VehicleId.HasValue)
+            query = query.Where(e => e.VehicleId == request.VehicleId.Value);
+
         if (!string.IsNullOrEmpty(request.VehiclePlate))
             query = query.Where(e => e.VehiclePlate.Contains(request.VehiclePlate));
 

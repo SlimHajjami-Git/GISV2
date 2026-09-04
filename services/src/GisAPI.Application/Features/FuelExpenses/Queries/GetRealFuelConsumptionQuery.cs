@@ -24,7 +24,9 @@ public record RealFuelConsumptionReportDto(
     int VehicleCount,
     int EntriesWithoutOdometer,
     List<VehicleFuelConsumptionDto> Vehicles,
-    List<MonthlyFuelConsumptionDto> MonthlyTrends
+    List<MonthlyFuelConsumptionDto> MonthlyTrends,
+    // Relevés compteur écartés comme fautes de frappe (voir le handler).
+    int IgnoredOdometerReadings = 0
 );
 
 public record VehicleFuelConsumptionDto(
@@ -36,12 +38,13 @@ public record VehicleFuelConsumptionDto(
     decimal TotalLiters,
     decimal TotalCost,
     decimal? DistanceKm,            // null = not enough odometer data to measure
-    decimal? ConsumptionPer100Km,   // null = not computable
-    decimal? CostPerKm,
+    decimal? ConsumptionPer100Km,   // = TotalLiters / DistanceKm × 100 — les quatre chiffres se recoupent
+    decimal? CostPerKm,             // = TotalCost / DistanceKm
     int EntriesWithoutOdometer,
     DateTime? FirstEntryDate,
     DateTime? LastEntryDate,
-    bool ReliableOdometer           // false if any fill lacks km or a segment was dropped
+    bool ReliableOdometer,          // false if any fill lacks km, a reading was ignored or the series broke
+    int IgnoredOdometerReadings = 0 // relevés écartés (faute de frappe isolée)
 );
 
 public record MonthlyFuelConsumptionDto(

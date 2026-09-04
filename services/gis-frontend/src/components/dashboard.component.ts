@@ -989,7 +989,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   yTicks:{y:number;label:string}[]=[];
   xTicks:{x:number;label:string}[]=[];
   hSeg=-1;
-  fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; totalCost=0;
+  fuelCost=0; maintenanceCost=0; repairCost=0; otherCost=0; acquisitionCost=0; totalCost=0;
   drivingScores:{plate:string;score:number}[]=[];
   vehicleFuelStats:{plate:string;consumption:number;totalLiters:number;totalKm:number}[]=[];
   maxFuelConsumption=1;
@@ -1160,9 +1160,12 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       {name:'Carburant',color:'#4f46e5',value:this.fuelCost},
       {name:'Entretien',color:'#059669',value:this.maintenanceCost},
       {name:'Réparation',color:'#d97706',value:this.repairCost},
+      // Mensualités de crédit/leasing échues + apports/achats : calculés par le
+      // serveur (AcquisitionSchedule), mêmes règles que l'écran Dépenses.
+      {name:'Achats véhicule',color:'#0ea5e9',value:this.acquisitionCost},
       {name:'Autres',color:'#94a3b8',value:this.otherCost},
     ];
-    this.maxExp=Math.max(this.fuelCost,this.maintenanceCost,this.repairCost,this.otherCost,1);
+    this.maxExp=Math.max(this.fuelCost,this.maintenanceCost,this.repairCost,this.acquisitionCost,this.otherCost,1);
     this.hItems=[
       {name:'Bon état',color:'#059669',value:this.healthData.healthy},
       {name:'Attention',color:'#d97706',value:this.healthData.attention},
@@ -1236,7 +1239,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       .pipe(takeUntil(this.destroy$)).subscribe({
       next:(d:any)=>{
         if(d.vehicleStatus){const v=d.vehicleStatus;this.motionData={stationary:v.stopped??0,ignitionOn:v.ignitionOn??0,moving:0,movingIgnition:v.moving??0,lbs:0,wifi:0,noState:v.maintenance??0,noCoords:v.noGps??0};}
-        if(d.expenses){const e=d.expenses;this.fuelCost=e.fuelCost??0;this.maintenanceCost=e.maintenanceCost??0;this.repairCost=e.repairCost??0;this.otherCost=e.otherCost??0;this.totalCost=e.totalCost??(this.fuelCost+this.maintenanceCost+this.repairCost+this.otherCost);}
+        if(d.expenses){const e=d.expenses;this.fuelCost=e.fuelCost??0;this.maintenanceCost=e.maintenanceCost??0;this.repairCost=e.repairCost??0;this.otherCost=e.otherCost??0;this.acquisitionCost=e.acquisitionCost??0;this.totalCost=e.totalCost??(this.fuelCost+this.maintenanceCost+this.repairCost+this.acquisitionCost+this.otherCost);}
         if(d.drivingScores?.length)this.drivingScores=d.drivingScores.map((s:any)=>({plate:s.plate,score:s.score})).sort((a:any,b:any)=>b.score-a.score);
         if(d.healthData)this.healthData={healthy:d.healthData.healthy??0,attention:d.healthData.attention??0,unhealthy:d.healthData.unhealthy??0};
         if(d.topUnits?.length){this.topUnits=d.topUnits.map((u:any)=>({name:u.name,color:u.color,mileage:Math.round(u.mileage??0)})).sort((a:any,b:any)=>b.mileage-a.mileage);this.maxMileage=Math.max(...this.topUnits.map(u=>u.mileage),1);}

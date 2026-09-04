@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Vehicles;
 
 namespace GisAPI.Services;
 
@@ -116,6 +117,11 @@ public class DashboardService : IDashboardService
 
         // ── 3. Expenses (use nullable Sum to safely handle empty result sets) ──
         decimal fuelCost = 0, maintenanceCost = 0, repairCost = 0, otherCost = 0;
+        // Achats véhicule : mensualités de crédit/leasing échues + apports/achats
+        // datés dans la période. Calcul serveur (AcquisitionSchedule) avec les
+        // mêmes règles que l'écran Dépenses — recette client du 04/09/2026 : le
+        // « Coût total » ignorait tout ce qui n'était pas une ligne en base.
+        var acquisitionCost = AcquisitionSchedule.Cost(vehicles, periodStart, periodEnd, now);
         try
         {
             fuelCost = await _context.FuelEntries.AsNoTracking()
@@ -404,9 +410,10 @@ public class DashboardService : IDashboardService
             prevTotalCost += await _context.VehicleCosts.AsNoTracking()
                 .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+            prevTotalCost += AcquisitionSchedule.Cost(vehicles, prevStart, prevEnd, now);
         }
         catch { /* trend is best-effort */ }
-        var currentTotalCost = fuelCost + maintenanceCost + repairCost + otherCost;
+        var currentTotalCost = fuelCost + maintenanceCost + repairCost + otherCost + acquisitionCost;
 
         var currentDistance = tripKmByVehicle.Sum(x => x.Km);
         var prevDistance = await _context.Trips.AsNoTracking()
@@ -450,7 +457,8 @@ public class DashboardService : IDashboardService
                 maintenanceCost,
                 repairCost,
                 otherCost,
-                totalCost = fuelCost + maintenanceCost + repairCost + otherCost
+                acquisitionCost,
+                totalCost = fuelCost + maintenanceCost + repairCost + otherCost + acquisitionCost
             },
             fuelConsumption = new
             {

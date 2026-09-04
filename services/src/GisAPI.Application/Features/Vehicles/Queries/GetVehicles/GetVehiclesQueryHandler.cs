@@ -108,7 +108,9 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 v.LeasingMonthlyPayment,
                 v.LeasingDurationMonths,
                 v.LeasingStartDate,
-                v.LeasingPaymentDay
+                v.LeasingPaymentDay,
+                v.PurchasePrice,
+                v.PurchaseDate
             ));
 
         var result = await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);

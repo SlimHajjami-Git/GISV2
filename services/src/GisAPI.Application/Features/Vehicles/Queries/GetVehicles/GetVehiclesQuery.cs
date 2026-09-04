@@ -45,7 +45,11 @@ public record VehicleDto(
     decimal? LeasingMonthlyPayment = null,
     int? LeasingDurationMonths = null,
     DateTime? LeasingStartDate = null,
-    int? LeasingPaymentDay = null
+    int? LeasingPaymentDay = null,
+    // Apport (contrat) ou prix d'achat comptant, daté : l'écran Dépenses en
+    // fait une ligne « Achat véhicule » (recette client 04/09/2026).
+    decimal? PurchasePrice = null,
+    DateTime? PurchaseDate = null
 );
 
 public record GpsDeviceDto(

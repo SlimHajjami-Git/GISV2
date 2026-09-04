@@ -70,9 +70,9 @@ public class GetRealFuelConsumptionQueryHandler
         var vehicleDtos = new List<VehicleFuelConsumptionDto>();
         var monthLiters = new Dictionary<(int, int), decimal>();
         var monthCost = new Dictionary<(int, int), decimal>();
-        var monthSegLiters = new Dictionary<(int, int), decimal>();
         var monthSegKm = new Dictionary<(int, int), decimal>();
-        decimal fleetSegKm = 0, fleetSegLiters = 0, fleetSegCost = 0;
+        decimal fleetSegKm = 0;
+        int fleetIgnored = 0;
 
         foreach (var grp in entries.GroupBy(e => e.VehicleId))
         {
@@ -88,23 +88,62 @@ public class GetRealFuelConsumptionQueryHandler
                 monthCost[k] = monthCost.GetValueOrDefault(k) + e.TotalAmount;
             }
 
-            // Full-to-full over consecutive fills that BOTH have a valid odometer.
+            // ── Distance parcourue, d'après les relevés compteur ──────────────
+            //
+            // Recette client du 04/09/2026 : les quatre chiffres affichés (litres,
+            // coût, L/100, €/km) n'étaient pas calculés sur le même périmètre —
+            // litres et coût sur TOUS les pleins, L/100 et €/km sur les seuls
+            // intervalles « plein-à-plein » valides, sans le premier plein ni les
+            // pleins entourant un relevé aberrant. Le client divisait les litres
+            // affichés par la distance affichée et ne retrouvait jamais le L/100.
+            //
+            // Désormais : L/100 = litres affichés / distance affichée, €/km = coût
+            // affiché / distance affichée. La distance est la somme des écarts entre
+            // relevés consécutifs cohérents (= dernier − premier relevé de chaque
+            // série continue). Biais assumé et annoncé à l'écran : le premier plein
+            // de la période est compté alors qu'il a été brûlé avant le premier
+            // relevé — de l'ordre de 1/n sur n pleins.
+            //
+            // Un relevé ISOLÉ aberrant (145 200 km entre 46 845 et 47 455 — faute
+            // de frappe à l'import) est ignoré comme relevé, PAS comme intervalle :
+            // avant, il faisait sauter les deux intervalles qui l'encadrent, leurs
+            // 610 km et leurs deux pleins. Critère : ses deux voisins sont cohérents
+            // entre eux (0 < Δ ≤ MaxSegmentKm) alors qu'il s'écarte des deux.
             var odo = list.Where(e => e.OdometerKm is > 0).OrderBy(e => e.InvoiceDate).ToList();
-            decimal segKm = 0, segLiters = 0, segCost = 0;
-            int skipped = 0;
-            for (int i = 1; i < odo.Count; i++)
+            var kept = new List<(long Km, DateTime Date)>();
+            int ignored = 0;
+            for (int i = 0; i < odo.Count; i++)
             {
-                var dKm = odo[i].OdometerKm!.Value - odo[i - 1].OdometerKm!.Value;
-                if (dKm <= 0 || dKm > MaxSegmentKm) { skipped++; continue; }
+                var km = odo[i].OdometerKm!.Value;
+                if (i > 0 && i < odo.Count - 1)
+                {
+                    var prev = odo[i - 1].OdometerKm!.Value;
+                    var next = odo[i + 1].OdometerKm!.Value;
+                    var neighboursCoherent = next - prev > 0 && next - prev <= MaxSegmentKm;
+                    var offFromPrev = km - prev <= 0 || km - prev > MaxSegmentKm;
+                    var offFromNext = next - km <= 0 || next - km > MaxSegmentKm;
+                    if (neighboursCoherent && offFromPrev && offFromNext) { ignored++; continue; }
+                }
+                kept.Add((km, odo[i].InvoiceDate));
+            }
+
+            // Somme des écarts cohérents. Un écart ≤ 0 ou > MaxSegmentKm entre deux
+            // relevés conservés est une rupture de série (changement de compteur,
+            // deux imports incompatibles) : on ne l'additionne pas, sans rien
+            // rejeter d'autre.
+            decimal segKm = 0;
+            int breaks = 0;
+            for (int i = 1; i < kept.Count; i++)
+            {
+                var dKm = kept[i].Km - kept[i - 1].Km;
+                if (dKm <= 0 || dKm > MaxSegmentKm) { breaks++; continue; }
                 segKm += dKm;
-                segLiters += odo[i].Volume;     // volume added now = fuel burned over dKm
-                segCost += odo[i].TotalAmount;
-                var k = (odo[i].InvoiceDate.Year, odo[i].InvoiceDate.Month);
-                monthSegLiters[k] = monthSegLiters.GetValueOrDefault(k) + odo[i].Volume;
+                var k = (kept[i].Date.Year, kept[i].Date.Month);
                 monthSegKm[k] = monthSegKm.GetValueOrDefault(k) + dKm;
             }
 
-            fleetSegKm += segKm; fleetSegLiters += segLiters; fleetSegCost += segCost;
+            fleetSegKm += segKm;
+            fleetIgnored += ignored;
 
             vehicles.TryGetValue(grp.Key, out var vi);
             vehicleDtos.Add(new VehicleFuelConsumptionDto(
@@ -116,12 +155,13 @@ public class GetRealFuelConsumptionQueryHandler
                 TotalLiters: Math.Round(totalLiters, 2),
                 TotalCost: Math.Round(totalCost, 2),
                 DistanceKm: segKm > 0 ? segKm : null,
-                ConsumptionPer100Km: segKm > 0 ? Math.Round(segLiters / segKm * 100m, 2) : null,
-                CostPerKm: segKm > 0 ? Math.Round(segCost / segKm, 3) : null,
+                ConsumptionPer100Km: segKm > 0 ? Math.Round(totalLiters / segKm * 100m, 2) : null,
+                CostPerKm: segKm > 0 ? Math.Round(totalCost / segKm, 3) : null,
                 EntriesWithoutOdometer: noOdo,
                 FirstEntryDate: list.First().InvoiceDate,
                 LastEntryDate: list.Last().InvoiceDate,
-                ReliableOdometer: noOdo == 0 && skipped == 0 && odo.Count >= 2
+                ReliableOdometer: noOdo == 0 && ignored == 0 && breaks == 0 && kept.Count >= 2,
+                IgnoredOdometerReadings: ignored
             ));
         }
 
@@ -139,7 +179,8 @@ public class GetRealFuelConsumptionQueryHandler
                 MonthName: Fr.DateTimeFormat.GetMonthName(cur.Month),
                 TotalLiters: Math.Round(monthLiters.GetValueOrDefault(k), 2),
                 TotalCost: Math.Round(monthCost.GetValueOrDefault(k), 2),
-                ConsumptionPer100Km: segKm > 0 ? Math.Round(monthSegLiters.GetValueOrDefault(k) / segKm * 100m, 2) : null
+                // Même définition que par véhicule : litres du mois / km relevés dans le mois.
+                ConsumptionPer100Km: segKm > 0 ? Math.Round(monthLiters.GetValueOrDefault(k) / segKm * 100m, 2) : null
             ));
             cur = cur.AddMonths(1);
         }
@@ -148,12 +189,14 @@ public class GetRealFuelConsumptionQueryHandler
             TotalFuelCost: Math.Round(vehicleDtos.Sum(v => v.TotalCost), 2),
             TotalLiters: Math.Round(vehicleDtos.Sum(v => v.TotalLiters), 2),
             TotalDistanceKm: fleetSegKm,
-            FleetConsumptionPer100Km: fleetSegKm > 0 ? Math.Round(fleetSegLiters / fleetSegKm * 100m, 2) : null,
-            FleetCostPerKm: fleetSegKm > 0 ? Math.Round(fleetSegCost / fleetSegKm, 3) : null,
+            // Parc : mêmes totaux que les cartes affichées, sur la même distance.
+            FleetConsumptionPer100Km: fleetSegKm > 0 ? Math.Round(vehicleDtos.Sum(v => v.TotalLiters) / fleetSegKm * 100m, 2) : null,
+            FleetCostPerKm: fleetSegKm > 0 ? Math.Round(vehicleDtos.Sum(v => v.TotalCost) / fleetSegKm, 3) : null,
             VehicleCount: vehicleDtos.Count,
             EntriesWithoutOdometer: vehicleDtos.Sum(v => v.EntriesWithoutOdometer),
             Vehicles: vehicleDtos.OrderByDescending(v => v.TotalCost).ToList(),
-            MonthlyTrends: trends
+            MonthlyTrends: trends,
+            IgnoredOdometerReadings: fleetIgnored
         );
     }
 }

@@ -352,6 +352,12 @@ interface ColumnMapping {
             <div class="panel-header">
               <h2>Historique Carburant</h2>
               <div class="filters">
+                <!-- Filtre par véhicule (recette client 04/09/2026) : à 93 pleins
+                     sur quatre véhicules, la liste n'était plus lisible. -->
+                <select [(ngModel)]="filterVehicleId" (change)="loadHistory()" class="filter-select">
+                  <option [ngValue]="null">Tous les véhicules</option>
+                  <option *ngFor="let v of vehicles" [ngValue]="v.id">{{ v.plate || v.name }}</option>
+                </select>
                 <select [(ngModel)]="filterFuelType" (change)="loadHistory()" class="filter-select">
                   <option [ngValue]="null">Tous les types</option>
                   <option *ngFor="let ft of fuelTypes" [ngValue]="ft.id">{{ ft.name }}</option>
@@ -435,6 +441,15 @@ interface ColumnMapping {
                 </div>
               </div>
 
+              <!-- Définition annoncée : le client recoupe litres ÷ km avec le L/100
+                   affiché (recette du 04/09/2026), ce qui n'était pas possible avant. -->
+              <div style="margin:0 16px 8px;font-size:12px;color:#64748b;">
+                Consommation = litres achetés ÷ kilomètres relevés entre le premier et le dernier plein de la période
+                (le premier plein est compté : lecture légèrement majorée quand il y a peu de pleins).
+              </div>
+              <div *ngIf="consumption.ignoredOdometerReadings > 0" style="margin:0 16px 8px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;color:#991b1b;font-size:12px;">
+                ⚠ {{ consumption.ignoredOdometerReadings }} relevé(s) compteur incohérent(s) ignoré(s) — faute de frappe probable. Corrige-les dans l'onglet Historique pour un kilométrage exact.
+              </div>
               <div *ngIf="consumption.entriesWithoutOdometer > 0" style="margin:0 16px 8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:12px;">
                 ⚠ {{ consumption.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le kilométrage au plein pour calculer la consommation.
               </div>
@@ -621,6 +636,8 @@ export class CarburantComponent implements OnInit, OnDestroy {
   fuelPrices: FuelPriceFullDto[] = [];
   defaultFuelTypeId: number | null = null;
 
+  filterVehicleId: number | null = null;
+
   filterFuelType: number | null = null;
   filterStartDate = '';
   filterEndDate = '';
@@ -686,6 +703,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
 
   loadHistory() {
     const options: any = { pageSize: 100 };
+    if (this.filterVehicleId) options.vehicleId = this.filterVehicleId;
     if (this.filterFuelType) options.fuelTypeId = this.filterFuelType;
     if (this.filterStartDate) options.startDate = this.filterStartDate;
     if (this.filterEndDate) options.endDate = this.filterEndDate;

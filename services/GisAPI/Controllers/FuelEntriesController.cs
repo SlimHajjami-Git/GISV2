@@ -25,12 +25,20 @@ public class FuelEntriesController : ControllerBase
     public async Task<ActionResult> GetFuelEntries(
         [FromQuery] int? fuelTypeId = null,
         [FromQuery] string? vehiclePlate = null,
+        [FromQuery] int? vehicleId = null,
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50)
     {
-        var result = await _mediator.Send(new GetFuelEntriesQuery(fuelTypeId, vehiclePlate, startDate, endDate, page, pageSize));
+        var result = await _mediator.Send(new GetFuelEntriesQuery(
+            FuelTypeId: fuelTypeId,
+            VehiclePlate: vehiclePlate,
+            StartDate: startDate,
+            EndDate: endDate,
+            Page: page,
+            PageSize: pageSize,
+            VehicleId: vehicleId));
         return Ok(result);
     }
 
