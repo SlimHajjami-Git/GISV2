@@ -25,6 +25,11 @@ public class PermissionMiddleware
         { "/api/reports/mileage-period", "CanReportMileagePeriod" },
         { "/api/reports/mileage", "CanReportMileage" },
         { "/api/reports/costs", "CanReportCosts" },
+        // Rapports de coûts (04/09/2026) — déjà couverts par le préfixe ci-dessus, déclarés pour la lisibilité.
+        { "/api/reports/costs/operating", "CanReportCosts" },
+        { "/api/reports/costs/evolution", "CanReportCosts" },
+        { "/api/reports/costs/ranking", "CanReportCosts" },
+        { "/api/reports/costs/repair-frequency", "CanReportCosts" },
         { "/api/reports/maintenance", "CanReportMaintenance" },
         { "/api/reports/daily", "CanReportDaily" },
         { "/api/reports/monthly", "CanReportMonthly" },
@@ -77,6 +82,11 @@ public class PermissionMiddleware
         { "/api/reports/mileage-period", sub => sub.ModuleReports && sub.ReportMileagePeriod },
         { "/api/reports/mileage", sub => sub.ModuleReports && sub.ReportMileage },
         { "/api/reports/costs", sub => sub.ModuleReports && sub.ReportCosts },
+        // Rapports de coûts (04/09/2026) — déjà couverts par le préfixe ci-dessus, déclarés pour la lisibilité.
+        { "/api/reports/costs/operating", sub => sub.ModuleReports && sub.ReportCosts },
+        { "/api/reports/costs/evolution", sub => sub.ModuleReports && sub.ReportCosts },
+        { "/api/reports/costs/ranking", sub => sub.ModuleReports && sub.ReportCosts },
+        { "/api/reports/costs/repair-frequency", sub => sub.ModuleReports && sub.ReportCosts },
         { "/api/reports/maintenance", sub => sub.ModuleReports && sub.ReportMaintenance },
         { "/api/reports/daily", sub => sub.ModuleReports && sub.ReportDaily },
         { "/api/reports/monthly", sub => sub.ModuleReports && sub.ReportMonthly },

@@ -1,6 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
@@ -38,8 +39,20 @@ interface Repair {
   status: string;
   invoiceNumber: string;
   notes: string;
+  /** Type d'intervention (electrique | mecanique | freinage | pneumatique | carrosserie | autre), optionnel. */
+  repairType: string | null;
   parts: RepairPart[];
 }
+
+/** Types d'intervention (rapport « Fréquence des réparations », 04/09/2026). Valeurs = colonne repairs.repair_type. */
+const REPAIR_TYPES: { value: string; label: string }[] = [
+  { value: 'electrique', label: 'Électrique' },
+  { value: 'mecanique', label: 'Mécanique' },
+  { value: 'freinage', label: 'Freinage' },
+  { value: 'pneumatique', label: 'Pneumatique' },
+  { value: 'carrosserie', label: 'Carrosserie' },
+  { value: 'autre', label: 'Autres' }
+];
 
 interface Vehicle {
   id: number;
@@ -207,6 +220,7 @@ interface Vehicle {
                   </div>
                 </td>
                 <td class="col-description">
+                  <span class="type-tag" *ngIf="repair.repairType">{{ getRepairTypeLabel(repair.repairType) }}</span>
                   <span class="description-text" [title]="repair.description">{{ repair.description || '—' }}</span>
                 </td>
                 <td class="col-parts-count">
@@ -317,6 +331,13 @@ interface Vehicle {
                   <label>Kilometrage</label>
                   <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km">
                 </div>
+              </div>
+              <div class="form-group">
+                <label>Type d'intervention</label>
+                <select class="form-control" [(ngModel)]="form.repairType">
+                  <option value="">-- Non précisé (déduit de la description) --</option>
+                  <option *ngFor="let t of repairTypes" [value]="t.value">{{ t.label }}</option>
+                </select>
               </div>
               <div class="form-group">
                 <label>Description</label>
@@ -448,6 +469,10 @@ interface Vehicle {
               <div class="detail-row">
                 <span class="detail-label">Date</span>
                 <span class="detail-value">{{ viewingRepair.repairDate | date:'dd/MM/yyyy' }}</span>
+              </div>
+              <div class="detail-row" *ngIf="viewingRepair.repairType">
+                <span class="detail-label">Type d'intervention</span>
+                <span class="detail-value">{{ getRepairTypeLabel(viewingRepair.repairType) }}</span>
               </div>
               <div class="detail-row" *ngIf="viewingRepair.description">
                 <span class="detail-label">Description</span>
@@ -611,6 +636,7 @@ interface Vehicle {
 
     .parts-badge { display:inline-block; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
     .parts-badge.empty { background:transparent; color:#cbd5e1; }
+    .type-tag { display:inline-block; background:#eff6ff; color:#2563eb; border:1px solid #dbeafe; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:600; margin-bottom:3px; }
 
     td.num { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
     td.num.strong { font-weight:700; color:#16a34a; font-size:12.5px; }
@@ -772,6 +798,8 @@ export class RepairsComponent implements OnInit, OnDestroy {
 
   form = this.getEmptyForm();
 
+  readonly repairTypes = REPAIR_TYPES;
+
   // Suppliers
   suppliers: { id: number; name: string; type: string }[] = [];
   showAddSupplier = false;
@@ -782,15 +810,23 @@ export class RepairsComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private pdfService: PdfExportService,
     private cdr: ChangeDetectorRef,
-    private userPrefs: UserPreferencesService
+    private userPrefs: UserPreferencesService,
+    private route: ActivatedRoute
   ) {}
 
   get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit() {
+    // Lien « Voir toutes les interventions » du rapport Fréquence des réparations : /repairs?vehicleId=N
+    const vehicleId = this.route.snapshot.queryParamMap.get('vehicleId');
+    if (vehicleId && /^\d+$/.test(vehicleId)) this.filterVehicle = vehicleId;
     this.loadVehicles();
     this.loadRepairs();
     this.loadSuppliers();
+  }
+
+  getRepairTypeLabel(type: string | null | undefined): string {
+    return REPAIR_TYPES.find(t => t.value === type)?.label || type || '';
   }
 
   getEmptyForm() {
@@ -804,6 +840,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
       status: 'completed',
       laborCost: 0,
       notes: '',
+      repairType: '' as string,
       parts: [] as RepairPart[]
     };
   }
@@ -872,6 +909,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
           status: r.status,
           invoiceNumber: r.invoiceNumber || '',
           notes: r.notes || '',
+          repairType: r.repairType ?? null,
           parts: (r.parts || []).map(p => ({
             id: p.id,
             partName: p.partName,
@@ -1100,6 +1138,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
       status: repair.status,
       laborCost: repair.laborCost,
       notes: repair.notes,
+      repairType: repair.repairType || '',
       parts: repair.parts.map(p => ({ ...p }))
     };
     this.selectedVehicle = this.vehicles.find(v => v.id === repair.vehicleId) || null;
@@ -1180,6 +1219,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
         status: this.form.status,
         invoiceNumber: this.form.invoiceNumber,
         notes: this.form.notes,
+        repairType: this.form.repairType || null,
         parts
       }).subscribe({
         next: () => {
@@ -1198,6 +1238,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
         laborCost: this.form.laborCost,
         invoiceNumber: this.form.invoiceNumber,
         notes: this.form.notes,
+        repairType: this.form.repairType || null,
         parts
       }).subscribe({
         next: () => {

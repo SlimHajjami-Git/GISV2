@@ -1,7 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Features.Repairs.Commands;
-using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -56,6 +56,7 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
             PartsCost = partsCost,
             TotalCost = request.LaborCost + partsCost,
             Status = "completed",
+            RepairType = NormalizeRepairType(request.RepairType),
             InvoiceNumber = request.InvoiceNumber,
             Notes = request.Notes,
             CreatedAt = DateTime.UtcNow
@@ -104,6 +105,17 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
 
         return repair.Id;
     }
+
+    /// <summary>
+    /// Vide → null (colonne nullable) ; sinon minuscules sans accents (« Électrique » →
+    /// « electrique ») et repli sur « autre » hors des six types connus.
+    /// </summary>
+    internal static string? NormalizeRepairType(string? value)
+    {
+        var v = RepairTypeClassifier.Normalize(value);
+        if (v.Length == 0) return null;
+        return RepairTypeClassifier.KnownTypes.Contains(v) ? v : RepairTypeClassifier.Autre;
+    }
 }
 
 public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, bool>
@@ -147,6 +159,7 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         repair.PartsCost = partsCost;
         repair.TotalCost = request.LaborCost + partsCost;
         repair.Status = request.Status;
+        repair.RepairType = CreateRepairCommandHandler.NormalizeRepairType(request.RepairType);
         repair.InvoiceNumber = request.InvoiceNumber;
         repair.Notes = request.Notes;
         repair.UpdatedAt = DateTime.UtcNow;

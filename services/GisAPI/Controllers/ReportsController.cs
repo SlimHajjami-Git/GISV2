@@ -15,6 +15,10 @@ using GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 using GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 using GisAPI.Application.Features.Reports.Queries.GetTripsReport;
 using GisAPI.Application.Features.Reports.Queries.GetMonthlyCostReport;
+using GisAPI.Application.Features.Reports.Queries.GetOperatingCostReport;
+using GisAPI.Application.Features.Reports.Queries.GetVehicleCostEvolution;
+using GisAPI.Application.Features.Reports.Queries.GetVehicleCostRanking;
+using GisAPI.Application.Features.Reports.Queries.GetRepairFrequencyReport;
 
 namespace GisAPI.Controllers;
 
@@ -721,6 +725,83 @@ public class ReportsController : ControllerBase
             reportMonth,
             departmentId));
 
+        return Ok(result);
+    }
+
+    // ==================== RAPPORTS DE COÛTS (04/09/2026) ====================
+    //
+    // Quatre rapports sous /api/reports/costs/... : le préfixe est couvert par
+    // ReportCosts (abonnement) + CanReportCosts (utilisateur) dans le
+    // PermissionMiddleware. Bornes inclusives jour entier ; défaut 30 jours
+    // glissants (12 mois glissants pour l'évolution). Le kilométrage des
+    // véhicules sans boîtier vient des relevés compteur saisis aux pleins.
+
+    /// <summary>R1 — Coût d'exploitation par véhicule (carburant, entretiens, réparations, autres, €/km).</summary>
+    [HttpGet("costs/operating")]
+    public async Task<ActionResult<OperatingCostReportDto>> GetOperatingCostReport(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? vehicleId = null,
+        [FromQuery] int? departmentId = null)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetOperatingCostReportQuery(start, end, vehicleId, departmentId));
+        return Ok(result);
+    }
+
+    /// <summary>R2 — Évolution mensuelle des coûts d'un véhicule (défaut : 12 mois glissants).</summary>
+    [HttpGet("costs/evolution/{vehicleId}")]
+    public async Task<ActionResult<VehicleCostEvolutionDto>> GetVehicleCostEvolution(
+        int vehicleId,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        var companyId = GetCompanyId();
+
+        // Verify vehicle belongs to company
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return NotFound(new { message = "Vehicle not found" });
+
+        var today = DateTime.UtcNow.Date;
+        var start = startDate?.Date ?? new DateTime(today.Year, today.Month, 1).AddMonths(-11);
+        var end = endDate?.Date ?? today;
+
+        var result = await _mediator.Send(new GetVehicleCostEvolutionQuery(vehicleId, start, end));
+        return Ok(result);
+    }
+
+    /// <summary>R3 — Top N des véhicules les plus coûteux au km (KPI sur tout le parc).</summary>
+    [HttpGet("costs/ranking")]
+    public async Task<ActionResult<OperatingCostReportDto>> GetVehicleCostRanking(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int top = 10,
+        [FromQuery] int? departmentId = null)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetVehicleCostRankingQuery(start, end, top, departmentId));
+        return Ok(result);
+    }
+
+    /// <summary>R4 — Fréquence des réparations par véhicule et répartition par type d'intervention.</summary>
+    [HttpGet("costs/repair-frequency")]
+    public async Task<ActionResult<RepairFrequencyReportDto>> GetRepairFrequencyReport(
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null,
+        [FromQuery] int? vehicleId = null,
+        [FromQuery] int? departmentId = null)
+    {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+
+        var result = await _mediator.Send(new GetRepairFrequencyReportQuery(start, end, vehicleId, departmentId));
         return Ok(result);
     }
 

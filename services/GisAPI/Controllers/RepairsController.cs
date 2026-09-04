@@ -75,7 +75,8 @@ public class RepairsController : ControllerBase
             request.LaborCost,
             request.InvoiceNumber,
             request.Notes,
-            request.Parts
+            request.Parts,
+            request.RepairType
         );
 
         var id = await _mediator.Send(command);
@@ -99,7 +100,8 @@ public class RepairsController : ControllerBase
             request.Status,
             request.InvoiceNumber,
             request.Notes,
-            request.Parts
+            request.Parts,
+            request.RepairType
         );
 
         var success = await _mediator.Send(command);
@@ -134,6 +136,9 @@ public class RepairsController : ControllerBase
 }
 
 // Request DTOs
+// RepairType (optionnel) : electrique | mecanique | freinage | pneumatique |
+// carrosserie | autre — alimente la répartition par type du rapport
+// « Fréquence des réparations » ; null = déduit de la description.
 public record CreateRepairRequest(
     int VehicleId,
     int? SupplierId,
@@ -143,7 +148,8 @@ public record CreateRepairRequest(
     decimal LaborCost,
     string? InvoiceNumber,
     string? Notes,
-    List<CreateRepairPartRequest> Parts
+    List<CreateRepairPartRequest> Parts,
+    string? RepairType = null
 );
 
 public record UpdateRepairRequest(
@@ -156,7 +162,8 @@ public record UpdateRepairRequest(
     string Status,
     string? InvoiceNumber,
     string? Notes,
-    List<CreateRepairPartRequest> Parts
+    List<CreateRepairPartRequest> Parts,
+    string? RepairType = null
 );
 
 public record UpdateStatusRequest(string Status);

@@ -81,7 +81,8 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
                 p.UnitPrice,
                 p.Subtotal,
                 p.Notes
-            )).ToList()
+            )).ToList(),
+            r.RepairType
         )).ToList();
 
         return new RepairsListResult(items, totalCount, request.Page, request.PageSize);
@@ -136,7 +137,8 @@ public class GetRepairByIdQueryHandler : IRequestHandler<GetRepairByIdQuery, Rep
                 p.UnitPrice,
                 p.Subtotal,
                 p.Notes
-            )).ToList()
+            )).ToList(),
+            repair.RepairType
         );
     }
 }

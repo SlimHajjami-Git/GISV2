@@ -1,3 +1,4 @@
+using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
@@ -23,9 +24,9 @@ public class GetRealFuelConsumptionQueryHandler
     private readonly ICurrentTenantService _tenant;
     private static readonly CultureInfo Fr = new("fr-FR");
 
-    // Δkm beyond this between two consecutive fills is treated as a missed fill or
-    // a bad odometer reading and excluded from the consumption math.
-    private const long MaxSegmentKm = 3000;
+    // Δkm beyond which two consecutive fills are treated as a missed fill or a bad
+    // odometer reading : OdometerDistance.MaxSegmentKm (définition unique, partagée
+    // avec les rapports de coûts).
 
     public GetRealFuelConsumptionQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
     {
@@ -109,38 +110,20 @@ public class GetRealFuelConsumptionQueryHandler
             // avant, il faisait sauter les deux intervalles qui l'encadrent, leurs
             // 610 km et leurs deux pleins. Critère : ses deux voisins sont cohérents
             // entre eux (0 < Δ ≤ MaxSegmentKm) alors qu'il s'écarte des deux.
-            var odo = list.Where(e => e.OdometerKm is > 0).OrderBy(e => e.InvoiceDate).ToList();
-            var kept = new List<(long Km, DateTime Date)>();
-            int ignored = 0;
-            for (int i = 0; i < odo.Count; i++)
-            {
-                var km = odo[i].OdometerKm!.Value;
-                if (i > 0 && i < odo.Count - 1)
-                {
-                    var prev = odo[i - 1].OdometerKm!.Value;
-                    var next = odo[i + 1].OdometerKm!.Value;
-                    var neighboursCoherent = next - prev > 0 && next - prev <= MaxSegmentKm;
-                    var offFromPrev = km - prev <= 0 || km - prev > MaxSegmentKm;
-                    var offFromNext = next - km <= 0 || next - km > MaxSegmentKm;
-                    if (neighboursCoherent && offFromPrev && offFromNext) { ignored++; continue; }
-                }
-                kept.Add((km, odo[i].InvoiceDate));
-            }
-
-            // Somme des écarts cohérents. Un écart ≤ 0 ou > MaxSegmentKm entre deux
-            // relevés conservés est une rupture de série (changement de compteur,
-            // deux imports incompatibles) : on ne l'additionne pas, sans rien
-            // rejeter d'autre.
-            decimal segKm = 0;
-            int breaks = 0;
-            for (int i = 1; i < kept.Count; i++)
-            {
-                var dKm = kept[i].Km - kept[i - 1].Km;
-                if (dKm <= 0 || dKm > MaxSegmentKm) { breaks++; continue; }
-                segKm += dKm;
-                var k = (kept[i].Date.Year, kept[i].Date.Month);
-                monthSegKm[k] = monthSegKm.GetValueOrDefault(k) + dKm;
-            }
+            //
+            // Un écart ≤ 0 ou > MaxSegmentKm entre deux relevés conservés est une
+            // rupture de série (changement de compteur, deux imports incompatibles) :
+            // on ne l'additionne pas, sans rien rejeter d'autre.
+            //
+            // Le calcul vit dans OdometerDistance (partagé avec les rapports de
+            // coûts : même kilométrage sur les deux écrans). `list` est déjà trié
+            // par date ; le helper refiltre > 0 et retrie (tri stable) — séquence
+            // identique à l'ancienne boucle locale.
+            var odoResult = OdometerDistance.Compute(list.Select(e => (e.OdometerKm ?? 0L, e.InvoiceDate)));
+            var segKm = odoResult.DistanceKm;
+            var ignored = odoResult.IgnoredReadings;
+            foreach (var (k, km) in odoResult.MonthlyKm)
+                monthSegKm[k] = monthSegKm.GetValueOrDefault(k) + km;
 
             fleetSegKm += segKm;
             fleetIgnored += ignored;
@@ -160,7 +143,7 @@ public class GetRealFuelConsumptionQueryHandler
                 EntriesWithoutOdometer: noOdo,
                 FirstEntryDate: list.First().InvoiceDate,
                 LastEntryDate: list.Last().InvoiceDate,
-                ReliableOdometer: noOdo == 0 && ignored == 0 && breaks == 0 && kept.Count >= 2,
+                ReliableOdometer: noOdo == 0 && odoResult.Reliable,
                 IgnoredOdometerReadings: ignored
             ));
         }

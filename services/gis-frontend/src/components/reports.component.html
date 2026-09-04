@@ -100,11 +100,11 @@
           </select>
         </div>
 
-        <!-- Filter Type Checkboxes -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet'">
+        <!-- Filter Type Checkboxes (Évolution des coûts : véhicule obligatoire, pas de case à décocher) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet' && selectedTemplate?.type !== 'cost-evolution' && (showsVehicleFilter() || departments.length > 0)">
           <label class="field-label">Filtrer par</label>
           <div class="filter-checkboxes">
-            <label class="filter-check-item">
+            <label class="filter-check-item" *ngIf="showsVehicleFilter()">
               <input type="checkbox" [(ngModel)]="filterByVehicle" (change)="onFilterTypeChange()">
               <span>Véhicule</span>
             </label>
@@ -116,7 +116,7 @@
         </div>
 
         <!-- Department Filter -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && filterByDepartment && departments.length > 0">
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'cost-evolution' && filterByDepartment && departments.length > 0">
           <label class="field-label">Département</label>
           <select class="field-select" [(ngModel)]="selectedDepartmentId" (change)="onDepartmentFilterChange()">
             <option value="">Tous les départements</option>
@@ -126,8 +126,8 @@
           </select>
         </div>
 
-        <!-- Vehicle Selector (hidden for monthly and AI reports) -->
-        <div class="sidebar-row" *ngIf="selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet' && filterByVehicle">
+        <!-- Vehicle Selector (hidden for monthly and AI reports ; always shown for cost-evolution, vehicle is mandatory there) -->
+        <div class="sidebar-row" *ngIf="selectedTemplate?.type === 'cost-evolution' || (selectedTemplate?.type !== 'monthly' && selectedTemplate?.type !== 'monthly-costs' && selectedTemplate?.type !== 'monthly-fuel' && selectedTemplate?.type !== 'ai-fleet' && showsVehicleFilter() && filterByVehicle)">
           <label class="field-label">Véhicule</label>
           <select class="field-select" [(ngModel)]="selectedVehicleId" (ngModelChange)="onVehicleChange()">
             <option value="">Sélectionner véhicule</option>
@@ -215,25 +215,32 @@
 
         <!-- ===== GPS REPORTS: Standard period buttons ===== -->
         <!-- trips, stops, speed, speed-infraction, driving-behavior, fuel, fuel-estimation, mileage -->
-        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'monthly-costs' && selectedTemplate.type !== 'monthly-fuel' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance'">
-          <button *ngFor="let p of standardPeriods" 
+        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'monthly-costs' && selectedTemplate.type !== 'monthly-fuel' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()">
+          <button *ngFor="let p of standardPeriods"
             [class.active]="selectedStandardPeriod === p.value"
             (click)="onStandardPeriodChange(p.value)">{{ p.label }}</button>
         </div>
 
-        <!-- ===== COSTS / MAINTENANCE: Longer period buttons ===== -->
-        <div class="period-row" *ngIf="selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'">
-          <button *ngFor="let p of costPeriods" 
+        <!-- ===== COSTS / MAINTENANCE / coût d'exploitation / classement / fréquence réparations : Longer period buttons ===== -->
+        <div class="period-row" *ngIf="selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport()">
+          <button *ngFor="let p of costPeriods"
             [class.active]="selectedCostPeriod === p.value"
             (click)="onCostPeriodChange(p.value)">{{ p.label }}</button>
         </div>
 
+        <!-- ===== ÉVOLUTION DES COÛTS (R2) : 12 derniers mois / Cette année / Année précédente / Personnalisé ===== -->
+        <div class="period-row" *ngIf="selectedTemplate?.type === 'cost-evolution'">
+          <button *ngFor="let p of evolutionPeriods"
+            [class.active]="selectedEvolutionPeriod === p.value"
+            (click)="onEvolutionPeriodChange(p.value)">{{ p.label }}</button>
+        </div>
+
         <!-- ===== CUSTOM DATE RANGE (when Personnalisé selected) ===== -->
-        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
           <label class="field-label">Date début</label>
           <input type="date" class="field-input" [(ngModel)]="customStartDate" [max]="customEndDate || todayStr">
         </div>
-        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance') || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance'))">
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
           <label class="field-label">Date fin</label>
           <input type="date" class="field-input" [(ngModel)]="customEndDate" [min]="customStartDate" [max]="todayStr">
         </div>
@@ -256,7 +263,7 @@
         </div>
         @if (!selectedTemplateId) {
           <div class="validation-hint">⚠️ Sélectionnez un type de rapport</div>
-        } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period' || selectedTemplate?.type === 'consumption-analysis' || selectedTemplate?.type === 'fuel-comparison')) {
+        } @else if (!selectedVehicleId && (selectedTemplate?.type === 'fuel' || selectedTemplate?.type === 'mileage-period' || selectedTemplate?.type === 'consumption-analysis' || selectedTemplate?.type === 'fuel-comparison' || selectedTemplate?.type === 'cost-evolution')) {
           <div class="validation-hint">⚠️ Sélectionnez un véhicule</div>
         }
 
@@ -808,6 +815,513 @@
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        } @else if (isCostReportType() && loading) {
+          <!-- Rapports de coûts : pendant le calcul, pas de tableau générique vide -->
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">⏳</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Calcul du rapport en cours…</h3>
+          </div>
+        } @else if (isCostReportType() && !operatingCost && !costEvolution && !repairFrequency) {
+          <!-- Erreur API ou véhicule manquant (R2) : message clair -->
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">⚠️</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">{{ statisticsData['Erreur'] || 'Impossible de charger ce rapport' }}</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              @if (selectedTemplate?.type === 'cost-evolution' && !selectedVehicleId) {
+                Choisissez un véhicule dans la barre latérale : ce rapport suit les dépenses d'un seul véhicule mois par mois.
+              } @else {
+                Réessayez dans un instant ; si le problème persiste, contactez le support.
+              }
+            </p>
+          </div>
+        } @else if ((selectedTemplate?.type === 'operating-cost' || selectedTemplate?.type === 'cost-ranking') && operatingCost && operatingCost.vehicles.length === 0) {
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">🧮</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Aucune dépense ni relevé compteur sur cette période</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              Ce rapport s'appuie sur les pleins (avec leur relevé compteur), les entretiens, les réparations
+              et les autres dépenses saisis. Élargissez la période ou saisissez des dépenses.
+            </p>
+          </div>
+        } @else if ((selectedTemplate?.type === 'operating-cost' || selectedTemplate?.type === 'cost-ranking') && operatingCost) {
+          <!-- ========== R1 COÛT D'EXPLOITATION RÉEL / R3 VÉHICULES LES PLUS COÛTEUX (bloc partagé) ========== -->
+          <div class="monthly-cost-report-workspace cost-report-workspace">
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+
+            <div class="stats-cards-row">
+              <div class="stat-card">
+                <span class="stat-label">Coût total d'exploitation</span>
+                <span class="stat-value">{{ formatCurrency(operatingCost.totalCost) }}</span>
+                <span class="stat-sub">Carburant {{ formatCurrency(operatingCost.totalFuelCost) }} &bull; Entretiens {{ formatCurrency(operatingCost.totalMaintenanceCost) }} &bull; Réparations {{ formatCurrency(operatingCost.totalRepairCost) }} &bull; Autres {{ formatCurrency(operatingCost.totalOtherCost) }}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Kilométrage total (km)</span>
+                <span class="stat-value">{{ formatNumber(operatingCost.totalKm) }} km</span>
+                <span class="stat-sub" *ngIf="operatingCost.vehiclesWithoutDistance > 0">{{ operatingCost.vehiclesWithoutDistance }} véhicule(s) sans kilométrage mesurable</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Coût moyen exploitation ({{ getCurrencyCode() }}/km)</span>
+                <span class="stat-value accent">{{ formatCostPerKm(operatingCost.averageCostPerKm) }} <small>{{ getCurrencyCode() }}/km</small></span>
+                <span class="stat-sub">Moyenne de la flotte</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Véhicules analysés</span>
+                <span class="stat-value">{{ operatingCost.vehicleCount }}</span>
+                <span class="stat-sub">sur {{ operatingCost.fleetSize }} véhicule(s) du périmètre</span>
+              </div>
+            </div>
+
+            <div class="cost-two-col">
+              <!-- Tableau par véhicule -->
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">{{ isRanking ? 'Top 10 — Classement des véhicules les plus coûteux' : 'Détail par véhicule' }}</span>
+                  <span class="dept-summary">{{ operatingCost.vehicles.length }} véhicule(s)</span>
+                </div>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table cost-table">
+                    <thead>
+                      <tr>
+                        @if (isRanking) {
+                          <th class="rank-col">#</th>
+                          <th>Véhicule</th>
+                          <th class="num">Kilométrage (km)</th>
+                          <th class="num">Coût total</th>
+                          <th class="num">Coût {{ getCurrencyCode() }}/km</th>
+                          <th class="num">Carburant</th>
+                          <th class="num">Entretien</th>
+                          <th class="num">Réparations</th>
+                          <th class="num">Autres dépenses</th>
+                        } @else {
+                          <th>Véhicule</th>
+                          <th class="num">Kilométrage (km)</th>
+                          <th class="num">Carburant</th>
+                          <th class="num">Entretiens</th>
+                          <th class="num">Réparations</th>
+                          <th class="num">Autres dépenses</th>
+                          <th class="num">Coût total</th>
+                          <th class="num">Coût {{ getCurrencyCode() }}/km</th>
+                        }
+                        <th class="num">Écart vs moyenne</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (v of operatingCost.vehicles; track v.vehicleId) {
+                        <tr [class.muted]="v.costPerKm == null">
+                          @if (isRanking) {
+                            <td class="rank-cell">{{ v.rank }}</td>
+                            <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                            <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
+                            <td class="num total-cell">{{ formatCurrency(v.totalCost) }}</td>
+                            <td class="num">{{ formatCostPerKm(v.costPerKm) }}</td>
+                            <td class="num">{{ formatCurrency(v.fuelCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.maintenanceCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.repairCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.otherCost) }}</td>
+                          } @else {
+                            <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                            <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
+                            <td class="num">{{ formatCurrency(v.fuelCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.maintenanceCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.repairCost) }}</td>
+                            <td class="num">{{ formatCurrency(v.otherCost) }}</td>
+                            <td class="num total-cell">{{ formatCurrency(v.totalCost) }}</td>
+                            <td class="num">{{ formatCostPerKm(v.costPerKm) }}</td>
+                          }
+                          <td class="num deviation" [ngClass]="deviationClass(v.deviationFromAveragePct)">{{ formatSignedPct(v.deviationFromAveragePct) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        @if (isRanking) {
+                          <td colspan="2" title="Totaux et moyenne calculés sur tout le parc analysé"><strong>TOTAL / MOYENNE</strong></td>
+                          <td class="num"><strong>{{ formatNumber(operatingCost.totalKm) }}</strong></td>
+                          <td class="num total-cell"><strong>{{ formatCurrency(operatingCost.totalCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCostPerKm(operatingCost.averageCostPerKm) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalFuelCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalMaintenanceCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalRepairCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalOtherCost) }}</strong></td>
+                        } @else {
+                          <td><strong>TOTAL / MOYENNE</strong></td>
+                          <td class="num"><strong>{{ formatNumber(operatingCost.totalKm) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalFuelCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalMaintenanceCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalRepairCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(operatingCost.totalOtherCost) }}</strong></td>
+                          <td class="num total-cell"><strong>{{ formatCurrency(operatingCost.totalCost) }}</strong></td>
+                          <td class="num"><strong>{{ formatCostPerKm(operatingCost.averageCostPerKm) }}</strong></td>
+                        }
+                        <td class="num">—</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Barres horizontales + ligne « Moyenne flotte » -->
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Classement par coût d'exploitation ({{ getCurrencyCode() }}/km)</span>
+                </div>
+                <div class="cost-chart-box" [style.height.px]="operatingCostChartHeight()">
+                  <canvas #operatingCostCanvas></canvas>
+                </div>
+                @if (!hasOperatingCostChartData()) {
+                  <div class="ai-no-data">Aucun véhicule avec un kilométrage mesurable : le coût au km ne peut pas être classé.</div>
+                }
+              </div>
+            </div>
+
+            <div class="report-note">
+              <span>ℹ️</span>
+              <span>{{ operatingCost.distanceNote }} La moyenne de la flotte est pondérée : total des coûts des véhicules mesurables divisé par le total de leurs kilomètres. Les mensualités d'acquisition ne sont pas comptées (ce ne sont pas des dépenses d'exploitation).</span>
+            </div>
+          </div>
+        } @else if (selectedTemplate?.type === 'cost-evolution' && costEvolution && costEvolution.totalCost === 0) {
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">📉</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Aucune dépense sur cette période pour ce véhicule</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              {{ costEvolution.vehicleName }}{{ costEvolution.plate ? ' (' + costEvolution.plate + ')' : '' }} — {{ evolutionPeriodLabel() }}.
+              Élargissez la période ou saisissez des pleins, entretiens, réparations ou dépenses pour ce véhicule.
+            </p>
+          </div>
+        } @else if (selectedTemplate?.type === 'cost-evolution' && costEvolution) {
+          <!-- ========== R2 ÉVOLUTION DES COÛTS PAR VÉHICULE ========== -->
+          <div class="monthly-cost-report-workspace cost-report-workspace">
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+
+            <div class="cost-report-title">
+              {{ costEvolution.vehicleName }} <span class="plate-tag" *ngIf="costEvolution.plate">{{ costEvolution.plate }}</span>
+              <span class="cost-report-subtitle">&mdash; {{ evolutionPeriodLabel() }}<ng-container *ngIf="costEvolution.totalDistanceKm != null"> &bull; {{ formatNumber(costEvolution.totalDistanceKm) }} km parcourus</ng-container></span>
+            </div>
+
+            <div class="stats-cards-row">
+              <div class="stat-card">
+                <span class="stat-label">Coût total sur la période</span>
+                <span class="stat-value">{{ formatCurrency(costEvolution.totalCost) }}</span>
+                <span class="stat-sub">{{ costEvolution.months.length }} mois</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Coût moyen mensuel</span>
+                <span class="stat-value accent">{{ formatCurrency(costEvolution.averageMonthlyCost) }}</span>
+                <span class="stat-sub">Total divisé par le nombre de mois de la période</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Mois le plus élevé</span>
+                <span class="stat-value danger">{{ costEvolution.highestMonth ? costEvolution.highestMonth.monthName : '—' }}</span>
+                <span class="stat-sub" *ngIf="costEvolution.highestMonth">{{ formatCurrency(costEvolution.highestMonth.totalCost) }}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Mois le moins élevé</span>
+                <span class="stat-value success">{{ costEvolution.lowestMonth ? costEvolution.lowestMonth.monthName : '—' }}</span>
+                <span class="stat-sub" *ngIf="costEvolution.lowestMonth">{{ formatCurrency(costEvolution.lowestMonth.totalCost) }}</span>
+              </div>
+            </div>
+
+            <div class="cost-two-col">
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Évolution mensuelle des coûts</span>
+                  <span class="dept-summary">Cliquez sur un mois pour afficher son détail</span>
+                </div>
+                <div class="cost-chart-box" style="height:340px;">
+                  <canvas #evolutionCanvas></canvas>
+                </div>
+              </div>
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Répartition des coûts sur la période</span>
+                </div>
+                <div class="cost-chart-box" style="height:210px;">
+                  <canvas #evolutionDonutCanvas></canvas>
+                </div>
+                <div class="ai-cost-items cost-legend">
+                  @for (c of evolutionCategoryTotals(); track c.key) {
+                    <div class="ai-cost-item">
+                      <span class="ai-cost-dot" [style.background]="c.color"></span>
+                      <span class="ai-cost-lbl">{{ c.label }}</span>
+                      <span class="ai-cost-val">{{ formatCurrency(c.amount) }} <small>({{ formatPct(c.pct) }})</small></span>
+                    </div>
+                  }
+                </div>
+              </div>
+            </div>
+
+            <div class="cost-two-col">
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Tableau récapitulatif</span>
+                  <span class="dept-summary">Une ligne par mois &bull; cliquez pour sélectionner</span>
+                </div>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table cost-table">
+                    <thead>
+                      <tr>
+                        <th>Mois</th>
+                        <th class="num">Carburant</th>
+                        <th class="num">Entretien</th>
+                        <th class="num">Réparations</th>
+                        <th class="num">Autres dépenses</th>
+                        <th class="num">Total</th>
+                        <th class="num">Variation vs mois précédent</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (m of costEvolution.months; track (m.year + '-' + m.month)) {
+                        <tr class="clickable" [class.highlighted]="isSelectedEvolutionMonth(m)" [class.muted]="m.totalCost === 0" (click)="selectEvolutionMonth(m)">
+                          <td><strong>{{ m.monthName }}</strong></td>
+                          <td class="num">{{ formatCurrency(m.fuelCost) }}</td>
+                          <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
+                          <td class="num">{{ formatCurrency(m.repairCost) }}</td>
+                          <td class="num">{{ formatCurrency(m.otherCost) }}</td>
+                          <td class="num total-cell">{{ formatCurrency(m.totalCost) }}</td>
+                          <td class="num deviation" [ngClass]="deviationClass(m.variationPct)">{{ formatSignedPct(m.variationPct) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td><strong>TOTAL</strong></td>
+                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalFuelCost) }}</strong></td>
+                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalMaintenanceCost) }}</strong></td>
+                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalRepairCost) }}</strong></td>
+                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalOtherCost) }}</strong></td>
+                        <td class="num total-cell"><strong>{{ formatCurrency(costEvolution.totalCost) }}</strong></td>
+                        <td class="num">—</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Détail du mois sélectionné : {{ selectedEvolutionMonth ? selectedEvolutionMonth.monthName : '—' }}</span>
+                  <span class="dept-summary" *ngIf="selectedEvolutionMonth && selectedEvolutionMonth.distanceKm != null">{{ formatNumber(selectedEvolutionMonth.distanceKm) }} km ce mois</span>
+                </div>
+                @if (selectedEvolutionMonth) {
+                  <div class="table-wrapper">
+                    <table class="report-table monthly-cost-table cost-table">
+                      <thead>
+                        <tr>
+                          <th>Catégorie</th>
+                          <th class="num">Montant</th>
+                          <th class="num">% du total</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (c of evolutionMonthDetail(); track c.key) {
+                          <tr>
+                            <td><span class="ai-cost-dot" [style.background]="c.color" style="display:inline-block;margin-right:8px;vertical-align:middle;"></span>{{ c.label }}</td>
+                            <td class="num">{{ formatCurrency(c.amount) }}</td>
+                            <td class="num">{{ formatPct(c.pct) }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                      <tfoot>
+                        <tr class="dept-total-row">
+                          <td><strong>Total</strong></td>
+                          <td class="num total-cell"><strong>{{ formatCurrency(selectedEvolutionMonth.totalCost) }}</strong></td>
+                          <td class="num"><strong>{{ selectedEvolutionMonth.totalCost > 0 ? '100,0 %' : '—' }}</strong></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                } @else {
+                  <div class="ai-no-data">Cliquez sur un mois du graphe ou du tableau.</div>
+                }
+              </div>
+            </div>
+
+            <div class="report-note">
+              <span>ℹ️</span>
+              <span>Les mois sans dépense apparaissent à 0. La variation compare le total du mois au mois précédent (« — » pour le premier mois ou si le mois précédent est à 0). Carburant = pleins saisis, Entretien = coûts d'entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d'acquisition ne sont pas comptées.</span>
+            </div>
+          </div>
+        } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency && repairFrequency.totalInterventions === 0) {
+          <div class="report-empty-state" style="text-align:center;padding:60px 24px;color:#64748b;">
+            <div style="font-size:44px;margin-bottom:12px;">🔁</div>
+            <h3 style="margin:0 0 8px;color:#0f172a;font-weight:700;">Aucune réparation sur cette période</h3>
+            <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
+              Ce rapport compte les réparations saisies (menu Réparations) qui ne sont pas annulées.
+              Élargissez la période ou enregistrez les interventions réalisées.
+            </p>
+          </div>
+        } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency) {
+          <!-- ========== R4 FRÉQUENCE DES RÉPARATIONS ========== -->
+          <div class="monthly-cost-report-workspace cost-report-workspace">
+            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+
+            <div class="stats-cards-row">
+              <div class="stat-card">
+                <span class="stat-label">Total interventions</span>
+                <span class="stat-value">{{ repairFrequency.totalInterventions }}</span>
+                <span class="stat-sub">réparations non annulées</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Véhicules concernés</span>
+                <span class="stat-value">{{ repairFrequency.vehiclesConcerned }} / {{ repairFrequency.fleetSize }}</span>
+                <span class="stat-sub">{{ repairCoverageIsFull() ? '100 % du parc' : (repairFrequency.fleetSize > 0 ? formatPct(repairFrequency.vehiclesConcerned / repairFrequency.fleetSize * 100) + ' du parc' : '') }}</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Fréquence moyenne</span>
+                <span class="stat-value accent">{{ formatNumber(repairFrequency.averageInterventionsPerVehicle, 1) }} <small>interventions / véhicule</small></span>
+                <span class="stat-sub" *ngIf="repairFrequency.averageFrequencyPer1000Km != null">{{ formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) }} interv. / 1000 km</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Véhicule le plus fréquent</span>
+                <span class="stat-value danger">{{ repairFrequency.mostFrequentVehicle ? repairFrequency.mostFrequentVehicle.vehicleName : '—' }}</span>
+                <span class="stat-sub" *ngIf="repairFrequency.mostFrequentVehicle">{{ repairFrequency.mostFrequentVehicle.interventions }} interventions</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Véhicule le moins fréquent</span>
+                <span class="stat-value success">{{ repairFrequency.leastFrequentVehicle ? repairFrequency.leastFrequentVehicle.vehicleName : '—' }}</span>
+                <span class="stat-sub" *ngIf="repairFrequency.leastFrequentVehicle">{{ repairFrequency.leastFrequentVehicle.interventions }} intervention(s)</span>
+              </div>
+            </div>
+
+            <div class="cost-three-col">
+              <!-- Classement -->
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Classement des véhicules par fréquence de réparations</span>
+                </div>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table cost-table">
+                    <thead>
+                      <tr>
+                        <th class="rank-col">#</th>
+                        <th>Véhicule</th>
+                        <th class="num">Interventions (nb)</th>
+                        <th class="num">Kilométrage (km)</th>
+                        <th class="num">Fréquence (interv./1000 km)</th>
+                        <th class="num">Coût total réparations</th>
+                        <th class="num">Coût moyen / intervention</th>
+                        <th class="num">Écart vs moyenne</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (v of repairFrequency.vehicles; track v.vehicleId) {
+                        <tr [class.muted]="v.interventions === 0">
+                          <td class="rank-cell">{{ v.rank }}</td>
+                          <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                          <td class="num"><strong>{{ v.interventions }}</strong></td>
+                          <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}</td>
+                          <td class="num">{{ v.frequencyPer1000Km == null ? '—' : formatNumber(v.frequencyPer1000Km, 2) }}</td>
+                          <td class="num total-cell">{{ formatCurrency(v.totalCost) }}</td>
+                          <td class="num">{{ v.averageCostPerIntervention == null ? '—' : formatCurrency(v.averageCostPerIntervention) }}</td>
+                          <td class="num deviation" [ngClass]="deviationClass(v.deviationFromAveragePct)">{{ formatSignedPct(v.deviationFromAveragePct) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td colspan="2"><strong>TOTAL / MOYENNE</strong></td>
+                        <td class="num"><strong>{{ repairFrequency.totalInterventions }}</strong></td>
+                        <td class="num">—</td>
+                        <td class="num"><strong>{{ repairFrequency.averageFrequencyPer1000Km == null ? '—' : formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) }}</strong></td>
+                        <td class="num total-cell"><strong>{{ formatCurrency(repairFrequency.totalRepairCost) }}</strong></td>
+                        <td class="num"><strong>{{ repairFrequency.averageCostPerIntervention == null ? '—' : formatCurrency(repairFrequency.averageCostPerIntervention) }}</strong></td>
+                        <td class="num">—</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              <!-- Barres horizontales + moyenne -->
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Répartition des interventions par véhicule</span>
+                </div>
+                <div class="cost-chart-box" [style.height.px]="repairFreqChartHeight()">
+                  <canvas #repairFreqCanvas></canvas>
+                </div>
+              </div>
+
+              <!-- Donut par type + synthèse -->
+              <div class="cost-stack">
+                <div class="dept-group">
+                  <div class="dept-header">
+                    <span class="dept-badge">Répartition par type d'intervention</span>
+                  </div>
+                  <div class="cost-chart-box" style="height:200px;">
+                    <canvas #repairTypeCanvas></canvas>
+                  </div>
+                  <div class="ai-cost-items cost-legend">
+                    @for (t of repairFrequency.byType; track t.type) {
+                      <div class="ai-cost-item">
+                        <span class="ai-cost-dot" [style.background]="repairTypeColor(t.type)"></span>
+                        <span class="ai-cost-lbl">{{ t.label }}</span>
+                        <span class="ai-cost-val">{{ t.count }} <small>({{ formatPct(t.pct) }})</small></span>
+                      </div>
+                    }
+                    @if (!repairFrequency.byType.length) {
+                      <div class="ai-no-data">Aucun type d'intervention</div>
+                    }
+                  </div>
+                </div>
+                <div class="dept-group">
+                  <div class="dept-header">
+                    <span class="dept-badge">Synthèse</span>
+                  </div>
+                  <div class="cost-synthesis">
+                    <div class="cost-synthesis-row"><span>Véhicules avec fréquence &gt; moyenne</span><strong class="over">{{ repairFrequency.vehiclesAboveAverage }}</strong></div>
+                    <div class="cost-synthesis-row"><span>Véhicules avec fréquence &lt; moyenne</span><strong class="under">{{ repairFrequency.vehiclesBelowAverage }}</strong></div>
+                    <div class="cost-synthesis-row"><span>Coût total réparations</span><strong>{{ formatCurrency(repairFrequency.totalRepairCost) }}</strong></div>
+                    <div class="cost-synthesis-row"><span>Coût moyen par intervention</span><strong>{{ repairFrequency.averageCostPerIntervention == null ? '—' : formatCurrency(repairFrequency.averageCostPerIntervention) }}</strong></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Détail des interventions du véhicule le plus fréquent -->
+            @if (repairFrequency.mostFrequentVehicle) {
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Détail des interventions &mdash; {{ repairFrequency.mostFrequentVehicle.vehicleName }}{{ repairFrequency.mostFrequentVehicle.plate ? ' (' + repairFrequency.mostFrequentVehicle.plate + ')' : '' }} ({{ repairFrequency.mostFrequentVehicle.interventions }} interventions)</span>
+                  <span class="cost-badge">Véhicule le plus fréquent</span>
+                  <a class="repairs-link" [routerLink]="['/repairs']" [queryParams]="{ vehicleId: repairFrequency.mostFrequentVehicle.vehicleId }">Voir toutes les interventions &rarr;</a>
+                </div>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table cost-table">
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type d'intervention</th>
+                        <th>Description</th>
+                        <th>Fournisseur</th>
+                        <th class="num">Kilométrage</th>
+                        <th class="num">Coût</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (i of repairFrequency.mostFrequentVehicleInterventions; track i.repairId) {
+                        <tr>
+                          <td>{{ i.date | date:'dd/MM/yyyy' }}</td>
+                          <td><span class="ai-cost-dot" [style.background]="repairTypeColor(i.type)" style="display:inline-block;margin-right:6px;vertical-align:middle;"></span>{{ i.typeLabel }}<span class="inferred-tag" *ngIf="i.typeInferred" title="Type déduit de la description (aucun type saisi sur la réparation)">(déduit)</span></td>
+                          <td class="desc-cell">{{ i.description || '—' }}</td>
+                          <td>{{ i.supplierName || '—' }}</td>
+                          <td class="num">{{ i.mileageAtRepair == null ? '—' : formatNumber(i.mileageAtRepair) + ' km' }}</td>
+                          <td class="num total-cell">{{ formatCurrency(i.totalCost) }}</td>
+                        </tr>
+                      }
+                      @if (!repairFrequency.mostFrequentVehicleInterventions.length) {
+                        <tr><td colspan="6" class="ai-no-data">Aucune intervention détaillée</td></tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            }
+
+            <div class="report-note">
+              <span>ℹ️</span>
+              <span>Une intervention = une réparation saisie (non annulée) sur la période. La fréquence moyenne rapporte le total des interventions au nombre de véhicules du périmètre, y compris ceux sans intervention (grisés). La fréquence pour 1000 km utilise le kilométrage des relevés compteur (véhicules sans boîtier) ou des trajets GPS. Le type d'intervention est celui saisi sur la réparation ; à défaut il est déduit de la description (mention « déduit »).</span>
             </div>
           </div>
         } @else {

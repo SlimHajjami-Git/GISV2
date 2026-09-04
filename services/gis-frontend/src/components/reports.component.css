@@ -2511,3 +2511,60 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .export-btn-group { display: inline-flex; gap: 6px; flex-wrap: wrap; }
 .export-btn-group .export-btn-sm[disabled] { opacity: .5; cursor: not-allowed; }
 .report-toolbar-export { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+
+/* ==================== RAPPORTS DE COÛTS (04/09/2026) ====================
+   Coût d'exploitation, Évolution des coûts, Véhicules les plus coûteux,
+   Fréquence des réparations — réutilisent le workspace monthly-cost-report-workspace. */
+.cost-two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.cost-three-col {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr);
+  gap: 20px;
+  align-items: start;
+}
+.cost-stack { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+@media (max-width: 1400px) {
+  .cost-three-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .cost-three-col > .dept-group:first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 1100px) {
+  .cost-two-col, .cost-three-col { grid-template-columns: minmax(0, 1fr); }
+  .cost-three-col > .dept-group:first-child { grid-column: auto; }
+}
+.cost-chart-box { position: relative; width: 100%; padding: 12px 16px; box-sizing: border-box; }
+.cost-legend { padding: 0 16px 16px; margin: 0; }
+.cost-report-title { font-size: 15px; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cost-report-title .cost-report-subtitle { font-size: 13px; font-weight: 500; color: #64748b; }
+.cost-report-title .plate-tag { display: inline-block; background: #eff6ff; color: #3b82f6; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; border: 1px solid #dbeafe; }
+.monthly-cost-report-workspace .stat-card .stat-sub { font-size: 11px; color: #94a3b8; line-height: 1.35; }
+.monthly-cost-report-workspace .stat-card .stat-value small { font-size: 12px; font-weight: 600; color: #64748b; }
+.monthly-cost-report-workspace .stat-card .stat-value.success { color: #16a34a; }
+.cost-table th.rank-col { width: 36px; }
+.cost-table td.rank-cell { font-weight: 700; color: #64748b; }
+.cost-table td.deviation.over { color: #dc2626; font-weight: 600; }
+.cost-table td.deviation.under { color: #16a34a; font-weight: 600; }
+.cost-table tbody tr.muted td { color: #94a3b8; }
+.cost-table tbody tr.clickable { cursor: pointer; }
+.cost-table tbody tr.highlighted td { background: #eff6ff; }
+.cost-table tbody tr.highlighted td:first-child { box-shadow: inset 3px 0 0 #3b82f6; }
+.cost-table td.desc-cell { max-width: 320px; white-space: normal; color: #475569; }
+.cost-table .src-tag { display: inline-block; margin-left: 4px; color: #d97706; font-weight: 700; cursor: help; }
+.cost-synthesis { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; }
+.cost-synthesis-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: #475569; }
+.cost-synthesis-row strong { font-variant-numeric: tabular-nums; color: #1e293b; }
+.cost-synthesis-row strong.over { color: #dc2626; }
+.cost-synthesis-row strong.under { color: #16a34a; }
+.cost-badge { display: inline-block; background: #fee2e2; color: #b91c1c; border: 1px solid #fecaca; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.repairs-link { margin-left: auto; color: #2563eb; font-weight: 600; text-decoration: none; font-size: 13px; white-space: nowrap; }
+.repairs-link:hover { text-decoration: underline; }
+.inferred-tag { color: #94a3b8; font-size: 11px; margin-left: 4px; font-style: italic; }
+.report-note { display: flex; gap: 8px; align-items: flex-start; padding: 12px 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; color: #1e3a8a; font-size: 12.5px; line-height: 1.5; }
+@media (max-width: 900px) {
+  .dept-header { flex-wrap: wrap; }
+  .repairs-link { margin-left: 0; }
+}

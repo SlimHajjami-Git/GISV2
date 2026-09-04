@@ -47,6 +47,15 @@ public class Repair
     [Column("status")]
     public string Status { get; set; } = "completed"; // pending, in_progress, completed, cancelled
 
+    /// <summary>
+    /// Type d'intervention (migration 043, nullable) : electrique, mecanique,
+    /// freinage, pneumatique, carrosserie, autre. Null sur l'existant — le rapport
+    /// « Fréquence des réparations » le déduit alors de la description.
+    /// </summary>
+    [MaxLength(30)]
+    [Column("repair_type")]
+    public string? RepairType { get; set; }
+
     [MaxLength(100)]
     [Column("invoice_number")]
     public string? InvoiceNumber { get; set; }

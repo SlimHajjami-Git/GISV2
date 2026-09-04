@@ -1503,6 +1503,39 @@ export class ApiService {
     return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/monthly-costs`, { headers: this.getHeaders(), params });
   }
 
+  // ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================
+  // Quatre rapports sous /api/reports/costs/… (gating : reportCosts / canReportCosts).
+  // Les dates partent en YYYY-MM-DD ; le backend borne la période à [start 00:00, end 23:59:59].
+
+  /** R1 — coût d'exploitation réel par véhicule (carburant + entretiens + réparations + autres) et au km. */
+  getOperatingCostReport(startDate: string, endDate: string, vehicleId?: number, departmentId?: number): Observable<OperatingCostReportDto> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    if (departmentId) params = params.set('departmentId', departmentId.toString());
+    return this.http.get<OperatingCostReportDto>(`${this.API_URL}/reports/costs/operating`, { headers: this.getHeaders(), params });
+  }
+
+  /** R2 — évolution mensuelle des coûts d'un véhicule (un élément par mois de la plage, mois vides à 0). */
+  getVehicleCostEvolution(vehicleId: number, startDate: string, endDate: string): Observable<VehicleCostEvolutionDto> {
+    const params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+    return this.http.get<VehicleCostEvolutionDto>(`${this.API_URL}/reports/costs/evolution/${vehicleId}`, { headers: this.getHeaders(), params });
+  }
+
+  /** R3 — classement des véhicules les plus coûteux (KPI sur tout le parc, `vehicles` tronqué au top N). */
+  getVehicleCostRanking(startDate: string, endDate: string, top = 10, departmentId?: number): Observable<OperatingCostReportDto> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate).set('top', top.toString());
+    if (departmentId) params = params.set('departmentId', departmentId.toString());
+    return this.http.get<OperatingCostReportDto>(`${this.API_URL}/reports/costs/ranking`, { headers: this.getHeaders(), params });
+  }
+
+  /** R4 — fréquence des réparations par véhicule (interventions, fréquence pour 1000 km, répartition par type). */
+  getRepairFrequencyReport(startDate: string, endDate: string, vehicleId?: number, departmentId?: number): Observable<RepairFrequencyReportDto> {
+    let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
+    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
+    if (departmentId) params = params.set('departmentId', departmentId.toString());
+    return this.http.get<RepairFrequencyReportDto>(`${this.API_URL}/reports/costs/repair-frequency`, { headers: this.getHeaders(), params });
+  }
+
   // ==================== MILEAGE PERIOD REPORTS (Hour/Day/Month) ====================
 
   getMileagePeriodReport(
@@ -2617,6 +2650,156 @@ export interface VehicleMonthlyCost {
   maintenanceRepairPer100Km: number;
   consumptionPer100Km: number;
   consumptionPrPer100Km: number;
+}
+
+// ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================
+// Miroir des DTO backend GetOperatingCostReport / GetVehicleCostEvolution /
+// GetVehicleCostRanking / GetRepairFrequencyReport. Montants en 2 décimales,
+// coût au km en 3, pourcentages en 1 ; `null` = non calculable (pas de distance).
+
+export type DistanceSource = 'odometer' | 'gps' | 'none';
+
+/** R1 et R3 partagent ce DTO (R3 : KPI sur tout le parc, `vehicles` = top N). */
+export interface OperatingCostReportDto {
+  startDate: string;
+  endDate: string;
+  generatedAt: string;
+  totalCost: number;
+  /** Σ des distances mesurables (km). */
+  totalKm: number;
+  /** Moyenne pondérée du parc : Σ coûts des véhicules mesurables / Σ km. */
+  averageCostPerKm: number | null;
+  vehicleCount: number;
+  fleetSize: number;
+  vehiclesWithoutDistance: number;
+  totalFuelCost: number;
+  totalMaintenanceCost: number;
+  totalRepairCost: number;
+  totalOtherCost: number;
+  /** Phrase d'origine du kilométrage (relevés compteur / trajets GPS), affichée en note. */
+  distanceNote: string;
+  vehicles: VehicleOperatingCostDto[];
+}
+
+export interface VehicleOperatingCostDto {
+  rank: number;
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  departmentName: string | null;
+  distanceKm: number | null;
+  distanceSource: DistanceSource;
+  reliableDistance: boolean;
+  ignoredOdometerReadings: number;
+  odometerBreaks: number;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+  /** (costPerKm − moyenne) / moyenne × 100 ; null si l'un des deux est null. */
+  deviationFromAveragePct: number | null;
+}
+
+/** R2 — un véhicule, un élément par mois de la plage (ordre chronologique). */
+export interface VehicleCostEvolutionDto {
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  startDate: string;
+  endDate: string;
+  generatedAt: string;
+  totalCost: number;
+  /** totalCost / nombre de mois de la plage. */
+  averageMonthlyCost: number;
+  highestMonth: MonthlyVehicleCostDto | null;
+  lowestMonth: MonthlyVehicleCostDto | null;
+  totalFuelCost: number;
+  totalMaintenanceCost: number;
+  totalRepairCost: number;
+  totalOtherCost: number;
+  totalDistanceKm: number | null;
+  distanceSource: string;
+  months: MonthlyVehicleCostDto[];
+}
+
+export interface MonthlyVehicleCostDto {
+  year: number;
+  month: number;
+  /** fr-FR « Sept. 2025 ». */
+  monthName: string;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  distanceKm: number | null;
+  /** Variation vs mois précédent (%) ; null pour le 1er mois ou si le précédent est à 0. */
+  variationPct: number | null;
+}
+
+/** R4 — fréquence des réparations (réparations non annulées). */
+export interface RepairFrequencyReportDto {
+  startDate: string;
+  endDate: string;
+  generatedAt: string;
+  totalInterventions: number;
+  vehiclesConcerned: number;
+  fleetSize: number;
+  /** totalInterventions / fleetSize. */
+  averageInterventionsPerVehicle: number;
+  averageFrequencyPer1000Km: number | null;
+  totalRepairCost: number;
+  averageCostPerIntervention: number | null;
+  mostFrequentVehicle: VehicleRepairFrequencyDto | null;
+  leastFrequentVehicle: VehicleRepairFrequencyDto | null;
+  vehiclesAboveAverage: number;
+  vehiclesBelowAverage: number;
+  /** Tout le périmètre, 0 intervention inclus, tri interventions desc puis coût desc. */
+  vehicles: VehicleRepairFrequencyDto[];
+  /** Donut, tri count desc. */
+  byType: RepairTypeShareDto[];
+  /** Interventions du véhicule le plus fréquent, date desc, max 50. */
+  mostFrequentVehicleInterventions: RepairInterventionDto[];
+}
+
+export interface VehicleRepairFrequencyDto {
+  rank: number;
+  vehicleId: number;
+  vehicleName: string;
+  plate: string | null;
+  interventions: number;
+  distanceKm: number | null;
+  distanceSource: string;
+  /** interventions / km × 1000 (2 décimales). */
+  frequencyPer1000Km: number | null;
+  totalCost: number;
+  averageCostPerIntervention: number | null;
+  deviationFromAveragePct: number | null;
+}
+
+export interface RepairTypeShareDto {
+  type: string;
+  label: string;
+  count: number;
+  totalCost: number;
+  pct: number;
+}
+
+export interface RepairInterventionDto {
+  repairId: number;
+  date: string;
+  type: string;
+  typeLabel: string;
+  /** true quand le type a été déduit de la description (aucun repairType saisi). */
+  typeInferred: boolean;
+  description: string | null;
+  supplierName: string | null;
+  mileageAtRepair: number | null;
+  totalCost: number;
+  reference: string;
+  status: string;
 }
 
 export interface ExecutiveSummary {
@@ -3754,6 +3937,8 @@ export interface RepairDto {
   status: string;
   invoiceNumber?: string;
   notes?: string;
+  /** Type d'intervention (electrique | mecanique | freinage | pneumatique | carrosserie | autre), optionnel. */
+  repairType?: string | null;
   parts: RepairPartDto[];
   createdAt?: string;
   updatedAt?: string;
@@ -3788,6 +3973,7 @@ export interface CreateRepairRequest {
   laborCost: number;
   invoiceNumber?: string;
   notes?: string;
+  repairType?: string | null;
   parts: CreateRepairPartRequest[];
 }
 
@@ -3809,6 +3995,7 @@ export interface UpdateRepairRequest {
   status: string;
   invoiceNumber?: string;
   notes?: string;
+  repairType?: string | null;
   parts: CreateRepairPartRequest[];
 }
 

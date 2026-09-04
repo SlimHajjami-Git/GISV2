@@ -18,7 +18,8 @@ public record RepairDto(
     string? InvoiceNumber,
     string? Notes,
     DateTime CreatedAt,
-    List<RepairPartDto> Parts
+    List<RepairPartDto> Parts,
+    string? RepairType = null            // electrique | mecanique | freinage | pneumatique | carrosserie | autre
 );
 
 public record RepairPartDto(

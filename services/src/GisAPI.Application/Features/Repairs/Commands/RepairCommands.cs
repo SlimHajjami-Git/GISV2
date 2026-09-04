@@ -11,7 +11,8 @@ public record CreateRepairCommand(
     decimal LaborCost,
     string? InvoiceNumber,
     string? Notes,
-    List<CreateRepairPartRequest> Parts
+    List<CreateRepairPartRequest> Parts,
+    string? RepairType = null            // electrique | mecanique | freinage | pneumatique | carrosserie | autre
 ) : IRequest<int>;
 
 public record UpdateRepairCommand(
@@ -25,7 +26,8 @@ public record UpdateRepairCommand(
     string Status,
     string? InvoiceNumber,
     string? Notes,
-    List<CreateRepairPartRequest> Parts
+    List<CreateRepairPartRequest> Parts,
+    string? RepairType = null
 ) : IRequest<bool>;
 
 public record DeleteRepairCommand(int Id) : IRequest<bool>;

@@ -28,6 +28,8 @@ export interface ReportFilterState {
   expandedSections: { [key: string]: boolean };
   drivingBehaviorFilters: { [key: string]: boolean };
   aiFleetPeriod: string;
+  /** Pilule de période du rapport « Évolution des coûts » (optionnel : états déjà stockés sans). */
+  selectedEvolutionPeriod?: string;
 }
 
 const STORAGE_KEY = 'gisv2_report_filters';

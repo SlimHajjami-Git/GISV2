@@ -256,6 +256,14 @@ export class PermissionService {
       // Analyse par segments : bâtie sur la jauge remontée par le boîtier,
       // même dépendance GPS que les deux rapports ci-dessus → même drapeau.
       'consumption_analysis': 'reportFuel',
+      // Rapports de coûts du 04/09/2026 (exploitation, évolution, classement,
+      // fréquence des réparations) : analyse des dépenses saisies, sans GPS
+      // → même drapeau que « Réparations véhicules » (report_costs, à true
+      // sur les cinq plans).
+      'operating_cost': 'reportCosts',
+      'cost_evolution': 'reportCosts',
+      'cost_ranking': 'reportCosts',
+      'repair_frequency': 'reportCosts',
       'ai_fleet': 'advancedReports'
     };
 
@@ -290,7 +298,11 @@ export class PermissionService {
         'speed_infraction': 'canReportSpeedInfraction',
         'driving_behavior': 'canReportDrivingBehavior',
         'monthly_costs': 'canReportMonthlyCosts',
-        'monthly_fuel': 'canReportMonthlyCosts'
+        'monthly_fuel': 'canReportMonthlyCosts',
+        'operating_cost': 'canReportCosts',
+        'cost_evolution': 'canReportCosts',
+        'cost_ranking': 'canReportCosts',
+        'repair_frequency': 'canReportCosts'
       };
 
       const userPermKey = userReportMapping[reportKey];

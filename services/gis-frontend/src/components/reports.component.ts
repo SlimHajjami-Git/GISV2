@@ -1,8 +1,8 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDetectorRef, ApplicationRef, HostListener, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod } from '../services/api.service';
+import { Router, RouterLink } from '@angular/router';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod, OperatingCostReportDto, VehicleOperatingCostDto, VehicleCostEvolutionDto, MonthlyVehicleCostDto, RepairFrequencyReportDto, VehicleRepairFrequencyDto } from '../services/api.service';
 import { Subject, forkJoin, of, takeUntil, catchError } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -24,7 +24,7 @@ Chart.register(...registerables);
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent, ...USER_PREF_PIPES],
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.css']
 })
@@ -41,6 +41,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('comparisonCanvas') comparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('comparisonConsoCanvas') comparisonConsoCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('consumptionCanvas') consumptionCanvasRef?: ElementRef<HTMLCanvasElement>;
+  // Rapports de coûts (04/09/2026) — canvases sous @if, dessinés après detectChanges() + setTimeout
+  @ViewChild('operatingCostCanvas') operatingCostCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('evolutionCanvas') evolutionCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('evolutionDonutCanvas') evolutionDonutCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('repairFreqCanvas') repairFreqCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('repairTypeCanvas') repairTypeCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
   // Map popup state
@@ -187,6 +193,41 @@ export class ReportsComponent implements OnInit, OnDestroy {
       description: 'Litres consommés par département',
       category: 'costs'
     },
+    // Rapports de coûts (recette client 04/09/2026) — offre GPA sans GPS :
+    // dépenses saisies (carburant, entretiens, réparations, autres) rapportées
+    // au kilométrage (relevés compteur ou trajets GPS). Endpoints /api/reports/costs/…
+    {
+      id: '19',
+      name: "Coût d'exploitation réel",
+      type: 'operating-cost',
+      icon: '🧮',
+      description: 'Carburant + entretiens + réparations + autres, par véhicule et au km',
+      category: 'costs'
+    },
+    {
+      id: '20',
+      name: 'Évolution des coûts',
+      type: 'cost-evolution',
+      icon: '📉',
+      description: 'Un véhicule, mois par mois, par catégorie de dépense',
+      category: 'costs'
+    },
+    {
+      id: '21',
+      name: 'Véhicules les plus coûteux',
+      type: 'cost-ranking',
+      icon: '🏆',
+      description: 'Top 10 du parc par coût au km',
+      category: 'costs'
+    },
+    {
+      id: '22',
+      name: 'Fréquence des réparations',
+      type: 'repair-frequency',
+      icon: '🔁',
+      description: 'Interventions par véhicule et pour 1000 km',
+      category: 'costs'
+    },
     // Statistics Reports
     {
       id: '9',
@@ -266,7 +307,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     { value: 'custom', label: 'Personnalisé' }
   ];
   selectedCostPeriod = 'month';
-  
+
+  // Période du rapport « Évolution des coûts » (R2) : 12 mois glissants par défaut
+  // (1er du mois M-11 → aujourd'hui), comme le défaut du backend.
+  evolutionPeriods = [
+    { value: 'last12', label: '12 derniers mois' },
+    { value: 'thisYear', label: 'Cette année' },
+    { value: 'lastYear', label: 'Année précédente' },
+    { value: 'custom', label: 'Personnalisé' }
+  ];
+  selectedEvolutionPeriod = 'last12';
+
   // Speed limit for speed-infraction report
   speedLimit = 90;
   
@@ -344,6 +395,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
   monthlyCostReport: MonthlyCostReport | null = null;
   monthlyCostReportType: 'costs' | 'fuel' = 'costs';
 
+  // Rapports de coûts (04/09/2026). R1 « Coût d'exploitation » et R3 « Véhicules
+  // les plus coûteux » partagent le même DTO et le même bloc HTML (drapeau isRanking).
+  operatingCost: OperatingCostReportDto | null = null;
+  costEvolution: VehicleCostEvolutionDto | null = null;
+  /** Mois cliqué (graphe ou tableau) dont le détail par catégorie est affiché ; défaut = mois le plus élevé. */
+  selectedEvolutionMonth: MonthlyVehicleCostDto | null = null;
+  repairFrequency: RepairFrequencyReportDto | null = null;
+
   // Carburant réel vs GPS : courbe du niveau de réservoir (jauge) avec les pleins
   // réellement facturés posés dessus (single vehicle). Une remontée sans cercle = plein non déclaré.
   comparisonAudit: FuelAuditReport | null = null;
@@ -420,6 +479,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private comparisonChart?: Chart;
   private comparisonConsoChart?: Chart;
   private consumptionChart?: Chart;
+  // Rapports de coûts — détruits dans destroyAllCharts(), en tête d'executeReport() et de chaque draw*()
+  private operatingCostChart?: Chart;
+  private evolutionChart?: Chart;
+  private evolutionDonutChart?: Chart;
+  private repairFreqChart?: Chart;
+  private repairTypeChart?: Chart;
 
   constructor(
     private router: Router,
@@ -631,6 +696,69 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /** Pilules du rapport « Évolution des coûts » (R2), sur le modèle de selectCostPeriod. */
+  selectEvolutionPeriod(period: string) {
+    this.selectedEvolutionPeriod = period;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch (period) {
+      case 'last12': {
+        const start = new Date(today.getFullYear(), today.getMonth() - 11, 1);
+        this.fromDate = this.toDateTime(start);
+        this.toDate = this.toDateTime(now);
+        break;
+      }
+      case 'thisYear':
+        this.fromDate = this.toDateTime(new Date(today.getFullYear(), 0, 1));
+        this.toDate = this.toDateTime(now);
+        break;
+      case 'lastYear': {
+        const y = today.getFullYear() - 1;
+        this.fromDate = this.toDateTime(new Date(y, 0, 1));
+        this.toDate = this.toDateTime(new Date(y, 11, 31, 23, 59));
+        break;
+      }
+      case 'custom':
+        if (this.customStartDate && this.customEndDate) {
+          this.fromDate = this.toDateTime(new Date(this.customStartDate));
+          this.toDate = this.toDateTime(new Date(this.customEndDate + 'T23:59:59'));
+        }
+        break;
+    }
+  }
+
+  onEvolutionPeriodChange(period: string) {
+    this.selectEvolutionPeriod(period);
+    if (this.selectedTemplateId && !this.loading) {
+      this.executeReport();
+    }
+  }
+
+  /** Les quatre rapports de coûts du 04/09/2026 (exclus des pilules GPS). */
+  isCostReportType(): boolean {
+    const t = this.selectedTemplate?.type;
+    return t === 'operating-cost' || t === 'cost-evolution' || t === 'cost-ranking' || t === 'repair-frequency';
+  }
+
+  /** Ceux qui utilisent les pilules coûts « Ce mois / Trimestre / Année / Personnalisé » (R2 a les siennes). */
+  isCostPeriodReport(): boolean {
+    const t = this.selectedTemplate?.type;
+    return t === 'operating-cost' || t === 'cost-ranking' || t === 'repair-frequency';
+  }
+
+  /** R3 : même bloc HTML que R1, colonne # en tête et KPI sur tout le parc. */
+  get isRanking(): boolean {
+    return this.selectedTemplate?.type === 'cost-ranking';
+  }
+
+  /** Barre latérale : le filtre véhicule n'a pas de sens pour le classement (tout le parc)
+   *  ni comme case à cocher pour l'évolution (véhicule obligatoire, select toujours visible). */
+  showsVehicleFilter(): boolean {
+    const t = this.selectedTemplate?.type;
+    return t !== 'cost-evolution' && t !== 'cost-ranking';
+  }
+
 
   toDateTime(date: Date): string {
     // Format as local time (not UTC) - DB stores local time
@@ -767,6 +895,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
+    this.destroyCostReportCharts();
+  }
+
+  /** Les cinq graphes des rapports de coûts (R1/R3, R2 ×2, R4 ×2). */
+  private destroyCostReportCharts() {
+    if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
+    if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
+    if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+    if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
+    if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
   }
 
   // Pagination getters
@@ -915,11 +1053,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // Reports that require a single vehicle
-    const singleVehicleReports = ['fuel', 'daily', 'consumption-analysis', 'fuel-comparison'];
+    const singleVehicleReports = ['fuel', 'daily', 'consumption-analysis', 'fuel-comparison', 'cost-evolution'];
     if (!this.selectedVehicleId && singleVehicleReports.includes(this.selectedTemplate.type)) {
       console.warn('No vehicle selected for single-vehicle report');
       this.tableData = [];
       this.chartData = [];
+      // Évolution des coûts : sans véhicule, le bloc dédié ne doit pas rejouer le rapport précédent.
+      this.costEvolution = null;
+      this.selectedEvolutionMonth = null;
       this.statisticsData = { 'Erreur': 'Veuillez sélectionner un véhicule pour ce type de rapport' };
       this.reportGenerated = true;
       this.loading = false;
@@ -938,9 +1079,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.comparisonConsumption = null;
     this.consumptionReport = null;
     this.consumptionByTonnage = null;
+    this.operatingCost = null;
+    this.costEvolution = null;
+    this.selectedEvolutionMonth = null;
+    this.repairFrequency = null;
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
+    this.destroyCostReportCharts();
 
     // Re-compute dates from the selected period to ensure fresh timestamps
     if (this.selectedStandardPeriod !== 'custom') {
@@ -957,8 +1103,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
 
     // For cost/maintenance reports, compute dates from cost period
-    if (this.selectedTemplate.type === 'costs' || this.selectedTemplate.type === 'maintenance') {
+    if (this.selectedTemplate.type === 'costs' || this.selectedTemplate.type === 'maintenance' || this.isCostPeriodReport()) {
       this.selectCostPeriod(this.selectedCostPeriod);
+      startDate = this.fromDate ? new Date(this.fromDate) : undefined;
+      endDate = this.toDate ? new Date(this.toDate) : undefined;
+    }
+
+    // Évolution des coûts (R2) : pilules dédiées « 12 derniers mois / Cette année / Année précédente / Personnalisé »
+    if (this.selectedTemplate.type === 'cost-evolution') {
+      this.selectEvolutionPeriod(this.selectedEvolutionPeriod);
       startDate = this.fromDate ? new Date(this.fromDate) : undefined;
       endDate = this.toDate ? new Date(this.toDate) : undefined;
     }
@@ -1056,6 +1209,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Handle fuel estimation report
     if (this.selectedTemplate.type === 'fuel-estimation') {
       this.executeFuelEstimationReport(vehicleId, startDate, endDate);
+      return;
+    }
+
+    // Rapports de coûts (04/09/2026) — chacun a sa branche avec return : sans ça un
+    // nouveau type tombe dans le fallback GPS ci-dessous (historique de positions de
+    // tout le parc, inutile et lent pour un client GPA).
+    if (this.selectedTemplate.type === 'operating-cost') {
+      this.executeOperatingCostReport(vehicleId, startDate, endDate, false);
+      return;
+    }
+    if (this.selectedTemplate.type === 'cost-ranking') {
+      // Classement : tout le parc, le filtre véhicule n'a pas de sens ici.
+      this.executeOperatingCostReport(undefined, startDate, endDate, true);
+      return;
+    }
+    if (this.selectedTemplate.type === 'cost-evolution') {
+      this.executeCostEvolutionReport(vehicleId!, startDate, endDate);
+      return;
+    }
+    if (this.selectedTemplate.type === 'repair-frequency') {
+      this.executeRepairFrequencyReport(vehicleId, startDate, endDate);
       return;
     }
 
@@ -5548,6 +5722,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport();
     if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
     if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
+    if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange);
+    if (type === 'cost-evolution' && this.costEvolution) return this.buildCostEvolutionExport(vehicleName, dateRange);
+    if (type === 'repair-frequency' && this.repairFrequency) return this.buildRepairFrequencyExport(vehicleName, dateRange);
 
     const allVehicles = !this.selectedVehicleId;
     const options: any = { allVehicles };
@@ -7499,6 +7676,806 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  // ==================== RAPPORTS DE COÛTS (recette client 04/09/2026) ====================
+  // R1 « Coût d'exploitation réel » et R3 « Véhicules les plus coûteux » partagent le DTO
+  // OperatingCostReportDto et le bloc HTML (drapeau isRanking) ; R2 « Évolution des coûts »
+  // (un véhicule, mois par mois) ; R4 « Fréquence des réparations ». Motif commun : retour
+  // HTTP dans ngZone.run + cdr.detectChanges(), canvases sous @if dessinés dans un
+  // setTimeout(…, 120), chart détruit en tête de chaque draw*().
+
+  /** Couleurs des quatre catégories de dépense (barres empilées, donut, légendes, détail du mois). */
+  readonly costCategoryColors = { fuel: '#3b82f6', maintenance: '#22c55e', repair: '#f97316', other: '#a855f7', total: '#1e293b' };
+
+  private readonly repairTypeColors: Record<string, string> = {
+    electrique: '#eab308',
+    mecanique: '#3b82f6',
+    freinage: '#ef4444',
+    pneumatique: '#0f172a',
+    carrosserie: '#a855f7',
+    autre: '#94a3b8'
+  };
+
+  repairTypeColor(type: string): string {
+    return this.repairTypeColors[type] || '#94a3b8';
+  }
+
+  /** Coût au km : 3 décimales, « — » quand non calculable (aucune distance mesurable). */
+  formatCostPerKm(value: number | null | undefined): string {
+    return value == null ? '—' : Number(value).toFixed(3);
+  }
+
+  /** Pourcentage signé à 1 décimale (« +12,5 % »), « — » si null. */
+  formatSignedPct(value: number | null | undefined): string {
+    if (value == null) return '—';
+    const n = Number(value);
+    return `${n > 0 ? '+' : ''}${n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+  }
+
+  /** Pourcentage non signé à 1 décimale, « — » si null. */
+  formatPct(value: number | null | undefined): string {
+    return value == null ? '—' : `${Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+  }
+
+  /** Classe CSS d'un écart vs moyenne : rouge au-dessus (over), vert en dessous (under). */
+  deviationClass(value: number | null | undefined): string {
+    if (value == null || Number(value) === 0) return '';
+    return Number(value) > 0 ? 'over' : 'under';
+  }
+
+  /** Info-bulle de la colonne Kilométrage : origine (compteur / GPS) et fiabilité de la distance. */
+  distanceSourceTitle(v: { distanceSource: string; reliableDistance?: boolean; ignoredOdometerReadings?: number; odometerBreaks?: number }): string {
+    switch (v.distanceSource) {
+      case 'gps':
+        return 'Kilométrage issu des trajets GPS';
+      case 'odometer': {
+        let s = 'Kilométrage issu des relevés compteur saisis aux pleins';
+        if (v.reliableDistance === false) s += ' (incertain)';
+        if (v.ignoredOdometerReadings) s += ` — ${v.ignoredOdometerReadings} relevé(s) ignoré(s)`;
+        if (v.odometerBreaks) s += ` — ${v.odometerBreaks} rupture(s) de compteur`;
+        return s;
+      }
+      default:
+        return 'Aucun kilométrage mesurable sur la période';
+    }
+  }
+
+  /** Bornes YYYY-MM-DD envoyées au backend ; repli = mois courant si les dates manquent. */
+  private costReportRange(startDate?: Date, endDate?: Date): { from: string; to: string } {
+    const now = new Date();
+    const from = startDate ?? new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = endDate ?? now;
+    return { from: this.toLocalDate(from), to: this.toLocalDate(to) };
+  }
+
+  /** Remise à zéro des données génériques : les blocs de coûts n'utilisent ni tableData ni chartData. */
+  private resetGenericReportData() {
+    this.tableData = [];
+    this.chartData = [];
+    this.secondaryChartData = [];
+    this.statisticsData = {};
+    this.currentPage = 1;
+  }
+
+  // ---------- R1 « Coût d'exploitation réel » / R3 « Véhicules les plus coûteux » ----------
+
+  executeOperatingCostReport(vehicleId: number | undefined, startDate: Date | undefined, endDate: Date | undefined, ranking: boolean) {
+    this.loading = true;
+    this.operatingCost = null;
+    if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
+
+    const { from, to } = this.costReportRange(startDate, endDate);
+    const deptId = this.selectedDepartmentId ? parseInt(this.selectedDepartmentId) : undefined;
+    const request$ = ranking
+      ? this.apiService.getVehicleCostRanking(from, to, 10, deptId)
+      : this.apiService.getOperatingCostReport(from, to, vehicleId, deptId);
+
+    request$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.operatingCost = report;
+          this.resetGenericReportData();
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          setTimeout(() => this.drawOperatingCostChart(), 120);
+        });
+      },
+      error: (err) => {
+        console.error('Error loading operating cost report:', err);
+        this.ngZone.run(() => {
+          this.operatingCost = null;
+          this.resetGenericReportData();
+          this.statisticsData = { 'Erreur': ranking ? 'Impossible de charger le classement des véhicules' : "Impossible de charger le rapport de coût d'exploitation" };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  /** Véhicules plaçables sur le graphe : ceux qui ont un coût au km (distance mesurable). */
+  private operatingCostChartRows(): VehicleOperatingCostDto[] {
+    return (this.operatingCost?.vehicles || []).filter(v => v.costPerKm != null);
+  }
+
+  hasOperatingCostChartData(): boolean {
+    return this.operatingCostChartRows().length > 0;
+  }
+
+  /** Hauteur du graphe à barres horizontales : 28 px par véhicule, 240 px minimum. */
+  operatingCostChartHeight(): number {
+    return Math.max(240, 28 * this.operatingCostChartRows().length + 60);
+  }
+
+  /** Barres horizontales « Classement par coût d'exploitation » : valeur au bout de chaque barre et
+   *  verticale pointillée rouge « Moyenne flotte » (plugin inline sur l'axe x, cf. drawComparisonConsoChart). */
+  drawOperatingCostChart() {
+    if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
+    const canvas = this.operatingCostCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const report = this.operatingCost;
+    if (!report) return;
+    const rows = this.operatingCostChartRows();
+    if (!rows.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const cur = this.getCurrencyCode();
+    const avg = report.averageCostPerKm;
+    const fmt3 = (n: number) => n.toFixed(3);
+    const values = rows.map(v => Number(v.costPerKm));
+    const maxValue = Math.max(...values, avg ?? 0, 0.001);
+    // Même signe que la colonne « Écart vs moyenne » (valeur brute du serveur), pas une comparaison sur des arrondis
+    const isAbove = (v: VehicleOperatingCostDto) => (v.deviationFromAveragePct ?? 0) > 0;
+
+    const valueAndAvgPlugin = {
+      id: 'operatingCostValueAndAvg',
+      afterDatasetsDraw: (chart: any) => {
+        const xScale = chart.scales?.['x'];
+        if (!xScale) return;
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const area = chart.chartArea;
+        const meta = chart.getDatasetMeta(0);
+        c.save();
+        c.font = '11px sans-serif';
+        c.fillStyle = '#334155';
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        meta.data.forEach((bar: any, i: number) => {
+          c.fillText(`${fmt3(values[i])} ${cur}/km`, bar.x + 6, bar.y);
+        });
+        c.restore();
+        if (avg == null) return;
+        const x = xScale.getPixelForValue(avg);
+        c.save();
+        c.strokeStyle = '#dc2626';
+        c.lineWidth = 1.5;
+        c.setLineDash([5, 5]);
+        c.beginPath();
+        c.moveTo(x, area.top);
+        c.lineTo(x, area.bottom);
+        c.stroke();
+        c.setLineDash([]);
+        c.font = 'bold 11px sans-serif';
+        c.fillStyle = '#dc2626';
+        const alignRight = x > (area.left + area.right) / 2;
+        c.textAlign = alignRight ? 'right' : 'left';
+        c.textBaseline = 'top';
+        c.fillText(`Moyenne flotte : ${fmt3(avg)} ${cur}/km`, alignRight ? x - 5 : x + 5, area.top + 2);
+        c.restore();
+      }
+    };
+
+    this.operatingCostChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rows.map(v => v.vehicleName),
+        datasets: [{
+          data: values,
+          backgroundColor: rows.map(v => isAbove(v) ? 'rgba(239,68,68,.75)' : 'rgba(59,130,246,.75)'),
+          borderColor: rows.map(v => isAbove(v) ? '#dc2626' : '#2563eb'),
+          borderWidth: 1,
+          borderRadius: 6,
+          barPercentage: .7,
+          categoryPercentage: .8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        layout: { padding: { top: 18 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const v = rows[item.dataIndex];
+                const lines = [`${fmt3(Number(v.costPerKm))} ${cur}/km`, `Coût total : ${this.formatCurrency(v.totalCost)}`];
+                if (v.distanceKm != null) lines.push(`Kilométrage : ${this.formatNumber(v.distanceKm)} km`);
+                if (v.deviationFromAveragePct != null) lines.push(`Écart vs moyenne : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            suggestedMax: maxValue * 1.35,
+            title: { display: true, text: `${cur}/km` },
+            grid: { color: 'rgba(148,163,184,.25)' }
+          },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        }
+      },
+      plugins: [valueAndAvgPlugin]
+    });
+  }
+
+  // ---------- R2 « Évolution des coûts par véhicule » ----------
+
+  executeCostEvolutionReport(vehicleId: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    this.costEvolution = null;
+    this.selectedEvolutionMonth = null;
+    if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
+    if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+
+    const { from, to } = this.costReportRange(startDate, endDate);
+
+    this.apiService.getVehicleCostEvolution(vehicleId, from, to).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.costEvolution = report;
+          // Mois sélectionné par défaut = le plus élevé ; repli : dernier mois de la plage.
+          this.selectedEvolutionMonth = this.findEvolutionMonth(report, report.highestMonth)
+            ?? (report.months?.length ? report.months[report.months.length - 1] : null);
+          this.resetGenericReportData();
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          setTimeout(() => { this.drawEvolutionChart(); this.drawEvolutionDonut(); }, 120);
+        });
+      },
+      error: (err) => {
+        console.error('Error loading cost evolution report:', err);
+        this.ngZone.run(() => {
+          this.costEvolution = null;
+          this.resetGenericReportData();
+          this.statisticsData = { 'Erreur': err?.status === 404 ? 'Véhicule introuvable dans votre société' : "Impossible de charger l'évolution des coûts de ce véhicule" };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  /** Retrouve dans `months` l'objet correspondant à highestMonth (même année/mois) pour que la sélection soit identique. */
+  private findEvolutionMonth(report: VehicleCostEvolutionDto, m: MonthlyVehicleCostDto | null): MonthlyVehicleCostDto | null {
+    if (!m) return null;
+    return (report.months || []).find(x => x.year === m.year && x.month === m.month) ?? m;
+  }
+
+  selectEvolutionMonth(m: MonthlyVehicleCostDto) {
+    this.selectedEvolutionMonth = m;
+    this.cdr.detectChanges();
+  }
+
+  isSelectedEvolutionMonth(m: MonthlyVehicleCostDto): boolean {
+    const s = this.selectedEvolutionMonth;
+    return !!s && s.year === m.year && s.month === m.month;
+  }
+
+  /** Libellé de la période affichée dans l'en-tête du bloc R2 (premier → dernier mois). */
+  evolutionPeriodLabel(): string {
+    const r = this.costEvolution;
+    if (r?.months?.length) {
+      const first = r.months[0].monthName;
+      const last = r.months[r.months.length - 1].monthName;
+      return first === last ? first : `${first} → ${last}`;
+    }
+    return this.evolutionPeriods.find(p => p.value === this.selectedEvolutionPeriod)?.label ?? '';
+  }
+
+  /** Répartition par catégorie sur toute la période (légende du donut : montant + %). */
+  evolutionCategoryTotals(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
+    const r = this.costEvolution;
+    if (!r) return [];
+    return this.categoryBreakdown(r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost);
+  }
+
+  /** Détail du mois sélectionné (Catégorie | Montant | % du total). */
+  evolutionMonthDetail(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
+    const m = this.selectedEvolutionMonth;
+    if (!m) return [];
+    return this.categoryBreakdown(m.fuelCost, m.maintenanceCost, m.repairCost, m.otherCost);
+  }
+
+  private categoryBreakdown(fuel: number, maintenance: number, repair: number, other: number) {
+    const f = Number(fuel) || 0, m = Number(maintenance) || 0, r = Number(repair) || 0, o = Number(other) || 0;
+    const total = f + m + r + o;
+    const pct = (v: number) => total > 0 ? (v / total) * 100 : null;
+    const c = this.costCategoryColors;
+    return [
+      { key: 'fuel', label: 'Carburant', amount: f, pct: pct(f), color: c.fuel },
+      { key: 'maintenance', label: 'Entretien', amount: m, pct: pct(m), color: c.maintenance },
+      { key: 'repair', label: 'Réparations', amount: r, pct: pct(r), color: c.repair },
+      { key: 'other', label: 'Autres dépenses', amount: o, pct: pct(o), color: c.other }
+    ];
+  }
+
+  /** Barres EMPILÉES par catégorie + courbe Total ; clic sur un mois → détail à droite. */
+  drawEvolutionChart() {
+    if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
+    const canvas = this.evolutionCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const report = this.costEvolution;
+    if (!report?.months?.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const months = report.months;
+    const c = this.costCategoryColors;
+    const bar = (label: string, data: number[], color: string) => ({
+      type: 'bar', label, data, backgroundColor: color, stack: 'costs', borderRadius: 2, barPercentage: .7, categoryPercentage: .8
+    });
+    const datasets: any[] = [
+      bar('Carburant', months.map(m => m.fuelCost), c.fuel),
+      bar('Entretien', months.map(m => m.maintenanceCost), c.maintenance),
+      bar('Réparations', months.map(m => m.repairCost), c.repair),
+      bar('Autres dépenses', months.map(m => m.otherCost), c.other),
+      {
+        type: 'line', label: 'Total', data: months.map(m => m.totalCost),
+        borderColor: c.total, backgroundColor: c.total, borderWidth: 2, tension: .3,
+        pointRadius: 4, pointHoverRadius: 6, fill: false, stack: 'total', order: 0
+      }
+    ];
+
+    this.evolutionChart = new Chart(ctx, {
+      type: 'bar',
+      data: { labels: months.map(m => m.monthName), datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        onClick: (_evt, elements) => {
+          if (!elements.length) return;
+          const idx = elements[0].index;
+          this.ngZone.run(() => {
+            this.selectedEvolutionMonth = months[idx];
+            this.cdr.detectChanges();
+          });
+        },
+        plugins: {
+          legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 14, font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              label: (item) => `${item.dataset.label} : ${this.formatCurrency(Number((item.parsed as any)?.y) || 0)}`
+            }
+          }
+        },
+        scales: {
+          x: { stacked: true, grid: { display: false } },
+          y: { stacked: true, beginAtZero: true, ticks: { callback: (v) => this.formatNumber(Number(v)) } }
+        }
+      }
+    });
+  }
+
+  /** Donut « Répartition des coûts sur la période » (légende HTML à côté : montant + %). */
+  drawEvolutionDonut() {
+    if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+    const canvas = this.evolutionDonutCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const cats = this.evolutionCategoryTotals();
+    const total = cats.reduce((s, x) => s + x.amount, 0);
+    if (total <= 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    this.evolutionDonutChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: cats.map(x => x.label),
+        datasets: [{
+          data: cats.map(x => x.amount),
+          backgroundColor: cats.map(x => x.color),
+          borderColor: '#ffffff',
+          borderWidth: 2,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const v = Number(item.parsed) || 0;
+                return `${item.label} : ${this.formatCurrency(v)} (${((v / total) * 100).toFixed(1)} %)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ---------- R4 « Fréquence des réparations » ----------
+
+  executeRepairFrequencyReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
+    this.loading = true;
+    this.repairFrequency = null;
+    if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
+    if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
+
+    const { from, to } = this.costReportRange(startDate, endDate);
+    const deptId = this.selectedDepartmentId ? parseInt(this.selectedDepartmentId) : undefined;
+
+    this.apiService.getRepairFrequencyReport(from, to, vehicleId, deptId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (report) => {
+        this.ngZone.run(() => {
+          this.repairFrequency = report;
+          this.resetGenericReportData();
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+          setTimeout(() => { this.drawRepairFreqChart(); this.drawRepairTypeChart(); }, 120);
+        });
+      },
+      error: (err) => {
+        console.error('Error loading repair frequency report:', err);
+        this.ngZone.run(() => {
+          this.repairFrequency = null;
+          this.resetGenericReportData();
+          this.statisticsData = { 'Erreur': 'Impossible de charger la fréquence des réparations' };
+          this.reportGenerated = true;
+          this.loading = false;
+          this.cdr.detectChanges();
+        });
+      }
+    });
+  }
+
+  /** Hauteur du graphe « Répartition des interventions par véhicule » : 28 px par véhicule, 240 px minimum. */
+  repairFreqChartHeight(): number {
+    return Math.max(240, 28 * (this.repairFrequency?.vehicles.length ?? 0) + 60);
+  }
+
+  /** « 100 % du parc » sous le KPI Véhicules concernés quand tous les véhicules ont au moins une intervention. */
+  repairCoverageIsFull(): boolean {
+    const r = this.repairFrequency;
+    return !!r && r.fleetSize > 0 && r.vehiclesConcerned === r.fleetSize;
+  }
+
+  /** Barres horizontales des interventions par véhicule + verticale pointillée « Moyenne flotte ». */
+  drawRepairFreqChart() {
+    if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
+    const canvas = this.repairFreqCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const report = this.repairFrequency;
+    if (!report?.vehicles?.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rows = report.vehicles;
+    const avg = Number(report.averageInterventionsPerVehicle) || 0;
+    const values = rows.map(v => v.interventions);
+    const maxValue = Math.max(...values, avg, 1);
+    const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const barColor = (v: VehicleRepairFrequencyDto, alpha: string) =>
+      v.interventions === 0 ? `rgba(148,163,184,${alpha})` : (v.deviationFromAveragePct ?? 0) > 0 ? `rgba(239,68,68,${alpha})` : `rgba(59,130,246,${alpha})`;
+
+    const valueAndAvgPlugin = {
+      id: 'repairFreqValueAndAvg',
+      afterDatasetsDraw: (chart: any) => {
+        const xScale = chart.scales?.['x'];
+        if (!xScale) return;
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const area = chart.chartArea;
+        const meta = chart.getDatasetMeta(0);
+        c.save();
+        c.font = '11px sans-serif';
+        c.fillStyle = '#334155';
+        c.textAlign = 'left';
+        c.textBaseline = 'middle';
+        meta.data.forEach((bar: any, i: number) => {
+          c.fillText(String(values[i]), bar.x + 6, bar.y);
+        });
+        c.restore();
+        if (!(avg > 0)) return;
+        const x = xScale.getPixelForValue(avg);
+        c.save();
+        c.strokeStyle = '#dc2626';
+        c.lineWidth = 1.5;
+        c.setLineDash([5, 5]);
+        c.beginPath();
+        c.moveTo(x, area.top);
+        c.lineTo(x, area.bottom);
+        c.stroke();
+        c.setLineDash([]);
+        c.font = 'bold 11px sans-serif';
+        c.fillStyle = '#dc2626';
+        const alignRight = x > (area.left + area.right) / 2;
+        c.textAlign = alignRight ? 'right' : 'left';
+        c.textBaseline = 'top';
+        c.fillText(`Moyenne flotte : ${fmt1(avg)} interventions / véhicule`, alignRight ? x - 5 : x + 5, area.top + 2);
+        c.restore();
+      }
+    };
+
+    this.repairFreqChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: rows.map(v => v.vehicleName),
+        datasets: [{
+          data: values,
+          backgroundColor: rows.map(v => barColor(v, '.75')),
+          borderColor: rows.map(v => barColor(v, '1')),
+          borderWidth: 1,
+          borderRadius: 6,
+          barPercentage: .7,
+          categoryPercentage: .8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        layout: { padding: { top: 18 } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const v = rows[item.dataIndex];
+                const lines = [`${v.interventions} intervention(s)`, `Coût total : ${this.formatCurrency(v.totalCost)}`];
+                if (v.frequencyPer1000Km != null) lines.push(`${v.frequencyPer1000Km.toFixed(2)} interv. / 1000 km`);
+                if (v.deviationFromAveragePct != null) lines.push(`Écart vs moyenne : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
+                return lines;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            suggestedMax: maxValue * 1.3,
+            ticks: { precision: 0 },
+            title: { display: true, text: 'Interventions' },
+            grid: { color: 'rgba(148,163,184,.25)' }
+          },
+          y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+        }
+      },
+      plugins: [valueAndAvgPlugin]
+    });
+  }
+
+  /** Donut « Répartition par type d'intervention » (légende HTML : libellé, nb, %). */
+  drawRepairTypeChart() {
+    if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
+    const canvas = this.repairTypeCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const byType = (this.repairFrequency?.byType || []).filter(t => t.count > 0);
+    if (!byType.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const total = byType.reduce((s, t) => s + t.count, 0);
+
+    this.repairTypeChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: byType.map(t => t.label),
+        datasets: [{
+          data: byType.map(t => t.count),
+          backgroundColor: byType.map(t => this.repairTypeColor(t.type)),
+          borderColor: '#ffffff',
+          borderWidth: 2,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const v = Number(item.parsed) || 0;
+                return `${item.label} : ${v} (${total > 0 ? ((v / total) * 100).toFixed(1) : '0'} %)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ---------- Exports (une config, trois formats via dispatchExport) ----------
+
+  /** R1/R3 : tableau par véhicule, colonnes numériques brutes (unité dans l'en-tête), ligne TOTAL / MOYENNE en dernier, KPI en statistics. */
+  private buildOperatingCostExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+    const r = this.operatingCost;
+    if (!r) return null;
+    const cur = this.getCurrencyCode();
+    const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const n3 = (v: any) => Math.round((Number(v) || 0) * 1000) / 1000;
+    const ranking = this.isRanking;
+
+    const vehicleCol = { header: 'Véhicule', dataKey: 'vehicle' };
+    const kmCol = { header: 'Kilométrage (km)', dataKey: 'km' };
+    const fuelCol = { header: `Carburant (${cur})`, dataKey: 'fuelCost' };
+    const maintCol = { header: `${ranking ? 'Entretien' : 'Entretiens'} (${cur})`, dataKey: 'maintenanceCost' };
+    const repairCol = { header: `Réparations (${cur})`, dataKey: 'repairCost' };
+    const otherCol = { header: `Autres dépenses (${cur})`, dataKey: 'otherCost' };
+    const totalCol = { header: `Coût total (${cur})`, dataKey: 'totalCost' };
+    const perKmCol = { header: `Coût ${cur}/km`, dataKey: 'costPerKm' };
+    const devCol = { header: 'Écart vs moyenne (%)', dataKey: 'deviationPct' };
+    const columns = ranking
+      ? [{ header: '#', dataKey: 'rank' }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, devCol]
+      : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, totalCol, perKmCol, devCol];
+
+    const data: any[] = (r.vehicles || []).map(v => ({
+      rank: v.rank,
+      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : v.vehicleName,
+      km: v.distanceKm == null ? '' : n2(v.distanceKm),
+      fuelCost: n2(v.fuelCost),
+      maintenanceCost: n2(v.maintenanceCost),
+      repairCost: n2(v.repairCost),
+      otherCost: n2(v.otherCost),
+      totalCost: n2(v.totalCost),
+      costPerKm: v.costPerKm == null ? '' : n3(v.costPerKm),
+      deviationPct: v.deviationFromAveragePct == null ? '' : n1(v.deviationFromAveragePct)
+    }));
+    data.push({
+      rank: '',
+      vehicle: 'TOTAL / MOYENNE',
+      km: n2(r.totalKm),
+      fuelCost: n2(r.totalFuelCost),
+      maintenanceCost: n2(r.totalMaintenanceCost),
+      repairCost: n2(r.totalRepairCost),
+      otherCost: n2(r.totalOtherCost),
+      totalCost: n2(r.totalCost),
+      costPerKm: r.averageCostPerKm == null ? '' : n3(r.averageCostPerKm),
+      deviationPct: ''
+    });
+
+    const statistics: Record<string, string> = {
+      [`Coût total d'exploitation (${cur})`]: String(n2(r.totalCost)),
+      'Kilométrage total (km)': String(n2(r.totalKm)),
+      [`Coût moyen exploitation (${cur}/km)`]: this.formatCostPerKm(r.averageCostPerKm),
+      'Véhicules analysés': String(r.vehicleCount)
+    };
+
+    return {
+      title: this.selectedTemplate?.name || (ranking ? 'Véhicules les plus coûteux' : "Coût d'exploitation réel"),
+      vehicleName: ranking ? 'Tous les véhicules' : vehicleName,
+      dateRange,
+      statistics,
+      columns,
+      data
+    };
+  }
+
+  /** R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué se déduit du tableau). */
+  private buildCostEvolutionExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+    const r = this.costEvolution;
+    if (!r) return null;
+    const cur = this.getCurrencyCode();
+    const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+
+    const columns = [
+      { header: 'Mois', dataKey: 'monthName' },
+      { header: `Carburant (${cur})`, dataKey: 'fuelCost' },
+      { header: `Entretien (${cur})`, dataKey: 'maintenanceCost' },
+      { header: `Réparations (${cur})`, dataKey: 'repairCost' },
+      { header: `Autres dépenses (${cur})`, dataKey: 'otherCost' },
+      { header: `Total (${cur})`, dataKey: 'totalCost' },
+      { header: 'Variation vs mois précédent (%)', dataKey: 'variationPct' }
+    ];
+    const data = (r.months || []).map(m => ({
+      monthName: m.monthName,
+      fuelCost: n2(m.fuelCost),
+      maintenanceCost: n2(m.maintenanceCost),
+      repairCost: n2(m.repairCost),
+      otherCost: n2(m.otherCost),
+      totalCost: n2(m.totalCost),
+      variationPct: m.variationPct == null ? '' : n1(m.variationPct)
+    }));
+
+    const monthLabel = (m: MonthlyVehicleCostDto | null) => m ? `${m.monthName} — ${n2(m.totalCost)} ${cur}` : '—';
+    const statistics: Record<string, string> = {
+      [`Coût total sur la période (${cur})`]: String(n2(r.totalCost)),
+      [`Coût moyen mensuel (${cur})`]: String(n2(r.averageMonthlyCost)),
+      'Mois le plus élevé': monthLabel(r.highestMonth),
+      'Mois le moins élevé': monthLabel(r.lowestMonth)
+    };
+
+    const label = r.plate ? `${r.vehicleName} (${r.plate})` : (r.vehicleName || vehicleName);
+    return {
+      title: `${this.selectedTemplate?.name || 'Évolution des coûts'} — ${label}`,
+      vehicleName: label,
+      dateRange,
+      statistics,
+      columns,
+      data
+    };
+  }
+
+  /** R4 : classement par véhicule + KPI et synthèse (le donut et le détail du véhicule restent à l'écran). */
+  private buildRepairFrequencyExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+    const r = this.repairFrequency;
+    if (!r) return null;
+    const cur = this.getCurrencyCode();
+    const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+
+    const columns = [
+      { header: '#', dataKey: 'rank' },
+      { header: 'Véhicule', dataKey: 'vehicle' },
+      { header: 'Interventions (nb)', dataKey: 'interventions' },
+      { header: 'Kilométrage (km)', dataKey: 'km' },
+      { header: 'Fréquence (interv./1000 km)', dataKey: 'frequencyPer1000Km' },
+      { header: `Coût total réparations (${cur})`, dataKey: 'totalCost' },
+      { header: `Coût moyen / intervention (${cur})`, dataKey: 'avgCost' },
+      { header: 'Écart vs moyenne (%)', dataKey: 'deviationPct' }
+    ];
+    const vehicles = r.vehicles || [];
+    const data: any[] = vehicles.map(v => ({
+      rank: v.rank,
+      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : v.vehicleName,
+      interventions: v.interventions,
+      km: v.distanceKm == null ? '' : n2(v.distanceKm),
+      frequencyPer1000Km: v.frequencyPer1000Km == null ? '' : n2(v.frequencyPer1000Km),
+      totalCost: n2(v.totalCost),
+      avgCost: v.averageCostPerIntervention == null ? '' : n2(v.averageCostPerIntervention),
+      deviationPct: v.deviationFromAveragePct == null ? '' : n1(v.deviationFromAveragePct)
+    }));
+    const totalKm = vehicles.reduce((s, v) => s + (Number(v.distanceKm) || 0), 0);
+    data.push({
+      rank: '',
+      vehicle: 'TOTAL / MOYENNE',
+      interventions: r.totalInterventions,
+      km: n2(totalKm),
+      frequencyPer1000Km: r.averageFrequencyPer1000Km == null ? '' : n2(r.averageFrequencyPer1000Km),
+      totalCost: n2(r.totalRepairCost),
+      avgCost: r.averageCostPerIntervention == null ? '' : n2(r.averageCostPerIntervention),
+      deviationPct: ''
+    });
+
+    const vLabel = (v: VehicleRepairFrequencyDto | null) => v ? `${v.vehicleName} (${v.interventions} interventions)` : '—';
+    const statistics: Record<string, string> = {
+      'Total interventions': String(r.totalInterventions),
+      'Véhicules concernés': `${r.vehiclesConcerned} / ${r.fleetSize}`,
+      'Fréquence moyenne': `${n2(r.averageInterventionsPerVehicle)} interventions / véhicule`,
+      'Véhicule le plus fréquent': vLabel(r.mostFrequentVehicle),
+      'Véhicule le moins fréquent': vLabel(r.leastFrequentVehicle),
+      'Véhicules > moyenne / < moyenne': `${r.vehiclesAboveAverage} / ${r.vehiclesBelowAverage}`,
+      [`Coût total réparations (${cur})`]: String(n2(r.totalRepairCost)),
+      [`Coût moyen par intervention (${cur})`]: r.averageCostPerIntervention == null ? '—' : String(n2(r.averageCostPerIntervention))
+    };
+
+    return {
+      title: this.selectedTemplate?.name || 'Fréquence des réparations',
+      vehicleName,
+      dateRange,
+      statistics,
+      columns,
+      data
+    };
+  }
+
   private saveState(): void {
     this.reportStateService.save({
       selectedTemplateId: this.selectedTemplateId,
@@ -7527,7 +8504,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       activeTab: this.activeTab,
       expandedSections: { ...this.expandedSections },
       drivingBehaviorFilters: { ...this.drivingBehaviorFilters },
-      aiFleetPeriod: this.aiFleetPeriod
+      aiFleetPeriod: this.aiFleetPeriod,
+      selectedEvolutionPeriod: this.selectedEvolutionPeriod
     });
   }
 
@@ -7562,6 +8540,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.expandedSections = state.expandedSections || this.expandedSections;
     this.drivingBehaviorFilters = state.drivingBehaviorFilters || this.drivingBehaviorFilters;
     this.aiFleetPeriod = state.aiFleetPeriod;
+    this.selectedEvolutionPeriod = state.selectedEvolutionPeriod || 'last12';
 
     // Re-compute fromDate/toDate from the restored period
     if (this.selectedStandardPeriod !== 'custom') {
