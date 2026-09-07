@@ -7701,7 +7701,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   /** Coût au km : 3 décimales, « — » quand non calculable (aucune distance mesurable). */
   formatCostPerKm(value: number | null | undefined): string {
-    return value == null ? '—' : Number(value).toFixed(3);
+    return value == null ? '—' : Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
   }
 
   /** Pourcentage signé à 1 décimale (« +12,5 % »), « — » si null. */
@@ -7823,7 +7823,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const cur = this.getCurrencyCode();
     const avg = report.averageCostPerKm;
-    const fmt3 = (n: number) => n.toFixed(3);
+    const fmt3 = (n: number) => this.formatCostPerKm(n);
     const values = rows.map(v => Number(v.costPerKm));
     const maxValue = Math.max(...values, avg ?? 0, 0.001);
     // Même signe que la colonne « Écart vs moyenne » (valeur brute du serveur), pas une comparaison sur des arrondis
@@ -7862,7 +7862,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const alignRight = x > (area.left + area.right) / 2;
         c.textAlign = alignRight ? 'right' : 'left';
         c.textBaseline = 'top';
-        c.fillText(`Moyenne flotte : ${fmt3(avg)} ${cur}/km`, alignRight ? x - 5 : x + 5, area.top + 2);
+        // Dessinée dans la marge haute (layout.padding.top) pour ne pas chevaucher la première barre
+        c.fillText(`Moyenne flotte : ${fmt3(avg)} ${cur}/km`, alignRight ? x - 5 : x + 5, area.top - 15);
         c.restore();
       }
     };
@@ -8205,7 +8206,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const alignRight = x > (area.left + area.right) / 2;
         c.textAlign = alignRight ? 'right' : 'left';
         c.textBaseline = 'top';
-        c.fillText(`Moyenne flotte : ${fmt1(avg)} interventions / véhicule`, alignRight ? x - 5 : x + 5, area.top + 2);
+        // Dessinée dans la marge haute (layout.padding.top) pour ne pas chevaucher la première barre
+        c.fillText(`Moyenne flotte : ${fmt1(avg)} interventions / véhicule`, alignRight ? x - 5 : x + 5, area.top - 15);
         c.restore();
       }
     };
