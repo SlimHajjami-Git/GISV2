@@ -53,7 +53,9 @@ public interface IGisDbContext
     DbSet<FuelEntry> FuelEntries { get; }
     DbSet<VehicleLoadPeriod> VehicleLoadPeriods { get; }
     DbSet<SpeedLimitAlert> SpeedLimitAlerts { get; }
-    
+    // Échéancier d'acquisition persisté (apport, mensualités, achat) — migration 044
+    DbSet<AcquisitionPayment> AcquisitionPayments { get; }
+
     // Brands & Models
     DbSet<Brand> Brands { get; }
     DbSet<VehicleModel> VehicleModels { get; }
@@ -111,6 +113,14 @@ public interface IGisDbContext
     /// abuse it — prefer LINQ when it's expressive enough.
     /// </summary>
     Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
+
+    /// <summary>
+    /// Suivi des entités — exposé pour qu'un handler puisse abandonner ses
+    /// modifications en attente après un conflit (ex. deux requêtes qui génèrent
+    /// le même échéancier d'acquisition en même temps). Même surface que
+    /// <c>DbContext.ChangeTracker</c> ; à n'utiliser que pour ça.
+    /// </summary>
+    Microsoft.EntityFrameworkCore.ChangeTracking.ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken ct = default);
 }

@@ -518,6 +518,7 @@ type CompanyRole = Role & { userCount?: number };
         <app-vehicle-popup
           [isOpen]="showVehiclePopup"
           [vehicle]="selectedVehicle"
+          [isSystemAdminContext]="true"
           (closed)="closeVehiclePopup()"
           (saved)="onVehicleSaved($event)">
         </app-vehicle-popup>

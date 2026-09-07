@@ -43,6 +43,8 @@ public class PermissionMiddleware
         { "/api/maintenancescheduler", "CanMaintenance" },
         { "/api/vehiclemaintenance", "CanMaintenance" },
         { "/api/costs", "CanCosts" },
+        // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, mêmes droits que /api/costs.
+        { "/api/acquisition-payments", "CanCosts" },
         { "/api/fuelentries", "CanFuel" },
         { "/api/fuelexpenses", "CanFuel" },
         { "/api/fuelrecords", "CanFuel" },
@@ -100,6 +102,8 @@ public class PermissionMiddleware
         { "/api/maintenancescheduler", sub => sub.ModuleMaintenance },
         { "/api/vehiclemaintenance", sub => sub.ModuleMaintenance },
         { "/api/costs", sub => sub.ModuleCosts },
+        // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, même module que /api/costs.
+        { "/api/acquisition-payments", sub => sub.ModuleCosts },
         { "/api/fuelentries", sub => sub.ModuleFuel },
         // Ces deux endpoints DÉDUISENT la consommation des positions GPS
         // (FuelCalculationService lit GpsPositions et Trips). Sans boîtier la

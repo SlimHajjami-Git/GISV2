@@ -1,9 +1,9 @@
-﻿import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+﻿import { Component, OnInit, OnDestroy, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subject, takeUntil, forkJoin } from 'rxjs';
-import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto } from '../services/api.service';
+import { Subject, takeUntil, forkJoin, of, catchError } from 'rxjs';
+import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto, AcquisitionPaymentDto } from '../services/api.service';
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
@@ -36,6 +36,26 @@ export interface Expense {
   receiptUrl?: string | null;
   /** Détail de la facture (lignes décortiquées par le scan IA) — affiché dans le panneau. */
   details?: Array<{ label: string; amount: number; category: string }>;
+
+  // ── Échéance d'acquisition (table acquisition_payments, sourceTable
+  //    'acquisition_payment', id 'acq_<id>'). Les mensualités de crédit/leasing,
+  //    l'apport et l'achat comptant viennent du serveur : elles ne sont plus
+  //    recalculées à l'affichage. ──
+  acquisitionPaymentId?: number;
+  paymentKind?: 'apport' | 'mensualite' | 'achat';
+  paymentStatus?: 'planned' | 'paid' | 'skipped';
+  /** Date d'échéance (YYYY-MM-DD) — c'est aussi `date`, la date de la ligne. */
+  dueDate?: string;
+  paidAt?: string | null;
+  paidAmount?: number | null;
+  /** Montant prévu au contrat (totalAmount = paidAmount ?? plannedAmount). */
+  plannedAmount?: number;
+  note?: string | null;
+  /** Règle serveur : compte en dépense si payée OU planifiée échue. */
+  counted?: boolean;
+  overdue?: boolean;
+  /** Planifiée non échue — affichée seulement avec « Afficher les échéances à venir ». */
+  isFuture?: boolean;
 }
 
 export interface RepairPart {
@@ -72,6 +92,27 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   filterVehicleId = '';
   filterCategory = '';
   filterMonth = '';
+  /** Case « Afficher les échéances à venir » → GET /acquisition-payments?includeFuture=true. */
+  showFuturePayments = false;
+
+  // ── Échéances d'acquisition : menu ⋯, modale « Marquer payée », quittance ──
+  /** id de la ligne dont le menu ⋯ est ouvert (une seule à la fois). */
+  menuExpenseId: string | null = null;
+  payModal = {
+    open: false,
+    expense: null as Expense | null,
+    date: '',
+    amount: 0,
+    note: '',
+    saving: false,
+    error: ''
+  };
+  /** Ligne visée par le prochain fichier choisi dans l'input caché #receiptInput. */
+  private receiptTarget: Expense | null = null;
+  /** id d'échéance dont la quittance est en cours d'envoi (spinner / bouton grisé). */
+  uploadingReceiptId: number | null = null;
+  /** id d'échéance dont le statut est en cours de changement. */
+  paymentBusyId: number | null = null;
 
   // Form state
   showAddForm = false;
@@ -217,10 +258,13 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       costs: this.apiService.getCosts(),
       fuelEntries: this.apiService.getFuelEntries({ pageSize: 200 }),
       repairs: this.apiService.getRepairs({ pageSize: 200 }),
-      // Les mensualites de credit/leasing sont derivees des vehicules : elles
-      // n'existent dans aucune table de depenses (recette client du 26/08/2026 —
-      // « douze echeances payees, zero depense affichee »).
-      vehicles: this.apiService.getVehicles()
+      // Échéances d'acquisition (mensualités, apport, achat comptant) lues en
+      // base : sans includeFuture le serveur ne renvoie que ce qui compte ou a
+      // compté en dépense (payées, planifiées échues, ignorées échues).
+      // Un échec de cet appel ne doit pas vider les autres dépenses.
+      acquisitionPayments: this.apiService.getAcquisitionPayments({ includeFuture: this.showFuturePayments }).pipe(
+        catchError((err) => { console.error('Error loading acquisition payments:', err); return of([] as AcquisitionPaymentDto[]); })
+      )
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result) => {
         const allExpenses: Expense[] = [];
@@ -306,71 +350,59 @@ export class ExpensesComponent implements OnInit, OnDestroy {
           });
         });
 
-        // Mensualites de credit/leasing echues — meme calcul que l'echeancier
-        // de la fiche vehicule (jour de paiement plafonne au 28, une ligne par
-        // mois ecoule depuis le debut du contrat). Seules les echeances dues a
-        // ce jour figurent dans les depenses : l'avenir n'est pas une depense.
-        ((result as any).vehicles || []).forEach((v: any) => {
-          if (v.acquisitionType !== 'leasing' || !v.leasingMonthlyPayment
-              || !v.leasingDurationMonths || !v.leasingStartDate) return;
-          const start = new Date(String(v.leasingStartDate).slice(0, 10) + 'T00:00:00');
-          if (isNaN(start.getTime())) return;
-          const payDay = Math.min(v.leasingPaymentDay || 1, 28);
-          // 1re mensualite le mois SUIVANT quand le jour de paiement du mois de
-          // depart precede la date de debut du contrat — meme regle que
-          // l'echeancier de la fiche vehicule (vehicle-popup.component.ts).
-          const offset = payDay < start.getDate() ? 1 : 0;
-          const now = new Date();
-          for (let i = 0; i < v.leasingDurationMonths; i++) {
-            const due = new Date(start.getFullYear(), start.getMonth() + i + offset, payDay);
-            if (due > now) break;
-            allExpenses.push({
-              id: 'leasing_' + v.id + '_' + (i + 1),
-              vehicleId: v.id,
-              vehiclePlate: v.plate || '',
-              vehicleName: v.name || '',
-              category: 'credit',
-              label: 'Mensualité crédit/leasing ' + (i + 1) + '/' + v.leasingDurationMonths,
-              quantity: 1,
-              unitPrice: v.leasingMonthlyPayment,
-              totalAmount: v.leasingMonthlyPayment,
-              date: due,
-              description: 'Échéance générée depuis le contrat du véhicule',
-              createdAt: due,
-              sourceTable: 'leasing'
-            });
-          }
-        });
-
-        // Apport (contrat de financement) ou achat comptant : une dépense datée
-        // du jour de l'acquisition. Absente jusqu'ici — le client ne retrouvait
-        // pas ses 3 000 EUR d'apport dans les dépenses (recette du 04/09/2026).
-        // Même règle que le tableau de bord (AcquisitionSchedule côté serveur).
-        ((result as any).vehicles || []).forEach((v: any) => {
-          if (!(v.purchasePrice > 0) || !v.purchaseDate) return;
-          const when = new Date(String(v.purchaseDate).slice(0, 10) + 'T00:00:00');
-          if (isNaN(when.getTime()) || when > new Date()) return;
-          const isLeasing = v.acquisitionType === 'leasing';
+        // Échéances d'acquisition (mensualités de crédit/leasing, apport, achat
+        // comptant) — lignes de la table acquisition_payments, générées par le
+        // serveur depuis le contrat du véhicule. La date de la ligne est la
+        // date d'échéance (le filtre mois regroupe donc par mois de contrat) ;
+        // le montant affiché est le montant réellement payé s'il est connu.
+        // Recette client 26/08/2026 (« douze échéances payées, zéro dépense
+        // affichée ») et 04/09/2026 (apport introuvable) : les deux univers
+        // sont couverts par la même table.
+        (result.acquisitionPayments || []).forEach((p) => {
+          const due = new Date(String(p.dueDate).slice(0, 10) + 'T00:00:00');
+          if (isNaN(due.getTime())) return;
+          const isFuture = p.status === 'planned' && !p.counted;
           allExpenses.push({
-            id: 'acquisition_' + v.id,
-            vehicleId: v.id,
-            vehiclePlate: v.plate || '',
-            vehicleName: v.name || '',
-            category: isLeasing ? 'credit' : 'achat',
-            label: isLeasing ? 'Apport crédit/leasing' : 'Achat véhicule',
+            id: 'acq_' + p.id,
+            vehicleId: p.vehicleId,
+            vehiclePlate: p.vehiclePlate || '',
+            vehicleName: p.vehicleName || '',
+            category: p.kind === 'achat' ? 'achat' : 'credit',
+            label: this.acquisitionLabel(p),
             quantity: 1,
-            unitPrice: v.purchasePrice,
-            totalAmount: v.purchasePrice,
-            date: when,
-            description: isLeasing ? 'Apport initial du contrat de financement' : 'Prix d\'achat du véhicule',
-            createdAt: when,
-            sourceTable: 'acquisition'
+            unitPrice: p.amount,
+            totalAmount: p.paidAmount ?? p.amount,
+            date: due,
+            description: this.acquisitionDescription(p),
+            createdAt: p.paidAt ? new Date(p.paidAt) : due,
+            sourceTable: 'acquisition_payment',
+            receiptUrl: p.receiptUrl || null,
+            acquisitionPaymentId: p.id,
+            paymentKind: p.kind,
+            paymentStatus: p.status,
+            dueDate: String(p.dueDate).slice(0, 10),
+            paidAt: p.paidAt ?? null,
+            paidAmount: p.paidAmount ?? null,
+            plannedAmount: p.amount,
+            note: p.note ?? null,
+            counted: !!p.counted,
+            overdue: !!p.overdue,
+            isFuture
           });
         });
 
         this.expenses = allExpenses;
         this.filterExpenses();
         this.loading = false;
+
+        // Panneau de détail ouvert pendant un rechargement (statut changé,
+        // quittance jointe) : le rafraîchir avec la ligne à jour — ou le
+        // fermer si la ligne a disparu (échéance ignorée → toujours listée ;
+        // ligne supprimée → plus là).
+        if (this.detailExpense) {
+          const fresh = this.expenses.find(e => e.id === this.detailExpense!.id);
+          if (fresh) this.detailExpense = fresh; else this.closeDetailPanel();
+        }
 
         // Auto-open detail if navigated from notification
         if (this.pendingExpenseId) {
@@ -855,6 +887,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   confirmDeleteExpense(expense: Expense): void {
+    // Une échéance d'acquisition ne se supprime pas : elle s'ignore (menu ⋯)
+    // et c'est le contrat du véhicule qui la fait exister ou disparaître.
+    if (this.isAcquisition(expense)) return;
     this.expenseToDelete = expense;
     this.showDeleteConfirm = true;
   }
@@ -866,12 +901,23 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   deleteExpense(): void {
     if (!this.expenseToDelete) { this.cancelDelete(); return; }
+    // Garde explicite : l'ancien découpage 'leasing_12_3' → table 'leasing'
+    // tombait dans la branche par défaut → deleteCost(12), c'est-à-dire la
+    // suppression d'un vehicle_costs sans rapport. Seuls les préfixes connus
+    // suppriment ; 'acq_' (et tout inconnu) ne fait rien.
+    if (this.isAcquisition(this.expenseToDelete)) { this.cancelDelete(); return; }
     const [table, id] = this.expenseToDelete.id.split('_');
+    const numericId = parseInt(id);
+    if (isNaN(numericId)) { this.cancelDelete(); return; }
     let obs;
     switch (table) {
-      case 'fuel': obs = this.apiService.deleteFuelEntry(parseInt(id)); break;
-      case 'repair': obs = this.apiService.deleteRepair(parseInt(id)); break;
-      default: obs = this.apiService.deleteCost(parseInt(id)); break;
+      case 'fuel': obs = this.apiService.deleteFuelEntry(numericId); break;
+      case 'repair': obs = this.apiService.deleteRepair(numericId); break;
+      case 'cost': obs = this.apiService.deleteCost(numericId); break;
+      default:
+        console.warn('deleteExpense: préfixe inconnu, suppression refusée —', this.expenseToDelete.id);
+        this.cancelDelete();
+        return;
     }
     obs.subscribe({
       next: () => { this.loadExpenses(); this.cancelDelete(); },
@@ -880,6 +926,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   openDetailPanel(expense: Expense): void {
+    this.closeRowMenu();
     this.detailExpense = expense;
     this.showDetailPanel = true;
   }
@@ -889,8 +936,245 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     this.detailExpense = null;
   }
 
-  getTotalAmount(): number { return this.filteredExpenses.reduce((sum, e) => sum + e.totalAmount, 0); }
-  getUniqueVehiclesCount(): number { return new Set(this.filteredExpenses.map(e => e.vehicleId)).size; }
+  // ── Échéances d'acquisition ────────────────────────────────────────────────
+
+  isAcquisition(e: Expense | null | undefined): boolean {
+    return e?.sourceTable === 'acquisition_payment';
+  }
+
+  /**
+   * Une ligne entre dans les totaux (barre de stats, export PDF) si c'est une
+   * dépense ordinaire, ou une échéance que le serveur dit « counted » (payée,
+   * ou planifiée et échue). Les échéances ignorées et à venir sont exclues.
+   */
+  countsInTotals(e: Expense): boolean {
+    return !this.isAcquisition(e) || !!e.counted;
+  }
+
+  /** Lignes filtrées qui comptent dans les totaux. */
+  private countedExpenses(): Expense[] {
+    return this.filteredExpenses.filter(e => this.countsInTotals(e));
+  }
+
+  private acquisitionLabel(p: AcquisitionPaymentDto): string {
+    switch (p.kind) {
+      case 'mensualite': return `Mensualité crédit/leasing ${p.seq}/${p.total || p.seq}`;
+      case 'apport': return 'Apport crédit/leasing';
+      default: return 'Achat véhicule';
+    }
+  }
+
+  private acquisitionDescription(p: AcquisitionPaymentDto): string {
+    switch (p.kind) {
+      case 'mensualite': return 'Échéance générée depuis le contrat du véhicule';
+      case 'apport': return 'Apport initial du contrat de financement';
+      default: return 'Prix d\'achat du véhicule';
+    }
+  }
+
+  /** JJ/MM (badge de ligne) ou JJ/MM/AAAA (panneau, PDF) d'une date ISO ou YYYY-MM-DD. */
+  private shortDate(value: string | null | undefined, withYear = false): string {
+    if (!value) return '';
+    const d = value.length === 10 ? new Date(value + 'T00:00:00') : new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('fr-FR', withYear
+      ? { day: '2-digit', month: '2-digit', year: 'numeric' }
+      : { day: '2-digit', month: '2-digit' });
+  }
+
+  /**
+   * Badge de statut d'une échéance : « Payée (auto) » (planifiée échue —
+   * présomption calendaire, comptée), « Payée le JJ/MM » (paiement confirmé),
+   * « À venir » (planifiée non échue, hors totaux), « Ignorée » (hors totaux).
+   */
+  paymentBadge(e: Expense, withYear = false): { cls: string; text: string } | null {
+    if (!this.isAcquisition(e)) return null;
+    switch (e.paymentStatus) {
+      case 'paid': {
+        const when = this.shortDate(e.paidAt, withYear);
+        return { cls: 'paid', text: when ? `Payée le ${when}` : 'Payée' };
+      }
+      case 'skipped': return { cls: 'skipped', text: 'Ignorée' };
+      default: return e.counted ? { cls: 'auto', text: 'Payée (auto)' } : { cls: 'upcoming', text: 'À venir' };
+    }
+  }
+
+  /** Libellé complet du statut (panneau de détail, export PDF). */
+  paymentStatusText(e: Expense): string {
+    return this.paymentBadge(e, true)?.text || '';
+  }
+
+  onToggleFuturePayments(): void {
+    this.closeRowMenu();
+    this.loading = true;
+    this.loadExpenses();
+  }
+
+  toggleRowMenu(e: Expense, event: Event): void {
+    event.stopPropagation();
+    this.menuExpenseId = this.menuExpenseId === e.id ? null : e.id;
+  }
+
+  closeRowMenu(): void {
+    this.menuExpenseId = null;
+  }
+
+  /** Un clic n'importe où ailleurs referme le menu ⋯ (le bouton stoppe la propagation). */
+  @HostListener('document:click')
+  onDocumentClick(): void {
+    if (this.menuExpenseId) this.menuExpenseId = null;
+  }
+
+  /** Jour LOCAL au format YYYY-MM-DD : toISOString() donnerait la veille entre minuit et 1 h en TN/DZ. */
+  private todayLocal(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  openMarkPaid(e: Expense): void {
+    if (!this.isAcquisition(e) || !e.acquisitionPaymentId) return;
+    this.closeRowMenu();
+    const today = this.todayLocal();
+    this.payModal = {
+      open: true,
+      expense: e,
+      // Défaut : la date d'échéance (le cas courant est « payée à la date prévue »),
+      // sans jamais proposer une date future.
+      date: e.dueDate && e.dueDate <= today ? e.dueDate : today,
+      amount: Number(e.paidAmount ?? e.plannedAmount ?? e.totalAmount) || 0,
+      note: e.note || '',
+      saving: false,
+      error: ''
+    };
+  }
+
+  closeMarkPaid(): void {
+    if (this.payModal.saving) return;
+    this.payModal = { ...this.payModal, open: false, expense: null, error: '' };
+  }
+
+  /**
+   * Un champ « Montant payé » vidé met `amount` à null, et `Number(null)` vaut 0 :
+   * sans ce contrôle, on enregistrerait un paiement de 0 et l'échéance sortirait
+   * du coût total. Le montant doit être réellement saisi.
+   */
+  hasPayAmount(): boolean {
+    const a = this.payModal.amount as unknown;
+    if (a === null || a === undefined || String(a).trim() === '') return false;
+    const n = Number(a);
+    return !isNaN(n) && n >= 0;
+  }
+
+  canSaveMarkPaid(): boolean {
+    return !!this.payModal.expense && !!this.payModal.date && this.hasPayAmount() && !this.payModal.saving;
+  }
+
+  /** Montant saisi ≠ montant prévu au contrat (tolérance 0,001) → rappel visuel. */
+  payAmountDiffers(): boolean {
+    const planned = this.payModal.expense?.plannedAmount;
+    if (planned == null) return false;
+    return Math.abs(Number(this.payModal.amount) - planned) > 0.001;
+  }
+
+  saveMarkPaid(): void {
+    if (!this.canSaveMarkPaid()) return;
+    const e = this.payModal.expense!;
+    if (!e.acquisitionPaymentId) return;
+    this.payModal.saving = true;
+    this.payModal.error = '';
+    // Midi local → la date calendaire choisie survit à la conversion UTC
+    // (minuit local basculerait la veille pour tout fuseau à l'est de Greenwich).
+    const paidAt = new Date(this.payModal.date + 'T12:00:00').toISOString();
+    const note = (this.payModal.note || '').trim();
+    this.apiService.updateAcquisitionPayment(e.acquisitionPaymentId, {
+      status: 'paid',
+      paidAt,
+      // Montant omis si rien n'est saisi : le serveur retombe alors sur le
+      // montant prévu au contrat, au lieu d'enregistrer un paiement de 0.
+      ...(this.hasPayAmount() ? { paidAmount: Number(this.payModal.amount) } : {}),
+      // Chaîne vide = note effacée (null signifierait « ne pas y toucher »).
+      note: note.slice(0, 500)
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.payModal = { ...this.payModal, open: false, expense: null, saving: false };
+        this.loadExpenses();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.payModal.saving = false;
+        this.payModal.error = err?.error?.message || "L'enregistrement du paiement a échoué. Réessayez.";
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  /** Ignorer (« skipped ») ou rétablir (« planned ») une échéance — réversible, pas de confirmation. */
+  setPaymentStatus(e: Expense, status: 'planned' | 'skipped'): void {
+    if (!this.isAcquisition(e) || !e.acquisitionPaymentId || this.paymentBusyId) return;
+    this.closeRowMenu();
+    this.paymentBusyId = e.acquisitionPaymentId;
+    this.apiService.updateAcquisitionPayment(e.acquisitionPaymentId, { status })
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => {
+          this.paymentBusyId = null;
+          this.loadExpenses();
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          this.paymentBusyId = null;
+          console.error('Error updating acquisition payment:', err);
+          alert(err?.error?.message || 'La mise à jour de l\'échéance a échoué.');
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  /** Mémorise la ligne visée ; l'appelant déclenche ensuite `receiptInput.click()`. */
+  startReceiptUpload(e: Expense): void {
+    this.receiptTarget = this.isAcquisition(e) ? e : null;
+    this.closeRowMenu();
+  }
+
+  async onReceiptFile(event: any): Promise<void> {
+    const file: File | undefined = event?.target?.files?.[0];
+    if (event?.target) event.target.value = '';       // permet de rechoisir le même fichier
+    const target = this.receiptTarget;
+    this.receiptTarget = null;
+    if (!file || !target?.acquisitionPaymentId) return;
+    const id = target.acquisitionPaymentId;
+    this.uploadingReceiptId = id;
+    this.cdr.detectChanges();
+    // Même préparation que le scan de facture : rotation EXIF, 2000 px max,
+    // JPEG 0,85 — une photo de téléphone passe de ~6 Mo à ~500 Ko.
+    const prepared = await this.prepareInvoiceImage(file);
+    this.apiService.uploadAcquisitionPaymentReceipt(id, prepared).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        this.uploadingReceiptId = null;
+        // Mise à jour immédiate de la ligne (et du panneau s'il est ouvert dessus)
+        // avant le rechargement complet.
+        const row = this.expenses.find(x => x.acquisitionPaymentId === id);
+        if (row) row.receiptUrl = res?.receiptUrl || row.receiptUrl;
+        if (this.detailExpense?.acquisitionPaymentId === id) this.detailExpense.receiptUrl = res?.receiptUrl || this.detailExpense.receiptUrl;
+        this.loadExpenses();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.uploadingReceiptId = null;
+        const msg = err?.status === 413
+          ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
+          : (err?.error?.message || "L'envoi de la quittance a échoué.");
+        alert(msg);
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  getTotalAmount(): number { return this.countedExpenses().reduce((sum, e) => sum + e.totalAmount, 0); }
+  /** Nombre de lignes réellement comptées (même base que le Total et que l'export). */
+  getCountedCount(): number { return this.countedExpenses().length; }
+  /** Lignes affichées mais non comptées (échéances à venir ou ignorées). */
+  getNotCountedCount(): number { return this.filteredExpenses.length - this.getCountedCount(); }
+  getUniqueVehiclesCount(): number { return new Set(this.countedExpenses().map(e => e.vehicleId)).size; }
   getAverageAmount(): number { const c = this.getUniqueVehiclesCount(); return c > 0 ? this.getTotalAmount() / c : 0; }
 
   getCategoryIcon(category: string): string {
@@ -931,18 +1215,20 @@ export class ExpensesComponent implements OnInit, OnDestroy {
    * cost after insurance settlements.
    */
   getNetTotal(): number {
-    return this.filteredExpenses.reduce((sum, e) => sum + (e.isRefund ? -e.totalAmount : e.totalAmount), 0);
+    return this.countedExpenses().reduce((sum, e) => sum + (e.isRefund ? -e.totalAmount : e.totalAmount), 0);
   }
 
   /** Total of insurance refunds in the filtered window (positive number, for display). */
   getRefundTotal(): number {
-    return this.filteredExpenses.filter(e => e.isRefund).reduce((sum, e) => sum + e.totalAmount, 0);
+    return this.countedExpenses().filter(e => e.isRefund).reduce((sum, e) => sum + e.totalAmount, 0);
   }
 
   exportPdf(): void {
-    // Group filtered expenses by category
+    // Group filtered expenses by category — only rows that count (acquisition
+    // payments that are skipped or not yet due are left out, like the totals).
+    const exported = this.countedExpenses();
     const byCategory = new Map<string, Expense[]>();
-    for (const exp of this.filteredExpenses) {
+    for (const exp of exported) {
       const cat = exp.category || 'autre';
       if (!byCategory.has(cat)) byCategory.set(cat, []);
       byCategory.get(cat)!.push(exp);
@@ -954,12 +1240,15 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       groups.push({
         groupLabel: this.getCategoryLabel(cat),
         groupSubtitle: `${expenses.length} entree(s)`,
-        rows: expenses.map(e => ({
-          date: e.date ? new Date(e.date).toLocaleDateString('fr-FR') : '-',
-          vehicleName: `${e.vehicleName} (${e.vehiclePlate})`,
-          label: e.label || e.description || '-',
-          amount: this.userPrefs.formatCurrency(e.totalAmount)
-        })),
+        rows: expenses.map(e => {
+          const status = this.isAcquisition(e) ? this.paymentStatusText(e) : '';
+          return {
+            date: e.date ? new Date(e.date).toLocaleDateString('fr-FR') : '-',
+            vehicleName: `${e.vehicleName} (${e.vehiclePlate})`,
+            label: (e.label || e.description || '-') + (status ? ` — ${status}` : ''),
+            amount: this.userPrefs.formatCurrency(e.totalAmount)
+          };
+        }),
         subtotal: `${expenses.length} entrees - ${this.userPrefs.formatCurrency(total)}`
       });
     });
@@ -970,8 +1259,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       dateRange: this.filterMonth ? `Mois: ${this.filterMonth}` : 'Toutes periodes',
       statistics: {
         'Total': this.userPrefs.formatCurrency(this.getTotalAmount()),
-        'Entrees': '' + this.filteredExpenses.length,
-        'Vehicules': '' + this.getUniqueVehiclesCount()
+        'Entrees': '' + exported.length,
+        'Vehicules': '' + new Set(exported.map(e => e.vehicleId)).size
       },
       columns: [
         { header: 'Date', dataKey: 'date' },

@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { Vehicle } from '../../models/types';
-import { ApiService } from '../../services/api.service';
+import { ApiService, AcquisitionPaymentDto } from '../../services/api.service';
 import { UserPreferencesService } from '../../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -463,36 +463,97 @@ export interface CompanyOption {
                   </div>
                 </div>
 
-                <!-- Calculated payment schedule (read-only) -->
-                <div class="leasing-schedule"
-                     *ngIf="formData.leasingStartDate && formData.leasingDurationMonths && formData.leasingMonthlyPayment">
-                  <label class="schedule-title">Échéancier des paiements</label>
-                  <div class="schedule-summary">
-                    <span>{{ formData.leasingDurationMonths }} mois × {{ formData.leasingMonthlyPayment | appCurrency }}
-                      = <strong>{{ (formData.leasingDurationMonths * formData.leasingMonthlyPayment) | appCurrency }}</strong>
-                    </span>
-                  </div>
-                  <div class="schedule-table-wrapper">
-                    <table class="schedule-table">
-                      <thead>
-                        <tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th></tr>
-                      </thead>
-                      <tbody>
-                        <tr *ngFor="let payment of getPaymentSchedule()" [class.paid]="payment.isPast" [class.current]="payment.isCurrent">
-                          <td>{{ payment.index }}</td>
-                          <td>{{ payment.date }}</td>
-                          <td>{{ formData.leasingMonthlyPayment | appCurrency }}</td>
-                          <td>
-                            <span class="payment-badge paid" *ngIf="payment.isPast">Payé</span>
-                            <span class="payment-badge current" *ngIf="payment.isCurrent">En cours</span>
-                            <span class="payment-badge upcoming" *ngIf="!payment.isPast && !payment.isCurrent">À venir</span>
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
               </ng-container>
+
+              <!-- Échéancier ENREGISTRÉ (table acquisition_payments, synchronisée par
+                   le serveur depuis le contrat) : véhicule existant dont le contrat
+                   n'a pas été modifié depuis l'ouverture. Actions par ligne hors
+                   contexte admin. -->
+              <div class="leasing-schedule" *ngIf="showServerSchedule">
+                <label class="schedule-title">Échéancier des paiements</label>
+                <div class="schedule-summary">
+                  <span *ngIf="scheduleLoading">Chargement de l'échéancier…</span>
+                  <span *ngIf="!scheduleLoading">
+                    <strong>{{ schedulePaidCount }}/{{ scheduleTotalCount }}</strong> payées
+                    · reste <strong>{{ scheduleRemaining | appCurrency }}</strong>
+                    <ng-container *ngIf="scheduleSkippedCount > 0"> · {{ scheduleSkippedCount }} ignorée(s)</ng-container>
+                  </span>
+                </div>
+                <div class="schedule-table-wrapper" *ngIf="!scheduleLoading">
+                  <table class="schedule-table">
+                    <thead>
+                      <tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th><th *ngIf="!isSystemAdminContext"></th></tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let p of schedule"
+                          [class.paid]="p.status === 'paid' || (p.status === 'planned' && p.counted)"
+                          [class.current]="p.id === currentPaymentId"
+                          [class.skipped]="p.status === 'skipped'">
+                        <td>{{ p.kind === 'mensualite' ? p.seq : (p.kind === 'apport' ? 'Apport' : 'Achat') }}</td>
+                        <td>{{ formatDue(p.dueDate) }}</td>
+                        <td>{{ (p.paidAmount ?? p.amount) | appCurrency }}</td>
+                        <td><span class="payment-badge {{ paymentBadge(p).cls }}" [title]="p.note || ''">{{ paymentBadge(p).text }}</span></td>
+                        <td class="schedule-actions" *ngIf="!isSystemAdminContext">
+                          <button type="button" class="sched-btn ok" *ngIf="p.status !== 'paid'" (click)="openPayEdit(p)" title="Marquer payée…" [disabled]="paymentBusyId === p.id">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          </button>
+                          <button type="button" class="sched-btn undo" *ngIf="p.status !== 'planned'" (click)="setPaymentStatus(p, 'planned')" [title]="p.status === 'paid' ? 'Annuler le paiement' : 'Rétablir cette échéance'" [disabled]="paymentBusyId === p.id">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                          </button>
+                          <button type="button" class="sched-btn skip" *ngIf="p.status !== 'skipped'" (click)="setPaymentStatus(p, 'skipped')" title="Ignorer cette échéance" [disabled]="paymentBusyId === p.id">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                          <a *ngIf="p.receiptUrl" class="sched-btn clip has-receipt" [href]="p.receiptUrl" target="_blank" title="Voir la quittance">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                          </a>
+                          <button type="button" class="sched-btn clip" (click)="receiptTargetId = p.id; scheduleReceiptInput.click()" [title]="p.receiptUrl ? 'Remplacer la quittance' : 'Joindre une quittance'" [disabled]="uploadingReceiptId === p.id">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                          </button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <input #scheduleReceiptInput type="file" accept="image/*,application/pdf" hidden (change)="onScheduleReceiptFile($event)">
+              </div>
+              <p class="schedule-error" *ngIf="scheduleError">{{ scheduleError }}</p>
+
+              <!-- APERÇU calculé (nouveau véhicule, contrat modifié non enregistré,
+                   ou contexte admin sans accès à l'échéancier client) : purement
+                   calendaire, remplacé par l'échéancier définitif après enregistrement. -->
+              <div class="leasing-schedule preview"
+                   *ngIf="!showServerSchedule && formData.acquisitionType === 'leasing' && formData.leasingStartDate && formData.leasingDurationMonths && formData.leasingMonthlyPayment">
+                <label class="schedule-title">Aperçu de l'échéancier</label>
+                <div class="schedule-summary">
+                  <span>{{ formData.leasingDurationMonths }} mois × {{ formData.leasingMonthlyPayment | appCurrency }}
+                    = <strong>{{ (formData.leasingDurationMonths * formData.leasingMonthlyPayment) | appCurrency }}</strong>
+                  </span>
+                </div>
+                <div class="schedule-table-wrapper">
+                  <table class="schedule-table">
+                    <thead>
+                      <tr><th>N°</th><th>Date</th><th>Montant</th><th>Statut</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let payment of getPaymentSchedule()" [class.paid]="payment.isPast" [class.current]="payment.isCurrent">
+                        <td>{{ payment.index }}</td>
+                        <td>{{ payment.date }}</td>
+                        <td>{{ formData.leasingMonthlyPayment | appCurrency }}</td>
+                        <td>
+                          <span class="payment-badge paid" *ngIf="payment.isPast">Payé</span>
+                          <span class="payment-badge current" *ngIf="payment.isCurrent">En cours</span>
+                          <span class="payment-badge upcoming" *ngIf="!payment.isPast && !payment.isCurrent">À venir</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="schedule-note">
+                  {{ isSystemAdminContext && vehicle?.id
+                     ? 'Aperçu calculé — le suivi des paiements se fait depuis l’espace client.'
+                     : 'Échéancier définitif après enregistrement.' }}
+                </p>
+              </div>
             </div>
           </form>
         </div>
@@ -503,6 +564,38 @@ export interface CompanyOption {
           <button type="button" class="btn-primary" (click)="onSubmit()">
             {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
           </button>
+        </div>
+      </div>
+
+      <!-- Mini-modale « Marquer payée » (échéance d'acquisition) — frère du
+           panneau, au-dessus de lui ; mousedown stoppé pour ne pas fermer le popup. -->
+      <div class="pay-overlay" *ngIf="payEdit.open" (mousedown)="$event.stopPropagation()" (click)="closePayEdit()">
+        <div class="pay-modal" (click)="$event.stopPropagation()">
+          <div class="pay-head">
+            <h4>Marquer l'échéance payée</h4>
+            <button type="button" class="pay-close" (click)="closePayEdit()" title="Fermer">×</button>
+          </div>
+          <div class="pay-body" *ngIf="payEdit.payment as p">
+            <p class="pay-sub">{{ paymentLabel(p) }} · échéance le {{ formatDue(p.dueDate) }}</p>
+            <label for="payDate">Date de paiement</label>
+            <input id="payDate" type="date" [(ngModel)]="payEdit.date" [disabled]="payEdit.saving">
+            <label for="payAmount">Montant payé <span class="pay-req">*</span></label>
+            <div class="input-with-suffix">
+              <input id="payAmount" type="number" step="0.001" min="0" [(ngModel)]="payEdit.amount" [disabled]="payEdit.saving" placeholder="0.000">
+              <span class="input-suffix">{{ currencyCode }}</span>
+            </div>
+            <p class="pay-hint" *ngIf="!hasPayAmount()">Saisissez le montant réglé.</p>
+            <p class="pay-hint" *ngIf="hasPayAmount() && payAmountDiffers()">Montant prévu au contrat : {{ p.amount | appCurrency }}</p>
+            <label for="payNote">Note</label>
+            <textarea id="payNote" rows="2" maxlength="500" [(ngModel)]="payEdit.note" [disabled]="payEdit.saving" placeholder="Référence de virement, remarque…"></textarea>
+            <p class="pay-error" *ngIf="payEdit.error">{{ payEdit.error }}</p>
+          </div>
+          <div class="pay-foot">
+            <button type="button" class="btn-secondary" (click)="closePayEdit()" [disabled]="payEdit.saving">Annuler</button>
+            <button type="button" class="btn-primary" (click)="savePayEdit()" [disabled]="!canSavePayEdit()">
+              {{ payEdit.saving ? 'Enregistrement…' : 'Enregistrer' }}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -908,18 +1001,157 @@ export interface CompanyOption {
       border-top: 1px solid #f1f5f9;
       color: #334155;
     }
-    .schedule-table tr.paid { opacity: 0.6; }
+    /* Lignes atténuées (payées / ignorées) : l'opacité est posée sur les
+       cellules, pas sur le tr, pour que les boutons d'action restent nets. */
+    .schedule-table tr.paid > td:not(.schedule-actions) { opacity: 0.6; }
     .schedule-table tr.current { background: #eff6ff; }
+    .schedule-table tr.skipped > td:not(.schedule-actions) { opacity: 0.5; }
+    .schedule-table tr.skipped td:nth-child(3) { text-decoration: line-through; }
     .payment-badge {
       display: inline-block;
       padding: 2px 8px;
       border-radius: 10px;
       font-size: 11px;
       font-weight: 500;
+      white-space: nowrap;
     }
     .payment-badge.paid { background: #dcfce7; color: #166534; }
+    .payment-badge.confirmed { background: #16a34a; color: #ffffff; }
     .payment-badge.current { background: #dbeafe; color: #1e40af; }
     .payment-badge.upcoming { background: #f1f5f9; color: #64748b; }
+    .payment-badge.skipped { background: #e2e8f0; color: #475569; }
+    /* Réservé au badge optionnel « En retard » (planifiée échue depuis > 7 j). */
+    .payment-badge.late { background: #fef3c7; color: #92400e; }
+
+    .leasing-schedule.preview { border-style: dashed; }
+    .schedule-note {
+      margin: 8px 0 0;
+      font-size: 11px;
+      color: #92400e;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 6px;
+      padding: 6px 10px;
+    }
+    .schedule-error {
+      margin: 8px 0 0;
+      font-size: 11.5px;
+      color: #b91c1c;
+    }
+
+    /* Actions par ligne (✓ payée, ↺ rétablir, ✕ ignorer, 📎 quittance) */
+    .schedule-actions {
+      display: flex;
+      gap: 4px;
+      justify-content: flex-end;
+      white-space: nowrap;
+    }
+    .sched-btn {
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: #f1f5f9;
+      color: #475569;
+      text-decoration: none;
+      transition: background .15s, color .15s;
+    }
+    .sched-btn:disabled { opacity: .5; cursor: wait; }
+    .sched-btn.ok { background: #dcfce7; color: #166534; }
+    .sched-btn.ok:hover:not(:disabled) { background: #bbf7d0; }
+    .sched-btn.undo:hover:not(:disabled) { background: #e2e8f0; color: #0f172a; }
+    .sched-btn.skip { background: #fee2e2; color: #b91c1c; }
+    .sched-btn.skip:hover:not(:disabled) { background: #fecaca; }
+    .sched-btn.clip:hover:not(:disabled) { background: #ede9fe; color: #6d28d9; }
+    .sched-btn.clip.has-receipt { background: #ede9fe; color: #6d28d9; }
+
+    /* Mini-modale « Marquer payée » */
+    .pay-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1090; /* au-dessus du panneau (1050), sous la navbar (1100) */
+      padding: 20px;
+    }
+    .pay-modal {
+      background: #fff;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+    .pay-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .pay-head h4 { margin: 0; font-size: 15px; font-weight: 700; color: #0f172a; }
+    .pay-close {
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      font-size: 18px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: #475569;
+    }
+    .pay-close:hover { background: #e2e8f0; }
+    .pay-body { padding: 16px 18px 4px; }
+    .pay-sub { margin: 0 0 14px; font-size: 12.5px; color: #64748b; }
+    .pay-body label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #475569;
+      margin: 10px 0 6px;
+    }
+    .pay-body input, .pay-body textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 8px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 13px;
+      font-family: inherit;
+    }
+    .pay-body textarea { resize: vertical; }
+    .pay-hint { margin: 6px 0 0; font-size: 11.5px; color: #b45309; }
+    .pay-req { color: #dc2626; }
+    .pay-error {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #b91c1c;
+    }
+    .pay-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 14px 18px;
+      border-top: 1px solid #e2e8f0;
+      background: #f8fafc;
+    }
 
     @media (max-width: 640px) {
       .form-row {
@@ -984,6 +1216,33 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   /** Day-of-month options for the leasing payment day dropdown (1..28). */
   readonly paymentDays: number[] = Array.from({ length: 28 }, (_, i) => i + 1);
 
+  // ── Échéancier ENREGISTRÉ (acquisition_payments) d'un véhicule existant ──
+  /** Lignes serveur, triées apport/achat d'abord puis mensualités 1..N. */
+  schedule: AcquisitionPaymentDto[] = [];
+  scheduleLoading = false;
+  scheduleError = '';
+  /** « En cours » = première mensualité planifiée non échue. */
+  currentPaymentId: number | null = null;
+  schedulePaidCount = 0;
+  scheduleTotalCount = 0;
+  scheduleSkippedCount = 0;
+  scheduleRemaining = 0;
+  /** Empreinte des 7 champs du contrat à l'ouverture : si elle change, l'échéancier
+   *  serveur ne reflète plus le formulaire → on repasse sur l'aperçu calculé. */
+  private contractSnapshot = '';
+  paymentBusyId: number | null = null;
+  uploadingReceiptId: number | null = null;
+  receiptTargetId: number | null = null;
+  payEdit = {
+    open: false,
+    payment: null as AcquisitionPaymentDto | null,
+    date: '',
+    amount: 0,
+    note: '',
+    saving: false,
+    error: ''
+  };
+
   formData: any = {
     name: '',
     plate: '',
@@ -1033,6 +1292,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     }
     if (this.vehicle) {
       this.hydrateFormFromVehicle(this.vehicle);
+      this.contractSnapshot = this.contractKey();
       if (this.vehicle.gpsDeviceId) {
         this.gpsMode = 'existing';
       }
@@ -1048,16 +1308,288 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       if (this.isSystemAdminContext) {
         this.loadAvailableDevices();
       }
+      this.resetScheduleState();
       if (this.vehicle) {
         this.hydrateFormFromVehicle(this.vehicle);
+        this.contractSnapshot = this.contractKey();
         this.gpsMode = this.vehicle.gpsDeviceId ? 'existing' : 'new';
         // Load brands first, then resolve brandId from brand name if needed
         this.loadBrandsAndResolve();
+        // Échéancier enregistré : uniquement dans l'app client. L'espace admin
+        // n'a pas de jeton client (l'intercepteur n'emprunte jamais admin_token
+        // sur une route client) → l'appel partirait sans jeton ; il garde
+        // l'aperçu calculé en lecture seule.
+        const vehicleId = parseInt(String(this.vehicle.id));
+        if (!this.isSystemAdminContext && !isNaN(vehicleId)) {
+          this.loadSchedule(vehicleId);
+        }
       } else {
         this.loadBrands();
         this.resetForm();
+        this.contractSnapshot = '';
       }
+    } else if (changes['isOpen'] && !changes['isOpen'].currentValue) {
+      this.resetScheduleState();
     }
+  }
+
+  // ── Échéancier enregistré ──────────────────────────────────────────────────
+
+  private resetScheduleState(): void {
+    this.schedule = [];
+    this.scheduleLoading = false;
+    this.scheduleError = '';
+    this.currentPaymentId = null;
+    this.schedulePaidCount = this.scheduleTotalCount = this.scheduleSkippedCount = 0;
+    this.scheduleRemaining = 0;
+    this.paymentBusyId = null;
+    this.uploadingReceiptId = null;
+    this.receiptTargetId = null;
+    this.payEdit = { open: false, payment: null, date: '', amount: 0, note: '', saving: false, error: '' };
+  }
+
+  /** Empreinte normalisée des champs d'acquisition (nombres et chaînes comparés en texte). */
+  private contractKey(): string {
+    const f = this.formData || {};
+    const norm = (v: any) => (v === null || v === undefined || v === '') ? '' : String(v);
+    return [
+      f.acquisitionType === 'leasing' ? 'leasing' : 'purchase',
+      norm(f.purchaseDate), norm(f.purchasePrice),
+      norm(f.leasingMonthlyPayment), norm(f.leasingDurationMonths),
+      norm(f.leasingStartDate), norm(f.leasingPaymentDay)
+    ].join('|');
+  }
+
+  /** Le contrat a été modifié dans le formulaire depuis l'ouverture (non enregistré). */
+  get contractDirty(): boolean {
+    return !!this.vehicle?.id && this.contractSnapshot !== this.contractKey();
+  }
+
+  /**
+   * Échéancier serveur affiché : véhicule existant, app client, contrat
+   * inchangé, et au moins une ligne (ou chargement en cours). Sinon l'aperçu
+   * calendaire prend le relais.
+   */
+  get showServerSchedule(): boolean {
+    if (!this.vehicle?.id || this.isSystemAdminContext || this.contractDirty) return false;
+    return this.scheduleLoading || this.schedule.length > 0;
+  }
+
+  private loadSchedule(vehicleId: number, silent = false): void {
+    // Verrou de sécurité : /api/acquisition-payments est une route CLIENT.
+    // Ouvert depuis l'espace admin (jeton admin_token), l'appel partirait sans
+    // jeton — ou pire, avec une session client restée dans le navigateur, donc
+    // sur l'échéancier d'une autre société.
+    if (this.isSystemAdminContext || !localStorage.getItem('auth_token')) return;
+    if (!silent) this.scheduleLoading = true;
+    this.scheduleError = '';
+    this.apiService.getAcquisitionPayments({ vehicleId, includeFuture: true }).subscribe({
+      next: (rows) => {
+        // Le popup a pu changer de véhicule entre-temps.
+        if (parseInt(String(this.vehicle?.id)) !== vehicleId) return;
+        this.schedule = (rows || []).slice().sort((a, b) => {
+          const ka = a.kind === 'mensualite' ? 1 : 0;
+          const kb = b.kind === 'mensualite' ? 1 : 0;
+          return ka !== kb ? ka - kb : a.seq - b.seq;
+        });
+        this.scheduleLoading = false;
+        this.recomputeScheduleStats();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        console.error('Error loading acquisition payments:', err);
+        this.schedule = [];
+        this.scheduleLoading = false;
+        this.scheduleError = err?.status === 404
+          ? ''   // endpoint absent (déploiement partiel) → aperçu calculé, sans bruit
+          : (err?.error?.message || "L'échéancier enregistré n'a pas pu être chargé — aperçu calculé affiché.");
+        this.recomputeScheduleStats();
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  private recomputeScheduleStats(): void {
+    const rows = this.schedule;
+    const isPaidLike = (p: AcquisitionPaymentDto) => p.status === 'paid' || (p.status === 'planned' && p.counted);
+    this.scheduleSkippedCount = rows.filter(p => p.status === 'skipped').length;
+    this.scheduleTotalCount = rows.length - this.scheduleSkippedCount;
+    this.schedulePaidCount = rows.filter(isPaidLike).length;
+    this.scheduleRemaining = rows
+      .filter(p => p.status === 'planned' && !p.counted)
+      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    this.currentPaymentId = rows.find(p => p.status === 'planned' && !p.counted)?.id ?? null;
+  }
+
+  formatDue(dueDate: string): string {
+    if (!dueDate) return '';
+    const d = new Date(String(dueDate).slice(0, 10) + 'T00:00:00');
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short', day: 'numeric' });
+  }
+
+  private shortDate(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  }
+
+  paymentLabel(p: AcquisitionPaymentDto): string {
+    switch (p.kind) {
+      case 'mensualite': return `Mensualité ${p.seq}/${p.total || p.seq}`;
+      case 'apport': return 'Apport';
+      default: return 'Achat véhicule';
+    }
+  }
+
+  /**
+   * Statuts : « Payée le JJ/MM » (confirmée), « Payée (auto) » (planifiée
+   * échue — présomption calendaire, comptée en dépense), « En cours »
+   * (prochaine à payer), « À venir », « Ignorée ».
+   */
+  paymentBadge(p: AcquisitionPaymentDto): { cls: string; text: string } {
+    if (p.status === 'paid') {
+      const when = this.shortDate(p.paidAt);
+      return { cls: 'confirmed', text: when ? `Payée le ${when}` : 'Payée' };
+    }
+    if (p.status === 'skipped') return { cls: 'skipped', text: 'Ignorée' };
+    if (p.counted) return { cls: 'paid', text: 'Payée (auto)' };
+    if (p.id === this.currentPaymentId) return { cls: 'current', text: 'En cours' };
+    return { cls: 'upcoming', text: 'À venir' };
+  }
+
+  /** Jour LOCAL : toISOString() donnerait la veille entre minuit et 1 h en TN/DZ. */
+  private todayLocal(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  openPayEdit(p: AcquisitionPaymentDto): void {
+    const today = this.todayLocal();
+    const due = String(p.dueDate || '').slice(0, 10);
+    this.payEdit = {
+      open: true,
+      payment: p,
+      date: due && due <= today ? due : today,
+      amount: Number(p.paidAmount ?? p.amount) || 0,
+      note: p.note || '',
+      saving: false,
+      error: ''
+    };
+  }
+
+  closePayEdit(): void {
+    if (this.payEdit.saving) return;
+    this.payEdit = { ...this.payEdit, open: false, payment: null, error: '' };
+  }
+
+  /**
+   * Un champ montant vidé met `amount` à null, et `Number(null)` vaut 0 : sans ce
+   * contrôle on enregistrerait un paiement de 0 et l'échéance sortirait du coût.
+   */
+  hasPayAmount(): boolean {
+    const a = this.payEdit.amount as unknown;
+    if (a === null || a === undefined || String(a).trim() === '') return false;
+    const n = Number(a);
+    return !isNaN(n) && n >= 0;
+  }
+
+  canSavePayEdit(): boolean {
+    return !!this.payEdit.payment && !!this.payEdit.date && this.hasPayAmount() && !this.payEdit.saving;
+  }
+
+  payAmountDiffers(): boolean {
+    const p = this.payEdit.payment;
+    return !!p && Math.abs(Number(this.payEdit.amount) - Number(p.amount)) > 0.001;
+  }
+
+  savePayEdit(): void {
+    const p = this.payEdit.payment;
+    if (!this.canSavePayEdit() || !p) return;
+    this.payEdit.saving = true;
+    this.payEdit.error = '';
+    // Midi local : la date calendaire choisie survit à la conversion UTC.
+    const paidAt = new Date(this.payEdit.date + 'T12:00:00').toISOString();
+    const note = (this.payEdit.note || '').trim();
+    this.apiService.updateAcquisitionPayment(p.id, {
+      status: 'paid', paidAt,
+      // Montant omis si rien n'est saisi (le serveur retombe sur le montant prévu) ;
+      // note en chaîne vide = effacée, null signifierait « ne pas y toucher ».
+      ...(this.hasPayAmount() ? { paidAmount: Number(this.payEdit.amount) } : {}),
+      note: note.slice(0, 500)
+    }).subscribe({
+      next: (updated) => {
+        this.payEdit = { ...this.payEdit, open: false, payment: null, saving: false };
+        this.applyUpdatedPayment(p.id, updated);
+      },
+      error: (err) => {
+        this.payEdit.saving = false;
+        this.payEdit.error = err?.error?.message || "L'enregistrement du paiement a échoué. Réessayez.";
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  setPaymentStatus(p: AcquisitionPaymentDto, status: 'planned' | 'skipped'): void {
+    if (this.paymentBusyId) return;
+    this.paymentBusyId = p.id;
+    this.apiService.updateAcquisitionPayment(p.id, { status }).subscribe({
+      next: (updated) => {
+        this.paymentBusyId = null;
+        this.applyUpdatedPayment(p.id, updated);
+      },
+      error: (err) => {
+        this.paymentBusyId = null;
+        console.error('Error updating acquisition payment:', err);
+        alert(err?.error?.message || "La mise à jour de l'échéance a échoué.");
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  /** Remplace la ligne par le DTO renvoyé puis recharge en silence (counted/overdue à jour). */
+  private applyUpdatedPayment(id: number, updated: AcquisitionPaymentDto | null | undefined): void {
+    if (updated && updated.id === id) {
+      this.schedule = this.schedule.map(row => row.id === id ? { ...row, ...updated } : row);
+      this.recomputeScheduleStats();
+    }
+    this.cdr.detectChanges();
+    const vehicleId = parseInt(String(this.vehicle?.id));
+    if (!isNaN(vehicleId)) this.loadSchedule(vehicleId, true);
+  }
+
+  onScheduleReceiptFile(event: any): void {
+    const file: File | undefined = event?.target?.files?.[0];
+    if (event?.target) event.target.value = '';
+    const id = this.receiptTargetId;
+    this.receiptTargetId = null;
+    // Un refus précédent ne doit pas rester affiché sous un envoi qui réussit.
+    this.scheduleError = '';
+    if (!file || !id) return;
+    // Le serveur plafonne à 12 Mo : autant refuser tout de suite plutôt que de
+    // laisser partir une photo de téléphone entière pour finir en 413.
+    if (file.size > 12_000_000) {
+      this.scheduleError = 'Quittance trop lourde (12 Mo maximum). Réduisez la photo avant de la joindre.';
+      this.cdr.detectChanges();
+      return;
+    }
+    this.uploadingReceiptId = id;
+    this.cdr.detectChanges();
+    this.apiService.uploadAcquisitionPaymentReceipt(id, file).subscribe({
+      next: (res) => {
+        this.uploadingReceiptId = null;
+        const row = this.schedule.find(r => r.id === id);
+        if (row && res?.receiptUrl) row.receiptUrl = res.receiptUrl;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.uploadingReceiptId = null;
+        const msg = err?.status === 413
+          ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
+          : (err?.error?.message || "L'envoi de la quittance a échoué.");
+        alert(msg);
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   /**
@@ -1102,18 +1634,18 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   }
 
   /**
-   * Build the leasing payment schedule between the start date and the
-   * configured number of months. Past payments are flagged so the table
-   * can render them dimmed; the next payment due is highlighted.
+   * APERÇU calendaire de l'échéancier — utilisé seulement pour un véhicule
+   * pas encore créé, un contrat modifié non enregistré, ou le contexte admin.
+   * L'échéancier de référence est celui du serveur (table acquisition_payments,
+   * `schedule`), chargé à l'ouverture d'un véhicule existant ; il porte les
+   * paiements réels (date, montant, quittance, échéances ignorées).
    *
-   * Statuts (recette client 01/09/2026) : une mensualité est réputée « Payé »
-   * DÈS QUE sa date est atteinte — même règle que l'écran Dépenses, qui compte
-   * l'échéance en dépense ce jour-là. L'ancienne fenêtre (« Payé » seulement
-   * quand l'échéance SUIVANTE arrivait) laissait la mensualité du 18/08
-   * affichée « En cours » un mois entier. « En cours » = la prochaine
-   * mensualité à payer ; le reste = « À venir ». Aucun paiement réel n'étant
-   * enregistré (pas d'entité d'échéance côté serveur), « Payé » reste une
-   * présomption calendaire.
+   * Statuts de l'aperçu (recette client 01/09/2026) : une mensualité est
+   * réputée « Payé » DÈS QUE sa date est atteinte — même règle que l'écran
+   * Dépenses et que le serveur (`counted`). « En cours » = la prochaine
+   * mensualité à payer ; le reste = « À venir ». Même calcul de dates que
+   * AcquisitionSchedule.LeasingDues côté serveur (jour plafonné au 28,
+   * 1re mensualité le mois suivant si le jour de paiement précède le début).
    */
   getPaymentSchedule(): { index: number; date: string; isPast: boolean; isCurrent: boolean }[] {
     const duration = this.formData.leasingDurationMonths;

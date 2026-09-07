@@ -1,5 +1,9 @@
 <app-layout>
   <div class="expenses-page">
+    <!-- Quittance d'une échéance d'acquisition : input unique, la ligne visée
+         est mémorisée par startReceiptUpload() avant le clic. -->
+    <input #receiptInput type="file" accept="image/*,application/pdf" hidden (change)="onReceiptFile($event)">
+
     <!-- Barre de filtres -->
     <div class="filter-bar">
       <div class="search-wrapper">
@@ -33,6 +37,12 @@
         <option value="insurance_refund">💸 Remboursement assurance</option>
       </select>
       <input type="month" class="filter-month" [(ngModel)]="filterMonth" (change)="filterExpenses()">
+      <!-- Échéances d'acquisition planifiées non échues : hors dépenses par
+           défaut (elles ne comptent pas encore), affichables à la demande. -->
+      <label class="filter-check" title="Inclure les mensualités et échéances d'acquisition non encore échues (hors totaux)">
+        <input type="checkbox" [(ngModel)]="showFuturePayments" (change)="onToggleFuturePayments()">
+        Afficher les échéances à venir
+      </label>
       <button class="btn-export" (click)="exportPdf()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -247,7 +257,15 @@
       </div>
       <div class="stat-item">
         <div class="stat-icon count"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg></div>
-        <div class="stat-content"><span class="stat-value">{{ filteredExpenses.length }}</span><span class="stat-label">Entrées</span></div>
+        <div class="stat-content">
+          <span class="stat-value">{{ getCountedCount() }}</span>
+          <span class="stat-label">
+            Entrées
+            @if (getNotCountedCount() > 0) {
+              <span class="stat-hint">+ {{ getNotCountedCount() }} non comptée(s)</span>
+            }
+          </span>
+        </div>
       </div>
       <div class="stat-item">
         <div class="stat-icon vehicles"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon></svg></div>
@@ -522,7 +540,8 @@
       </thead>
       <tbody>
         @for (e of filteredExpenses; track e.id) {
-          <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isRefund">
+          <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isRefund"
+              [class.pay-skipped]="e.paymentStatus === 'skipped'" [class.pay-future]="e.isFuture">
             <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
             <td><span class="plate-badge">{{ e.vehiclePlate }}</span></td>
             <td>
@@ -538,7 +557,18 @@
                 🚗 Accident #{{ e.accidentEventId }}
               </a>
             </td>
-            <td class="label-cell">{{ e.label }}</td>
+            <td class="label-cell">
+              {{ e.label }}
+              <!-- Échéance d'acquisition : statut de paiement (règle serveur). -->
+              @if (paymentBadge(e); as badge) {
+                <span class="pay-badge {{ badge.cls }}" [title]="e.note || ''">{{ badge.text }}</span>
+              }
+              @if (isAcquisition(e) && e.receiptUrl) {
+                <a class="pay-receipt-link" [href]="e.receiptUrl" target="_blank" title="Voir la quittance" (click)="$event.stopPropagation()">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                </a>
+              }
+            </td>
             <td class="total-cell" [class.refund-amount]="e.isRefund">
               {{ e.isRefund ? '−' : '' }}{{ e.totalAmount | appCurrency }}
             </td>
@@ -546,9 +576,56 @@
               <button class="btn-action detail" (click)="openDetailPanel(e); $event.stopPropagation()" title="Détail dépense">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
               </button>
-              <button class="btn-action delete" (click)="confirmDeleteExpense(e)" title="Supprimer" [disabled]="!!e.accidentEventId">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-              </button>
+              @if (isAcquisition(e)) {
+                <!-- Pas de corbeille : une échéance s'ignore ou se marque payée,
+                     c'est le contrat du véhicule qui la fait exister. -->
+                <div class="row-menu-wrap">
+                  <button class="btn-action more" (click)="toggleRowMenu(e, $event)" title="Actions sur l'échéance"
+                          [class.active]="menuExpenseId === e.id"
+                          [disabled]="paymentBusyId === e.acquisitionPaymentId || uploadingReceiptId === e.acquisitionPaymentId">
+                    @if (paymentBusyId === e.acquisitionPaymentId || uploadingReceiptId === e.acquisitionPaymentId) {
+                      <span class="row-spinner"></span>
+                    } @else {
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+                    }
+                  </button>
+                  @if (menuExpenseId === e.id) {
+                    <div class="row-menu" (click)="$event.stopPropagation()">
+                      @if (e.paymentStatus !== 'paid') {
+                        <button type="button" (click)="openMarkPaid(e)">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                          Marquer payée…
+                        </button>
+                      }
+                      <button type="button" (click)="startReceiptUpload(e); receiptInput.click()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        {{ e.receiptUrl ? 'Remplacer la quittance' : 'Joindre une quittance' }}
+                      </button>
+                      @if (e.paymentStatus === 'skipped') {
+                        <button type="button" (click)="setPaymentStatus(e, 'planned')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                          Rétablir l'échéance
+                        </button>
+                      } @else {
+                        @if (e.paymentStatus === 'paid') {
+                          <button type="button" (click)="setPaymentStatus(e, 'planned')">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            Annuler le paiement
+                          </button>
+                        }
+                        <button type="button" class="danger" (click)="setPaymentStatus(e, 'skipped')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          Ignorer cette échéance
+                        </button>
+                      }
+                    </div>
+                  }
+                </div>
+              } @else {
+                <button class="btn-action delete" (click)="confirmDeleteExpense(e)" title="Supprimer" [disabled]="!!e.accidentEventId">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              }
             </td>
           </tr>
         }
@@ -626,31 +703,133 @@
           <span class="xd-row-label">Détail prix</span>
           <span class="xd-row-value">{{ detailExpense.quantity | number:'1.2-2' }} × {{ detailExpense.unitPrice | appCurrency:3 }}</span>
         </div>
-        <div class="xd-row">
+        <div class="xd-row" *ngIf="!isAcquisition(detailExpense)">
           <span class="xd-row-label">Enregistré le</span>
           <span class="xd-row-value">{{ detailExpense.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
         </div>
         <div class="xd-row">
           <span class="xd-row-label">Source</span>
-          <span class="xd-row-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : 'Coût véhicule' }}</span>
+          <span class="xd-row-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : detailExpense.sourceTable === 'acquisition_payment' ? 'Échéance d\'acquisition' : 'Coût véhicule' }}</span>
         </div>
       </div>
 
-      <!-- Justificatif (facture scannée) -->
-      <div class="xd-card" *ngIf="detailExpense.receiptUrl">
-        <div class="xd-card-title">Justificatif</div>
-        <a *ngIf="!isPdf(detailExpense.receiptUrl!)" class="xd-receipt-img" [href]="detailExpense.receiptUrl" target="_blank" title="Agrandir">
+      <!-- Échéance d'acquisition : statut et paiement -->
+      <div class="xd-card" *ngIf="isAcquisition(detailExpense)">
+        <div class="xd-card-title">Paiement</div>
+        <div class="xd-row">
+          <span class="xd-row-label">Statut</span>
+          <span class="xd-row-value">
+            @if (paymentBadge(detailExpense, true); as badge) {
+              <span class="pay-badge {{ badge.cls }}">{{ badge.text }}</span>
+            }
+          </span>
+        </div>
+        <div class="xd-row">
+          <span class="xd-row-label">Échéance le</span>
+          <span class="xd-row-value">{{ detailExpense.date | date:'dd/MM/yyyy' }}</span>
+        </div>
+        <div class="xd-row" *ngIf="detailExpense.paymentStatus === 'paid' && detailExpense.paidAt">
+          <span class="xd-row-label">Payée le</span>
+          <span class="xd-row-value">{{ detailExpense.paidAt | date:'dd/MM/yyyy' }}</span>
+        </div>
+        <div class="xd-row">
+          <span class="xd-row-label">Montant prévu</span>
+          <span class="xd-row-value">{{ detailExpense.plannedAmount | appCurrency }}</span>
+        </div>
+        <div class="xd-row" *ngIf="detailExpense.paymentStatus === 'paid'">
+          <span class="xd-row-label">Montant payé</span>
+          <span class="xd-row-value" [class.xd-diff]="(detailExpense.paidAmount ?? detailExpense.plannedAmount) !== detailExpense.plannedAmount">
+            {{ (detailExpense.paidAmount ?? detailExpense.plannedAmount) | appCurrency }}
+          </span>
+        </div>
+        <div class="xd-row" *ngIf="detailExpense.note">
+          <span class="xd-row-label">Note</span>
+          <span class="xd-row-value">{{ detailExpense.note }}</span>
+        </div>
+        <p class="xd-hint" *ngIf="detailExpense.paymentStatus === 'skipped'">Échéance ignorée : exclue des totaux et du tableau de bord.</p>
+        <p class="xd-hint" *ngIf="detailExpense.isFuture">Échéance à venir : elle comptera en dépense à sa date.</p>
+        <p class="xd-hint" *ngIf="detailExpense.paymentStatus === 'planned' && detailExpense.counted">Comptée à sa date d'échéance ; « Marquer payée » confirme la date et le montant réels.</p>
+      </div>
+
+      <!-- Justificatif (facture scannée ou quittance) -->
+      <div class="xd-card" *ngIf="detailExpense.receiptUrl || isAcquisition(detailExpense)">
+        <div class="xd-card-title">{{ isAcquisition(detailExpense) ? 'Quittance' : 'Justificatif' }}</div>
+        <a *ngIf="detailExpense.receiptUrl && !isPdf(detailExpense.receiptUrl!)" class="xd-receipt-img" [href]="detailExpense.receiptUrl" target="_blank" title="Agrandir">
           <img [src]="detailExpense.receiptUrl" alt="Facture" />
         </a>
-        <a *ngIf="isPdf(detailExpense.receiptUrl!)" class="xd-receipt-pdf" [href]="detailExpense.receiptUrl" target="_blank">
+        <a *ngIf="detailExpense.receiptUrl && isPdf(detailExpense.receiptUrl!)" class="xd-receipt-pdf" [href]="detailExpense.receiptUrl" target="_blank">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-          Ouvrir la facture (PDF)
+          {{ isAcquisition(detailExpense) ? 'Ouvrir la quittance (PDF)' : 'Ouvrir la facture (PDF)' }}
         </a>
+        <button *ngIf="isAcquisition(detailExpense)" type="button" class="xd-receipt-attach"
+                (click)="startReceiptUpload(detailExpense); receiptInput.click()"
+                [disabled]="uploadingReceiptId === detailExpense.acquisitionPaymentId">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          {{ uploadingReceiptId === detailExpense.acquisitionPaymentId ? 'Envoi…' : (detailExpense.receiptUrl ? 'Remplacer la quittance' : 'Joindre une quittance') }}
+        </button>
       </div>
     </div>
     <div class="slide-panel-footer">
       <button class="btn-cancel" (click)="closeDetailPanel()">Fermer</button>
-      <button class="btn-delete" *ngIf="detailExpense" (click)="confirmDeleteExpense(detailExpense); closeDetailPanel()">Supprimer</button>
+      @if (detailExpense && isAcquisition(detailExpense)) {
+        @if (detailExpense.paymentStatus === 'skipped') {
+          <button class="btn-ghost-warn" (click)="setPaymentStatus(detailExpense, 'planned')" [disabled]="paymentBusyId === detailExpense.acquisitionPaymentId">Rétablir</button>
+        } @else {
+          <button class="btn-ghost-warn" (click)="setPaymentStatus(detailExpense, 'skipped')" [disabled]="paymentBusyId === detailExpense.acquisitionPaymentId">Ignorer</button>
+        }
+        @if (detailExpense.paymentStatus !== 'paid') {
+          <button class="btn-mark-paid" (click)="openMarkPaid(detailExpense)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Marquer payée
+          </button>
+        }
+      } @else if (detailExpense) {
+        <button class="btn-delete" (click)="confirmDeleteExpense(detailExpense); closeDetailPanel()">Supprimer</button>
+      }
+    </div>
+  </div>
+
+  <!-- Modale « Marquer payée » (échéance d'acquisition) -->
+  <div class="modal-overlay" *ngIf="payModal.open" (click)="closeMarkPaid()">
+    <div class="modal-content pay-modal" (click)="$event.stopPropagation()">
+      <h3>Marquer l'échéance payée</h3>
+      <p class="pay-modal-sub" *ngIf="payModal.expense">
+        {{ payModal.expense.label }} · <span class="plate-badge">{{ payModal.expense.vehiclePlate }}</span>
+        · échéance le {{ payModal.expense.date | date:'dd/MM/yyyy' }}
+      </p>
+      <div class="pay-form">
+        <div class="sm-field">
+          <label class="sm-label">Date de paiement <span class="sm-req">*</span></label>
+          <input class="sm-input" type="date" [(ngModel)]="payModal.date" [disabled]="payModal.saving">
+        </div>
+        <div class="sm-field">
+          <label class="sm-label">Montant payé <span class="sm-req">*</span></label>
+          <div class="sm-amount">
+            <input class="sm-input sm-input-amount" type="number" step="0.001" min="0" [(ngModel)]="payModal.amount" [disabled]="payModal.saving" placeholder="0.000">
+            <span class="sm-currency">{{ currencyCode }}</span>
+          </div>
+          <small class="sm-warn" *ngIf="!hasPayAmount()">
+            Saisissez le montant réglé.
+          </small>
+          <small class="sm-warn" *ngIf="hasPayAmount() && payModal.expense && payAmountDiffers()">
+            Montant prévu au contrat : {{ payModal.expense.plannedAmount | appCurrency }}
+          </small>
+        </div>
+        <div class="sm-field sm-field-full">
+          <label class="sm-label">Note</label>
+          <textarea class="sm-input" rows="2" maxlength="500" [(ngModel)]="payModal.note" [disabled]="payModal.saving" placeholder="Référence de virement, remarque…"></textarea>
+        </div>
+      </div>
+      <p class="pay-error" *ngIf="payModal.error">{{ payModal.error }}</p>
+      <div class="modal-actions">
+        <button class="sm-btn-ghost" (click)="closeMarkPaid()" [disabled]="payModal.saving">Annuler</button>
+        <button class="sm-btn-primary" (click)="saveMarkPaid()" [disabled]="!canSaveMarkPaid()">
+          @if (!payModal.saving) {
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          }
+          {{ payModal.saving ? 'Enregistrement…' : 'Enregistrer' }}
+        </button>
+      </div>
     </div>
   </div>
 

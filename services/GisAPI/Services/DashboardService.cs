@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.AcquisitionPayments;
 using GisAPI.Application.Features.Vehicles;
 
 namespace GisAPI.Services;
@@ -25,12 +26,15 @@ public class DashboardService : IDashboardService
     private readonly GisDbContext _context;
     private readonly IVehicleHealthScoreService _healthService;
     private readonly IFuelCalculationService _fuelCalcService;
+    private readonly ILogger<DashboardService> _logger;
 
-    public DashboardService(GisDbContext context, IVehicleHealthScoreService healthService, IFuelCalculationService fuelCalcService)
+    public DashboardService(GisDbContext context, IVehicleHealthScoreService healthService,
+        IFuelCalculationService fuelCalcService, ILogger<DashboardService> logger)
     {
         _context = context;
         _healthService = healthService;
         _fuelCalcService = fuelCalcService;
+        _logger = logger;
     }
 
     public async Task<object> ComputeDashboardAllAsync(int companyId, int userId, bool isAdmin, string period,
@@ -45,6 +49,9 @@ public class DashboardService : IDashboardService
             .AsQueryable();
 
         // Non-admin users only see their assigned vehicles
+        // scopeIds : null = tout le parc de la société ; sinon la restriction
+        // appliquée à `vehicles`, réutilisée pour les sommes SQL par véhicule.
+        List<int>? scopeIds = null;
         if (!isAdmin && userId > 0)
         {
             var assignedVehicleIds = await _context.UserVehicles
@@ -53,7 +60,10 @@ public class DashboardService : IDashboardService
                 .ToListAsync();
 
             if (assignedVehicleIds.Any())
+            {
                 vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
+                scopeIds = assignedVehicleIds;
+            }
         }
 
         var vehicles = await vehicleQuery.ToListAsync();
@@ -118,10 +128,12 @@ public class DashboardService : IDashboardService
         // ── 3. Expenses (use nullable Sum to safely handle empty result sets) ──
         decimal fuelCost = 0, maintenanceCost = 0, repairCost = 0, otherCost = 0;
         // Achats véhicule : mensualités de crédit/leasing échues + apports/achats
-        // datés dans la période. Calcul serveur (AcquisitionSchedule) avec les
-        // mêmes règles que l'écran Dépenses — recette client du 04/09/2026 : le
-        // « Coût total » ignorait tout ce qui n'était pas une ligne en base.
-        var acquisitionCost = AcquisitionSchedule.Cost(vehicles, periodStart, periodEnd, now);
+        // datés dans la période — recette client du 04/09/2026 : le « Coût
+        // total » ignorait tout ce qui n'était pas une ligne en base. Depuis le
+        // 07/09/2026 la source est l'échéancier PERSISTÉ (acquisition_payments,
+        // règle de comptage unique AcquisitionPaymentRules), avec repli sur le
+        // calcul à la volée pour les véhicules jamais synchronisés.
+        var acquisitionCost = await AcquisitionCostAsync(companyId, scopeIds, vehicles, periodStart, periodEnd, now, ct);
         try
         {
             fuelCost = await _context.FuelEntries.AsNoTracking()
@@ -410,7 +422,7 @@ public class DashboardService : IDashboardService
             prevTotalCost += await _context.VehicleCosts.AsNoTracking()
                 .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
                 .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-            prevTotalCost += AcquisitionSchedule.Cost(vehicles, prevStart, prevEnd, now);
+            prevTotalCost += await AcquisitionCostAsync(companyId, scopeIds, vehicles, prevStart, prevEnd, now, ct);
         }
         catch { /* trend is best-effort */ }
         var currentTotalCost = fuelCost + maintenanceCost + repairCost + otherCost + acquisitionCost;
@@ -482,6 +494,49 @@ public class DashboardService : IDashboardService
         };
 
         return result;
+    }
+
+    /// <summary>
+    /// Coût d'acquisition de la période : Σ (paid_amount ?? amount) des lignes
+    /// d'acquisition_payments de la société (et des véhicules visibles) dont la
+    /// date d'échéance tombe dans [from, to] et qui COMPTENT (payées, ou
+    /// planifiées dont la date est atteinte — jamais les ignorées), en SQL ;
+    /// PLUS, pour les véhicules à contrat/prix qui n'ont ENCORE aucune ligne
+    /// (transition sans backfill : l'échéancier n'est généré qu'à la première
+    /// ouverture de l'écran Dépenses), le calcul à la volée d'AcquisitionSchedule
+    /// — comportement identique à l'ancien par défaut, modifiable dès qu'une
+    /// ligne existe. JAMAIS de synchronisation ici : le dashboard est mis en
+    /// cache et pré-chauffé hors requête, sans contexte tenant.
+    /// </summary>
+    private async Task<decimal> AcquisitionCostAsync(int companyId, List<int>? scopeIds, List<Vehicle> vehicles,
+        DateTime from, DateTime to, DateTime now, CancellationToken ct)
+    {
+        try
+        {
+            var persisted = _context.AcquisitionPayments.AsNoTracking()
+                .Where(p => p.CompanyId == companyId);
+            if (scopeIds != null)
+                persisted = persisted.Where(p => scopeIds.Contains(p.VehicleId));
+
+            // La somme AVANT la liste des véhicules déjà synchronisés : si une
+            // autre requête génère un échéancier entre les deux lectures, le
+            // véhicule est alors compté par la liste (donc exclu du repli) sans
+            // l'être par la somme — il manque une fois, au lieu d'être compté
+            // deux fois. Une omission se corrige au calcul suivant ; un doublon
+            // resterait affiché dix minutes, le temps du cache.
+            var counted = await AcquisitionPaymentRules.CountedCostAsync(persisted, from, to, now, ct);
+            var syncedIds = (await persisted.Select(p => p.VehicleId).Distinct().ToListAsync(ct)).ToHashSet();
+
+            return counted + AcquisitionSchedule.Cost(vehicles.Where(v => !syncedIds.Contains(v.Id)), from, to, now);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Table absente (migration 044 pas encore jouée) ou base indisponible :
+            // le dashboard ne doit pas tomber pour ce poste, on revient au calcul
+            // à la volée — et on le dit dans les logs.
+            _logger.LogWarning(ex, "Dashboard : somme acquisition_payments impossible pour la société {CompanyId}, repli sur AcquisitionSchedule", companyId);
+            return AcquisitionSchedule.Cost(vehicles, from, to, now);
+        }
     }
 
     /// <summary>Fenêtres [début,fin] de la période et de la période précédente. Partagé contrôleur + pré-chauffage.</summary>

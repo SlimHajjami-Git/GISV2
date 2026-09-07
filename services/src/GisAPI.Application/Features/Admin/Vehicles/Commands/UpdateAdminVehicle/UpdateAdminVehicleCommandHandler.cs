@@ -43,6 +43,22 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
         if (r.CompanyId.HasValue && vehicle.GpsDevice != null)
             vehicle.GpsDevice.CompanyId = r.CompanyId.Value;
 
+        // Idem pour l'échéancier d'acquisition : sans ce recalage, les échéances
+        // resteraient dans le coût de l'ancienne société, et la synchronisation
+        // les croirait absentes (l'unicité en base ignore la société).
+        if (r.CompanyId.HasValue)
+        {
+            var movedPayments = await _context.AcquisitionPayments
+                .IgnoreQueryFilters()
+                .Where(p => p.VehicleId == vehicle.Id && p.CompanyId != r.CompanyId.Value)
+                .ToListAsync(ct);
+            foreach (var payment in movedPayments)
+            {
+                payment.CompanyId = r.CompanyId.Value;
+                payment.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
         if (r.HasGps == false)
         {
             await GpsDeviceResolver.ReleaseAsync(_context, vehicle.GpsDeviceId);

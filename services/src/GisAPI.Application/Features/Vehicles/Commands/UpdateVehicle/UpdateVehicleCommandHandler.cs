@@ -52,7 +52,9 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         vehicle.AssignedDriverId = request.AssignedDriverId;
         vehicle.AssignedSupervisorId = request.AssignedSupervisorId;
 
-        // Acquisition info
+        // Acquisition info — l'empreinte des 7 champs est relevée avant/après :
+        // l'échéancier persisté n'est recalé que si le contrat a changé.
+        var acquisitionBefore = AcquisitionScheduleSync.Fingerprint(vehicle);
         if (request.AcquisitionType != null) vehicle.AcquisitionType = request.AcquisitionType;
         if (request.PurchasePrice.HasValue) vehicle.PurchasePrice = request.PurchasePrice;
         // Calypso 6 (P5): persist purchase date separate from registration date
@@ -75,6 +77,11 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         if (request.TechnicalInspectionReminderDays.HasValue) vehicle.TechnicalInspectionReminderDays = request.TechnicalInspectionReminderDays.Value;
 
         vehicle.UpdatedAt = DateTime.UtcNow;
+
+        // Échéancier d'acquisition persisté (acquisition_payments) : recalé dans
+        // la même transaction que le véhicule, seulement si le contrat a bougé.
+        if (AcquisitionScheduleSync.Fingerprint(vehicle) != acquisitionBefore)
+            await AcquisitionScheduleSync.SyncAsync(_context, vehicle, ct);
 
         await _context.SaveChangesAsync(ct);
     }

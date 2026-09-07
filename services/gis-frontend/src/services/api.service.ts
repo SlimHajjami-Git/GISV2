@@ -723,6 +723,55 @@ export class ApiService {
     return this.http.delete<void>(`${this.API_URL}/costs/${id}`, { headers: this.getHeaders() });
   }
 
+  // ==================== ACQUISITION PAYMENTS (échéances d'acquisition) ====================
+  // Table acquisition_payments : mensualités de crédit/leasing, apport, achat
+  // comptant — générées et synchronisées par le SERVEUR depuis le contrat du
+  // véhicule. Remplace les générateurs calendaires de l'écran Dépenses et de
+  // la fiche véhicule (rien n'était persisté : impossible de marquer payé à
+  // une autre date, de joindre une quittance ou d'ignorer une échéance).
+
+  /**
+   * GET /acquisition-payments. Sans `includeFuture` le serveur ne renvoie que
+   * les lignes payées, planifiées échues et ignorées échues (= ce qui compte
+   * ou a compté en dépense) ; avec `includeFuture: true` tout l'échéancier.
+   * `startDate` / `endDate` filtrent sur la date d'échéance (YYYY-MM-DD).
+   */
+  getAcquisitionPayments(f?: { vehicleId?: number; startDate?: Date; endDate?: Date; includeFuture?: boolean }): Observable<AcquisitionPaymentDto[]> {
+    if (this.isMockUser()) {
+      return of([]);
+    }
+    let params = new HttpParams();
+    if (f?.vehicleId) params = params.set('vehicleId', f.vehicleId.toString());
+    if (f?.startDate) params = params.set('startDate', this.toDateOnly(f.startDate));
+    if (f?.endDate) params = params.set('endDate', this.toDateOnly(f.endDate));
+    if (f?.includeFuture) params = params.set('includeFuture', 'true');
+    return this.http.get<AcquisitionPaymentDto[]>(`${this.API_URL}/acquisition-payments`, { headers: this.getHeaders(), params });
+  }
+
+  /**
+   * PUT /acquisition-payments/{id} — change le statut d'une échéance.
+   * `paid` : paidAt (ISO UTC) et paidAmount facultatifs (défaut : maintenant /
+   * montant prévu) ; `planned` : efface paidAt/paidAmount (la quittance reste) ;
+   * `skipped` : conserve tout. Renvoie le DTO mis à jour.
+   */
+  updateAcquisitionPayment(id: number, body: { status: string; paidAt?: string | null; paidAmount?: number | null; note?: string | null }): Observable<AcquisitionPaymentDto> {
+    return this.http.put<AcquisitionPaymentDto>(`${this.API_URL}/acquisition-payments/${id}`, body, { headers: this.getHeaders() });
+  }
+
+  /** POST /acquisition-payments/{id}/receipt — quittance (image ou PDF, 12 Mo max). */
+  uploadAcquisitionPaymentReceipt(id: number, file: File): Observable<{ receiptUrl: string }> {
+    const formData = new FormData();
+    formData.append('file', file, file.name);
+    // Laisser le navigateur poser le boundary multipart — pas de Content-Type JSON.
+    const headers = this.getHeaders().delete('Content-Type');
+    return this.http.post<{ receiptUrl: string }>(`${this.API_URL}/acquisition-payments/${id}/receipt`, formData, { headers });
+  }
+
+  /** Date calendaire locale au format YYYY-MM-DD (query string DateOnly côté serveur). */
+  private toDateOnly(date: Date): string {
+    return this.toLocalIso(date).slice(0, 10);
+  }
+
   // ==================== GPS TRACKING (Real-time) ====================
 
   getLatestPositions(): Observable<any[]> {
@@ -3942,6 +3991,36 @@ export interface RepairDto {
   parts: RepairPartDto[];
   createdAt?: string;
   updatedAt?: string;
+}
+
+/**
+ * Échéance d'acquisition d'un véhicule (table acquisition_payments).
+ * `counted` et `overdue` sont calculés par le serveur : une ligne COMPTE en
+ * dépense si `paid` OU (`planned` ET échéance <= aujourd'hui) ; `skipped` ne
+ * compte jamais. Montant compté = paidAmount ?? amount.
+ */
+export interface AcquisitionPaymentDto {
+  id: number;
+  vehicleId: number;
+  vehiclePlate?: string | null;
+  vehicleName: string;
+  kind: 'apport' | 'mensualite' | 'achat';
+  /** mensualite : 1..N ; apport / achat : 1. */
+  seq: number;
+  /** Durée du contrat en mois pour « 3/36 » ; 1 pour apport / achat. */
+  total: number;
+  /** YYYY-MM-DD (DateOnly). */
+  dueDate: string;
+  amount: number;
+  status: 'planned' | 'paid' | 'skipped';
+  /** ISO 8601 UTC. */
+  paidAt?: string | null;
+  paidAmount?: number | null;
+  receiptUrl?: string | null;
+  note?: string | null;
+  generated: boolean;
+  counted: boolean;
+  overdue: boolean;
 }
 
 export interface RepairPartDto {

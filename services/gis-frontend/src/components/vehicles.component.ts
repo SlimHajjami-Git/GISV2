@@ -296,6 +296,11 @@ interface VehicleTrip {
               <span class="credit-label">Début du leasing</span>
               <span class="credit-value">{{ creditPopupVehicle.leasingStartDate | date:'dd/MM/yyyy' }}</span>
             </div>
+            <!-- Échéancier enregistré (acquisition_payments) : payées / total, reste à payer. -->
+            <div class="credit-row" *ngIf="creditSchedule">
+              <span class="credit-label">Mensualités payées</span>
+              <span class="credit-value">{{ creditSchedule.paid }}/{{ creditSchedule.total }} · reste {{ creditSchedule.remaining | appCurrency }}</span>
+            </div>
             <div class="credit-divider"></div>
             <div class="credit-row credit-total">
               <span class="credit-label">Montant total</span>
@@ -2714,27 +2719,51 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   // refresh from /vehicles/{id} on open to make sure the displayed total
   // reflects the latest edits if the user just changed the fiche.
   creditPopupVehicle: any = null;
+  /** Mensualités enregistrées (acquisition_payments) : payées / total hors ignorées, reste à payer. */
+  creditSchedule: { paid: number; total: number; remaining: number } | null = null;
 
   openCreditPopup(vehicle: Vehicle) {
     // Show the row data immediately so the modal opens without a flash, then
     // refresh from API in the background.
     this.creditPopupVehicle = { ...(vehicle as any) };
+    this.creditSchedule = null;
     const id = parseInt(vehicle.id);
     if (!isNaN(id)) {
+      // Comparaison NUMÉRIQUE : la liste porte des id en chaîne et le DTO
+      // serveur des id entiers ; `'12' !== 12` ferait sortir ces gardes, et le
+      // spread ci-dessous change justement le type de l'id en cours de route.
+      const isSameVehicle = () => !!this.creditPopupVehicle && parseInt(String(this.creditPopupVehicle.id)) === id;
       this.apiService.getVehicle(id).pipe(takeUntil(this.destroy$)).subscribe({
         next: (full) => {
-          if (full && this.creditPopupVehicle && this.creditPopupVehicle.id === vehicle.id) {
+          if (full && isSameVehicle()) {
             this.creditPopupVehicle = { ...this.creditPopupVehicle, ...full };
             this.cdr.detectChanges();
           }
         },
         error: (err) => console.error('Error loading credit details:', err)
       });
+      // Échéancier enregistré : « X/N payées · reste Y » (mensualités seulement,
+      // l'apport n'est pas une mensualité). Silencieux en cas d'échec.
+      this.apiService.getAcquisitionPayments({ vehicleId: id, includeFuture: true }).pipe(takeUntil(this.destroy$)).subscribe({
+        next: (rows) => {
+          if (!isSameVehicle()) return;
+          const dues = (rows || []).filter(p => p.kind === 'mensualite' && p.status !== 'skipped');
+          if (dues.length === 0) return;
+          this.creditSchedule = {
+            paid: dues.filter(p => p.status === 'paid' || (p.status === 'planned' && p.counted)).length,
+            total: dues.length,
+            remaining: dues.filter(p => p.status === 'planned' && !p.counted).reduce((s, p) => s + (Number(p.amount) || 0), 0)
+          };
+          this.cdr.detectChanges();
+        },
+        error: (err) => console.error('Error loading acquisition payments:', err)
+      });
     }
   }
 
   closeCreditPopup() {
     this.creditPopupVehicle = null;
+    this.creditSchedule = null;
   }
 
   getCreditTotal(vehicle: any): number {

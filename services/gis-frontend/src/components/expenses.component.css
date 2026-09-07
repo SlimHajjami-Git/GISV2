@@ -241,6 +241,8 @@
 .stat-content { display: flex; flex-direction: column; }
 .stat-value { font-size: 16px; font-weight: 600; color: #1e293b; }
 .stat-label { font-size: 11px; color: #64748b; }
+/* Échéances affichées mais hors du total (à venir, ignorées) : dit pourquoi le compte diffère du nombre de lignes. */
+.stat-hint { display: block; font-size: 10px; color: #94a3b8; }
 
 /* ===== FORM MODAL ===== */
 .form-overlay {
@@ -505,6 +507,121 @@ tr.accident-linked:not(.refund):hover { background: #fef08a; }
   white-space: nowrap;
 }
 .accident-badge:hover { background: #fecaca; }
+
+/* ===== ÉCHÉANCES D'ACQUISITION (acquisition_payments) ===== */
+/* Badge de statut, même pilule que .accident-badge. */
+.pay-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  margin-left: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px; font-weight: 700;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.pay-badge.auto { background: #dcfce7; color: #166534; }        /* planifiée échue — comptée */
+.pay-badge.paid { background: #16a34a; color: #ffffff; }        /* paiement confirmé */
+.pay-badge.upcoming { background: #f1f5f9; color: #64748b; }    /* à venir — hors totaux */
+.pay-badge.skipped { background: #e2e8f0; color: #475569; }     /* ignorée — hors totaux */
+
+.pay-receipt-link {
+  display: inline-flex; align-items: center;
+  margin-left: 4px; padding: 2px;
+  color: #7c3aed; vertical-align: middle;
+}
+.pay-receipt-link:hover { color: #5b21b6; }
+
+tr.pay-skipped td:not(.actions-cell) { opacity: 0.55; }
+tr.pay-skipped .total-cell { text-decoration: line-through; color: #64748b; }
+tr.pay-future .total-cell { color: #64748b; font-weight: 500; }
+
+.filter-check {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px; color: #475569;
+  background: white; border: 1px solid #e2e8f0; border-radius: 6px;
+  cursor: pointer; white-space: nowrap;
+}
+.filter-check input { margin: 0; accent-color: #7c3aed; cursor: pointer; }
+
+/* Menu ⋯ d'une ligne d'échéance */
+.row-menu-wrap { position: relative; }
+.btn-action.more { background: #f1f5f9; color: #475569; }
+.btn-action.more:hover, .btn-action.more.active { background: #e2e8f0; color: #0f172a; }
+.btn-action.more:disabled { opacity: 0.5; cursor: wait; }
+.row-spinner {
+  width: 12px; height: 12px;
+  border: 2px solid #cbd5e1; border-top-color: #7c3aed; border-radius: 50%;
+  animation: rowSpin 0.7s linear infinite;
+}
+@keyframes rowSpin { to { transform: rotate(360deg); } }
+.row-menu {
+  position: absolute; right: 0; top: calc(100% + 4px);
+  min-width: 210px;
+  background: white;
+  border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+  padding: 4px;
+  z-index: 30;
+  animation: rowMenuSlide 0.12s ease-out;
+}
+@keyframes rowMenuSlide { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+.row-menu button {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 10px;
+  border: none; border-radius: 6px; background: transparent;
+  font-size: 12.5px; color: #1e293b; text-align: left; cursor: pointer;
+  white-space: nowrap;
+}
+.row-menu button:hover { background: #f1f5f9; }
+.row-menu button.danger { color: #b91c1c; }
+.row-menu button.danger:hover { background: #fee2e2; }
+/* Les dernières lignes d'un tableau assez long : le menu s'ouvre vers le haut
+   pour ne pas être coupé par le conteneur défilant (jamais sur les 4 premières
+   lignes, où il n'y a pas de place au-dessus). */
+tbody tr:nth-last-child(-n+3):not(:nth-child(-n+4)) .row-menu { top: auto; bottom: calc(100% + 4px); }
+
+/* Modale « Marquer payée » — sur la base de .modal-content, formulaire aligné à gauche. */
+.modal-content.pay-modal { text-align: left; width: 440px; max-width: calc(100vw - 32px); }
+.pay-modal h3 { margin: 0 0 6px; font-size: 17px; color: #0f172a; }
+.pay-modal-sub { margin: 0 0 16px; font-size: 12.5px; color: #64748b; }
+.pay-form { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.pay-error {
+  margin: 12px 0 0; padding: 8px 10px;
+  background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;
+  font-size: 12px; color: #b91c1c;
+}
+.pay-modal .modal-actions { justify-content: flex-end; }
+@media (max-width: 520px) { .pay-form { grid-template-columns: 1fr; } }
+
+/* Panneau détail : paiement et quittance */
+.xd-row-value.xd-diff { color: #b45309; }
+.xd-hint { margin: 10px 0 0; font-size: 11.5px; color: #64748b; line-height: 1.4; }
+.xd-receipt-attach {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 10px; padding: 8px 12px;
+  border: 1px dashed #cbd5e1; border-radius: 10px; background: transparent;
+  color: #475569; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.xd-receipt-attach:hover:not(:disabled) { border-color: #a78bfa; color: #6d28d9; }
+.xd-receipt-attach:disabled { opacity: .5; cursor: wait; }
+.slide-panel-footer .btn-mark-paid {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 20px;
+  background: #16a34a; color: white;
+  border: none; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.slide-panel-footer .btn-mark-paid:hover { background: #15803d; }
+.slide-panel-footer .btn-ghost-warn {
+  padding: 10px 16px;
+  background: white; color: #b45309;
+  border: 1px solid #fcd34d; border-radius: 6px;
+  font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.slide-panel-footer .btn-ghost-warn:hover:not(:disabled) { background: #fffbeb; }
+.slide-panel-footer .btn-ghost-warn:disabled { opacity: .5; cursor: wait; }
 
 .actions-cell { display: flex; gap: 6px; }
 .btn-action.delete:disabled {

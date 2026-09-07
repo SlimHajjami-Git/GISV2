@@ -119,7 +119,9 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<FuelEntry> FuelEntries => Set<FuelEntry>();
     public DbSet<VehicleLoadPeriod> VehicleLoadPeriods => Set<VehicleLoadPeriod>();
     public DbSet<SpeedLimitAlert> SpeedLimitAlerts => Set<SpeedLimitAlert>();
-    
+    // Échéancier d'acquisition persisté (apport, mensualités, achat) — migration 044
+    public DbSet<AcquisitionPayment> AcquisitionPayments => Set<AcquisitionPayment>();
+
     // Brands & Models
     public DbSet<Brand> Brands => Set<Brand>();
     public DbSet<VehicleModel> VehicleModels => Set<VehicleModel>();
@@ -174,6 +176,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<DriverScore>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<PointOfInterest>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<VehicleLoadPeriod>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<AcquisitionPayment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Contract>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Reservation>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<Supplier>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);

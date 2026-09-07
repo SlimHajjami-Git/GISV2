@@ -44,7 +44,9 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
         if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
         if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity;
 
-        // Acquisition
+        // Acquisition — l'empreinte des 7 champs est relevée avant/après :
+        // l'échéancier persisté n'est recalé que si le contrat a changé.
+        var acquisitionBefore = AcquisitionScheduleSync.Fingerprint(vehicle);
         if (!string.IsNullOrEmpty(request.AcquisitionType)) vehicle.AcquisitionType = request.AcquisitionType;
         if (request.PurchasePrice.HasValue) vehicle.PurchasePrice = request.PurchasePrice;
         if (request.LeasingMonthlyPayment.HasValue) vehicle.LeasingMonthlyPayment = request.LeasingMonthlyPayment;
@@ -55,6 +57,11 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
         if (request.PurchaseDate.HasValue) vehicle.PurchaseDate = request.PurchaseDate;
 
         vehicle.UpdatedAt = DateTime.UtcNow;
+
+        // Échéancier d'acquisition persisté (acquisition_payments) : recalé dans
+        // la même transaction que le véhicule, seulement si le contrat a bougé.
+        if (AcquisitionScheduleSync.Fingerprint(vehicle) != acquisitionBefore)
+            await AcquisitionScheduleSync.SyncAsync(_context, vehicle, cancellationToken);
 
         await _context.SaveChangesAsync(cancellationToken);
 
