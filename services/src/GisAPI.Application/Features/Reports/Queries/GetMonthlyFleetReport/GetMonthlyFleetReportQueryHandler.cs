@@ -1,4 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -7,6 +9,30 @@ using System.Globalization;
 
 namespace GisAPI.Application.Features.Reports.Queries.GetMonthlyFleetReport;
 
+/// <summary>
+/// Rapport mensuel de flotte.
+///
+/// Jusqu'au 09/09/2026 la partie financière de ce rapport était ENTIÈREMENT
+/// fabriquée : aucune table de dépense n'était ouverte. Le carburant valait
+/// « litres estimés × 2,1 », l'assurance « nombre de véhicules × 150 », les
+/// autres coûts « nombre de véhicules × 50 » et la maintenance quatre lignes
+/// Vidange/Pneus/Freins/Révision calculées sur le nombre de véhicules. Une
+/// société ayant saisi 10 430 d'assurance lisait donc « Assurance 1 800 »,
+/// identique tous les mois, et l'écran affichait un total inconciliable avec
+/// l'écran Dépenses.
+///
+/// Les coûts viennent désormais de <see cref="OperatingCostAggregator"/> — la
+/// même définition que les rapports de coûts (carburant = pleins saisis +
+/// dépenses de type <c>fuel</c>, entretiens = dépenses <c>maintenance</c>,
+/// réparations = table <c>repairs</c> hors annulées, autres = le reste des
+/// dépenses ; mensualités d'acquisition exclues).
+///
+/// La portée de l'appelant (<see cref="VehicleScope"/>) est appliquée UNE fois,
+/// dans <c>GetVehiclesAsync</c> : tout le reste du rapport en dérive. L'agrégateur
+/// l'applique de son côté ; sans le filtre ici, un employé affecté à un véhicule
+/// sur douze lisait des coûts limités à son véhicule divisés par la distance des
+/// douze — et voyait au passage les plaques et l'utilisation des onze autres.
+/// </summary>
 public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleetReportQuery, MonthlyFleetReportDto>
 {
     private readonly IGisDbContext _context;
@@ -63,24 +89,33 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             ReportPeriod = $"{startDate:dd/MM/yyyy} - {endDate.AddDays(-1):dd/MM/yyyy}"
         };
 
+        // Dépenses RÉELLEMENT saisies sur le mois (aucune constante) : c'est la
+        // source unique des sections carburant, maintenance et coûts.
+        var realCosts = await LoadRealCostsAsync(request, vehicleIds, startDate, endDate, ct);
+
         // Process all sections
         report.FleetOverview = BuildFleetOverview(vehicles, positions);
         report.Utilization = BuildUtilization(vehicles, positions, startDate, daysInMonth);
-        report.FuelAnalytics = BuildFuelAnalytics(vehicles, positions);
-        report.Maintenance = await BuildMaintenanceAsync(vehicles, startDate, endDate, ct);
+        report.FuelAnalytics = BuildFuelAnalytics(vehicles, positions, realCosts);
+        report.Maintenance = BuildMaintenance(vehicles, realCosts);
         report.DriverPerformance = BuildDriverPerformance(drivers, vehicles, positions);
         report.Efficiency = BuildEfficiency(positions, daysInMonth);
-        report.CostAnalysis = BuildCostAnalysis(vehicles, positions, report.FuelAnalytics, report.Maintenance);
-        
-        // Comparisons
-        report.MonthOverMonth = BuildComparison("Mois précédent", positions, prevMonthPositions);
+        report.CostAnalysis = BuildCostAnalysis(vehicles, positions, realCosts);
+
+        // Comparisons — le coût comparé est lui aussi le coût réel des deux périodes.
+        var prevMonthCost = await LoadPeriodCostTotalAsync(vehicleIds, prevMonthStart, prevMonthEnd, ct);
+        report.MonthOverMonth = BuildComparison("Mois précédent", positions, prevMonthPositions,
+            realCosts.Total.Total, prevMonthCost);
         if (prevYearPositions.Any())
         {
-            report.YearOverYear = BuildComparison("Même mois année précédente", positions, prevYearPositions);
+            var prevYearCost = await LoadPeriodCostTotalAsync(vehicleIds, prevYearStart, prevYearEnd, ct);
+            report.YearOverYear = BuildComparison("Même mois année précédente", positions, prevYearPositions,
+                realCosts.Total.Total, prevYearCost);
         }
 
-        // Executive Summary
-        report.ExecutiveSummary = BuildExecutiveSummary(report);
+        // Executive Summary — les heures de conduite viennent des trajets terminés.
+        var drivingMinutes = await LoadDrivingMinutesAsync(vehicleIds, startDate, endDate, ct);
+        report.ExecutiveSummary = BuildExecutiveSummary(report, drivingMinutes);
         
         // Alerts
         report.Alerts = BuildAlerts(report, vehicles);
@@ -94,18 +129,34 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return report;
     }
 
+    /// <summary>
+    /// Périmètre du rapport, et lui seul : positions, conducteurs, coûts, ratios
+    /// et graphiques en dérivent tous.
+    ///
+    /// Deux bornes, pas une. Le filtre société est indispensable — sans lui le
+    /// rapport agrégeait les véhicules de TOUTES les sociétés pour un
+    /// administrateur système, dont le filtre global de multi-tenance est
+    /// contourné. Mais il ne suffit PAS à cloisonner : la portée utilisateur
+    /// (<see cref="VehicleScope"/>) doit être appliquée ici aussi, sinon un
+    /// employé affecté à un seul véhicule obtient un rapport dont les coûts sont
+    /// bornés à son véhicule (l'agrégateur, lui, applique la portée) tandis que
+    /// la distance, la consommation et la liste des véhicules couvrent tout le
+    /// parc : ratios faux, et fuite des plaques et conducteurs des autres.
+    /// Portée nulle = tout le parc de la société ; portée VIDE = rapport vide.
+    /// </summary>
     private async Task<List<Vehicle>> GetVehiclesAsync(GetMonthlyFleetReportQuery request, CancellationToken ct)
     {
-        // Écran opérationnel : sans ce filtre, le rapport mensuel de flotte agrégeait
-        // les véhicules de TOUTES les sociétés pour un administrateur système (le
-        // filtre global de multi-tenance est contourné pour ces comptes). Tout le
-        // reste du rapport (positions, chauffeurs, coûts) dérive de cette liste,
-        // donc la borner ici suffit à cloisonner l'ensemble.
         var companyId = _tenantService.CompanyId ?? 0;
+
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (scope is { Count: 0 }) return new List<Vehicle>();
 
         var query = _context.Vehicles.AsNoTracking()
             .Include(v => v.AssignedDriver)
             .Where(v => v.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(v => scope.Contains(v.Id));
 
         if (request.VehicleIds?.Length > 0)
             query = query.Where(v => request.VehicleIds.Contains(v.Id));
@@ -131,6 +182,184 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                         p.RecordedAt.Minute % 3 == 0 &&
                         p.RecordedAt.Second < 10)
             .ToListAsync(ct);
+    }
+
+    // ==================== DÉPENSES RÉELLES ====================
+
+    /// <summary>Une ligne de <c>vehicle_costs</c> de la période, tous types confondus.</summary>
+    private sealed record ExpenseRow(int VehicleId, string Type, decimal Amount, decimal Liters, DateTime Date, string? Description);
+
+    /// <summary>
+    /// Dépenses réellement saisies sur la période, prêtes pour les sections
+    /// carburant / maintenance / coûts. Les quatre seaux viennent de
+    /// <see cref="OperatingCostAggregator"/> ; le détail par type de dépense et
+    /// les litres achetés sont relus à part car l'agrégateur ne les expose pas.
+    /// </summary>
+    private sealed class RealCostData
+    {
+        public required IReadOnlyDictionary<int, VehicleCostData> ByVehicle { get; init; }
+        public required CostBucket Total { get; init; }
+        public required IReadOnlyList<ExpenseRow> Expenses { get; init; }
+        public required IReadOnlyList<RepairRow> Repairs { get; init; }
+        /// <summary>Litres RÉELLEMENT achetés (pleins + dépenses carburant renseignées).</summary>
+        public required IReadOnlyDictionary<int, decimal> LitersByVehicle { get; init; }
+
+        public static RealCostData Empty { get; } = new()
+        {
+            ByVehicle = new Dictionary<int, VehicleCostData>(),
+            Total = CostBucket.Zero,
+            Expenses = Array.Empty<ExpenseRow>(),
+            Repairs = Array.Empty<RepairRow>(),
+            LitersByVehicle = new Dictionary<int, decimal>()
+        };
+    }
+
+    private static string NormalizeType(string? type) => (type ?? string.Empty).Trim().ToLowerInvariant();
+
+    // Mêmes règles de ventilation que l'agrégateur, au mot près : un type
+    // « carburant » (non reconnu là-bas) resterait dans « autres » ici aussi,
+    // sinon les catégories ne retomberaient plus sur le total.
+    private static bool IsFuelType(string? type) => NormalizeType(type) == "fuel";
+    private static bool IsMaintenanceType(string? type) => NormalizeType(type) is "maintenance" or "entretien";
+    private static bool IsInsuranceType(string? type) => NormalizeType(type) is "insurance" or "assurance";
+
+    private Task<OperatingCostData> LoadAggregateAsync(
+        GetMonthlyFleetReportQuery request, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)
+    {
+        // Un seul véhicule demandé : autant borner la requête. Sinon on charge le
+        // parc accessible (VehicleScope) et on recoupe en mémoire avec la liste du
+        // rapport — c'est cette intersection qui fait foi. Elle reste nécessaire
+        // même depuis que GetVehiclesAsync applique la portée : l'agrégateur ne
+        // sait pas filtrer sur une LISTE de véhicules demandés (paramètre unitaire),
+        // donc un filtre « véhicules 3 et 7 » ne se transmet que par ce recoupement.
+        var single = request.VehicleIds is { Length: 1 } ? request.VehicleIds[0] : (int?)null;
+        return OperatingCostAggregator.LoadAsync(_context, _tenantService, startUtc, endExclusiveUtc, single, null, ct);
+    }
+
+    private async Task<RealCostData> LoadRealCostsAsync(
+        GetMonthlyFleetReportQuery request, List<int> vehicleIds, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)
+    {
+        if (vehicleIds.Count == 0) return RealCostData.Empty;
+
+        var aggregate = await LoadAggregateAsync(request, startUtc, endExclusiveUtc, ct);
+        var wanted = vehicleIds.ToHashSet();
+        var scoped = aggregate.Vehicles.Where(v => wanted.Contains(v.VehicleId)).ToList();
+        if (scoped.Count == 0) return RealCostData.Empty;
+
+        var scopedIds = scoped.Select(v => v.VehicleId).ToList();
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        // Détail par type : l'agrégateur ne rend que quatre seaux alors que
+        // l'écran affiche une ligne « Assurance » et une répartition par catégorie.
+        var expenses = (await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId
+                     && scopedIds.Contains(c.VehicleId)
+                     && c.Date >= startUtc
+                     && c.Date < endExclusiveUtc)
+            .Select(c => new { c.VehicleId, c.Type, c.Amount, c.Liters, c.Date, c.Description })
+            .ToListAsync(ct))
+            .Select(c => new ExpenseRow(c.VehicleId, c.Type, c.Amount, c.Liters ?? 0m, c.Date, c.Description))
+            .ToList();
+
+        // Litres achetés : les pleins saisis priment sur l'estimation capteur.
+        var fills = await _context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId
+                     && f.VehicleId.HasValue
+                     && scopedIds.Contains(f.VehicleId.Value)
+                     && f.InvoiceDate >= startUtc
+                     && f.InvoiceDate < endExclusiveUtc)
+            .Select(f => new { VehicleId = f.VehicleId!.Value, f.Volume })
+            .ToListAsync(ct);
+
+        var liters = new Dictionary<int, decimal>();
+        foreach (var fill in fills)
+            liters[fill.VehicleId] = liters.GetValueOrDefault(fill.VehicleId) + fill.Volume;
+        foreach (var expense in expenses.Where(e => IsFuelType(e.Type) && e.Liters > 0))
+            liters[expense.VehicleId] = liters.GetValueOrDefault(expense.VehicleId) + expense.Liters;
+
+        return new RealCostData
+        {
+            ByVehicle = scoped.ToDictionary(v => v.VehicleId),
+            Total = scoped.Aggregate(CostBucket.Zero, (acc, v) => acc.Plus(v.Total)),
+            Expenses = expenses,
+            Repairs = aggregate.Repairs.Where(r => wanted.Contains(r.VehicleId)).ToList(),
+            LitersByVehicle = liters
+        };
+    }
+
+    /// <summary>
+    /// Total des dépenses d'une période de COMPARAISON (mois précédent, année
+    /// précédente). Seul ce scalaire est consommé : passer par l'agrégateur
+    /// matérialisait pour rien les véhicules, les pleins, les dépenses, les
+    /// réparations ET tous les trajets de la période — deux fois par rapport.
+    /// Trois sommes suffisent, bornées par la MÊME liste de véhicules que le
+    /// mois courant (elle porte déjà société + portée + filtre de l'écran), avec
+    /// la définition de l'agrégateur au mot près : pleins + dépenses (tous types,
+    /// les mensualités d'acquisition vivent dans une autre table) + réparations
+    /// non annulées.
+    /// </summary>
+    private async Task<decimal> LoadPeriodCostTotalAsync(
+        List<int> vehicleIds, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)
+    {
+        if (vehicleIds.Count == 0) return 0m;
+
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        var fuel = await _context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId
+                     && f.VehicleId.HasValue
+                     && vehicleIds.Contains(f.VehicleId.Value)
+                     && f.InvoiceDate >= startUtc
+                     && f.InvoiceDate < endExclusiveUtc)
+            .Select(f => (decimal?)f.TotalAmount)
+            .SumAsync(ct) ?? 0m;
+
+        var expenses = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId
+                     && vehicleIds.Contains(c.VehicleId)
+                     && c.Date >= startUtc
+                     && c.Date < endExclusiveUtc)
+            .Select(c => (decimal?)c.Amount)
+            .SumAsync(ct) ?? 0m;
+
+        // Le statut est comparé sans tenir compte de la casse, comme l'agrégateur :
+        // la comparaison ne se traduit pas en SQL, d'où la projection minimale.
+        var repairs = (await _context.Repairs.AsNoTracking()
+            .Where(r => r.SocieteId == companyId
+                     && vehicleIds.Contains(r.VehicleId)
+                     && r.RepairDate >= startUtc
+                     && r.RepairDate < endExclusiveUtc)
+            .Select(r => new { r.TotalCost, r.Status })
+            .ToListAsync(ct))
+            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .Sum(r => r.TotalCost);
+
+        return fuel + expenses + repairs;
+    }
+
+    /// <summary>
+    /// Minutes de conduite RÉELLES de la période : durée des trajets terminés
+    /// (<c>trips.duration_minutes</c>) des véhicules du rapport. La carte
+    /// « heures de conduite » affichait jusqu'ici « nombre de jours actifs × 8 » :
+    /// un véhicule vu cinq minutes un seul jour pesait huit heures, et la valeur
+    /// était rendue en grand sans la moindre mention d'estimation. Sans trajet
+    /// enregistré, la carte affiche 0 — pas une conjecture.
+    /// </summary>
+    private async Task<int> LoadDrivingMinutesAsync(
+        List<int> vehicleIds, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)
+    {
+        if (vehicleIds.Count == 0) return 0;
+
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        return await _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId
+                     && vehicleIds.Contains(t.VehicleId)
+                     && t.Status == "completed"
+                     && t.StartTime >= startUtc
+                     && t.StartTime < endExclusiveUtc)
+            .Select(t => (int?)t.DurationMinutes)
+            .SumAsync(ct) ?? 0;
     }
 
     private FleetOverviewDto BuildFleetOverview(List<Vehicle> vehicles, List<GpsPosition> positions)
@@ -238,24 +467,51 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         { "moto", 4.0 }, { "pickup", 11.0 }, { "van", 9.5 }, { "minibus", 15.0 }
     };
 
-    private FuelAnalyticsDto BuildFuelAnalytics(List<Vehicle> vehicles, List<GpsPosition> positions)
+    private FuelAnalyticsDto BuildFuelAnalytics(List<Vehicle> vehicles, List<GpsPosition> positions, RealCostData real)
     {
         var analytics = new FuelAnalyticsDto();
         var fuelEfficiencies = new List<double>();
+        var byDevice = positions.ToLookup(p => p.DeviceId);
+        double coveredDistance = 0;
 
-        var totalDistance = CalculateDistance(positions);
-
-        // By vehicle — use real fuel data when available
-        foreach (var vehicle in vehicles.Where(v => v.GpsDeviceId.HasValue))
+        foreach (var vehicle in vehicles)
         {
-            var vehiclePositions = positions
-                .Where(p => p.DeviceId == vehicle.GpsDeviceId)
-                .OrderBy(p => p.RecordedAt)
-                .ToList();
-            var distance = CalculateDistance(vehiclePositions);
+            var realLiters = (double)real.LitersByVehicle.GetValueOrDefault(vehicle.Id);
+            var hasDevice = vehicle.GpsDeviceId.HasValue;
 
-            var (consumptionLiters, consumptionPer100Km, isEstimated) =
-                CalculateVehicleFuelConsumption(vehicle, vehiclePositions, distance);
+            // Ni boîtier ni plein saisi : aucune donnée à afficher pour ce véhicule.
+            if (!hasDevice && realLiters <= 0) continue;
+
+            var vehiclePositions = hasDevice
+                ? byDevice[vehicle.GpsDeviceId!.Value].OrderBy(p => p.RecordedAt).ToList()
+                : new List<GpsPosition>();
+
+            var distance = CalculateDistance(vehiclePositions);
+            if (distance <= 0
+                && real.ByVehicle.TryGetValue(vehicle.Id, out var costData)
+                && costData.DistanceKm is > 0)
+            {
+                // Véhicule sans boîtier : distance des relevés compteur des pleins.
+                distance = (double)costData.DistanceKm.Value;
+            }
+
+            double consumptionLiters;
+            double consumptionPer100Km;
+            bool isEstimated;
+
+            if (realLiters > 0)
+            {
+                // Des litres ACHETÉS priment toujours sur l'estimation capteur /
+                // type de véhicule : c'est une saisie, pas un modèle.
+                consumptionLiters = realLiters;
+                consumptionPer100Km = distance > 0 ? consumptionLiters / distance * 100 : 0;
+                isEstimated = false;
+            }
+            else
+            {
+                (consumptionLiters, consumptionPer100Km, isEstimated) =
+                    CalculateVehicleFuelConsumption(vehicle, vehiclePositions, distance);
+            }
 
             var efficiency = consumptionLiters > 0 ? distance / consumptionLiters : 0;
             if (efficiency > 0) fuelEfficiencies.Add(efficiency);
@@ -268,18 +524,26 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 TotalConsumedLiters = Math.Round(consumptionLiters, 2),
                 EfficiencyKmPerLiter = Math.Round(efficiency, 2),
                 ConsumptionPer100Km = Math.Round(consumptionPer100Km, 2),
-                EfficiencyRating = GetEfficiencyRating(efficiency)
+                EfficiencyRating = GetEfficiencyRating(efficiency),
+                IsEstimated = isEstimated
             });
 
             analytics.TotalFuelConsumedLiters += consumptionLiters;
+            coveredDistance += distance;
         }
 
         analytics.TotalFuelConsumedLiters = Math.Round(analytics.TotalFuelConsumedLiters, 2);
-        analytics.TotalFuelCost = (decimal)Math.Round(analytics.TotalFuelConsumedLiters * 2.1, 2);
-        analytics.AverageConsumptionPer100Km = totalDistance > 0
-            ? Math.Round(analytics.TotalFuelConsumedLiters / totalDistance * 100, 2) : 0;
+
+        // Coût = dépenses carburant RÉELLES (pleins saisis + dépenses de type
+        // « fuel »). Avant, c'était « litres estimés × 2,1 » : un prix en dur qui
+        // ne correspondait à aucune facture. Sans saisie, le coût vaut 0.
+        analytics.TotalFuelCost = Round2(real.Total.Fuel);
+        analytics.IsEstimated = analytics.ByVehicle.Any(v => v.IsEstimated);
+
+        analytics.AverageConsumptionPer100Km = coveredDistance > 0
+            ? Math.Round(analytics.TotalFuelConsumedLiters / coveredDistance * 100, 2) : 0;
         analytics.AverageFuelEfficiencyKmPerLiter = analytics.TotalFuelConsumedLiters > 0
-            ? Math.Round(totalDistance / analytics.TotalFuelConsumedLiters, 2) : 0;
+            ? Math.Round(coveredDistance / analytics.TotalFuelConsumedLiters, 2) : 0;
 
         if (fuelEfficiencies.Any())
         {
@@ -383,32 +647,112 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return (estimatedLiters, defaultRate, true);
     }
 
-    private async Task<MaintenanceAnalyticsDto> BuildMaintenanceAsync(List<Vehicle> vehicles, DateTime start, DateTime end, CancellationToken ct)
+    /// <summary>
+    /// Interventions réelles de la période : dépenses d'entretien saisies
+    /// (<c>vehicle_costs</c> type <c>maintenance</c>/<c>entretien</c>) et
+    /// réparations (table <c>repairs</c>, annulées exclues). Le type de
+    /// réparation vient de la colonne <c>repair_type</c>, déduit de la
+    /// description quand elle est vide (<see cref="RepairTypeClassifier"/>).
+    /// </summary>
+    private MaintenanceAnalyticsDto BuildMaintenance(List<Vehicle> vehicles, RealCostData real)
     {
+        var entretiens = real.Expenses.Where(e => IsMaintenanceType(e.Type)).ToList();
+        var repairs = real.Repairs;
+        var total = real.Total.Maintenance + real.Total.Repair;
+        var covered = real.ByVehicle.Count > 0 ? real.ByVehicle.Count : vehicles.Count;
+
         var maintenance = new MaintenanceAnalyticsDto
         {
-            TotalMaintenanceEvents = 0,
-            TotalMaintenanceCost = 0
+            TotalMaintenanceEvents = entretiens.Count + repairs.Count,
+            TotalMaintenanceCost = Round2(total),
+            // Rien en base ne distingue une intervention planifiée d'une
+            // intervention subie : ces deux compteurs restent à zéro plutôt que
+            // de reconduire la répartition 70/30 inventée par l'ancien code.
+            ScheduledMaintenances = 0,
+            UnscheduledMaintenances = 0,
+            AvgMaintenanceCostPerVehicle = covered > 0
+                ? Math.Round((double)total / covered, 2) : 0
         };
 
-        // Placeholder - in a real system, this would query maintenance records
-        maintenance.ByType = new List<MaintenanceTypeBreakdownDto>
+        var byType = new List<MaintenanceTypeBreakdownDto>();
+        if (entretiens.Count > 0)
         {
-            new() { Type = "Vidange", Count = vehicles.Count / 3, TotalCost = vehicles.Count * 50, Percentage = 30 },
-            new() { Type = "Pneus", Count = vehicles.Count / 5, TotalCost = vehicles.Count * 120, Percentage = 25 },
-            new() { Type = "Freins", Count = vehicles.Count / 6, TotalCost = vehicles.Count * 80, Percentage = 20 },
-            new() { Type = "Révision", Count = vehicles.Count / 4, TotalCost = vehicles.Count * 100, Percentage = 25 }
-        };
+            byType.Add(new MaintenanceTypeBreakdownDto
+            {
+                Type = "Entretien",
+                Count = entretiens.Count,
+                TotalCost = Round2(entretiens.Sum(e => e.Amount))
+            });
+        }
 
-        maintenance.TotalMaintenanceEvents = maintenance.ByType.Sum(t => t.Count);
-        maintenance.TotalMaintenanceCost = maintenance.ByType.Sum(t => t.TotalCost);
-        maintenance.ScheduledMaintenances = (int)(maintenance.TotalMaintenanceEvents * 0.7);
-        maintenance.UnscheduledMaintenances = maintenance.TotalMaintenanceEvents - maintenance.ScheduledMaintenances;
-        maintenance.AvgMaintenanceCostPerVehicle = vehicles.Count > 0 
-            ? (double)maintenance.TotalMaintenanceCost / vehicles.Count : 0;
+        byType.AddRange(repairs
+            .GroupBy(r => RepairTypeClassifier.Classify(r.RepairType, r.Description).Type)
+            .Select(g => new MaintenanceTypeBreakdownDto
+            {
+                Type = RepairTypeClassifier.Label(g.Key),
+                Count = g.Count(),
+                TotalCost = Round2(g.Sum(r => r.TotalCost))
+            }));
 
+        foreach (var line in byType)
+            line.Percentage = total != 0 ? Math.Round((double)(line.TotalCost / total) * 100, 1) : 0;
+
+        maintenance.ByType = byType.OrderByDescending(t => t.TotalCost).ToList();
+
+        DateTime? LastInterventionDate(int vehicleId)
+        {
+            var dates = entretiens.Where(e => e.VehicleId == vehicleId).Select(e => e.Date)
+                .Concat(repairs.Where(r => r.VehicleId == vehicleId).Select(r => r.Date))
+                .ToList();
+            return dates.Count > 0 ? dates.Max() : null;
+        }
+
+        maintenance.ByVehicle = real.ByVehicle.Values
+            .Where(v => v.Total.Maintenance != 0 || v.Total.Repair != 0)
+            .Select(v => new VehicleMaintenanceDto
+            {
+                VehicleId = v.VehicleId,
+                VehicleName = v.VehicleName,
+                MaintenanceCount = entretiens.Count(e => e.VehicleId == v.VehicleId)
+                                 + repairs.Count(r => r.VehicleId == v.VehicleId),
+                TotalCost = Round2(v.Total.Maintenance + v.Total.Repair),
+                LastMaintenanceDate = LastInterventionDate(v.VehicleId)
+            })
+            .OrderByDescending(v => v.TotalCost)
+            .ToList();
+
+        maintenance.RecentEvents = entretiens
+            .Select(e => new MaintenanceEventDto
+            {
+                VehicleId = e.VehicleId,
+                VehicleName = VehicleLabel(real, e.VehicleId),
+                Type = "Entretien",
+                Date = e.Date,
+                Cost = Round2(e.Amount),
+                Description = e.Description ?? string.Empty
+            })
+            .Concat(repairs.Select(r => new MaintenanceEventDto
+            {
+                Id = r.Id,
+                VehicleId = r.VehicleId,
+                VehicleName = VehicleLabel(real, r.VehicleId),
+                Type = RepairTypeClassifier.Label(RepairTypeClassifier.Classify(r.RepairType, r.Description).Type),
+                Date = r.Date,
+                Cost = Round2(r.TotalCost),
+                Description = r.Description ?? string.Empty
+            }))
+            .OrderByDescending(e => e.Date)
+            .Take(20)
+            .ToList();
+
+        // Upcoming : aucune échéance d'entretien planifiée n'est exploitable ici
+        // (maintenance_logs a company_id = 0 sur toute la base) — liste vide
+        // plutôt qu'une projection inventée.
         return maintenance;
     }
+
+    private static string VehicleLabel(RealCostData real, int vehicleId) =>
+        real.ByVehicle.TryGetValue(vehicleId, out var v) ? v.VehicleName : $"#{vehicleId}";
 
     private DriverPerformanceDto BuildDriverPerformance(List<Driver> drivers, List<Vehicle> vehicles, List<GpsPosition> positions)
     {
@@ -487,6 +831,19 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return performance;
     }
 
+    /// <summary>
+    /// Efficacité opérationnelle — le seul indicateur MESURABLE ici est le temps
+    /// d'inactivité, déduit des positions (part des trames à moins de 3 km/h).
+    ///
+    /// « Disponibilité flotte » (95), « Livraisons à temps » (92) et « Efficacité
+    /// itinéraires » (88) étaient trois constantes en dur : aucune table ne les
+    /// alimente — rien n'enregistre une promesse de livraison ni un itinéraire de
+    /// référence. Elles se moyennaient en un « score d'efficacité » qui valait
+    /// donc TOUJOURS 91,7, affiché en vert avec un objectif de 85 et un écart de
+    /// +6,7, pour toutes les sociétés et tous les mois. Elles sont retirées, avec
+    /// le KPI qui en dérivait — même principe que les compteurs « Planifiées /
+    /// Non planifiées » de la maintenance.
+    /// </summary>
     private OperationalEfficiencyDto BuildEfficiency(List<GpsPosition> positions, int daysInMonth)
     {
         var efficiency = new OperationalEfficiencyDto();
@@ -495,22 +852,11 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         var movingPositions = positions.Count(p => p.SpeedKph > 3);
         var idlePositions = totalPositions - movingPositions;
 
-        efficiency.IdleTimePercentage = totalPositions > 0 
+        efficiency.IdleTimePercentage = totalPositions > 0
             ? Math.Round((double)idlePositions / totalPositions * 100, 1) : 0;
-        efficiency.FleetAvailabilityRate = 95; // Placeholder
-        efficiency.OnTimeDeliveryRate = 92; // Placeholder
-        efficiency.AverageRouteEfficiency = 88; // Placeholder
-        efficiency.OverallEfficiencyScore = Math.Round(
-            (efficiency.FleetAvailabilityRate + efficiency.OnTimeDeliveryRate + efficiency.AverageRouteEfficiency) / 3, 1);
 
         efficiency.Metrics = new List<EfficiencyMetricDto>
         {
-            new() { Name = "Disponibilité flotte", Value = efficiency.FleetAvailabilityRate, Target = 95, 
-                    Variance = efficiency.FleetAvailabilityRate - 95, Status = efficiency.FleetAvailabilityRate >= 95 ? "OnTarget" : "Below" },
-            new() { Name = "Livraisons à temps", Value = efficiency.OnTimeDeliveryRate, Target = 90,
-                    Variance = efficiency.OnTimeDeliveryRate - 90, Status = efficiency.OnTimeDeliveryRate >= 90 ? "OnTarget" : "Below" },
-            new() { Name = "Efficacité itinéraires", Value = efficiency.AverageRouteEfficiency, Target = 85,
-                    Variance = efficiency.AverageRouteEfficiency - 85, Status = efficiency.AverageRouteEfficiency >= 85 ? "OnTarget" : "Below" },
             new() { Name = "Temps d'inactivité", Value = efficiency.IdleTimePercentage, Target = 20,
                     Variance = 20 - efficiency.IdleTimePercentage, Status = efficiency.IdleTimePercentage <= 20 ? "OnTarget" : "Above" }
         };
@@ -518,61 +864,139 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return efficiency;
     }
 
-    private CostAnalysisDto BuildCostAnalysis(List<Vehicle> vehicles, List<GpsPosition> positions, 
-        FuelAnalyticsDto fuel, MaintenanceAnalyticsDto maintenance)
+    /// <summary>
+    /// Coûts RÉELS de la période. Correspondance avec le DTO, qui n'a pas de
+    /// champ dédié aux réparations : <c>MaintenanceCost</c> = entretiens saisis
+    /// + réparations (elles ne doivent pas disparaître du total), le détail des
+    /// deux restant visible dans <c>ByCategory</c>. <c>InsuranceCost</c> est la
+    /// part réelle des dépenses de type assurance, <c>OtherCosts</c> tout le
+    /// reste. La somme des quatre champs redonne exactement le total.
+    /// </summary>
+    private CostAnalysisDto BuildCostAnalysis(List<Vehicle> vehicles, List<GpsPosition> positions, RealCostData real)
     {
+        var insurance = real.Expenses.Where(e => IsInsuranceType(e.Type)).Sum(e => e.Amount);
+
         var costs = new CostAnalysisDto
         {
-            FuelCost = fuel.TotalFuelCost,
-            MaintenanceCost = maintenance.TotalMaintenanceCost,
-            InsuranceCost = vehicles.Count * 150, // Estimated
-            OtherCosts = vehicles.Count * 50 // Estimated
+            FuelCost = Round2(real.Total.Fuel),
+            MaintenanceCost = Round2(real.Total.Maintenance + real.Total.Repair),
+            InsuranceCost = Round2(insurance),
+            OtherCosts = Round2(real.Total.Other - insurance),
+            TotalOperationalCost = Round2(real.Total.Total)
         };
 
-        costs.TotalOperationalCost = costs.FuelCost + costs.MaintenanceCost + costs.InsuranceCost + costs.OtherCosts;
-        
-        var totalDistance = CalculateDistance(positions);
-        costs.CostPerKm = totalDistance > 0 ? Math.Round(costs.TotalOperationalCost / (decimal)totalDistance, 3) : 0;
-        costs.CostPerVehicle = vehicles.Count > 0 ? Math.Round(costs.TotalOperationalCost / vehicles.Count, 2) : 0;
+        var distanceByVehicle = CostDistanceByVehicle(vehicles, positions, real);
+        var totalDistance = distanceByVehicle.Values.Sum();
 
-        costs.ByCategory = new List<CostBreakdownDto>
+        // Dénominateur = les véhicules RÉELLEMENT couverts par les dépenses
+        // chargées (un utilisateur restreint ne voit que les siens), sinon la
+        // moyenne serait diluée par des véhicules hors de sa portée.
+        var covered = real.ByVehicle.Count > 0 ? real.ByVehicle.Count : vehicles.Count;
+
+        costs.CostPerKm = totalDistance > 0
+            ? Math.Round(real.Total.Total / (decimal)totalDistance, 3) : 0;
+        costs.CostPerVehicle = covered > 0
+            ? Math.Round(real.Total.Total / covered, 2) : 0;
+
+        costs.ByCategory = BuildCostCategories(real);
+
+        foreach (var vehicle in real.ByVehicle.Values
+                     .Where(v => v.Total.Total != 0)
+                     .OrderByDescending(v => v.Total.Total))
         {
-            new() { Category = "Carburant", Amount = costs.FuelCost, 
-                    Percentage = costs.TotalOperationalCost > 0 ? Math.Round((double)(costs.FuelCost / costs.TotalOperationalCost) * 100, 1) : 0 },
-            new() { Category = "Maintenance", Amount = costs.MaintenanceCost,
-                    Percentage = costs.TotalOperationalCost > 0 ? Math.Round((double)(costs.MaintenanceCost / costs.TotalOperationalCost) * 100, 1) : 0 },
-            new() { Category = "Assurance", Amount = costs.InsuranceCost,
-                    Percentage = costs.TotalOperationalCost > 0 ? Math.Round((double)(costs.InsuranceCost / costs.TotalOperationalCost) * 100, 1) : 0 },
-            new() { Category = "Autres", Amount = costs.OtherCosts,
-                    Percentage = costs.TotalOperationalCost > 0 ? Math.Round((double)(costs.OtherCosts / costs.TotalOperationalCost) * 100, 1) : 0 }
-        };
-
-        // By vehicle
-        foreach (var vehicleFuel in fuel.ByVehicle)
-        {
-            var vehicle = vehicles.FirstOrDefault(v => v.Id == vehicleFuel.VehicleId);
-            if (vehicle == null) continue;
-
-            var fuelCost = (decimal)vehicleFuel.TotalConsumedLiters * 2.1m;
-            var maintCost = (decimal)maintenance.AvgMaintenanceCostPerVehicle;
-            var totalCost = fuelCost + maintCost + 200; // +insurance+other
-
+            var km = distanceByVehicle.GetValueOrDefault(vehicle.VehicleId);
             costs.ByVehicle.Add(new VehicleCostDto
             {
-                VehicleId = vehicle.Id,
-                VehicleName = vehicle.Name,
-                TotalCost = Math.Round(totalCost, 2),
-                FuelCost = Math.Round(fuelCost, 2),
-                MaintenanceCost = Math.Round(maintCost, 2),
-                CostPerKm = vehicleFuel.TotalDistanceKm > 0 
-                    ? Math.Round(totalCost / (decimal)vehicleFuel.TotalDistanceKm, 3) : 0
+                VehicleId = vehicle.VehicleId,
+                VehicleName = vehicle.VehicleName,
+                TotalCost = Round2(vehicle.Total.Total),
+                FuelCost = Round2(vehicle.Total.Fuel),
+                MaintenanceCost = Round2(vehicle.Total.Maintenance + vehicle.Total.Repair),
+                CostPerKm = km > 0 ? Math.Round(vehicle.Total.Total / (decimal)km, 3) : 0
             });
         }
 
         return costs;
     }
 
-    private PeriodComparisonDto BuildComparison(string period, List<GpsPosition> current, List<GpsPosition> previous)
+    /// <summary>
+    /// Répartition par catégorie : carburant / entretien / réparations, puis une
+    /// ligne par type de dépense réellement saisi (assurance, visite technique,
+    /// vignette, péage…). Seules les lignes non nulles sont rendues — quatre
+    /// lignes figées valaient mieux que rien, mais elles étaient fausses.
+    /// </summary>
+    private List<CostBreakdownDto> BuildCostCategories(RealCostData real)
+    {
+        var lines = new List<(string Label, decimal Amount)>
+        {
+            ("Carburant", real.Total.Fuel),
+            ("Entretien", real.Total.Maintenance),
+            ("Réparations", real.Total.Repair)
+        };
+
+        lines.AddRange(real.Expenses
+            .Where(e => !IsFuelType(e.Type) && !IsMaintenanceType(e.Type))
+            .GroupBy(e => NormalizeType(e.Type))
+            .Select(g => (Label: CategoryLabel(g.Key), Amount: g.Sum(e => e.Amount)))
+            .OrderByDescending(l => l.Amount));
+
+        var total = real.Total.Total;
+        return lines
+            .Where(l => l.Amount != 0)
+            .Select(l => new CostBreakdownDto
+            {
+                Category = l.Label,
+                Amount = Round2(l.Amount),
+                Percentage = total != 0 ? Math.Round((double)(l.Amount / total) * 100, 1) : 0
+            })
+            .ToList();
+    }
+
+    /// <summary>Libellé français d'un type de <c>vehicle_costs</c> (valeurs réellement présentes en base).</summary>
+    private static string CategoryLabel(string type) => type switch
+    {
+        "insurance" or "assurance" => "Assurance",
+        "insurance_refund" => "Remboursement assurance",
+        "technical_inspection" or "visite_technique" => "Visite technique",
+        "tax" or "vignette" => "Taxe / vignette",
+        "peage" or "toll" => "Péage",
+        "registration" => "Carte grise",
+        "repair" or "reparation" => "Réparation (dépense)",
+        "parking" => "Parking",
+        "lavage" or "wash" => "Lavage",
+        "" => "Autres",
+        _ => char.ToUpperInvariant(type[0]) + type[1..].Replace('_', ' ')
+    };
+
+    /// <summary>
+    /// Kilométrage retenu pour les ratios de coût : la distance MESURÉE de
+    /// l'agrégateur (trajets terminés, ou relevés compteur des pleins pour un
+    /// véhicule sans boîtier) — la même que les rapports de coûts, pour que le
+    /// coût/km ne diverge pas d'un écran à l'autre — avec repli sur la distance
+    /// échantillonnée des positions quand elle manque.
+    /// </summary>
+    private Dictionary<int, double> CostDistanceByVehicle(
+        List<Vehicle> vehicles, List<GpsPosition> positions, RealCostData real)
+    {
+        var byDevice = positions.ToLookup(p => p.DeviceId);
+        var result = new Dictionary<int, double>();
+
+        foreach (var vehicle in vehicles)
+        {
+            double km = 0;
+            if (real.ByVehicle.TryGetValue(vehicle.Id, out var data) && data.DistanceKm is > 0)
+                km = (double)data.DistanceKm.Value;
+            else if (vehicle.GpsDeviceId.HasValue)
+                km = CalculateDistance(byDevice[vehicle.GpsDeviceId.Value].ToList());
+
+            result[vehicle.Id] = km;
+        }
+
+        return result;
+    }
+
+    private PeriodComparisonDto BuildComparison(string period, List<GpsPosition> current, List<GpsPosition> previous,
+        decimal currentCost, decimal previousCost)
     {
         var currentDistance = CalculateDistance(current);
         var previousDistance = CalculateDistance(previous);
@@ -586,8 +1010,9 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             Distance = BuildComparisonMetric("Distance", currentDistance, previousDistance, "km", true),
             FuelConsumption = BuildComparisonMetric("Carburant", 
                 CalculateFuelFromPositions(current), CalculateFuelFromPositions(previous), "L", false),
-            Cost = BuildComparisonMetric("Coût", 
-                CalculateFuelFromPositions(current) * 2.1, CalculateFuelFromPositions(previous) * 2.1, GisAPI.Domain.Common.AppCurrency.Default, false),
+            // Coût = dépenses réelles des deux périodes (avant : litres estimés × 2,1).
+            Cost = BuildComparisonMetric("Coût",
+                (double)currentCost, (double)previousCost, GisAPI.Domain.Common.AppCurrency.Default, false),
             Utilization = BuildComparisonMetric("Utilisation", 
                 current.Select(p => p.DeviceId).Distinct().Count(),
                 previous.Select(p => p.DeviceId).Distinct().Count(), "%", true),
@@ -612,7 +1037,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         };
     }
 
-    private ExecutiveSummaryDto BuildExecutiveSummary(MonthlyFleetReportDto report)
+    private ExecutiveSummaryDto BuildExecutiveSummary(MonthlyFleetReportDto report, int drivingMinutes)
     {
         var summary = new ExecutiveSummaryDto
         {
@@ -624,7 +1049,8 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             FleetUtilizationRate = report.Utilization.OverallUtilizationRate,
             AverageFuelEfficiency = report.FuelAnalytics.AverageFuelEfficiencyKmPerLiter,
             TotalTrips = report.Utilization.ByVehicle.Sum(v => v.TotalTrips),
-            TotalDrivingHours = report.Utilization.ByVehicle.Sum(v => v.OperatingDays) * 8 // Estimate
+            // Durée MESURÉE des trajets terminés, pas « jours actifs × 8 ».
+            TotalDrivingHours = (int)Math.Round(drivingMinutes / 60.0, MidpointRounding.AwayFromZero)
         };
 
         // Generate insights
@@ -763,18 +1189,9 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 Unit = "points",
                 Status = report.DriverPerformance.AveragePerformanceScore >= 75 ? "OnTarget" : "Below",
                 Trend = "stable"
-            },
-            new() {
-                Name = "Efficacité opérationnelle",
-                Category = "Opérations",
-                Value = report.Efficiency.OverallEfficiencyScore,
-                Target = 85,
-                Variance = report.Efficiency.OverallEfficiencyScore - 85,
-                VariancePercent = ((report.Efficiency.OverallEfficiencyScore - 85) / 85) * 100,
-                Unit = "%",
-                Status = report.Efficiency.OverallEfficiencyScore >= 85 ? "OnTarget" : "Below",
-                Trend = "stable"
             }
+            // Pas de KPI « Efficacité opérationnelle » : il moyennait trois
+            // constantes en dur et valait toujours 91,7 (voir BuildEfficiency).
         };
     }
 
@@ -886,6 +1303,8 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     }
 
     // ==================== HELPER METHODS ====================
+
+    private static decimal Round2(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     /// <summary>
     /// Estimate total fuel consumed from a set of positions (for period comparisons).

@@ -97,6 +97,29 @@ public class MaintenanceController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == record.VehicleId && v.CompanyId == companyId);
         VehicleMileage.Advance(vehicle, record.MileageAtService);
 
+        // Un entretien RÉALISÉ est une dépense : il lui faut sa ligne dans
+        // vehicle_costs, seule table que lisent l'écran Dépenses, le tableau de
+        // bord et les rapports. Sans elle, l'entretien saisi depuis « Nouvelle
+        // dépense > Entretien » n'apparaissait NULLE PART (recette du
+        // 08/09/2026 : maintenance_records n'est lue par aucun écran de dépense).
+        // Même motif que « marquer fait », qui crée déjà la dépense.
+        if (string.Equals(record.Status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            _context.VehicleCosts.Add(new VehicleCost
+            {
+                VehicleId = record.VehicleId,
+                Type = "maintenance",
+                Description = string.IsNullOrWhiteSpace(record.Description)
+                    ? "Entretien"
+                    : $"Entretien: {record.Description}",
+                Amount = record.TotalCost,
+                Date = record.Date,
+                Mileage = record.MileageAtService > 0 ? record.MileageAtService : null,
+                ReceiptNumber = record.InvoiceNumber,
+                CompanyId = companyId
+            });
+        }
+
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetMaintenanceRecord), new { id = record.Id }, record);

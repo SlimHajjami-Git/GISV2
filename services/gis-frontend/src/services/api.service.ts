@@ -2671,6 +2671,7 @@ export interface MonthlyCostReport {
   totalFuelLiters: number;
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
+  totalOtherCostDzd: number;
   totalCostDzd: number;
   departments: DepartmentCostGroup[];
   vehicles: VehicleMonthlyCost[];
@@ -2684,6 +2685,7 @@ export interface DepartmentCostGroup {
   totalFuelLiters: number;
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
+  totalOtherCostDzd: number;
   totalCostDzd: number;
   vehicles: VehicleMonthlyCost[];
 }
@@ -2700,6 +2702,7 @@ export interface VehicleMonthlyCost {
   fuelCostDzd: number;
   maintenanceCostDzd: number;
   repairCostDzd: number;
+  otherCostDzd: number;
   totalCostDzd: number;
   fuelLiters: number;
   fuelLitersPr: number;
@@ -2942,6 +2945,8 @@ export interface FuelAnalytics {
   averageFuelEfficiencyKmPerLiter: number;
   dailyTrend: DailyFuelConsumption[];
   byVehicle: VehicleFuelConsumption[];
+  /** Vrai quand les litres viennent d une estimation (aucun plein saisi sur la periode). */
+  isEstimated: boolean;
   refuelEvents: FuelEvent[];
   anomalies: FuelAnomaly[];
   statistics: StatisticalMetrics;
@@ -2962,6 +2967,8 @@ export interface VehicleFuelConsumption {
   efficiencyKmPerLiter: number;
   consumptionPer100Km: number;
   efficiencyRating: string;
+  /** Litres estimes faute de plein saisi pour ce vehicule sur la periode. */
+  isEstimated: boolean;
 }
 
 export interface FuelEvent {
@@ -3068,11 +3075,10 @@ export interface DrivingEventSummary {
 }
 
 export interface OperationalEfficiency {
-  overallEfficiencyScore: number;
-  fleetAvailabilityRate: number;
-  onTimeDeliveryRate: number;
+  // Disponibilité flotte, ponctualité et efficacité d'itinéraire ont été retirées
+  // du serveur le 09/09/2026 : c'étaient trois constantes (95, 92, 88) affichées
+  // comme des mesures. Seul le temps d'inactivité est réellement calculé.
   idleTimePercentage: number;
-  averageRouteEfficiency: number;
   dailyTrend: DailyEfficiency[];
   metrics: EfficiencyMetric[];
 }

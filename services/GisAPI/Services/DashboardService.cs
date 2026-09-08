@@ -48,22 +48,28 @@ public class DashboardService : IDashboardService
             .Where(v => v.CompanyId == companyId)
             .AsQueryable();
 
-        // Non-admin users only see their assigned vehicles
-        // scopeIds : null = tout le parc de la société ; sinon la restriction
-        // appliquée à `vehicles`, réutilisée pour les sommes SQL par véhicule.
-        List<int>? scopeIds = null;
-        if (!isAdmin && userId > 0)
+        // Portée véhicules — MÊME sémantique que VehicleScope (la définition unique
+        // utilisée par les écrans Carburant, Échéances et les rapports) :
+        //   null       = l'appelant voit tout le parc (admin de société) ;
+        //   liste vide = AUCUN véhicule visible, donc des résultats vides —
+        //                surtout pas l'absence de filtre.
+        // Le service ne peut pas appeler VehicleScope directement : il tourne aussi
+        // hors requête (pré-chauffage), sans contexte tenant, d'où isAdmin/userId
+        // passés explicitement par l'appelant (voir ScopeIdsAsync).
+        // Avant le 09/09/2026 la portée n'était retenue que si l'utilisateur avait
+        // au moins une affectation, et n'était appliquée qu'au poste « acquisition » :
+        // le total du tableau de bord additionnait donc tout le parc alors que la
+        // liste des véhicules, elle, était restreinte — incohérent avec lui-même et
+        // avec les rapports.
+        // La portée s'applique à TOUTE section rattachée à un véhicule, et pas aux
+        // seules dépenses : distance de la période, trajets récents et conducteurs
+        // affichent une PLAQUE, donc restreindre les coûts sans les restreindre
+        // laissait fuiter le reste du parc juste au-dessus.
+        var scopeIds = await ScopeIdsAsync(_context, isAdmin, userId, ct);
+        if (scopeIds is not null)
         {
-            var assignedVehicleIds = await _context.UserVehicles
-                .Where(uv => uv.UserId == userId)
-                .Select(uv => uv.VehicleId)
-                .ToListAsync();
-
-            if (assignedVehicleIds.Any())
-            {
-                vehicleQuery = vehicleQuery.Where(v => assignedVehicleIds.Contains(v.Id));
-                scopeIds = assignedVehicleIds;
-            }
+            List<int> ids = scopeIds;
+            vehicleQuery = vehicleQuery.Where(v => ids.Contains(v.Id));
         }
 
         var vehicles = await vehicleQuery.ToListAsync();
@@ -136,37 +142,16 @@ public class DashboardService : IDashboardService
         var acquisitionCost = await AcquisitionCostAsync(companyId, scopeIds, vehicles, periodStart, periodEnd, now, ct);
         try
         {
-            fuelCost = await _context.FuelEntries.AsNoTracking()
-                .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
-                .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
-            fuelCost += await _context.VehicleCosts.AsNoTracking()
-                .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
-                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-
-            // Source de vérité UNIQUE des entretiens : la dépense (VehicleCost
-            // type « maintenance »). Un entretien saisi depuis l'écran crée
-            // toujours une VehicleCost + un MaintenanceLog qui la référence
-            // (CostId) ; compter aussi les journaux doublait, et compter les
-            // journaux SANS dépense faisait réapparaître des entretiens dont la
-            // dépense avait été supprimée (résidus). On s'en tient donc aux
-            // VehicleCosts — cohérent avec la page Dépenses et le rapport de
-            // coûts (recette client du 25/08/2026).
-            maintenanceCost = await _context.VehicleCosts.AsNoTracking()
-                .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
-                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-
-            repairCost = await _context.Repairs.AsNoTracking()
-                .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
-                .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
-
-            otherCost = await _context.VehicleCosts.AsNoTracking()
-                .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                    && c.Type != "fuel" && c.Type != "maintenance")
-                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+            (fuelCost, maintenanceCost, repairCost, otherCost) =
+                await PeriodCostsAsync(_context, companyId, scopeIds, periodStart, periodEnd, ct);
         }
-        catch (Exception ex)
+        // Une ANNULATION doit remonter, pas être absorbée : le résultat serait
+        // partiel (coûts à 0) et le cache le servirait pendant dix minutes à tous
+        // les utilisateurs de la société. Le filet ne couvre que les vraies pannes
+        // de calcul, comme celui d'AcquisitionCostAsync.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            Console.WriteLine($"[Dashboard] Error calculating expenses for company {companyId}: {ex.Message}");
+            _logger.LogWarning(ex, "Dashboard : calcul des dépenses impossible pour la société {CompanyId}", companyId);
         }
 
         // ── 4. Driving scores (alerts per vehicle in period) ──
@@ -179,12 +164,22 @@ public class DashboardService : IDashboardService
 
         // Distance actually driven per vehicle IN THE PERIOD (completed trips).
         // Reused below for the km ranking AND to know which vehicles were active.
-        var tripKmByVehicle = await _context.Trips.AsNoTracking()
+        // Portée : la carte « Kilométrage », le classement des km et la ventilation
+        // par type sortent tous d'ici — sans le filtre, un employé restreint lisait
+        // les km de TOUT le parc au-dessus de coûts, eux, restreints.
+        var periodTripsQuery = _context.Trips.AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.Status == "completed" &&
-                        t.StartTime >= periodStart && t.StartTime <= periodEnd)
+                        t.StartTime >= periodStart && t.StartTime <= periodEnd);
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            periodTripsQuery = periodTripsQuery.Where(t => ids.Contains(t.VehicleId));
+        }
+
+        var tripKmByVehicle = await periodTripsQuery
             .GroupBy(t => t.VehicleId)
             .Select(g => new { VehicleId = g.Key, Km = g.Sum(t => t.DistanceKm) })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         // Only score vehicles that were ACTUALLY ACTIVE in the period (drove or raised alerts).
         // Otherwise parked / GPS-less vehicles get a perfect 100 (0 alerts) and dominate the top.
@@ -277,12 +272,21 @@ public class DashboardService : IDashboardService
             .ToList();
 
         // ── 9. Recent trips ──
-        var trips = await _context.Trips.AsNoTracking()
-            .Where(t => t.CompanyId == companyId)
+        // La liste affiche la PLAQUE : sans la portée, un employé restreint voyait
+        // passer les 20 derniers trajets de toute la société.
+        var recentTripsQuery = _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId);
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            recentTripsQuery = recentTripsQuery.Where(t => ids.Contains(t.VehicleId));
+        }
+
+        var trips = await recentTripsQuery
             .OrderByDescending(t => t.StartTime)
             .Take(20)
             .Include(t => t.Vehicle)
-            .ToListAsync();
+            .ToListAsync(ct);
 
         var tripsList = trips.Select(t =>
         {
@@ -296,8 +300,19 @@ public class DashboardService : IDashboardService
         // ── 10. Drivers ──
         // Driver.AssignedVehicle is NOT a nav (EF would collide with Vehicle.AssignedDriver).
         // Manual join on AssignedVehicleId to pull the vehicle plate.
-        var driversRaw = await (from d in _context.Drivers.AsNoTracking()
-                                where d.CompanyId == companyId
+        // Portée : chaque ligne porte la plaque du véhicule affecté au conducteur ;
+        // un employé restreint ne voit donc que les conducteurs de SES véhicules
+        // (un conducteur sans véhicule affecté n'appartient à aucune portée, il ne
+        // s'affiche que pour un admin — même règle que le plein sans véhicule).
+        var driversQuery = _context.Drivers.AsNoTracking()
+            .Where(d => d.CompanyId == companyId);
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            driversQuery = driversQuery.Where(d => d.AssignedVehicleId != null && ids.Contains(d.AssignedVehicleId.Value));
+        }
+
+        var driversRaw = await (from d in driversQuery
                                 join v in _context.Vehicles.AsNoTracking()
                                     on d.AssignedVehicleId equals v.Id into vJoin
                                 from vehicle in vJoin.DefaultIfEmpty()
@@ -309,7 +324,7 @@ public class DashboardService : IDashboardService
                                     VehiclePlate = vehicle != null ? vehicle.Plate : null
                                 })
                                 .Take(20)
-                                .ToListAsync();
+                                .ToListAsync(ct);
 
         var driversList = driversRaw.Select(d =>
         {
@@ -410,28 +425,37 @@ public class DashboardService : IDashboardService
         decimal prevTotalCost = 0;
         try
         {
-            prevTotalCost += await _context.FuelEntries.AsNoTracking()
-                .Where(f => f.CompanyId == companyId && f.InvoiceDate >= prevStart && f.InvoiceDate <= prevEnd)
-                .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
-            prevTotalCost += await _context.MaintenanceLogs.AsNoTracking()
-                .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= prevStart && m.DoneDate <= prevEnd && m.ActualCost > 0)
-                .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
-            prevTotalCost += await _context.Repairs.AsNoTracking()
-                .Where(r => r.SocieteId == companyId && r.RepairDate >= prevStart && r.RepairDate <= prevEnd)
-                .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
-            prevTotalCost += await _context.VehicleCosts.AsNoTracking()
-                .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
-                .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-            prevTotalCost += await AcquisitionCostAsync(companyId, scopeIds, vehicles, prevStart, prevEnd, now, ct);
+            // MÊME définition et MÊME portée que la période courante : la période
+            // précédente lisait en plus les MaintenanceLogs alors que la période
+            // courante ne compte que les VehicleCosts « maintenance » — l'entretien
+            // était donc compté DEUX FOIS dans le passé (chaque entretien saisi crée
+            // une dépense ET un journal qui la référence), ce qui écrasait
+            // artificiellement la flèche de tendance vers le bas.
+            var (prevFuel, prevMaintenance, prevRepair, prevOther) =
+                await PeriodCostsAsync(_context, companyId, scopeIds, prevStart, prevEnd, ct);
+            prevTotalCost = prevFuel + prevMaintenance + prevRepair + prevOther
+                + await AcquisitionCostAsync(companyId, scopeIds, vehicles, prevStart, prevEnd, now, ct);
         }
-        catch { /* trend is best-effort */ }
+        // Best-effort, MAIS jamais au prix d'une annulation avalée (cf. § 3).
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Dashboard : tendance de coût indisponible pour la société {CompanyId}", companyId);
+        }
         var currentTotalCost = fuelCost + maintenanceCost + repairCost + otherCost + acquisitionCost;
 
         var currentDistance = tripKmByVehicle.Sum(x => x.Km);
-        var prevDistance = await _context.Trips.AsNoTracking()
+        // MÊME portée que la distance de la période courante : sinon la flèche de
+        // tendance comparait les km de l'employé à ceux de toute la société.
+        var prevTripsQuery = _context.Trips.AsNoTracking()
             .Where(t => t.CompanyId == companyId && t.Status == "completed" &&
-                        t.StartTime >= prevStart && t.StartTime <= prevEnd)
-            .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
+                        t.StartTime >= prevStart && t.StartTime <= prevEnd);
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            prevTripsQuery = prevTripsQuery.Where(t => ids.Contains(t.VehicleId));
+        }
+        var prevDistance = await prevTripsQuery
+            .Select(t => (decimal?)t.DistanceKm).SumAsync(ct) ?? 0m;
 
         static double Pct(decimal cur, decimal prev) => prev > 0 ? Math.Round((double)(cur - prev) / (double)prev * 100, 1) : 0.0;
         var costTrend = Pct(currentTotalCost, prevTotalCost);
@@ -494,6 +518,94 @@ public class DashboardService : IDashboardService
         };
 
         return result;
+    }
+
+    /// <summary>
+    /// Portée véhicules du tableau de bord, MÊME sémantique que
+    /// <c>VehicleScope.AccessibleVehicleIdsAsync</c> — la définition unique des
+    /// écrans Carburant, Échéances et des rapports :
+    ///   • <c>null</c> = l'appelant voit tout le parc (admin de société) ;
+    ///   • liste VIDE = aucun véhicule visible, donc des résultats vides ;
+    ///   • sinon les véhicules affectés (table user_vehicles).
+    /// Méthode à part (et publique) parce que le service tourne AUSSI hors requête
+    /// HTTP — pré-chauffage en arrière-plan, sans <c>ICurrentTenantService</c> —,
+    /// d'où isAdmin/userId passés explicitement plutôt que lus dans les claims.
+    /// C'est cette méthode que les tests appellent : la portée n'est plus recopiée.
+    /// </summary>
+    public static async Task<List<int>?> ScopeIdsAsync(IGisDbContext context, bool isAdmin, int userId, CancellationToken ct)
+    {
+        if (isAdmin) return null;
+        // Non identifié : rien de visible (fail-closed). Avant le 09/09/2026,
+        // userId = 0 sans le drapeau admin valait « tout le parc ».
+        if (userId <= 0) return new List<int>();
+
+        return await context.UserVehicles.AsNoTracking()
+            .Where(uv => uv.UserId == userId)
+            .Select(uv => uv.VehicleId)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Les quatre postes de dépenses d'une fenêtre [from, to], dans la portée
+    /// véhicules de l'appelant (<paramref name="scopeIds"/> : null = tout le parc,
+    /// liste vide = rien) :
+    ///   • carburant  = pleins saisis (fuel_entries) + dépenses de type « fuel » ;
+    ///   • entretien  = dépenses de type « maintenance » UNIQUEMENT — un entretien
+    ///     saisi crée une VehicleCost ET un MaintenanceLog qui la référence, donc
+    ///     compter les journaux doublerait (recette client du 25/08/2026) ;
+    ///   • réparations = repairs, statut « cancelled » EXCLU — une réparation
+    ///     annulée n'est pas une dépense, et les rapports de coûts l'excluent
+    ///     déjà : la compter ici faisait diverger le total des deux écrans ;
+    ///   • autres      = le reste des dépenses.
+    /// Une seule définition, partagée par la période courante et la période
+    /// précédente : sans cela le total et la flèche de tendance ne comparaient pas
+    /// les mêmes choses. Les mensualités d'acquisition sont comptées à part
+    /// (<see cref="AcquisitionCostAsync"/>).
+    /// Statique et prenant le contexte en paramètre pour être appelable telle
+    /// quelle par les tests (aucune copie de la règle ailleurs).
+    /// </summary>
+    public static async Task<(decimal Fuel, decimal Maintenance, decimal Repair, decimal Other)> PeriodCostsAsync(
+        IGisDbContext context, int companyId, List<int>? scopeIds, DateTime from, DateTime to, CancellationToken ct)
+    {
+        // Rattachement par véhicule, comme OperatingCostAggregator et les rapports
+        // de coûts : un plein SANS véhicule n'appartient à personne et ne compte
+        // nulle part. Il était jusqu'ici additionné pour un admin (et lui seul),
+        // si bien que le même plein entrait dans le tableau de bord mais jamais
+        // dans le rapport mensuel.
+        var fuelEntries = context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId && f.VehicleId != null
+                        && f.InvoiceDate >= from && f.InvoiceDate <= to);
+        var costs = context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= from && c.Date <= to);
+        var repairs = context.Repairs.AsNoTracking()
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= from && r.RepairDate <= to);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            fuelEntries = fuelEntries.Where(f => ids.Contains(f.VehicleId!.Value));
+            costs = costs.Where(c => ids.Contains(c.VehicleId));
+            repairs = repairs.Where(r => ids.Contains(r.VehicleId));
+        }
+
+        var fuel = await fuelEntries.Select(f => (decimal?)f.TotalAmount).SumAsync(ct) ?? 0m;
+        fuel += await costs.Where(c => c.Type == "fuel")
+            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
+
+        var maintenance = await costs.Where(c => c.Type == "maintenance")
+            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
+
+        // Statut comparé en mémoire : la casse varie selon la source de saisie,
+        // et OperatingCostAggregator applique exactement le même filtre.
+        var repairRows = await repairs.Select(r => new { r.TotalCost, r.Status }).ToListAsync(ct);
+        var repair = repairRows
+            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .Sum(r => r.TotalCost);
+
+        var other = await costs.Where(c => c.Type != "fuel" && c.Type != "maintenance")
+            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
+
+        return (fuel, maintenance, repair, other);
     }
 
     /// <summary>

@@ -24,6 +24,7 @@ public class MonthlyCostReportDto
     public decimal TotalFuelLiters { get; set; }
     public decimal TotalMaintenanceCostDzd { get; set; }
     public decimal TotalRepairCostDzd { get; set; }
+    public decimal TotalOtherCostDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     // Per-vehicle detail rows grouped by department
@@ -44,6 +45,7 @@ public class DepartmentCostGroupDto
     public decimal TotalFuelLiters { get; set; }
     public decimal TotalMaintenanceCostDzd { get; set; }
     public decimal TotalRepairCostDzd { get; set; }
+    public decimal TotalOtherCostDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     public List<VehicleMonthlyCostDto> Vehicles { get; set; } = new();
@@ -67,6 +69,8 @@ public class VehicleMonthlyCostDto
     public decimal FuelCostDzd { get; set; }
     public decimal MaintenanceCostDzd { get; set; }
     public decimal RepairCostDzd { get; set; }
+    // Assurance, vignette, visite technique, carte grise, peage, reparation-accident…
+    public decimal OtherCostDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     // Fuel consumption (liters)

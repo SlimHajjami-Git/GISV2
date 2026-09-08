@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
-using GisAPI.Infrastructure.Persistence;
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Services;
 using MediatR;
@@ -15,16 +17,24 @@ namespace GisAPI.Controllers;
 [Authorize]
 public class CostsController : ControllerBase
 {
-    private readonly GisDbContext _context;
+    // IGisDbContext (et non le GisDbContext concret) : c'est l'abstraction que
+    // toute la couche Application utilise déjà, et elle rend ce contrôleur
+    // instanciable dans les tests — sans cela la portée véhicules ne pouvait
+    // être vérifiée qu'en RECOPIANT la requête dans le test, qui restait donc
+    // vert même quand le filtre disparaissait du contrôleur (constat du
+    // 09/09/2026, cf. CostsScreenScopeTests).
+    private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
     private readonly IPublisher _publisher;
     private readonly IInvoiceExtractionService _invoiceExtraction;
     private readonly IWebHostEnvironment _env;
     private readonly ILogger<CostsController> _logger;
 
-    public CostsController(GisDbContext context, IPublisher publisher,
+    public CostsController(IGisDbContext context, ICurrentTenantService tenant, IPublisher publisher,
         IInvoiceExtractionService invoiceExtraction, IWebHostEnvironment env, ILogger<CostsController> logger)
     {
         _context = context;
+        _tenant = tenant;
         _publisher = publisher;
         _invoiceExtraction = invoiceExtraction;
         _env = env;
@@ -33,6 +43,58 @@ public class CostsController : ControllerBase
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    /// <summary>
+    /// Charge UNE dépense de la société courante en respectant la portée
+    /// véhicules de l'appelant (null = admin, tout le parc ; liste vide =
+    /// aucun véhicule visible donc aucune dépense).
+    ///
+    /// Utilisé par la lecture ET par les mutations. Jusqu'au 09/09/2026 seule
+    /// la lecture était cloisonnée : un employé restreint au véhicule #7
+    /// recevait bien un 404 sur GET /api/costs/812 (dépense du véhicule #9)
+    /// mais son DELETE /api/costs/812 renvoyait 204 et SUPPRIMAIT la ligne —
+    /// un IDOR. Retourne null quand la dépense n'existe pas, appartient à une
+    /// autre société, ou porte sur un véhicule hors portée : les trois cas
+    /// répondent 404, pour ne jamais révéler l'existence de la ligne.
+    /// </summary>
+    private async Task<VehicleCost?> FindScopedCostAsync(
+        int id, CancellationToken ct, bool tracked = true, bool includeVehicle = false)
+    {
+        var companyId = GetCompanyId();
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
+        var query = _context.VehicleCosts.AsQueryable();
+        if (!tracked)
+            query = query.AsNoTracking();
+        if (includeVehicle)
+            query = query.Include(c => c.Vehicle);
+
+        query = query.Where(c => c.Id == id && c.CompanyId == companyId);
+
+        if (scope is not null)
+            query = query.Where(c => scope.Contains(c.VehicleId));
+
+        return await query.FirstOrDefaultAsync(ct);
+    }
+
+    /// <summary>
+    /// Le véhicule visé par une création de dépense doit appartenir à la
+    /// société ET rester dans la portée de l'appelant — sinon un employé
+    /// restreint pourrait imputer une dépense à un véhicule qu'il ne voit
+    /// même pas dans sa liste.
+    /// </summary>
+    private async Task<bool> CanBookOnVehicleAsync(int vehicleId, CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
+        if (scope is not null && !scope.Contains(vehicleId))
+            return false;
+
+        return await _context.Vehicles
+            .AsNoTracking()
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId, ct);
+    }
 
     /// <summary>Default monthly AI invoice-scan quota when the société has no
     /// explicit limit. The sys admin can raise/lower it per société from the
@@ -155,15 +217,27 @@ public class CostsController : ControllerBase
         [FromQuery] int? vehicleId = null,
         [FromQuery] string? type = null,
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
+
+        // Portée véhicules : chaque dépense expose le véhicule (nom + MATRICULE),
+        // le montant et la facture. Fuite constatée le 09/09/2026 : l'écran
+        // Dépenses ne filtrait que sur la société, si bien qu'un employé restreint
+        // à un seul véhicule y voyait les 36 dépenses de tout le parc alors que les
+        // pleins, les échéances et les rapports, eux, lui en montraient 8.
+        // null = admin (tout le parc) ; liste vide = aucun véhicule visible.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
 
         var query = _context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId)
             .Include(c => c.Vehicle)
             .AsQueryable();
+
+        if (scope is not null)
+            query = query.Where(c => scope.Contains(c.VehicleId));
 
         if (vehicleId.HasValue)
             query = query.Where(c => c.VehicleId == vehicleId);
@@ -205,21 +279,15 @@ public class CostsController : ControllerBase
                 // this cost (Phase 5 repair / Phase 6 insurance refund).
                 c.AccidentEventId,
             })
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(costs);
     }
 
     [HttpGet("{id}")]
-    public async Task<ActionResult<VehicleCost>> GetCost(int id)
+    public async Task<ActionResult<VehicleCost>> GetCost(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-
-        var cost = await _context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.Id == id && c.CompanyId == companyId)
-            .Include(c => c.Vehicle)
-            .FirstOrDefaultAsync();
+        var cost = await FindScopedCostAsync(id, ct, tracked: false, includeVehicle: true);
 
         if (cost == null)
             return NotFound();
@@ -230,19 +298,29 @@ public class CostsController : ControllerBase
     [HttpGet("summary")]
     public async Task<ActionResult> GetCostSummary(
         [FromQuery] DateTime? startDate = null,
-        [FromQuery] DateTime? endDate = null)
+        [FromQuery] DateTime? endDate = null,
+        CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
-        var startDateUtc = startDate.HasValue 
-            ? DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc) 
+        var startDateUtc = startDate.HasValue
+            ? DateTime.SpecifyKind(startDate.Value, DateTimeKind.Utc)
             : DateTime.UtcNow.AddMonths(-1);
-        var endDateUtc = endDate.HasValue 
-            ? DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc) 
+        var endDateUtc = endDate.HasValue
+            ? DateTime.SpecifyKind(endDate.Value, DateTimeKind.Utc)
             : DateTime.UtcNow;
 
-        var costs = await _context.VehicleCosts
+        // Même portée que la liste : le total affiché en tête de l'écran Dépenses
+        // doit porter sur les mêmes lignes que celles listées en dessous.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
+        var scoped = _context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= startDateUtc && c.Date <= endDateUtc)
+            .Where(c => c.CompanyId == companyId && c.Date >= startDateUtc && c.Date <= endDateUtc);
+
+        if (scope is not null)
+            scoped = scoped.Where(c => scope.Contains(c.VehicleId));
+
+        var costs = await scoped
             .GroupBy(c => c.Type)
             .Select(g => new
             {
@@ -250,12 +328,11 @@ public class CostsController : ControllerBase
                 Total = g.Sum(c => c.Amount),
                 Count = g.Count()
             })
-            .ToListAsync();
+            .ToListAsync(ct);
 
-        var totalFuel = await _context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= startDateUtc && c.Date <= endDateUtc)
-            .SumAsync(c => c.Liters ?? 0);
+        var totalFuel = await scoped
+            .Where(c => c.Type == "fuel")
+            .SumAsync(c => c.Liters ?? 0, ct);
 
         return Ok(new
         {
@@ -267,10 +344,18 @@ public class CostsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<VehicleCost>> CreateCost([FromBody] VehicleCost cost)
+    public async Task<ActionResult<VehicleCost>> CreateCost([FromBody] VehicleCost cost, CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
         var userId = GetUserId();
+
+        // Portée véhicules en ÉCRITURE : le véhicule visé doit exister dans la
+        // société ET être visible par l'appelant. Sans ce contrôle, un employé
+        // restreint au véhicule #7 pouvait imputer une dépense au véhicule #9
+        // (ou à un véhicule d'une autre société) alors qu'il ne le voit nulle
+        // part. Même réponse 404 dans les deux cas : ne rien révéler.
+        if (!await CanBookOnVehicleAsync(cost.VehicleId, ct))
+            return NotFound(new { message = "Véhicule introuvable." });
 
         cost.CompanyId = companyId;
         cost.CreatedByUserId = userId;
@@ -289,13 +374,13 @@ public class CostsController : ControllerBase
         }
 
         _context.VehicleCosts.Add(cost);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         // Send notification to company admins
         try
         {
-            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
-            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == cost.VehicleId && v.CompanyId == companyId);
+            var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, ct);
+            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == cost.VehicleId && v.CompanyId == companyId, ct);
             if (actor != null)
             {
                 var entityName = !string.IsNullOrEmpty(cost.Description)
@@ -314,12 +399,13 @@ public class CostsController : ControllerBase
     }
 
     [HttpPut("{id}")]
-    public async Task<ActionResult> UpdateCost(int id, [FromBody] VehicleCost updated)
+    public async Task<ActionResult> UpdateCost(int id, [FromBody] VehicleCost updated, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-
-        var cost = await _context.VehicleCosts
-            .FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == companyId);
+        // Même portée que la lecture : ce que l'appelant ne peut pas voir, il ne
+        // peut pas le modifier. Le véhicule porteur n'est volontairement PAS
+        // réaffectable ici (cost.VehicleId n'est jamais écrasé par le payload),
+        // sinon une dépense pourrait être poussée hors de la portée.
+        var cost = await FindScopedCostAsync(id, ct);
 
         if (cost == null)
             return NotFound();
@@ -341,18 +427,18 @@ public class CostsController : ControllerBase
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         return NoContent();
     }
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult> DeleteCost(int id)
+    public async Task<ActionResult> DeleteCost(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-
-        var cost = await _context.VehicleCosts
-            .FirstOrDefaultAsync(c => c.Id == id && c.CompanyId == companyId);
+        // Portée véhicules : la suppression suit exactement la même règle que
+        // l'affichage. C'était la fuite en écriture du 09/09/2026 — la ligne
+        // était chargée sur le seul couple (Id, CompanyId).
+        var cost = await FindScopedCostAsync(id, ct);
 
         if (cost == null)
             return NotFound();
@@ -364,12 +450,12 @@ public class CostsController : ControllerBase
         // (recette client du 25/08/2026). On supprime donc le journal lié.
         var linkedLogs = await _context.MaintenanceLogs
             .Where(m => m.CostId == cost.Id)
-            .ToListAsync();
+            .ToListAsync(ct);
         if (linkedLogs.Count > 0)
             _context.MaintenanceLogs.RemoveRange(linkedLogs);
 
         _context.VehicleCosts.Remove(cost);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         return NoContent();
     }

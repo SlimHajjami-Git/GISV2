@@ -25,6 +25,12 @@
     <ProjectReference Include="..\..\src\GisAPI.Domain\GisAPI.Domain.csproj" />
     <ProjectReference Include="..\..\src\GisAPI.Application\GisAPI.Application.csproj" />
     <ProjectReference Include="..\..\src\GisAPI.Infrastructure\GisAPI.Infrastructure.csproj" />
+    <!-- Projet API : les services qui vivent dans GisAPI/Services (dont
+         DashboardService) doivent être TESTÉS, pas recopiés. Sans cette
+         référence, DashboardExpenseScopeTests rejouait une copie littérale de la
+         portée et des postes de dépenses : les tests restaient verts même si le
+         filtre de portée disparaissait de la production. -->
+    <ProjectReference Include="..\..\GisAPI\GisAPI.csproj" />
   </ItemGroup>
 
   <ItemGroup>

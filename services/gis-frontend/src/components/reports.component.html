@@ -381,6 +381,7 @@
                           <th class="num">Carburant {{ getCurrencyCode() }}</th>
                           <th class="num">Entretien {{ getCurrencyCode() }}</th>
                           <th class="num">Réparation {{ getCurrencyCode() }}</th>
+                          <th class="num">Autres</th>
                           <th class="num">Total Coût</th>
                           <th class="num">Coût/KM</th>
                           <th class="num">Carb./100KM</th>
@@ -404,6 +405,7 @@
                             <td class="num">{{ formatCurrency(v.fuelCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.maintenanceCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.repairCostDzd) }}</td>
+                            <td class="num">{{ formatCurrency(v.otherCostDzd) }}</td>
                             <td class="num total-cell">{{ formatCurrency(v.totalCostDzd) }}</td>
                             <td class="num">{{ v.costPerKm.toFixed(2) }}</td>
                             <td class="num">{{ v.fuelPer100Km.toFixed(2) }}</td>
@@ -426,6 +428,7 @@
                           <td class="num"><strong>{{ formatCurrency(dept.totalFuelCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(dept.totalMaintenanceCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(dept.totalRepairCostDzd) }}</strong></td>
+                          <td class="num"><strong>{{ formatCurrency(dept.totalOtherCostDzd) }}</strong></td>
                           <td class="num total-cell"><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ dept.totalKm > 0 ? (dept.totalCostDzd / dept.totalKm).toFixed(2) : '0' }}</strong></td>
                           <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelCostDzd / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>

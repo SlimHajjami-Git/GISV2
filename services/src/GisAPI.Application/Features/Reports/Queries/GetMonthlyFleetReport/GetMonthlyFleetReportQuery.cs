@@ -70,7 +70,14 @@ public class ExecutiveSummaryDto
     public double FleetUtilizationRate { get; set; }
     public double AverageFuelEfficiency { get; set; }
     public int TotalTrips { get; set; }
+
+    /// <summary>
+    /// Somme des durées des trajets TERMINÉS de la période (table <c>trips</c>),
+    /// arrondie à l'heure. C'était « jours actifs × 8 » : un véhicule vu cinq
+    /// minutes un jour comptait huit heures de conduite.
+    /// </summary>
     public int TotalDrivingHours { get; set; }
+
     public List<string> KeyInsights { get; set; } = new();
     public List<string> Recommendations { get; set; } = new();
 }
@@ -152,7 +159,17 @@ public class VehicleUtilizationDetailDto
 public class FuelAnalyticsDto
 {
     public double TotalFuelConsumedLiters { get; set; }
+
+    /// <summary>Dépenses carburant RÉELLES de la période (pleins saisis + dépenses de type carburant).</summary>
     public decimal TotalFuelCost { get; set; }
+
+    /// <summary>
+    /// Vrai dès qu'au moins un véhicule entre dans le total avec des litres
+    /// ESTIMÉS (capteur FMS, sonde, ou taux par type de véhicule) faute de
+    /// plein saisi. Le coût, lui, ne provient jamais d'une estimation.
+    /// </summary>
+    public bool IsEstimated { get; set; }
+
     public double AverageConsumptionPer100Km { get; set; }
     public double AverageFuelEfficiencyKmPerLiter { get; set; }
     public List<DailyFuelConsumptionDto> DailyTrend { get; set; } = new();
@@ -179,6 +196,9 @@ public class VehicleFuelConsumptionDto
     public double EfficiencyKmPerLiter { get; set; }
     public double ConsumptionPer100Km { get; set; }
     public string EfficiencyRating { get; set; } = string.Empty; // Excellent, Good, Average, Poor
+
+    /// <summary>Litres estimés (aucun plein saisi sur la période) plutôt que mesurés.</summary>
+    public bool IsEstimated { get; set; }
 }
 
 public class FuelEventDto
@@ -301,13 +321,16 @@ public class DrivingEventSummaryDto
 
 // ==================== OPERATIONAL EFFICIENCY ====================
 
+/// <summary>
+/// Efficacité opérationnelle. N'expose plus que ce qui est MESURÉ : la part des
+/// trames à l'arrêt. « Disponibilité flotte », « Livraisons à temps » et
+/// « Efficacité itinéraires » étaient trois constantes (95 / 92 / 88) sans
+/// aucune source en base, et leur moyenne — le « score d'efficacité » — valait
+/// donc toujours 91,7 quel que soit le mois ou la société.
+/// </summary>
 public class OperationalEfficiencyDto
 {
-    public double OverallEfficiencyScore { get; set; }
-    public double FleetAvailabilityRate { get; set; }
-    public double OnTimeDeliveryRate { get; set; }
     public double IdleTimePercentage { get; set; }
-    public double AverageRouteEfficiency { get; set; }
     public List<DailyEfficiencyDto> DailyTrend { get; set; } = new();
     public List<EfficiencyMetricDto> Metrics { get; set; } = new();
 }

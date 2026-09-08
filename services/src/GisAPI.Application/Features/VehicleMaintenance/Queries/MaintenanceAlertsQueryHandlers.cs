@@ -297,21 +297,31 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
 
     public async Task<List<MaintenanceLogDto>> Handle(GetMaintenanceLogsQuery request, CancellationToken cancellationToken)
     {
-        // MaintenanceLog n'a PAS de filtre global de société : le filtre companyId
-        // ci-dessous est obligatoire, l'identifiant de véhicule venant de l'URL.
         var companyId = _tenant.CompanyId ?? 0;
 
-        // Fuite constatée : un employé restreint pouvait lire l'historique
-        // d'entretien de n'importe quel véhicule (scope == null => admin, voit tout).
+        // maintenance_logs.company_id n'est JAMAIS renseigné : MaintenanceLog
+        // n'implémente pas ITenantEntity, la colonne vaut 0 sur les 47 lignes de
+        // la table en production. Filtrer dessus rendait l'historique d'entretien
+        // d'un véhicule TOUJOURS vide, alors que les mêmes interventions
+        // s'affichaient dans le rapport Entretiens et dans les Dépenses : le
+        // client en concluait que sa saisie était perdue et la refaisait, d'où
+        // des doublons de dépense (recette du 08/09/2026).
+        //
+        // Le périmètre est donc borné par le VÉHICULE — appartenance à la société
+        // ET visibilité de l'appelant — ce qui est strictement plus sûr que la
+        // colonne, puisque celle-ci ne cloisonnait rien.
+        var vehicleBelongsToCompany = await _context.Vehicles
+            .AnyAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken);
+        if (!vehicleBelongsToCompany) return new List<MaintenanceLogDto>();
+
+        // scope == null => admin, voit tout ; liste vide => aucun véhicule visible.
         var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
+        if (scope is not null && !scope.Contains(request.VehicleId)) return new List<MaintenanceLogDto>();
 
         var query = _context.MaintenanceLogs
             .Include(l => l.Template)
             .Include(l => l.Supplier)
-            .Where(l => l.VehicleId == request.VehicleId && l.CompanyId == companyId);
-
-        if (scope is not null)
-            query = query.Where(l => scope.Contains(l.VehicleId));
+            .Where(l => l.VehicleId == request.VehicleId);
 
         if (request.TemplateId.HasValue)
             query = query.Where(l => l.TemplateId == request.TemplateId.Value);

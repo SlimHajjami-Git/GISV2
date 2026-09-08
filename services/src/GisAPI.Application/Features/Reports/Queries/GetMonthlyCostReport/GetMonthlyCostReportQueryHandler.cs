@@ -79,13 +79,42 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
         //    QUE les dépenses (pas les MaintenanceLogs, dont ceux sans dépense
         //    liée seraient des résidus). Corrige « Entretiens à 0 » ET l'écart de
         //    montant entre écrans (recette client du 25/08/2026).
-        var maintenanceLogs = await _context.VehicleCosts.AsNoTracking()
+        //    On charge TOUTES les dépenses du mois en une fois puis on les ventile
+        //    en C#, avec la même règle que le tableau de bord et que les rapports
+        //    de coûts : carburant / entretien / AUTRES. Auparavant seul l'entretien
+        //    était lu, si bien qu'assurance, vignette, visite technique, carte
+        //    grise, péage et réparation-accident n'existaient dans AUCUNE colonne
+        //    de ce rapport — mesuré sur la production : 1 161 916 à l'écran
+        //    Dépenses contre 9 735 ici pour la même société et la même année
+        //    (recette du 08/09/2026).
+        var costRows = await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId
                      && vehicleIds.Contains(c.VehicleId)
-                     && (c.Type == "maintenance" || c.Type == "entretien")
                      && c.Date >= startDate && c.Date < endDate)
-            .Select(c => new { c.VehicleId, ActualCost = c.Amount })
+            .Select(c => new { c.VehicleId, c.Type, c.Amount })
             .ToListAsync(ct);
+
+        static string Bucket(string? type) => (type ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "fuel" => "fuel",
+            "maintenance" or "entretien" => "maintenance",
+            _ => "other"
+        };
+
+        var maintenanceLogs = costRows
+            .Where(c => Bucket(c.Type) == "maintenance")
+            .Select(c => new { c.VehicleId, ActualCost = c.Amount })
+            .ToList();
+
+        var fuelCosts = costRows
+            .Where(c => Bucket(c.Type) == "fuel")
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+
+        var otherByVehicle = costRows
+            .Where(c => Bucket(c.Type) == "other")
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
         // 4. Fetch repairs from /reparation page's table (repairs)
         var repairs = await _context.Repairs.AsNoTracking()
@@ -197,14 +226,15 @@ ORDER BY device_id, recorded_at DESC;
         {
             var km = mileagePerVehicle.GetValueOrDefault(vehicle.Id, 0);
             var hasFuel = fuelByVehicle.TryGetValue(vehicle.Id, out var fuel);
-            var fuelCost = hasFuel ? fuel!.TotalCost : 0;
+            var fuelCost = (hasFuel ? fuel!.TotalCost : 0) + fuelCosts.GetValueOrDefault(vehicle.Id, 0);
             var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
             var maintCost = maintByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0);
-            var totalCost = fuelCost + maintCost + repairCost;
+            var otherCost = otherByVehicle.GetValueOrDefault(vehicle.Id, 0);
+            var totalCost = fuelCost + maintCost + repairCost + otherCost;
 
             // Only include vehicles with some activity
-            if (km == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0)
+            if (km == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0 && otherCost == 0)
                 continue;
 
             var row = new VehicleMonthlyCostDto
@@ -222,6 +252,7 @@ ORDER BY device_id, recorded_at DESC;
                 FuelLitersPr = fuelLiters, // Same for now
                 MaintenanceCostDzd = maintCost,
                 RepairCostDzd = repairCost,
+                OtherCostDzd = otherCost,
                 TotalCostDzd = totalCost,
                 CostPerKm = km > 0 ? Math.Round(totalCost / km, 2) : 0,
                 FuelPer100Km = km > 0 ? Math.Round((fuelCost / km) * 100, 2) : 0,
@@ -245,6 +276,7 @@ ORDER BY device_id, recorded_at DESC;
                 TotalFuelLiters = g.Sum(v => v.FuelLiters),
                 TotalMaintenanceCostDzd = g.Sum(v => v.MaintenanceCostDzd),
                 TotalRepairCostDzd = g.Sum(v => v.RepairCostDzd),
+                TotalOtherCostDzd = g.Sum(v => v.OtherCostDzd),
                 TotalCostDzd = g.Sum(v => v.TotalCostDzd),
                 Vehicles = g.OrderBy(v => v.VehicleName).ToList()
             })
@@ -263,6 +295,7 @@ ORDER BY device_id, recorded_at DESC;
             TotalFuelLiters = vehicleRows.Sum(v => v.FuelLiters),
             TotalMaintenanceCostDzd = vehicleRows.Sum(v => v.MaintenanceCostDzd),
             TotalRepairCostDzd = vehicleRows.Sum(v => v.RepairCostDzd),
+            TotalOtherCostDzd = vehicleRows.Sum(v => v.OtherCostDzd),
             TotalCostDzd = vehicleRows.Sum(v => v.TotalCostDzd),
             Departments = departmentGroups,
             Vehicles = vehicleRows.OrderBy(v => v.DepartmentName).ThenBy(v => v.VehicleName).ToList()

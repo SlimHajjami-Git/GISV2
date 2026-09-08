@@ -359,6 +359,14 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
       csv += `${v.vehicleName},${v.plate || ''},${v.utilizationRate}%,${v.totalDistanceKm},${v.totalTrips},${v.operatingDays}\n`;
     });
 
+    // Dépenses réellement saisies sur la période
+    csv += '\nCOÛTS PAR CATÉGORIE\n';
+    csv += 'Catégorie,Montant\n';
+    this.report.costAnalysis.byCategory.forEach(c => {
+      csv += `${c.category},${c.amount}\n`;
+    });
+    csv += `Total,${this.report.costAnalysis.totalOperationalCost}\n`;
+
     return csv;
   }
 

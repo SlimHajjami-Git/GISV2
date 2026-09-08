@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Repairs.Queries;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
@@ -26,14 +27,23 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
         var fromDateUtc = request.FromDate.HasValue 
             ? DateTime.SpecifyKind(request.FromDate.Value, DateTimeKind.Utc) 
             : (DateTime?)null;
-        var toDateUtc = request.ToDate.HasValue 
-            ? DateTime.SpecifyKind(request.ToDate.Value, DateTimeKind.Utc) 
+        var toDateUtc = request.ToDate.HasValue
+            ? DateTime.SpecifyKind(request.ToDate.Value, DateTimeKind.Utc)
             : (DateTime?)null;
+
+        // Portée véhicules : une réparation expose le véhicule (nom + MATRICULE),
+        // le garage et le montant. Fuite constatée le 09/09/2026 : l'écran Dépenses
+        // listait les 9 réparations de toute la société à un employé restreint à un
+        // seul véhicule. null = admin (tout le parc) ; liste vide = rien.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
 
         var query = _context.Repairs
             .Include(r => r.Vehicle)
             .Include(r => r.Parts)
             .Where(r => r.SocieteId == societeId);
+
+        if (scope is not null)
+            query = query.Where(r => scope.Contains(r.VehicleId));
 
         if (request.VehicleId.HasValue)
             query = query.Where(r => r.VehicleId == request.VehicleId.Value);
@@ -104,10 +114,19 @@ public class GetRepairByIdQueryHandler : IRequestHandler<GetRepairByIdQuery, Rep
     {
         var societeId = _tenantService.CompanyId ?? 0;
 
-        var repair = await _context.Repairs
+        // Même portée que la liste : sans elle, un employé restreint ouvrait par
+        // son identifiant le détail d'une réparation d'un véhicule non affecté.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
+        var query = _context.Repairs
             .Include(r => r.Vehicle)
             .Include(r => r.Parts)
-            .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == societeId, cancellationToken);
+            .Where(r => r.Id == request.Id && r.SocieteId == societeId);
+
+        if (scope is not null)
+            query = query.Where(r => scope.Contains(r.VehicleId));
+
+        var repair = await query.FirstOrDefaultAsync(cancellationToken);
 
         if (repair == null) return null;
 
@@ -166,8 +185,16 @@ public class GetRepairStatsQueryHandler : IRequestHandler<GetRepairStatsQuery, R
             ? DateTime.SpecifyKind(request.ToDate.Value, DateTimeKind.Utc) 
             : (DateTime?)null;
 
+        // Les KPI de l'écran (nombre, coût total, moyenne) doivent porter sur les
+        // mêmes réparations que la liste : même portée, sinon le total contredit
+        // les lignes affichées.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+
         var query = _context.Repairs
             .Where(r => r.SocieteId == societeId);
+
+        if (scope is not null)
+            query = query.Where(r => scope.Contains(r.VehicleId));
 
         if (request.VehicleId.HasValue)
             query = query.Where(r => r.VehicleId == request.VehicleId.Value);

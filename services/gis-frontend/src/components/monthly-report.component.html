@@ -335,7 +335,10 @@
         <div class="fuel-stats">
           <div class="stat-box warning">
             <span class="stat-value">{{ formatNumber(report.fuelAnalytics.totalFuelConsumedLiters) }} L</span>
-            <span class="stat-label">Consommation totale</span>
+            <span class="stat-label">
+              Consommation totale
+              <span class="est-tag" *ngIf="report.fuelAnalytics.isEstimated" title="Aucun plein saisi sur la période : litres estimés">estimé</span>
+            </span>
           </div>
           <div class="stat-box danger">
             <span class="stat-value">{{ formatCurrency(report.fuelAnalytics.totalFuelCost) }}</span>
@@ -350,6 +353,12 @@
             <span class="stat-label">Efficacité moyenne</span>
           </div>
         </div>
+
+        <p class="section-note">
+          Le coût provient uniquement des pleins et dépenses de carburant saisis. Les litres sont ceux
+          des pleins quand ils existent ; sinon ils sont estimés (capteur du boîtier, ou consommation
+          moyenne du type de véhicule).
+        </p>
 
         <div class="data-table-container">
           <h4>Consommation par véhicule</h4>
@@ -368,7 +377,10 @@
               <tr *ngFor="let v of report.fuelAnalytics.byVehicle">
                 <td>{{ v.vehicleName }}</td>
                 <td>{{ v.totalDistanceKm | appDistance:0 }}</td>
-                <td>{{ v.totalConsumedLiters | appVolume:0 }}</td>
+                <td>
+                  {{ v.totalConsumedLiters | appVolume:0 }}
+                  <span class="est-tag" *ngIf="v.isEstimated" title="Aucun plein saisi pour ce véhicule : litres estimés">estimé</span>
+                </td>
                 <td>{{ formatNumber(v.consumptionPer100Km, 1) }}</td>
                 <td>{{ formatNumber(v.efficiencyKmPerLiter, 1) }}</td>
                 <td>
@@ -399,17 +411,13 @@
             <span class="stat-value">{{ formatCurrency(report.maintenance.totalMaintenanceCost) }}</span>
             <span class="stat-label">Coût total</span>
           </div>
-          <div class="stat-box success">
-            <span class="stat-value">{{ report.maintenance.scheduledMaintenances }}</span>
-            <span class="stat-label">Planifiées</span>
-          </div>
-          <div class="stat-box warning">
-            <span class="stat-value">{{ report.maintenance.unscheduledMaintenances }}</span>
-            <span class="stat-label">Non planifiées</span>
-          </div>
         </div>
 
-        <div class="charts-row">
+        <p class="section-note">
+          Entretiens saisis dans les dépenses + réparations de la période (les réparations annulées sont exclues).
+        </p>
+
+        <div class="charts-row" *ngIf="report.maintenance.byType.length">
           <div class="chart-card">
             <h4>Coûts par type de maintenance</h4>
             <div class="chart-container">
@@ -418,7 +426,7 @@
           </div>
         </div>
 
-        <div class="data-table-container">
+        <div class="data-table-container" *ngIf="report.maintenance.byType.length">
           <h4>Répartition par type</h4>
           <table class="data-table">
             <thead>
@@ -438,6 +446,10 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div class="empty-hint" *ngIf="!report.maintenance.byType.length">
+          Aucun entretien ni réparation saisi sur la période.
         </div>
       </section>
 
@@ -554,7 +566,13 @@
           </div>
         </div>
 
-        <div class="charts-row">
+        <p class="section-note">
+          Dépenses réellement saisies sur la période : pleins et dépenses de carburant, entretiens,
+          réparations (annulées exclues), assurance et autres frais. Les mensualités d'acquisition
+          ne sont pas des coûts d'exploitation et n'entrent pas dans ce total.
+        </p>
+
+        <div class="charts-row" *ngIf="report.costAnalysis.byCategory.length">
           <div class="chart-card">
             <h4>Répartition des coûts</h4>
             <div class="chart-container">
@@ -563,7 +581,11 @@
           </div>
         </div>
 
-        <div class="data-table-container">
+        <div class="empty-hint" *ngIf="!report.costAnalysis.byCategory.length">
+          Aucune dépense saisie sur la période.
+        </div>
+
+        <div class="data-table-container" *ngIf="report.costAnalysis.byCategory.length">
           <h4>Répartition par catégorie</h4>
           <table class="data-table">
             <thead>

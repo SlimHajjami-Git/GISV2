@@ -48,6 +48,24 @@ public class DashboardController : ControllerBase
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
     private bool IsAdminUser() => User.IsInRole("company_admin") || User.IsInRole("admin") || User.IsInRole("super_admin") || User.IsInRole("system_admin");
 
+    /// <summary>
+    /// Portée véhicules de l'appelant (null = tout le parc, liste VIDE = aucun
+    /// véhicule visible), résolue par la MÊME méthode que /dashboard/all.
+    /// </summary>
+    private Task<List<int>?> AccessibleVehicleIdsAsync(CancellationToken ct) =>
+        DashboardService.ScopeIdsAsync(_context, IsAdminUser(), GetUserId(), ct);
+
+    /// <summary>
+    /// Composante d'IDENTITÉ des clés de cache. Les réponses de /kpis et /charts
+    /// dépendent de l'appelant (les handlers y appliquent VehicleScope) : sans
+    /// cette composante, sur un IMemoryCache singleton partagé par toute
+    /// l'application, la réponse d'un admin était resservie pendant 5 minutes à
+    /// un employé restreint de la même société — et inversement. Même convention
+    /// que la clé de /dashboard/all : une seule entrée pour tous les admins (leur
+    /// réponse est identique), une entrée par employé restreint.
+    /// </summary>
+    private string CacheScopeKey() => IsAdminUser() ? "admin" : $"u{GetUserId()}";
+
     #region NEW CQRS-BASED ENDPOINTS
 
     /// <summary>
@@ -66,7 +84,7 @@ public class DashboardController : ControllerBase
         [FromQuery] int? month = null,
         [FromQuery] int[]? vehicleIds = null)
     {
-        var cacheKey = $"dashboard_kpis_{GetCompanyId()}_{year}_{month}_{string.Join(",", vehicleIds ?? Array.Empty<int>())}";
+        var cacheKey = $"dashboard_kpis_{GetCompanyId()}_{CacheScopeKey()}_{year}_{month}_{string.Join(",", vehicleIds ?? Array.Empty<int>())}";
         
         if (_cache.TryGetValue(cacheKey, out DashboardKpisDto? cachedResult) && cachedResult != null)
         {
@@ -96,7 +114,7 @@ public class DashboardController : ControllerBase
         [FromQuery] string[]? chartTypes = null,
         [FromQuery] int[]? vehicleIds = null)
     {
-        var cacheKey = $"dashboard_charts_{GetCompanyId()}_{year}_{month}_{string.Join(",", vehicleIds ?? Array.Empty<int>())}";
+        var cacheKey = $"dashboard_charts_{GetCompanyId()}_{CacheScopeKey()}_{year}_{month}_{string.Join(",", vehicleIds ?? Array.Empty<int>())}";
         
         if (_cache.TryGetValue(cacheKey, out DashboardChartsDto? cachedResult) && cachedResult != null)
         {
@@ -130,9 +148,28 @@ public class DashboardController : ControllerBase
         [FromQuery] int? pageNumber = null,
         [FromQuery] int? pageSize = null)
     {
+        // Portée véhicules : ce handler ne filtre que par société — un employé
+        // restreint y lisait les statistiques (plaque, km, coûts) de TOUT le parc,
+        // alors que /kpis, /charts, /dashboard/all et les rapports le restreignent.
+        // Elle est appliquée ici, en intersectant le filtre demandé avec ce que
+        // l'appelant a le droit de voir.
+        var scope = await AccessibleVehicleIdsAsync(HttpContext.RequestAborted);
+        var effectiveVehicleIds = vehicleIds;
+        if (scope is not null)
+        {
+            var visible = vehicleIds is { Length: > 0 }
+                ? vehicleIds.Where(scope.Contains).ToArray()
+                : scope.ToArray();
+
+            // Le handler interprète un tableau VIDE comme « aucun filtre » (donc
+            // tout le parc) : quand l'appelant ne voit aucun véhicule, on lui
+            // passe un identifiant impossible pour obtenir un résultat vide.
+            effectiveVehicleIds = visible.Length > 0 ? visible : new[] { -1 };
+        }
+
         var result = await _mediator.Send(new GetFleetStatisticsQuery(
-            year, month, groupBy, vehicleIds, pageNumber, pageSize));
-        
+            year, month, groupBy, effectiveVehicleIds, pageNumber, pageSize));
+
         return Ok(result);
     }
 
@@ -157,16 +194,23 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetWidgetData([FromQuery] string period = "month")
     {
         var companyId = GetCompanyId();
-        var cacheKey = $"dashboard_widgets_{companyId}_{period}";
+        // La réponse dépend de l'appelant (portée véhicules) : sans composante
+        // d'identité, un employé restreint lirait l'entrée remplie par un admin.
+        var cacheKey = $"dashboard_widgets_{companyId}_{CacheScopeKey()}_{period}";
         if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
             return Ok(cached);
 
         var now = DateTime.UtcNow;
         var (periodStart, periodEnd, prevStart, prevEnd) = GetPeriodRange(now, period);
 
-        var vehicles = await _context.Vehicles.AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync();
+        // Même portée que le reste du tableau de bord : null = tout le parc,
+        // liste vide = aucun véhicule visible (et non « pas de filtre »).
+        var widgetScope = await AccessibleVehicleIdsAsync(HttpContext.RequestAborted);
+        var vehiclesQuery = _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId);
+        if (widgetScope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => widgetScope.Contains(v.Id));
+        var vehicles = await vehiclesQuery.ToListAsync();
 
         var deviceMap = vehicles
             .Where(v => v.GpsDeviceId.HasValue)
@@ -428,7 +472,9 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetFuelConsumption([FromQuery] int days = 30)
     {
         var companyId = GetCompanyId();
-        var cacheKey = $"dashboard_fuel_{companyId}_{days}";
+        // La réponse porte des plaques et dépend de la portée de l'appelant :
+        // la clé doit distinguer un admin d'un employé restreint.
+        var cacheKey = $"dashboard_fuel_{companyId}_{CacheScopeKey()}_{days}";
         if (_cache.TryGetValue(cacheKey, out object? cached) && cached != null)
             return Ok(cached);
 
@@ -446,9 +492,14 @@ public class DashboardController : ControllerBase
             .ToListAsync();
         var priceDict = fuelPrices.ToDictionary(p => p.Code.ToLower(), p => p.PricePerLiter);
 
-        // Get all vehicles with GPS devices
-        var vehicles = await _context.Vehicles.AsNoTracking()
-            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+        // Get all vehicles with GPS devices — bornés à la portée de l'appelant
+        // (null = tout le parc, liste vide = aucun véhicule visible).
+        var fuelScope = await AccessibleVehicleIdsAsync(HttpContext.RequestAborted);
+        var fuelVehiclesQuery = _context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
+        if (fuelScope is not null)
+            fuelVehiclesQuery = fuelVehiclesQuery.Where(v => fuelScope.Contains(v.Id));
+        var vehicles = await fuelVehiclesQuery
             .Include(v => v.GpsDevice)
             .ToListAsync();
 
