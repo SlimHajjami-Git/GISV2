@@ -91,6 +91,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   searchQuery = '';
   filterVehicleId = '';
   filterCategory = '';
+  /** Message de refus du serveur affiché dans le formulaire « Nouvelle dépense ». */
+  saveError = '';
   filterMonth = '';
   /** Case « Afficher les échéances à venir » → GET /acquisition-payments?includeFuture=true. */
   showFuturePayments = false;
@@ -605,6 +607,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   saveExpense(): void {
     if (!this.isFormValid()) return;
+    this.saveError = '';
     switch (this.selectedCategory) {
       case 'carburant': this.saveFuelEntry(); break;
       case 'entretien': this.saveMaintenanceRecord(); break;
@@ -629,7 +632,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createFuelEntry(data).subscribe({
       next: () => { this.loadExpenses(); this.closeAddForm(); },
-      error: (err) => console.error('Error creating fuel entry:', err)
+      error: (err) => this.showSaveError(err, 'du plein')
     });
   }
 
@@ -667,7 +670,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createMaintenanceRecord(data).subscribe({
       next: () => { this.loadExpenses(); this.closeAddForm(); },
-      error: (err) => console.error('Error creating maintenance:', err)
+      error: (err) => this.showSaveError(err, "de l'entretien")
     });
   }
 
@@ -694,8 +697,21 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createRepair(data).subscribe({
       next: () => { this.loadExpenses(); this.closeAddForm(); },
-      error: (err) => console.error('Error creating repair:', err)
+      error: (err) => this.showSaveError(err, 'de la réparation')
     });
+  }
+
+  /**
+   * Un refus du serveur doit se VOIR. Ces quatre enregistrements se contentaient
+   * d'un console.error : quand la garde « un compteur ne recule pas » rejetait un
+   * plein, le formulaire restait ouvert, rien n'apparaissait dans la liste et
+   * l'utilisateur croyait à un bug d'affichage (recette du 08/09/2026).
+   */
+  private showSaveError(err: any, quoi: string): void {
+    const message = err?.error?.message || err?.error?.title
+      || `L'enregistrement ${quoi} a échoué. Vérifiez les valeurs saisies et réessayez.`;
+    this.saveError = message;
+    this.cdr.detectChanges();
   }
 
   private saveCost(): void {
@@ -710,7 +726,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createCost(data).subscribe({
       next: () => { this.loadExpenses(); this.closeAddForm(); },
-      error: (err) => console.error('Error creating cost:', err)
+      error: (err) => this.showSaveError(err, 'de la dépense')
     });
   }
 

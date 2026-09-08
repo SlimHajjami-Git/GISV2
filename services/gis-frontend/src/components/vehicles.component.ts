@@ -317,6 +317,37 @@ interface VehicleTrip {
         </div>
       </div>
 
+      <!-- CORRECTION DU COMPTEUR — seul chemin qui accepte une baisse, motif obligatoire -->
+      <div class="credit-overlay" *ngIf="mileageFix.open" (click)="closeMileageFix()">
+        <div class="credit-card" (click)="$event.stopPropagation()">
+          <div class="credit-head">
+            <h3>Corriger le kilométrage</h3>
+            <button class="credit-close" (click)="closeMileageFix()">✕</button>
+          </div>
+          <div class="credit-body">
+            <p class="credit-note">
+              {{ mileageFix.vehicleName }} — compteur actuel {{ mileageFix.current | appDistance:0 }}.
+              Le kilométrage ne recule jamais automatiquement : cette correction est enregistrée
+              dans le journal avec son motif.
+            </p>
+            <label class="mfix-label" for="mfixKm">Nouveau kilométrage <span class="mfix-req">*</span></label>
+            <input id="mfixKm" class="mfix-input" type="number" min="0" step="1"
+                   [(ngModel)]="mileageFix.mileage" [disabled]="mileageFix.saving">
+            <label class="mfix-label" for="mfixReason">Motif <span class="mfix-req">*</span></label>
+            <input id="mfixReason" class="mfix-input" type="text" maxlength="500"
+                   placeholder="Ex. : faute de frappe à l'import du 03/09"
+                   [(ngModel)]="mileageFix.reason" [disabled]="mileageFix.saving">
+            <p class="credit-note" *ngIf="mileageFix.error" style="color:#b91c1c">{{ mileageFix.error }}</p>
+          </div>
+          <div class="credit-foot">
+            <button class="btn-secondary" (click)="closeMileageFix()" [disabled]="mileageFix.saving">Annuler</button>
+            <button class="btn-primary" (click)="saveMileageFix()" [disabled]="!canSaveMileageFix()">
+              {{ mileageFix.saving ? 'Enregistrement…' : 'Corriger' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- PANNEAU DÉTAIL VÉHICULE (slide-in depuis la droite) -->
       <div class="detail-overlay" *ngIf="selectedDetailVehicle" @fadeIn (click)="closeVehicleDetail()">
         <div class="detail-panel" @slideIn (click)="$event.stopPropagation()">
@@ -380,6 +411,9 @@ interface VehicleTrip {
                   <span class="spec-value">
                     {{ selectedDetailVehicle.mileage | appDistance:0 }}
                     <span class="mileage-source" *ngIf="selectedDetailVehicle.hasGPS" title="Données GPS disponibles">📡</span>
+                    <button type="button" class="mileage-fix-btn" *ngIf="!selectedDetailVehicle.hasGPS"
+                            (click)="openMileageFix(selectedDetailVehicle)"
+                            title="Corriger le kilométrage (motif obligatoire)">Corriger</button>
                   </span>
                 </div>
                 <div class="spec-item">
@@ -1115,6 +1149,19 @@ interface VehicleTrip {
       background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
       font-size: 11px; color: #92400e;
     }
+    /* Correction du compteur */
+    .mileage-fix-btn {
+      margin-left: 8px; padding: 2px 8px; border: 1px solid #cbd5e1; border-radius: 6px;
+      background: #fff; color: #475569; font-size: 11px; cursor: pointer;
+    }
+    .mileage-fix-btn:hover { background: #f1f5f9; color: #0f172a; }
+    .mfix-label { display: block; margin: 14px 0 4px; font-size: 12px; font-weight: 600; color: #334155; }
+    .mfix-req { color: #dc2626; }
+    .mfix-input {
+      width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 13px; color: #0f172a; box-sizing: border-box;
+    }
+    .mfix-input:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
     .credit-foot {
       display: flex; gap: 8px; justify-content: flex-end;
       padding: 14px 20px; border-top: 1px solid #f1f5f9;
@@ -2764,6 +2811,64 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   closeCreditPopup() {
     this.creditPopupVehicle = null;
     this.creditSchedule = null;
+  }
+
+  // ── Correction du compteur ────────────────────────────────────────────────
+  // Partout ailleurs le kilométrage ne recule pas : c'est la garde qui attrape les
+  // fautes de frappe. Sans porte de sortie, une valeur aberrante entrée par l'import
+  // bloquait DÉFINITIVEMENT les saisies suivantes (recette du 08/09/2026).
+  mileageFix: { open: boolean; vehicleId: number; vehicleName: string; current: number;
+                mileage: number | null; reason: string; saving: boolean; error: string } =
+    { open: false, vehicleId: 0, vehicleName: '', current: 0, mileage: null, reason: '', saving: false, error: '' };
+
+  openMileageFix(vehicle: any): void {
+    const id = parseInt(String(vehicle?.id));
+    if (isNaN(id)) return;
+    this.mileageFix = {
+      open: true,
+      vehicleId: id,
+      vehicleName: vehicle.plate ? `${vehicle.name} (${vehicle.plate})` : vehicle.name,
+      current: Number(vehicle.mileage) || 0,
+      mileage: Number(vehicle.mileage) || 0,
+      reason: '',
+      saving: false,
+      error: ''
+    };
+  }
+
+  closeMileageFix(): void {
+    if (this.mileageFix.saving) return;
+    this.mileageFix = { ...this.mileageFix, open: false, error: '' };
+  }
+
+  canSaveMileageFix(): boolean {
+    const km = this.mileageFix.mileage;
+    const kmOk = km !== null && km !== undefined && String(km).trim() !== '' && !isNaN(Number(km)) && Number(km) >= 0;
+    return kmOk && this.mileageFix.reason.trim().length > 0 && !this.mileageFix.saving;
+  }
+
+  saveMileageFix(): void {
+    if (!this.canSaveMileageFix()) return;
+    this.mileageFix.saving = true;
+    this.mileageFix.error = '';
+    this.apiService.correctVehicleMileage(
+      this.mileageFix.vehicleId, Number(this.mileageFix.mileage), this.mileageFix.reason.trim()
+    ).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        this.mileageFix = { ...this.mileageFix, open: false, saving: false };
+        if (this.selectedDetailVehicle && parseInt(String(this.selectedDetailVehicle.id)) === res.vehicleId) {
+          this.selectedDetailVehicle = { ...this.selectedDetailVehicle, mileage: res.mileage };
+        }
+        this.loadVehicles();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.mileageFix.saving = false;
+        this.mileageFix.error = err?.error?.message || err?.error?.errors?.Reason?.[0]
+          || "La correction a échoué. Vérifiez la valeur et le motif.";
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   getCreditTotal(vehicle: any): number {

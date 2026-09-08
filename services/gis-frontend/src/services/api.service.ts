@@ -333,6 +333,15 @@ export class ApiService {
     return this.http.put<void>(`${this.API_URL}/vehicles/${id}`, vehicle, { headers: this.getHeaders() });
   }
 
+  /**
+   * Correction assumée du compteur, motif obligatoire — seul chemin qui accepte
+   * une baisse (partout ailleurs le kilométrage ne recule pas). Journalisée.
+   */
+  correctVehicleMileage(id: number, mileage: number, reason: string): Observable<{ vehicleId: number; previousMileage: number; mileage: number }> {
+    return this.http.put<{ vehicleId: number; previousMileage: number; mileage: number }>(
+      `${this.API_URL}/vehicles/${id}/mileage`, { mileage, reason }, { headers: this.getHeaders() });
+  }
+
   patchVehicle(id: number, patch: any): Observable<void> {
     // Partial update — sends only the fields provided, preserves others
     if (this.isMockUser()) {

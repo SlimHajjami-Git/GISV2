@@ -10,6 +10,7 @@ using GisAPI.Application.Features.Vehicles.Commands.DeleteVehicle;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesStatus;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
+using GisAPI.Application.Features.Vehicles.Commands.CorrectMileage;
 using GisAPI.Application.Features.Vehicles.Commands.SetVehicleImmobilization;
 using GisAPI.Services;
 using Microsoft.Extensions.Caching.Memory;
@@ -81,6 +82,22 @@ public class VehiclesController : ControllerBase
         await _mediator.Send(effectiveCommand);
         return NoContent();
     }
+
+    /// <summary>
+    /// Correction assumée du compteur, motif obligatoire — SEUL chemin qui accepte
+    /// une baisse. Partout ailleurs le kilométrage ne recule pas ; sans cette porte,
+    /// une valeur aberrante entrée par l'import bloquait définitivement les saisies.
+    /// </summary>
+    [HttpPut("{id}/mileage")]
+    public async Task<ActionResult<CorrectVehicleMileageResult>> CorrectMileage(
+        int id, [FromBody] CorrectVehicleMileageRequest request, CancellationToken ct)
+    {
+        var result = await _mediator.Send(
+            new CorrectVehicleMileageCommand(id, request.Mileage, request.Reason ?? string.Empty), ct);
+        return Ok(result);
+    }
+
+    public record CorrectVehicleMileageRequest(int Mileage, string? Reason);
 
     [HttpDelete("{id}")]
     public async Task<ActionResult> DeleteVehicle(int id)

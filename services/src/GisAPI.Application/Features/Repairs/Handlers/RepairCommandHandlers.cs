@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Features.Repairs.Commands;
 using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -63,6 +64,14 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         };
 
         _context.Repairs.Add(repair);
+
+        // Le kilométrage relevé à la réparation fait avancer la fiche véhicule,
+        // comme le fait un plein — sans lui, un client sans boîtier voyait son
+        // compteur figé alors qu'il venait de le saisir (recette du 08/09/2026).
+        var repairVehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken);
+        VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
+
         await _context.SaveChangesAsync(cancellationToken);
 
         // Add parts
@@ -163,6 +172,11 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         repair.InvoiceNumber = request.InvoiceNumber;
         repair.Notes = request.Notes;
         repair.UpdatedAt = DateTime.UtcNow;
+
+        // Même règle qu'à la création : le relevé fait avancer la fiche véhicule.
+        var repairVehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken);
+        VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
 
         // Remove old parts
         _context.RepairParts.RemoveRange(repair.Parts);

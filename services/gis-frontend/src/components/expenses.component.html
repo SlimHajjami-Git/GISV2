@@ -520,6 +520,7 @@
             <textarea [(ngModel)]="formDescription" placeholder="Notes supplémentaires..."></textarea>
           </div>
     </div>
+    <p class="save-error" *ngIf="saveError">{{ saveError }}</p>
     <div class="slide-panel-footer">
       <button class="btn-cancel" (click)="closeAddForm()">Annuler</button>
       <button class="btn-save" (click)="saveExpense()" [disabled]="!isFormValid()">

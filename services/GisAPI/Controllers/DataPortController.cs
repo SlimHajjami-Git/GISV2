@@ -1,4 +1,6 @@
 using ClosedXML.Excel;
+using GisAPI.Application.Common;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -178,6 +180,10 @@ public class DataPortController : ControllerBase
             .Where(v => v.CompanyId == companyId && v.Plate != null)
             .ToDictionaryAsync(v => Normalize(v.Plate!), v => v);
 
+        // Véhicules dont on a importé au moins un relevé compteur : on contrôle
+        // la cohérence de leur série une fois l'import terminé.
+        var touchedVehicleIds = new HashSet<int>();
+
         // 1) Véhicules
         var vs = FindSheet(wb, "Véhicules");
         if (vs != null)
@@ -187,7 +193,24 @@ public class DataPortController : ControllerBase
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
                 var key = Normalize(plate);
-                if (byPlate.ContainsKey(key)) { result.VehiclesIgnored++; result.AddNote($"Véhicule « {plate} » ignoré : matricule déjà présent."); continue; }
+                if (byPlate.TryGetValue(key, out var known))
+                {
+                    // Le matricule existe déjà : on ne recrée pas le véhicule, mais on
+                    // accepte le kilométrage du fichier s'il fait avancer le compteur.
+                    // Auparavant la ligne était purement ignorée, si bien que corriger
+                    // la colonne « km » et ré-importer ne changeait rien (recette du 08/09/2026).
+                    if (VehicleMileage.Advance(known, Int(row.Cell(8))))
+                    {
+                        result.VehiclesUpdated++;
+                        result.AddNote($"Véhicule « {plate} » : kilométrage porté à {known.Mileage:N0} km.");
+                    }
+                    else
+                    {
+                        result.VehiclesIgnored++;
+                        result.AddNote($"Véhicule « {plate} » ignoré : matricule déjà présent.");
+                    }
+                    continue;
+                }
 
                 var vehicle = new Vehicle
                 {
@@ -260,6 +283,8 @@ public class DataPortController : ControllerBase
                 var price = Dec(row.Cell(4)) ?? 0;
                 var total = Dec(row.Cell(5)) ?? (volume * price);
 
+                var odometer = Int(row.Cell(6)) is int km && km > 0 ? km : (int?)null;
+
                 _context.FuelEntries.Add(new FuelEntry
                 {
                     CompanyId = companyId,
@@ -270,15 +295,45 @@ public class DataPortController : ControllerBase
                     PricePerLiter = price,
                     TotalAmount = total,
                     InvoiceDate = DateTime.SpecifyKind(date.Value, DateTimeKind.Utc),
-                    OdometerKm = Int(row.Cell(6)) is int km && km > 0 ? km : null,
+                    OdometerKm = odometer,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 });
                 result.FuelCreated++;
+
+                // Le relevé fait avancer la fiche véhicule, comme à la saisie manuelle.
+                // Sans cela, un client sans boîtier importait ses tickets et voyait son
+                // kilométrage figé (recette du 08/09/2026). On ne refuse RIEN ici :
+                // un import est de l'historique, ses relevés sont normalement INFÉRIEURS
+                // au compteur courant — appliquer la garde de la saisie manuelle
+                // rejetterait la quasi-totalité des lignes légitimes.
+                VehicleMileage.Advance(vehicle, odometer);
+                touchedVehicleIds.Add(vehicle.Id);
             }
         }
 
         await _context.SaveChangesAsync();
+
+        // Les relevés importés ne sont pas contrôlés à la saisie : on signale après coup
+        // ceux que la série rend invalides (même règle d'aberration que l'écran Carburant),
+        // pour que le client sache quoi corriger plutôt que de découvrir un compteur faux.
+        foreach (var vehicleId in touchedVehicleIds)
+        {
+            var readings = await _context.FuelEntries.AsNoTracking()
+                .Where(f => f.VehicleId == vehicleId && f.OdometerKm > 0)
+                .Select(f => new { f.OdometerKm, f.InvoiceDate })
+                .ToListAsync();
+
+            var distance = OdometerDistance.Compute(
+                readings.Select(r => (r.OdometerKm!.Value, r.InvoiceDate)));
+
+            if (distance.IgnoredReadings > 0)
+            {
+                var plate = byPlate.Values.FirstOrDefault(v => v.Id == vehicleId)?.Plate ?? $"#{vehicleId}";
+                result.AddNote($"Véhicule « {plate} » : {distance.IgnoredReadings} relevé(s) compteur " +
+                               "incohérent(s) avec la série — à vérifier dans Carburant > Historique.");
+            }
+        }
 
         _logger.LogInformation(
             "DataPort import société {CompanyId} : {V} véhicules, {M} entretiens, {F} pleins créés",
@@ -354,6 +409,7 @@ public class DataPortController : ControllerBase
     public class ImportSummary
     {
         public int VehiclesCreated { get; set; }
+        public int VehiclesUpdated { get; set; }
         public int VehiclesIgnored { get; set; }
         public int MaintenanceCreated { get; set; }
         public int MaintenanceIgnored { get; set; }
@@ -363,6 +419,7 @@ public class DataPortController : ControllerBase
         // On borne les notes pour ne pas renvoyer 10 000 lignes d'erreur.
         public void AddNote(string n) { if (Notes.Count < 50) Notes.Add(n); }
         public string Message =>
-            $"{VehiclesCreated} véhicule(s), {MaintenanceCreated} entretien(s) et {FuelCreated} plein(s) importés.";
+            $"{VehiclesCreated} véhicule(s), {MaintenanceCreated} entretien(s) et {FuelCreated} plein(s) importés"
+            + (VehiclesUpdated > 0 ? $", {VehiclesUpdated} kilométrage(s) mis à jour." : ".");
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
@@ -88,6 +89,14 @@ public class MaintenanceController : ControllerBase
         record.TotalCost = record.LaborCost + record.PartsCost;
 
         _context.MaintenanceRecords.Add(record);
+
+        // Le kilométrage relevé à l'entretien fait avancer la fiche véhicule,
+        // comme le fait « marquer fait » — sans lui, un entretien saisi depuis
+        // l'écran Dépenses laissait le compteur figé (recette du 08/09/2026).
+        var vehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == record.VehicleId && v.CompanyId == companyId);
+        VehicleMileage.Advance(vehicle, record.MileageAtService);
+
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetMaintenanceRecord), new { id = record.Id }, record);
