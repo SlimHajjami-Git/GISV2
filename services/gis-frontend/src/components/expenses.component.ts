@@ -196,8 +196,16 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
 
   // Invoice scan is gated to a single pilot user during testing.
+  /**
+   * Le scan de facture par l'IA est ouvert à quiconque a accès à cet écran.
+   * Jusqu'à la recette du 09/09/2026 il n'était affiché qu'à une seule adresse
+   * e-mail codée en dur (reste d'une phase de test) : les clients de l'offre
+   * GPA ne le voyaient pas. Le contrôle réel est côté serveur — quota mensuel
+   * par société (societes.invoice_scan_monthly_limit, sinon la valeur par défaut),
+   * appliqué avant tout appel payant à l'IA.
+   */
   get canScanInvoice(): boolean {
-    return (this.authService.getCurrentUserSync()?.email || '').toLowerCase() === 'admin@belive.tn';
+    return !!this.authService.getCurrentUserSync();
   }
 
   /** Quota mensuel de scans IA de la société (null tant que non chargé). */
