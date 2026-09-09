@@ -63,6 +63,48 @@ public class SubscriptionPolicyTests
         s.GraceDaysLeft.Should().Be(0);
     }
 
+    // ── La frontière exacte de la grâce (recette du 09/09/2026) ──────────────
+    // Le client de recette, expiré le 08/09 à 11:56:50 UTC, voyait encore l'accès
+    // ouvert le lendemain et a cru la suspension automatique en panne. Elle ne
+    // l'est pas : la grâce dure 7 jours PLEINS. Ces deux tests fixent la seconde
+    // de bascule pour que personne ne relise la règle à chaque doute.
+
+    private static readonly DateTime BeliveGpaExpiry = new(2026, 9, 8, 11, 56, 50, DateTimeKind.Utc);
+
+    [Fact]
+    public void Une_seconde_avant_la_fin_de_la_grace_l_acces_est_encore_ouvert()
+    {
+        var justBefore = BeliveGpaExpiry.AddDays(7).AddSeconds(-1); // 15/09/2026 11:56:49 UTC
+        var s = SubscriptionPolicy.Evaluate(Make(BeliveGpaExpiry, status: "expired"), justBefore);
+
+        s.IsBlocked.Should().BeFalse();
+        s.Reason.Should().Be("grace");
+        s.GraceDaysLeft.Should().Be(1, "le 7e jour entamé compte encore comme un jour de grâce");
+    }
+
+    [Fact]
+    public void A_la_fin_exacte_de_la_grace_l_acces_est_bloque()
+    {
+        var exactly = BeliveGpaExpiry.AddDays(7); // 15/09/2026 11:56:50 UTC
+        var s = SubscriptionPolicy.Evaluate(Make(BeliveGpaExpiry, status: "expired"), exactly);
+
+        s.IsBlocked.Should().BeTrue();
+        s.Reason.Should().Be("expired");
+        s.GraceDaysLeft.Should().Be(0);
+    }
+
+    [Fact]
+    public void Le_lendemain_de_l_expiration_la_grace_affiche_six_jours()
+    {
+        // Ce que le client voyait le 09/09 après 11:56 UTC : « expiré », accès ouvert, 6 j restants.
+        var nextDay = BeliveGpaExpiry.AddDays(1).AddMinutes(1);
+        var s = SubscriptionPolicy.Evaluate(Make(BeliveGpaExpiry, status: "expired"), nextDay);
+
+        s.IsBlocked.Should().BeFalse();
+        s.DaysRemaining.Should().Be(-1);
+        s.GraceDaysLeft.Should().Be(6);
+    }
+
     [Fact]
     public void Manual_suspension_blocks_regardless_of_dates()
     {
