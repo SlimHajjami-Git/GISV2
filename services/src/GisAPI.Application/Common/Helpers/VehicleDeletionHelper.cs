@@ -23,23 +23,24 @@ public static class VehicleDeletionHelper
     // Every FK that points at vehicles(id): "<is_nullable>|<table>.<column>".
     // The nullability decides the action (see below). Aliased to "Value" for
     // EF's scalar SqlQueryRaw mapping.
+    //
+    // Read from pg_catalog, NOT information_schema: on the production catalog
+    // (~1 000 relations, ~7 000 columns) the information_schema version took
+    // 27.9 s — right at Npgsql's 30 s command timeout — so every vehicle delete
+    // in the admin screen failed with "Timeout during reading attempt" after
+    // three retries (measured on TN, 09/09/2026). Same 30 rows from pg_catalog
+    // in 2.8 ms. Output format and semantics are unchanged: one row per FK
+    // column, attnotnull mapped to information_schema's YES/NO.
     private const string ReferencingColumnsSql = @"
-        SELECT c.is_nullable || '|' || tc.table_name || '.' || kcu.column_name AS ""Value""
-        FROM information_schema.table_constraints tc
-        JOIN information_schema.key_column_usage kcu
-          ON tc.constraint_name = kcu.constraint_name
-         AND tc.constraint_schema = kcu.constraint_schema
-        JOIN information_schema.constraint_column_usage ccu
-          ON tc.constraint_name = ccu.constraint_name
-         AND tc.constraint_schema = ccu.constraint_schema
-        JOIN information_schema.columns c
-          ON c.table_schema = tc.constraint_schema
-         AND c.table_name = tc.table_name
-         AND c.column_name = kcu.column_name
-        WHERE tc.constraint_type = 'FOREIGN KEY'
-          AND ccu.table_name = 'vehicles'
-          AND ccu.column_name = 'id'
-          AND tc.table_name <> 'vehicles';";
+        SELECT CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END || '|' || cl.relname || '.' || a.attname AS ""Value""
+        FROM pg_catalog.pg_constraint c
+        JOIN pg_catalog.pg_class cl ON cl.oid = c.conrelid
+        JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace
+        JOIN pg_catalog.pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.contype = 'f'
+          AND c.confrelid = 'public.vehicles'::regclass
+          AND n.nspname = 'public'
+          AND cl.relname <> 'vehicles';";
 
     /// <summary>
     /// Cascade-delete the vehicle, atomically. For every table referencing
