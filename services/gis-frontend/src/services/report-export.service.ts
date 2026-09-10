@@ -38,6 +38,8 @@ export interface ReportExportConfig {
    *  pas en portrait : ses en-tetes se coupent en deux ou trois lignes.
    *  Ignoree par les exports CSV et Excel. */
   orientation?: 'portrait' | 'landscape';
+  /** Note sous le tableau du PDF. Ignoree par les exports CSV et Excel. */
+  footnote?: string;
 }
 
 @Injectable({ providedIn: 'root' })
