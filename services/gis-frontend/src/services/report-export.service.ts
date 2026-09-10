@@ -40,6 +40,9 @@ export interface ReportExportConfig {
   orientation?: 'portrait' | 'landscape';
   /** Note sous le tableau du PDF. Ignoree par les exports CSV et Excel. */
   footnote?: string;
+  /** Met en evidence la derniere ligne du tableau PDF (ligne de total).
+   *  Ignoree par les exports CSV et Excel. */
+  highlightLastRow?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

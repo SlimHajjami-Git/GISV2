@@ -30,6 +30,10 @@ export interface PdfReportConfig {
   /** Note affichee sous le tableau, en petit. Sert a expliquer les intitules
    *  abreges des colonnes : « E+R €/100km » ne se devine pas. */
   footnote?: string;
+  /** Met en evidence la DERNIERE ligne du tableau : fond plus soutenu,
+   *  texte en gras. Pour les rapports dont la derniere ligne est un total,
+   *  qui se confondait avec les lignes de donnees. */
+  highlightLastRow?: boolean;
   data: any[];
   formatters?: Record<string, (value: any, row: any) => string>;
 }
@@ -508,6 +512,17 @@ export class PdfExportService {
       },
       alternateRowStyles: {
         fillColor: [248, 250, 252]
+      },
+      // Derniere ligne mise en evidence quand c’est un total : sans cela elle
+      // se confondait avec les lignes de donnees, y compris avec le gris des
+      // lignes alternees. didParseCell passe APRES le theme, donc gagne.
+      didParseCell: (data: any) => {
+        if (!config.highlightLastRow) return;
+        if (data.section !== 'body') return;
+        if (data.row.index !== body.length - 1) return;
+        data.cell.styles.fillColor = [226, 232, 240];
+        data.cell.styles.textColor = [15, 23, 42];
+        data.cell.styles.fontStyle = 'bold';
       },
       columnStyles: this.getColumnStyles(config.columns, pageWidth - 20),
       margin: { left: 10, right: 10 },

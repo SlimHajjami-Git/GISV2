@@ -3890,6 +3890,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return (value ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   }
 
+  /** Date au format francais avec l’annee sur QUATRE chiffres. formatDate
+   *  rend « 10/09/26 », suffisant dans une colonne de tableau mais trop court
+   *  pour le sous-titre d’un rapport, ou la periode doit etre sans ambiguite. */
+  formatDateLong(date: string | Date | null | undefined): string {
+    if (!date) return '-';
+    const d = date instanceof Date ? date : new Date(date);
+    if (isNaN(d.getTime())) return '-';
+    const jj = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    return `${jj}/${mm}/${d.getFullYear()}`;
+  }
+
   /** Nombre a deux decimales au format francais (virgule, espace des
    *  milliers). toFixed rendait « 0.13 » a cote de « 250,77 € » : deux
    *  conventions decimales dans un meme tableau. */
@@ -5759,7 +5771,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport(format);
     if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
     if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
-    if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange);
+    if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange, format);
     if (type === 'cost-evolution' && this.costEvolution) return this.buildCostEvolutionExport(vehicleName, dateRange);
     if (type === 'repair-frequency' && this.repairFrequency) return this.buildRepairFrequencyExport(vehicleName, dateRange);
 
@@ -8001,7 +8013,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.operatingCostChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: rows.map(v => v.vehicleName),
+        // Immatriculation, comme la colonne du tableau a gauche : les deux
+        // blocs decrivent les memes vehicules, ils doivent les nommer pareil.
+        labels: rows.map(v => v.plate || v.vehicleName),
         datasets: [{
           data: values,
           backgroundColor: rows.map(v => isAbove(v) ? 'rgba(239,68,68,.75)' : 'rgba(59,130,246,.75)'),
@@ -8504,7 +8518,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // ---------- Exports (une config, trois formats via dispatchExport) ----------
 
   /** R1/R3 : tableau par véhicule, colonnes numériques brutes (unité dans l'en-tête), ligne TOTAL / MOYENNE en dernier, KPI en statistics. */
-  private buildOperatingCostExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+  private buildOperatingCostExport(vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     const r = this.operatingCost;
     if (!r) return null;
     const cur = this.getCurrencyCode();
@@ -8512,49 +8526,71 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     const n3 = (v: any) => Math.round((Number(v) || 0) * 1000) / 1000;
     const ranking = this.isRanking;
+    // Le PDF recoit des valeurs FORMATEES (« 44 115,78 € »), Excel et CSV des
+    // NOMBRES, sans quoi on ne pourrait plus calculer dessus.
+    const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
+    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    const km = (v: any) => pourPdf ? this.formatNumber(Number(v) || 0) + ' km' : n2(v);
+    const parKm = (v: any) => pourPdf ? this.formatCostPerKm(v) : n3(v);
+    // UNE decimale, comme la colonne « Ecart vs moyenne » a l ecran :
+    // formatDecimal en rend deux, ce qui donnait « +103,90 % » dans le PDF
+    // face a « +103,9 % » a l ecran.
+    const pct = (v: any) => pourPdf
+      ? (Number(v) > 0 ? '+' : '') + (Number(v) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %'
+      : n1(v);
 
-    const vehicleCol = { header: 'Véhicule', dataKey: 'vehicle' };
-    const kmCol = { header: 'Kilométrage (km)', dataKey: 'km' };
-    const fuelCol = { header: `Carburant (${cur})`, dataKey: 'fuelCost' };
-    const maintCol = { header: `${ranking ? 'Entretien' : 'Entretiens'} (${cur})`, dataKey: 'maintenanceCost' };
-    const repairCol = { header: `Réparations (${cur})`, dataKey: 'repairCost' };
-    const otherCol = { header: `Autres dépenses (${cur})`, dataKey: 'otherCost' };
-    const totalCol = { header: `Coût total (${cur})`, dataKey: 'totalCost' };
-    const perKmCol = { header: `Coût ${cur}/km`, dataKey: 'costPerKm' };
-    const devCol = { header: 'Écart vs moyenne (%)', dataKey: 'deviationPct' };
+    // Intitules ABREGES et largeurs mesurees a la police reelle (Manrope).
+    // Les intitules longs faisaient 223 mm a eux seuls, pour 190 mm de page :
+    // chaque en-tete se coupait sur deux lignes. Abreges ils tombent a 133 mm,
+    // donc le rapport reste en PORTRAIT, avec de la marge dans chaque colonne.
+    // 2,9 et non 2,1 : la cellule porte aussi « TOTAL / MOYENNE » sur la
+    // derniere ligne, qui demande 26,8 mm en gras. A 21 mm elle se coupait.
+    const vehicleCol = { header: 'Immat.', dataKey: 'vehicle', weight: 2.9 };
+    const kmCol = { header: 'Km', dataKey: 'km', weight: 1.9 };
+    const fuelCol = { header: `Carb. ${cur}`, dataKey: 'fuelCost', weight: 2.2 };
+    const maintCol = { header: `Entr. ${cur}`, dataKey: 'maintenanceCost', weight: 2 };
+    const repairCol = { header: `Répar. ${cur}`, dataKey: 'repairCost', weight: 2.2 };
+    const otherCol = { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 2 };
+    const totalCol = { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2.3 };
+    const perKmCol = { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.8 };
+    const devCol = { header: 'Écart', dataKey: 'deviationPct', weight: 2.5 };
     const columns = ranking
-      ? [{ header: '#', dataKey: 'rank' }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, devCol]
+      ? [{ header: '#', dataKey: 'rank', weight: 0.8 }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, devCol]
       : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, totalCol, perKmCol, devCol];
 
     const data: any[] = (r.vehicles || []).map(v => ({
       rank: v.rank,
-      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : v.vehicleName,
-      km: v.distanceKm == null ? '' : n2(v.distanceKm),
-      fuelCost: n2(v.fuelCost),
-      maintenanceCost: n2(v.maintenanceCost),
-      repairCost: n2(v.repairCost),
-      otherCost: n2(v.otherCost),
-      totalCost: n2(v.totalCost),
-      costPerKm: v.costPerKm == null ? '' : n3(v.costPerKm),
-      deviationPct: v.deviationFromAveragePct == null ? '' : n1(v.deviationFromAveragePct)
+      // Immatriculation SEULE : le nom interne ne dit rien au lecteur du
+      // rapport et doublait la largeur de la colonne.
+      vehicle: v.plate || v.vehicleName,
+      km: v.distanceKm == null ? (pourPdf ? '—' : '') : km(v.distanceKm),
+      fuelCost: mt(v.fuelCost),
+      maintenanceCost: mt(v.maintenanceCost),
+      repairCost: mt(v.repairCost),
+      otherCost: mt(v.otherCost),
+      totalCost: mt(v.totalCost),
+      costPerKm: v.costPerKm == null ? (pourPdf ? '—' : '') : parKm(v.costPerKm),
+      deviationPct: v.deviationFromAveragePct == null ? (pourPdf ? '—' : '') : pct(v.deviationFromAveragePct)
     }));
     data.push({
       rank: '',
       vehicle: 'TOTAL / MOYENNE',
-      km: n2(r.totalKm),
-      fuelCost: n2(r.totalFuelCost),
-      maintenanceCost: n2(r.totalMaintenanceCost),
-      repairCost: n2(r.totalRepairCost),
-      otherCost: n2(r.totalOtherCost),
-      totalCost: n2(r.totalCost),
-      costPerKm: r.averageCostPerKm == null ? '' : n3(r.averageCostPerKm),
-      deviationPct: ''
+      km: km(r.totalKm),
+      fuelCost: mt(r.totalFuelCost),
+      maintenanceCost: mt(r.totalMaintenanceCost),
+      repairCost: mt(r.totalRepairCost),
+      otherCost: mt(r.totalOtherCost),
+      totalCost: mt(r.totalCost),
+      costPerKm: r.averageCostPerKm == null ? (pourPdf ? '—' : '') : parKm(r.averageCostPerKm),
+      deviationPct: pourPdf ? '—' : ''
     });
 
     const statistics: Record<string, string> = {
-      [`Coût total d'exploitation (${cur})`]: String(n2(r.totalCost)),
-      'Kilométrage total (km)': String(n2(r.totalKm)),
-      [`Coût moyen exploitation (${cur}/km)`]: this.formatCostPerKm(r.averageCostPerKm),
+      [`Coût total d'exploitation`]: String(mt(r.totalCost)),
+      'Kilométrage total': String(km(r.totalKm)),
+      // « Coût moyen exploitation (€/km) » mesure 41,8 mm : il debordait de la
+      // carte, large de 35,5 mm utiles. Raccourci, il tombe a 25,6 mm.
+      [`Coût moyen (${cur}/km)`]: this.formatCostPerKm(r.averageCostPerKm),
       'Véhicules analysés': String(r.vehicleCount)
     };
 
@@ -8564,7 +8600,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       dateRange,
       statistics,
       columns,
-      data
+      data,
+      // La derniere ligne est « TOTAL / MOYENNE » : elle se confondait avec
+      // les lignes de vehicules.
+      highlightLastRow: true,
     };
   }
 
