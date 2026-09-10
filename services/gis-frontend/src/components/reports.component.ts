@@ -3874,7 +3874,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   getCurrencyCode(): string {
     // Calypso 9 — single source of truth is UserPreferencesService so the
     // currency here matches the appCurrency pipe used elsewhere in the app.
-    return this.userPrefs.current.currency;
+    // Symbole plutot que code ISO : les 25 axes et info-bulles de cet ecran
+    // affichaient « Cout (EUR) » la ou le tableau et le PDF montrent deja
+    // « 265,00 € ». Meme source de verite que formatCurrency.
+    return UserPreferencesService.currencySymbol(this.userPrefs.current.currency);
   }
 
   formatCurrency(value: number): string {
@@ -5160,7 +5163,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       };
     } else if (type === 'costs') {
-      // Doughnut for repairs by status
+      // Camembert du COUT par type de panne (voir processRepairsReport pour
+      // le detail et la raison du changement).
       config = {
         type: 'doughnut',
         data: {
@@ -5177,8 +5181,24 @@ export class ReportsComponent implements OnInit, OnDestroy {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false },
-            title: { display: true, text: '🔩 Réparations par statut', font: { size: 14, weight: 'bold' } }
+            // Legende affichee : sans elle, un camembert a plusieurs parts ne
+            // dit pas laquelle correspond a quel type de panne.
+            legend: { display: true, position: 'right', labels: { boxWidth: 12, font: { size: 11 } } },
+            title: { display: true, text: '🔩 Coût des réparations par type', font: { size: 14, weight: 'bold' } },
+            // Info-bulle : montant, part du total et nombre d’interventions.
+            // Une part de camembert seule ne dit ni combien ni sur combien.
+            tooltip: {
+              callbacks: {
+                label: (ctx: any) => {
+                  const part = this.chartData[ctx.dataIndex];
+                  if (!part) return '';
+                  const total = this.chartData.reduce((somme, x) => somme + (x.value || 0), 0);
+                  const pourcentage = total > 0 ? Math.round((part.value / total) * 100) : 0;
+                  const n = part.count || 0;
+                  return `${part.label} : ${this.formatCurrency(part.value)} (${pourcentage} %) - ${n} intervention${n > 1 ? 's' : ''}`;
+                }
+              }
+            }
           }
         }
       } as ChartConfiguration;
@@ -7364,15 +7384,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Build vehicle name map
     const vehicleMap = new Map<number, string>();
-    this.vehicles.forEach(v => vehicleMap.set(v.id, v.name || v.plateNumber || `Véhicule ${v.id}`));
+    // Recette du 10/09/2026 : c’est la PLAQUE qui identifie le vehicule dans
+    // un rapport, pas son surnom interne. « Logistique 01 » ne dit rien a un
+    // garage ni a un controleur ; l’immatriculation, si. Repli sur le nom
+    // quand la plaque manque, pour ne jamais rendre une ligne anonyme.
+    this.vehicles.forEach(v => vehicleMap.set(v.id, v.plateNumber || v.plate || v.name || `Véhicule ${v.id}`));
 
     // Process table data
     this.tableData = repairs.map(repair => {
-      const vehicleName = repair.vehicleName || vehicleMap.get(repair.vehicleId) || `Véhicule ${repair.vehicleId}`;
+      const vehicleName = repair.vehiclePlate || vehicleMap.get(repair.vehicleId) || repair.vehicleName || `Véhicule ${repair.vehicleId}`;
       return {
         vehicleName: vehicleName,
         vehicleId: repair.vehicleId,
-        date: this.formatDateTime(repair.repairDate),
+        // Date SANS heure (formatDate), comme sur le rapport « Couts
+        // maintenance » : une reparation se date au jour. La saisie ne demande
+        // qu'une date, stockee a 00:00 UTC, que le fuseau reaffichait « 01:00 ».
+        date: this.formatDate(repair.repairDate),
         reference: repair.reference || '-',
         description: repair.description || '-',
         supplierName: repair.supplierName || '-',
@@ -7389,25 +7416,44 @@ export class ReportsComponent implements OnInit, OnDestroy {
       };
     });
 
-    // Chart data - group by status
-    const byStatus: { [key: string]: number } = {};
+    // Graphe principal : repartition du COUT par type de panne.
+    //
+    // Il groupait auparavant par STATUT. Or RepairCommandHandlers force
+    // Status a « completed » a la creation et le formulaire ne propose aucun
+    // autre choix : les 37 reparations du jeu de recette, comme les 19 de la
+    // production, portent toutes le meme statut. Le camembert n’avait donc
+    // qu’une seule part, a 100 % : un disque plein, sans information.
+    //
+    // Le type de panne, lui, est renseigne sur toutes les lignes et repond a
+    // la question que pose un rapport de COUTS : ou part l’argent ? Mesure du
+    // 10/09/2026 sur le jeu de recette : mecanique 7 345,20 pour 14
+    // interventions, freinage 1 572,00 pour 5, electrique 1 296,00 pour 10,
+    // pneumatique 196,80 pour 4. La mecanique pese 70 % de la facture pour
+    // 42 % des interventions : c’est exactement ce qu’un gestionnaire cherche.
+    const parTypeDePanne = new Map();
     repairs.forEach(repair => {
-      const statusLabel = this.getRepairStatusLabel(repair.status);
-      byStatus[statusLabel] = (byStatus[statusLabel] || 0) + 1;
+      const cle = repair.repairType || 'autre';
+      const cumul = parTypeDePanne.get(cle) || { cout: 0, nombre: 0 };
+      cumul.cout += repair.totalCost || 0;
+      cumul.nombre += 1;
+      parTypeDePanne.set(cle, cumul);
     });
 
-    this.chartData = Object.entries(byStatus)
-      .sort((a, b) => b[1] - a[1])
-      .map(([label, value], index) => ({
-        label,
-        value,
+    this.chartData = Array.from(parTypeDePanne.entries())
+      .sort((a, b) => b[1].cout - a[1].cout)
+      .map(([cle, cumul], index) => ({
+        label: this.getRepairTypeLabel(cle),
+        value: cumul.cout,
+        count: cumul.nombre,
         color: this.chartColors[index % this.chartColors.length]
       }));
 
     // Secondary chart - costs by vehicle
     const costsByVehicle: { [key: string]: number } = {};
     repairs.forEach(repair => {
-      const vehicleName = repair.vehicleName || vehicleMap.get(repair.vehicleId) || `Véhicule ${repair.vehicleId}`;
+      // Plaque ici aussi : le graphe et le tableau doivent designer les
+      // vehicules de la meme facon, sinon on ne peut pas les rapprocher.
+      const vehicleName = repair.vehiclePlate || vehicleMap.get(repair.vehicleId) || repair.vehicleName || `Véhicule ${repair.vehicleId}`;
       costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (repair.totalCost || 0);
     });
 
@@ -7436,6 +7482,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '⏳ En cours': pendingCount.toString(),
       'Véhicules': new Set(repairs.map(r => r.vehicleId)).size.toString()
     };
+  }
+
+  /** Libelle lisible d’un type de panne. Les valeurs sont celles de la
+   *  colonne repairs.repair_type, alimentee par le menu deroulant de l’ecran
+   *  Reparations (REPAIR_TYPES). Repli sur la valeur brute pour qu’un type
+   *  ajoute plus tard s’affiche quand meme, au lieu de disparaitre. */
+  getRepairTypeLabel(type: string | null | undefined): string {
+    const libelles: { [cle: string]: string } = {
+      'electrique': 'Électrique',
+      'mecanique': 'Mécanique',
+      'freinage': 'Freinage',
+      'pneumatique': 'Pneumatique',
+      'carrosserie': 'Carrosserie',
+      'autre': 'Autres',
+    };
+    return libelles[type || 'autre'] || type || 'Autres';
   }
 
   getRepairStatusLabel(status: string): string {
@@ -7510,7 +7572,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         : '📅 Planifié';
       const km = record.doneKm ? record.doneKm.toLocaleString('fr-FR') : null;
       return {
-        vehicleName: record.vehicleName || record.plate || `Véhicule ${record.vehicleId}`,
+        // Plaque d’abord, comme sur le rapport des reparations : c’est
+        // l’identifiant que le client reconnait sur une facture d’atelier.
+        vehicleName: record.plate || record.vehicleName || `Véhicule ${record.vehicleId}`,
         vehicleId: record.vehicleId,
         // Date SANS heure (formatDate, déjà utilisé ailleurs dans l'écran) :
         // un entretien se date au jour. L'heure n'apportait rien et était
@@ -7547,7 +7611,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Secondary chart - costs by vehicle
     const costsByVehicle: { [key: string]: number } = {};
     records.forEach(record => {
-      const vehicleName = record.vehicleName || `Véhicule ${record.vehicleId}`;
+      // Plaque ici aussi, comme dans le tableau du rapport.
+      const vehicleName = record.plate || record.vehicleName || `Véhicule ${record.vehicleId}`;
       costsByVehicle[vehicleName] = (costsByVehicle[vehicleName] || 0) + (record.actualCost || 0);
     });
 

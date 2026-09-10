@@ -185,7 +185,21 @@ export class UserPreferencesService {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     });
-    return `${formatted} ${this.current.currency}`;
+    return `${formatted} ${UserPreferencesService.currencySymbol(this.current.currency)}`;
+  }
+
+  /** Symbole d’affichage d’une devise, code ISO par defaut.
+   *  Recette du 10/09/2026 : « 1 385,28 EUR » occupe 20,4 mm dans un tableau
+   *  PDF contre 16,5 mm pour « 1 385,28 € ». Le symbole aere le rapport et se
+   *  lit plus vite. Seules les devises dont le symbole est universellement
+   *  reconnu sont traduites : le dinar tunisien et le dinar algerien n’ont pas
+   *  de symbole unique et gardent leur code ISO, qui reste sans ambiguite. */
+  static currencySymbol(code: string): string {
+    switch (code) {
+      case 'EUR': return '€';
+      case 'USD': return '$';
+      default: return code;
+    }
   }
 
   /**
