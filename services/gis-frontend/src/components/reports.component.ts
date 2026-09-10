@@ -7512,7 +7512,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       return {
         vehicleName: record.vehicleName || record.plate || `Véhicule ${record.vehicleId}`,
         vehicleId: record.vehicleId,
-        date: this.formatDateTime(record.doneDate || record.date),
+        // Date SANS heure (formatDate, déjà utilisé ailleurs dans l'écran) :
+        // un entretien se date au jour. L'heure n'apportait rien et était
+        // même trompeuse — la saisie ne demande qu'une date, stockée à
+        // 00:00 UTC, que le fuseau affichait « 01:00 » ou « 02:00 ».
+        date: this.formatDate(record.doneDate || record.date),
         type: record.templateName || record.category || record.type || 'Général',
         description: record.notes || record.description || (isDone ? '-' : 'Prochaine échéance'),
         status: isDone ? this.getMaintenanceStatusLabel(record.status) : plannedLabel,

@@ -453,45 +453,26 @@ public class GetAllMaintenanceLogsQueryHandler : IRequestHandler<GetAllMaintenan
             );
         }).ToList();
 
-        // Also surface PLANNED/scheduled maintenances (entretiens créés/assignés mais pas encore
-        // "marqués faits"). They live in VehicleMaintenanceSchedule (tenant auto-filtré) et étaient
-        // invisibles car le rapport ne lisait que les MaintenanceLogs terminés — d'où le rapport
-        // vide pour les utilisateurs qui n'avaient fait que créer/assigner des entretiens.
-        var schedQuery = _context.VehicleMaintenanceSchedules
-            .Include(s => s.Vehicle)
-            .Include(s => s.Template)
-            .AsNoTracking()
-            .Where(s => !s.IsPaused && s.CompanyId == companyId);
-
-        // Même portée que les logs terminés : sinon les entretiens PLANIFIÉS
-        // rouvraient la fuite sur tout le parc.
-        if (scope is not null)
-            schedQuery = schedQuery.Where(s => scope.Contains(s.VehicleId));
-
-        if (request.VehicleId.HasValue)
-            schedQuery = schedQuery.Where(s => s.VehicleId == request.VehicleId.Value);
-
-        var schedules = await schedQuery
-            .OrderBy(s => s.NextDueDate)
-            .ToListAsync(ct);
-
-        result.AddRange(schedules.Select(s => new MaintenanceLogReportDto(
-            -s.Id, // id négatif : une ligne "planifiée" ne collisionne jamais avec un log terminé
-            s.VehicleId,
-            s.Vehicle?.Name ?? $"Véhicule {s.VehicleId}",
-            s.Vehicle?.Plate,
-            s.TemplateId,
-            s.Template?.Name ?? "Général",
-            s.Template?.Category,
-            s.NextDueDate ?? s.LastDoneDate ?? DateTime.UtcNow,
-            s.NextDueKm ?? 0,
-            0m, // pas de cout sur un entretien non effectue (l'estime ne doit pas compter comme une depense)
-            null,
-            null,
-            null,
-            s.Notes,
-            s.Status // statut réel : upcoming / due / overdue / critical / ok
-        )));
+        // Les entretiens PLANIFIÉS ne figurent volontairement PAS dans ce rapport.
+        //
+        // Historique, pour que personne ne les rétablisse sans connaître la suite :
+        //   • d1e80793 (08/06/2026) les avait ajoutés — le rapport sortait vide pour un
+        //     utilisateur qui n'avait fait que créer/assigner des entretiens.
+        //   • 185ba549 (03/09/2026) avait dû les rendre explicites (« 📅 Planifié »,
+        //     « prévu à N km », « Prochaine échéance ») après une plainte client : ils se
+        //     lisaient comme de vrais entretiens sans montant.
+        //   • Recette du 10/09/2026 : le client les veut hors de CE rapport. C'est un
+        //     rapport de COÛTS ; une échéance à venir n'est pas une dépense, et son
+        //     kilométrage (next_due_km) n'est pas un relevé. Elles noyaient le contenu
+        //     réel — 40 lignes à 0 € pour 36 entretiens payés sur le jeu de recette.
+        //
+        // Les entretiens à venir restent visibles là où c'est leur place : l'écran
+        // Maintenance (plannings, alertes et notifications d'échéance), alimenté par
+        // GetVehicleMaintenanceQuery / GetMaintenanceAlertsQuery — inchangés.
+        //
+        // Cet endpoint (/api/vehicle-maintenance/logs) n'a qu'un seul consommateur :
+        // le rapport « Coûts maintenance » (ApiService.getMaintenanceRecords). Aucun
+        // autre écran n'est affecté par ce retrait.
 
         return result;
     }

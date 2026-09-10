@@ -40,8 +40,12 @@ export interface GroupedPdfReportConfig {
 @Injectable({ providedIn: 'root' })
 export class PdfExportService {
 
-  private readonly primaryColor: [number, number, number] = [30, 58, 138];
-  private readonly accentColor: [number, number, number] = [59, 130, 246];
+  // Couleurs relevées sur la charte Calypso (« logo Calypso.pdf », planche des
+  // déclinaisons) plutôt que sur une palette générique : le bleu profond du
+  // dégradé, le bleu vif de la signature, et l'orange des facettes du « C ».
+  private readonly primaryColor: [number, number, number] = [8, 64, 160];    // #0840A0
+  private readonly accentColor: [number, number, number] = [0, 112, 192];    // #0070C0
+  private readonly brandOrange: [number, number, number] = [255, 88, 40];    // #FF5828
   private readonly lightBg: [number, number, number] = [241, 245, 249];
 
   /**
@@ -74,34 +78,105 @@ export class PdfExportService {
    * ne sont pas de simples « stats + tableau » — sans cela chaque écran
    * réinventait son propre en-tête et le résultat n'avait plus rien de commun.
    */
+  /** Dégradé horizontal très doux du fond d'en-tête, du blanc cassé vers un
+   *  bleu pâle. jsPDF n'a pas de dégradé natif : on le compose par bandes
+   *  verticales fines (160 suffisent pour n'en voir aucune marche). Factorisé
+   *  pour que l'en-tête de la page 1 et le bandeau des pages suivantes ne
+   *  puissent plus diverger. */
+  private drawHeaderGradient(doc: jsPDF, bandH: number): void {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const from: [number, number, number] = [248, 251, 255];
+    const to: [number, number, number] = [219, 233, 250];
+    const steps = 160;
+    const stepW = pageWidth / steps;
+    for (let i = 0; i < steps; i++) {
+      const t = i / (steps - 1);
+      doc.setFillColor(
+        Math.round(from[0] + (to[0] - from[0]) * t),
+        Math.round(from[1] + (to[1] - from[1]) * t),
+        Math.round(from[2] + (to[2] - from[2]) * t)
+      );
+      doc.rect(i * stepW, 0, stepW + 0.3, bandH, 'F');
+    }
+  }
+
+  /** Bandeau réduit rappelé en haut des pages 2 et suivantes. Il était bleu
+   *  plein avec un titre blanc : depuis que la page 1 porte un en-tête clair,
+   *  cela donnait deux identités visuelles dans un même document. Même fond,
+   *  même titre bleu profond, même liséré orange que la page 1, en plus court.
+   *  `left` reprend la marge du tableau de l'appelant (10 ou 14 mm) pour que le
+   *  titre reste aligné sur la première colonne. */
+  private drawContinuationBand(doc: jsPDF, title: string, left: number): void {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const bandH = 12;
+    this.drawHeaderGradient(doc, bandH);
+    doc.setTextColor(...this.primaryColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(this.sanitizeText(title), left, 8);
+    doc.setFillColor(...this.brandOrange);
+    doc.rect(0, bandH, pageWidth, 0.8, 'F');
+  }
+
   drawBrandHeader(doc: jsPDF, opts: { title: string; meta?: string[]; rightNote?: string }): number {
     const pageWidth = doc.internal.pageSize.getWidth();
-    doc.setFillColor(...this.primaryColor);
-    doc.rect(0, 0, pageWidth, 32, 'F');
+    const bandH = 30;
 
+    // Fond CLAIR : le logo Calypso est utilisé dans sa version couleur, et son
+    // « CALYPSO » bleu (#0070C0) n'a que 1,81:1 de contraste sur un bandeau
+    // bleu — illisible. Sur ce fond clair il monte à ~5:1, et le logo se pose
+    // sans plaque ni cartouche. Le fond est un dégradé horizontal très doux
+    // (voir drawHeaderGradient), partagé avec le bandeau des pages suivantes.
+    this.drawHeaderGradient(doc, bandH);
+
+    // Logo en couleurs, posé directement sur le fond clair, au rapport réel du
+    // fichier (3:1) et non plus écrasé dans un carré de 22 mm.
     const logo = this.getLogo();
-    const titleLeft = logo ? 38 : 14;
+    let textLeft = 14;
     if (logo) {
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
-      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch { /* logo optionnel */ }
+      const logoH = 13;
+      const logoW = logoH * this.logoAspect;
+      const logoY = (bandH - logoH) / 2;
+      try {
+        // 'MEDIUM' : compression zlib SANS perte ni ré-échantillonnage — la
+        // définition du fichier est conservée telle quelle (900 px pour ~39 mm,
+        // soit ~590 dpi). 'NONE' embarquerait les pixels bruts et faisait à lui
+        // seul 3,4 Mo de PDF pour un rapport de deux pages.
+        doc.addImage(logo, 'PNG', 14, logoY, logoW, logoH, undefined, 'MEDIUM');
+      } catch { /* logo optionnel */ }
+      textLeft = 14 + logoW + 11;
+      // Filet vertical discret entre le logo et le titre, dans le bleu pâle
+      // de la charte plutôt qu'un gris neutre.
+      doc.setDrawColor(168, 197, 232);
+      doc.setLineWidth(0.5);
+      doc.line(textLeft - 6, 7.5, textLeft - 6, bandH - 7.5);
     }
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
+    // Titre dans le bleu profond de la charte : c'est lui qui porte le contraste
+    // sur fond clair (12,4:1), là où le bandeau bleu le portait par le blanc.
+    doc.setTextColor(...this.primaryColor);
+    doc.setFontSize(17);
     doc.setFont('helvetica', 'bold');
-    doc.text(this.sanitizeText(opts.title), titleLeft, 14);
+    doc.text(this.sanitizeText(opts.title), textLeft, opts.meta?.length ? 14 : 18);
 
     if (opts.meta?.length) {
-      doc.setFontSize(9);
+      // Métadonnées en bleu-gris : lisibles, sans concurrencer le titre.
+      doc.setFontSize(8.5);
       doc.setFont('helvetica', 'normal');
-      doc.text(opts.meta.map(m => this.sanitizeText(m)).join('  |  '), titleLeft, 22);
+      doc.setTextColor(82, 103, 133);
+      doc.text(opts.meta.map(m => this.sanitizeText(m)).join('   •   '), textLeft, 21.5);
     }
     if (opts.rightNote) {
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
+      doc.setTextColor(82, 103, 133);
       doc.text(this.sanitizeText(opts.rightNote), pageWidth - 14, 14, { align: 'right' });
     }
+
+    // Liseré orange en pied de bandeau : la seule touche de la couleur
+    // d'accent de la charte, qui rappelle les facettes du « C ».
+    doc.setFillColor(...this.brandOrange);
+    doc.rect(0, bandH, pageWidth, 1.4, 'F');
 
     doc.setTextColor(0, 0, 0);
     return 38;
@@ -117,12 +192,7 @@ export class PdfExportService {
     for (let i = 1; i <= total; i++) {
       doc.setPage(i);
       if (bannerTitle && i > 1) {
-        doc.setFillColor(...this.primaryColor);
-        doc.rect(0, 0, pageWidth, 12, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(this.sanitizeText(bannerTitle), 14, 8);
+        this.drawContinuationBand(doc, bannerTitle, 14);
       }
       doc.setDrawColor(226, 232, 240);
       doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
@@ -148,9 +218,20 @@ export class PdfExportService {
     return { primary: this.primaryColor, accent: this.accentColor, light: this.lightBg };
   }
 
+  /** Rapport largeur/hauteur du fichier de logo, mesuré au chargement.
+   *  Repli sur 3:1, le rapport du logo Calypso actuel, si la mesure échoue. */
+  private logoAspect = 3;
+
   private preloadLogo(): Promise<string | null> {
     if (this.logoDataUrl) return Promise.resolve(this.logoDataUrl);
     if (this.logoLoading) return this.logoLoading;
+    // Version COULEUR, a FOND TRANSPARENT : c'est celle que le client veut voir
+    // sur ses rapports, et elle se pose directement sur le fond clair de
+    // l'en-tête (voir drawBrandHeader). Le fichier rasterisé depuis le PDF de
+    // charte était opaque : jsPDF embarquait alors un rectangle blanc autour du
+    // logo, bien visible sur le dégradé. Il a été détouré (canal alpha déduit du
+    // canal minimum), ce qui redonne exactement les couleurs de la charte sur un
+    // fond blanc ou quasi blanc, le seul sur lequel ce logo est utilisé.
     this.logoLoading = fetch('assets/logo/calypso-logo.png')
       .then(r => r.ok ? r.blob() : null)
       .then(blob => {
@@ -160,7 +241,17 @@ export class PdfExportService {
           reader.onloadend = () => {
             const url = (reader.result as string) || '';
             this.logoDataUrl = url;
-            resolve(url);
+            // Mesure du rapport réel : l'en-tête dimensionne le cartouche
+            // dessus, pour ne jamais déformer le logo si le fichier change.
+            const img = new Image();
+            img.onload = () => {
+              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                this.logoAspect = img.naturalWidth / img.naturalHeight;
+              }
+              resolve(url);
+            };
+            img.onerror = () => resolve(url);
+            img.src = url;
           };
           reader.readAsDataURL(blob);
         });
@@ -226,38 +317,20 @@ export class PdfExportService {
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
 
-    // ── Header bar ──
-    doc.setFillColor(...this.primaryColor);
-    doc.rect(0, 0, pageWidth, 32, 'F');
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    // Logo Calypso a gauche dans un cartouche blanc, titre decale a droite.
-    const logo = this.getLogo();
-    const titleLeft = logo ? 38 : 14;
-    if (logo) {
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
-      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch {}
-    }
-    doc.setTextColor(255, 255, 255);
-    doc.text(this.sanitizeText(config.title), titleLeft, 14);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    // Appelle drawBrandHeader au lieu de redessiner son propre en-t\u00eate : cette
+    // copie \u00e9tait rest\u00e9e alors que drawBrandHeader avait justement \u00e9t\u00e9 extrait
+    // pour l'\u00e9viter, si bien qu'un changement de charte devait \u00eatre fait \u00e0 trois
+    // endroits \u2014 et ne l'\u00e9tait pas.
     const meta: string[] = [];
     if (config.vehicleName) meta.push(`V\u00e9hicule: ${this.sanitizeText(config.vehicleName)}`);
     if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
     meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
-    doc.text(meta.join('  |  '), titleLeft, 22);
 
-    if (config.subtitle) {
-      doc.setFontSize(9);
-      doc.text(this.sanitizeText(config.subtitle), pageWidth - 14, 14, { align: 'right' });
-    }
-
-    y = 38;
+    y = this.drawBrandHeader(doc, {
+      title: config.title,
+      meta,
+      rightNote: config.subtitle
+    });
 
     // ── Statistics block ──
     if (config.statistics && Object.keys(config.statistics).length > 0) {
@@ -334,12 +407,7 @@ export class PdfExportService {
         // Re-draw header on subsequent pages
         const pageNum = (doc as any).internal.getCurrentPageInfo().pageNumber;
         if (pageNum > 1) {
-          doc.setFillColor(...this.primaryColor);
-          doc.rect(0, 0, pageWidth, 12, 'F');
-          doc.setTextColor(255, 255, 255);
-          doc.setFontSize(9);
-          doc.setFont('helvetica', 'bold');
-          doc.text(this.sanitizeText(config.title), 10, 8);
+          this.drawContinuationBand(doc, config.title, 10);
         }
         // Footer on every page
         const pageCount = (doc as any).internal.getNumberOfPages();
@@ -374,37 +442,18 @@ export class PdfExportService {
     const pageHeight = doc.internal.pageSize.getHeight();
     let y = 15;
 
-    // ── Header bar ──
-    doc.setFillColor(...this.primaryColor);
-    doc.rect(0, 0, pageWidth, 32, 'F');
-
-    // Logo Calypso a gauche dans un cartouche blanc.
-    const logo = this.getLogo();
-    const titleLeft = logo ? 38 : 14;
-    if (logo) {
-      doc.setFillColor(255, 255, 255);
-      doc.roundedRect(8, 4, 26, 24, 2, 2, 'F');
-      try { doc.addImage(logo, 'PNG', 10, 5, 22, 22); } catch {}
-    }
-
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
-    doc.setFont('helvetica', 'bold');
-    doc.text(this.sanitizeText(config.title), titleLeft, 14);
-
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    // Même en-tête de marque que partout ailleurs (troisième et dernière copie
+    // de l'ancien bandeau supprimée : la charte se change désormais en un seul
+    // endroit, drawBrandHeader).
     const meta: string[] = [];
     if (config.dateRange) meta.push(`P\u00e9riode: ${this.sanitizeText(config.dateRange)}`);
     meta.push(`G\u00e9n\u00e9r\u00e9 le: ${new Date().toLocaleDateString('fr-FR')} \u00e0 ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
-    doc.text(meta.join('  |  '), titleLeft, 22);
 
-    if (config.subtitle) {
-      doc.setFontSize(9);
-      doc.text(this.sanitizeText(config.subtitle), pageWidth - 14, 14, { align: 'right' });
-    }
-
-    y = 38;
+    y = this.drawBrandHeader(doc, {
+      title: config.title,
+      meta,
+      rightNote: config.subtitle
+    });
 
     // ── Statistics block (global totals) ──
     if (config.statistics && Object.keys(config.statistics).length > 0) {
@@ -443,12 +492,7 @@ export class PdfExportService {
     const drawPageChrome = () => {
       const pageNum = (doc as any).internal.getCurrentPageInfo().pageNumber;
       if (pageNum > 1) {
-        doc.setFillColor(...this.primaryColor);
-        doc.rect(0, 0, pageWidth, 12, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(this.sanitizeText(config.title), 10, 8);
+        this.drawContinuationBand(doc, config.title, 10);
       }
       const pageCount = (doc as any).internal.getNumberOfPages();
       doc.setFontSize(7);
@@ -592,14 +636,23 @@ export class PdfExportService {
       'severityLabel': 1.3, 'status': 1.2, 'eventType': 1.3,
       // Narrow columns — numbers, short values
       'distance': 1.2, 'speed': 1, 'maxSpeed': 1, 'limit': 1,
-      'fuelPercent': 1, 'fuelChange': 1, 'odometer': 1.2, 'mileage': 1.2,
+      // Un kilométrage à six chiffres vaut « 154 546 km » : au poids 1,2
+      // l'unité passait à la ligne dès que le compteur dépassait 100 000.
+      'fuelPercent': 1, 'fuelChange': 1, 'odometer': 1.5, 'mileage': 1.5,
       'tripCount': 0.8, 'eventNumber': 0.6, 'score': 0.8,
       'avgDaily': 1.2, 'activeDays': 1,
       'laborCostFormatted': 1.2, 'partsCostFormatted': 1.2,
-      'totalCostFormatted': 1.2, 'costFormatted': 1.2,
+      // Un montant formaté vaut « 1 480,00 EUR » : au poids 1,2 la devise
+      // passait à la ligne sous le nombre.
+      'totalCostFormatted': 1.6, 'costFormatted': 1.6,
       'fuelEstimated': 1.2, 'costEstimated': 1.2, 'avgConsumption': 1.2,
       'consumption': 1, 'plate': 1.2, 'fuel': 1, 'cost': 1,
-      '_type': 1, 'type': 1, 'value': 1, 'trips': 0.8, 'stops': 0.8,
+      // 'type' n'est utilisé que par le rapport Coûts maintenance, où il porte
+      // le NOM du modèle d'entretien (« Révision périodique », « Vidange +
+      // filtre à huile »). Au poids 1 la colonne coupait le dernier caractère
+      // sur sa propre ligne (« Révision périodiqu / e ») : il lui faut la
+      // largeur d'une colonne de texte, pas celle d'un code court.
+      '_type': 1, 'type': 2, 'value': 1, 'trips': 0.8, 'stops': 0.8,
     };
 
     const defaultWeight = 1.2;
@@ -735,15 +788,23 @@ export class PdfExportService {
           { header: 'Total', dataKey: 'totalCostFormatted' },
           { header: 'Statut', dataKey: 'status' }
         ];
+      // Recette du 10/09/2026 : le statut ne sert plus à rien dans l'export —
+      // le rapport ne contient que des entretiens réalisés depuis que les
+      // lignes planifiées en ont été retirées, donc la colonne valait
+      // « Terminée » sur toutes les lignes. Le fournisseur la remplace :
+      // c'est l'information qu'on cherche sur un historique d'entretien.
       case 'maintenance':
         return [
           { header: 'Véhicule', dataKey: 'vehicleName' },
           { header: 'Date', dataKey: 'date' },
           { header: 'Type', dataKey: 'type' },
           { header: 'Description', dataKey: 'description' },
-          { header: 'Statut', dataKey: 'status' },
+          { header: 'Fournisseur', dataKey: 'supplierName' },
           { header: 'Coût', dataKey: 'costFormatted' },
-          { header: 'Kilométrage', dataKey: 'mileage' }
+          // « Km » et non « Kilométrage » : l'intitulé long se coupait en deux
+          // lignes (« Kilométrag / e ») dans une colonne dont la largeur ne doit
+          // pas augmenter — la valeur porte déjà l'unité (« 154 546 km »).
+          { header: 'Km', dataKey: 'mileage' }
         ];
       default:
         return [

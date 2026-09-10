@@ -139,6 +139,8 @@ public class VehicleMaintenanceController : ControllerBase
             request.Cost,
             request.SupplierId,
             request.Notes,
+            LaborCost: request.LaborCost,
+            PartsCost: request.PartsCost,
             ApplyFreeBenefit: request.ApplyFreeBenefit ?? true
         );
 
@@ -211,6 +213,18 @@ public class VehicleMaintenanceController : ControllerBase
 // Request DTOs
 public record AssignTemplateRequest(int VehicleId, int TemplateId);
 
+/// <param name="LaborCost">Part main-d'œuvre du coût, facultative.</param>
+/// <param name="PartsCost">Part pièces du coût, facultative.</param>
+/// <remarks>
+/// LaborCost / PartsCost ventilent <paramref name="Cost"/> sans le remplacer :
+/// MarkMaintenanceDoneCommand les stocke tels quels sur le MaintenanceLog et le
+/// rapport « Coûts maintenance » les affiche dans ses colonnes Main d'œuvre et
+/// Pièces. Ils manquaient à ce DTO alors que la commande les acceptait déjà, si
+/// bien que les deux colonnes du rapport étaient vides pour TOUS les clients
+/// (vérifié sur TN le 10/09/2026 : labor_cost et parts_cost NULL sur la totalité
+/// des maintenance_logs). Facultatifs : un appel qui ne les envoie pas se
+/// comporte exactement comme avant.
+/// </remarks>
 public record MarkDoneRequest(
     int VehicleId,
     int TemplateId,
@@ -219,7 +233,9 @@ public record MarkDoneRequest(
     decimal Cost,
     int? SupplierId,
     string? Notes,
-    bool? ApplyFreeBenefit = null
+    bool? ApplyFreeBenefit = null,
+    decimal? LaborCost = null,
+    decimal? PartsCost = null
 );
 
 public record DeclareFreeRequest(
