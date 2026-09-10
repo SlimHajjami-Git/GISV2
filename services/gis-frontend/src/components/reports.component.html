@@ -405,7 +405,7 @@
                     <thead>
                       <tr>
                         <th>Conducteur</th>
-                        <th>Véhicule</th>
+                        <th>Immatriculation</th>
                         <th class="num">KM</th>
                         @if (monthlyCostReportType === 'costs') {
                           <th class="num">Carburant {{ getCurrencyCode() }}</th>
@@ -417,11 +417,11 @@
                           <th class="num">Carb. {{ getCurrencyCode() }}/100KM</th>
                           <th class="num">Ent+Rép {{ getCurrencyCode() }}/100KM</th>
                         } @else {
-                          <th class="num">KM PR</th>
-                          <th class="num">C. Total (L)</th>
-                          <th class="num">C. PR (L)</th>
-                          <th class="num">C/100KM</th>
-                          <th class="num">C/100KM PR</th>
+                          <th class="num">KM mois préc.</th>
+                          <th class="num">Litres</th>
+                          <th class="num">Litres mois préc.</th>
+                          <th class="num">L/100km</th>
+                          <th class="num">L/100km mois préc.</th>
                         }
                       </tr>
                     </thead>
@@ -445,10 +445,10 @@
                             <td class="num">{{ formatDecimal(v.maintenanceRepairPer100Km) }}</td>
                           } @else {
                             <td class="num">{{ formatNumber(v.kmPr) }}</td>
-                            <td class="num">{{ v.fuelLiters.toFixed(1) }}</td>
-                            <td class="num">{{ v.fuelLitersPr.toFixed(1) }}</td>
-                            <td class="num">{{ v.consumptionPer100Km.toFixed(2) }}</td>
-                            <td class="num">{{ v.consumptionPrPer100Km.toFixed(2) }}</td>
+                            <td class="num">{{ formatLitres(v.fuelLiters) }}</td>
+                            <td class="num">{{ formatLitres(v.fuelLitersPr) }}</td>
+                            <td class="num">{{ formatDecimal(v.consumptionPer100Km) }}</td>
+                            <td class="num">{{ formatDecimal(v.consumptionPrPer100Km) }}</td>
                           }
                         </tr>
                       }
