@@ -243,6 +243,16 @@ public static class OperatingCostAggregator
         var repairsByVehicle = repairs.ToLookup(r => r.VehicleId);
         var tripsByVehicle = trips.ToLookup(t => t.VehicleId);
 
+        // Releves compteur SAISIS, toutes sources confondues : pleins,
+        // entretiens, reparations et depenses. Cet agregateur ne lisait que
+        // les pleins, alors que le client note aussi son compteur a chaque
+        // passage a l’atelier. Sur le jeu de recette cela revenait a ignorer
+        // 109 releves sur 508. Meme source que le rapport « Couts mensuel par
+        // vehicule », pour qu’un vehicule ne rende pas deux kilometrages
+        // differents selon le rapport ouvert.
+        var odometerReadings = await OdometerReadings.LoadAsync(
+            context, companyId, vehicleIds, startUtc, endExclusiveUtc, ct);
+
         var result = new List<VehicleCostData>(vehicles.Count);
         foreach (var v in vehicles)
         {
@@ -277,7 +287,7 @@ public static class OperatingCostAggregator
             var total = frozen.Values.Aggregate(CostBucket.Zero, (a, b) => a.Plus(b));
 
             // ── Distance ──
-            var odo = OdometerDistance.Compute(fuelByVehicle[v.Id].Select(f => (f.OdometerKm ?? 0L, f.InvoiceDate)));
+            var odo = OdometerDistance.Compute(odometerReadings[v.Id]);
             var hasGps = v.GpsDeviceId.HasValue;
             var vehicleTrips = tripsByVehicle[v.Id].ToList();
             var tripKm = vehicleTrips.Sum(t => t.DistanceKm);

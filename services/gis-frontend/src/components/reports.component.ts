@@ -45,6 +45,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('operatingCostCanvas') operatingCostCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('evolutionCanvas') evolutionCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('evolutionDonutCanvas') evolutionDonutCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('monthlyCostDonutCanvas') monthlyCostDonutCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('repairFreqCanvas') repairFreqCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('repairTypeCanvas') repairTypeCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
@@ -483,6 +484,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   private operatingCostChart?: Chart;
   private evolutionChart?: Chart;
   private evolutionDonutChart?: Chart;
+  private monthlyCostDonutChart?: Chart;
   private repairFreqChart?: Chart;
   private repairTypeChart?: Chart;
 
@@ -903,6 +905,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
     if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+    if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
     if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
     if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
   }
@@ -3506,6 +3509,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
             this.currentPage = 1;
             this.cdr.detectChanges();
             this.appRef.tick();
+            // Le canvas n’existe qu’une fois le bloc rendu : on dessine au tick suivant.
+            setTimeout(() => this.drawMonthlyCostDonut(), 120);
           });
         },
         error: (err) => {
@@ -3878,6 +3883,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // affichaient « Cout (EUR) » la ou le tableau et le PDF montrent deja
     // « 265,00 € ». Meme source de verite que formatCurrency.
     return UserPreferencesService.currencySymbol(this.userPrefs.current.currency);
+  }
+
+  /** Nombre a deux decimales au format francais (virgule, espace des
+   *  milliers). toFixed rendait « 0.13 » a cote de « 250,77 € » : deux
+   *  conventions decimales dans un meme tableau. */
+  formatDecimal(value: number | null | undefined): string {
+    return (value ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
 
   formatCurrency(value: number): string {
@@ -7994,6 +8006,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedEvolutionMonth = null;
     if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+    if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
 
     const { from, to } = this.costReportRange(startDate, endDate);
 
@@ -8137,9 +8150,74 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Les trois postes de depense du rapport mensuel, avec leur part du total.
+   *  « Autres » n’est ajoute que s’il porte un montant : une part a zero dans
+   *  un camembert est une legende de plus a lire pour rien. */
+  monthlyCostCategoryTotals(): { key: string; label: string; amount: number; percent: number; color: string }[] {
+    const r = this.monthlyCostReport;
+    if (!r) return [];
+    const postes = [
+      { key: 'fuel', label: 'Carburant', amount: r.totalFuelCostDzd || 0, color: '#3B82F6' },
+      { key: 'maintenance', label: 'Entretien', amount: r.totalMaintenanceCostDzd || 0, color: '#F59E0B' },
+      { key: 'repair', label: 'Réparation', amount: r.totalRepairCostDzd || 0, color: '#EF4444' },
+    ];
+    const autres = (r.totalCostDzd || 0) - postes.reduce((s, p) => s + p.amount, 0);
+    if (autres > 0.005) postes.push({ key: 'other', label: 'Autres', amount: autres, color: '#8B5CF6' });
+    const total = postes.reduce((s, p) => s + p.amount, 0);
+    if (total <= 0) return [];
+    return postes
+      .filter(p => p.amount > 0)
+      .map(p => ({ ...p, percent: (p.amount / total) * 100 }));
+  }
+
+  /** Camembert « Repartition des couts » du rapport mensuel par vehicule. */
+  drawMonthlyCostDonut() {
+    if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
+    const canvas = this.monthlyCostDonutCanvasRef?.nativeElement;
+    if (!canvas) return;
+    const postes = this.monthlyCostCategoryTotals();
+    const total = postes.reduce((s, x) => s + x.amount, 0);
+    if (total <= 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    this.monthlyCostDonutChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: postes.map(x => x.label),
+        datasets: [{
+          data: postes.map(x => x.amount),
+          backgroundColor: postes.map(x => x.color),
+          borderColor: '#ffffff',
+          borderWidth: 2,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '62%',
+        plugins: {
+          // Legende rendue en HTML sous le graphe (montant + part), comme
+          // sur « Evolution des couts » : elle y tient sur une ligne par poste.
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (item: any) => {
+                const v = Number(item.parsed) || 0;
+                return `${item.label} : ${this.formatCurrency(v)} (${((v / total) * 100).toFixed(1)} %)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
   /** Donut « Répartition des coûts sur la période » (légende HTML à côté : montant + %). */
   drawEvolutionDonut() {
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
+    if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
     const canvas = this.evolutionDonutCanvasRef?.nativeElement;
     if (!canvas) return;
     const cats = this.evolutionCategoryTotals();
