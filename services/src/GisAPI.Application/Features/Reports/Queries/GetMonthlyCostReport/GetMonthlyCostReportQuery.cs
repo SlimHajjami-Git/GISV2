@@ -27,6 +27,13 @@ public class MonthlyCostReportDto
     public decimal TotalOtherCostDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
+    // Totaux du mois PRECEDENT. Sans eux, la ligne « Total » du tableau
+    // recopiait le mois courant dans les colonnes de comparaison : elle
+    // contredisait ses propres lignes vehicule, qui affichent bien deux
+    // mois differents.
+    public decimal TotalKmPr { get; set; }
+    public decimal TotalFuelLitersPr { get; set; }
+
     // Per-vehicle detail rows grouped by department
     public List<DepartmentCostGroupDto> Departments { get; set; } = new();
 
@@ -47,6 +54,13 @@ public class DepartmentCostGroupDto
     public decimal TotalRepairCostDzd { get; set; }
     public decimal TotalOtherCostDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
+
+    // Totaux du mois PRECEDENT. Sans eux, la ligne « Total » du tableau
+    // recopiait le mois courant dans les colonnes de comparaison : elle
+    // contredisait ses propres lignes vehicule, qui affichent bien deux
+    // mois differents.
+    public decimal TotalKmPr { get; set; }
+    public decimal TotalFuelLitersPr { get; set; }
 
     public List<VehicleMonthlyCostDto> Vehicles { get; set; } = new();
 }

@@ -2322,6 +2322,45 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   transform: translateY(-1px);
 }
 
+
+/* Carte d’indicateur AVEC icone : icone a gauche dans une pastille de
+   couleur douce, libelle et valeur a droite. Modificateur volontaire
+   (.stat-card--icone) plutot qu’une regle sur .stat-card : ce workspace est
+   partage avec les quatre rapports de couts, qui n’ont pas d’icone et dont
+   la mise en colonne doit rester intacte. */
+.monthly-cost-report-workspace .stat-card--icone {
+  flex-direction: row;
+  align-items: center;
+  gap: 13px;
+}
+.monthly-cost-report-workspace .stat-card--icone .stat-corps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.stat-icone {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat-icone svg { width: 20px; height: 20px; display: block; }
+/* Teintes : le fond reprend la couleur du trait, tres delave, pour que la
+   pastille se lise sans concurrencer le chiffre. */
+.stat-icone--bleu    { background: #eff6ff; color: #2563eb; }
+.stat-icone--ambre   { background: #fffbeb; color: #d97706; }
+.stat-icone--rouge   { background: #fef2f2; color: #dc2626; }
+.stat-icone--vert    { background: #ecfdf5; color: #059669; }
+.stat-icone--ardoise { background: #f1f5f9; color: #475569; }
+
+/* Survol de ligne : reperer sa ligne dans un tableau de douze vehicules et
+   onze colonnes se fait a l’oeil, pas au doigt. */
+.monthly-cost-table tbody tr:hover td { background: #f5f9ff; }
+
 .monthly-cost-report-workspace .stat-card .stat-label {
   font-size: 10.5px;
   color: #64748b;
@@ -2395,8 +2434,11 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 }
 
 .monthly-cost-table thead th {
-  background: #f8fafc;
-  color: #64748b;
+  /* Un cran plus soutenu que le fond des cartes et de la ligne de total :
+     quatre bandes partageaient exactement #f8fafc, aucune hierarchie ne se
+     lisait. */
+  background: #f1f5f9;
+  color: #475569;
   font-weight: 600;
   font-size: 10.5px;
   text-transform: uppercase;
@@ -2414,7 +2456,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .monthly-cost-table tbody td {
   padding: 10px 14px;
   color: #1e293b;
-  border-bottom: 1px solid #f1f5f9;
+  /* #f1f5f9 etait quasi invisible sur blanc : les lignes se confondaient. */
+  border-bottom: 1px solid #e8edf3;
   transition: background 0.15s;
 }
 
@@ -2424,9 +2467,6 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   color: #334155;
 }
 
-.monthly-cost-table tbody tr:hover {
-  background: #f8fafc;
-}
 
 .monthly-cost-table tbody td.total-cell,
 .monthly-cost-table tfoot .dept-total-row td.total-cell {
@@ -2449,10 +2489,13 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 .monthly-cost-table tfoot .dept-total-row td {
   padding: 12px 14px;
-  background: #f8fafc;
-  border-top: 2px solid #e2e8f0;
-  color: #1e293b;
+  background: #eef2f7;
+  border-top: 2px solid #cbd5e1;
+  color: #0f172a;
   font-weight: 700;
+  /* Sans chiffres a chasse fixe, les totaux ne s’alignaient pas sur les
+     colonnes qu’ils additionnent. */
+  font-variant-numeric: tabular-nums;
 }
 
 .monthly-cost-table tfoot .dept-total-row td.num {
@@ -2517,6 +2560,9 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .report-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .report-head-row .report-toolbar-export { margin: 0; flex: 0 0 auto; }
 .report-head-row .report-title-row { flex: 1 1 auto; min-width: 0; }
+/* Le titre n’avait aucune regle : il heritait du style par defaut du h2. */
+.report-title-row .report-title { margin: 0; font-size: 20px; font-weight: 700; color: #0f172a; letter-spacing: -0.2px; line-height: 1.25; }
+.report-title-row .report-subtitle { display: block; margin-top: 3px; font-size: 13px; color: #64748b; font-variant-numeric: tabular-nums; }
 
 /* Sixieme carte du rapport mensuel : le camembert au GABARIT d’une carte de
    chiffres, pour qu’il occupe exactement la meme place dans la grille. */

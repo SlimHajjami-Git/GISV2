@@ -2667,8 +2667,10 @@ export interface MonthlyCostReport {
   reportPeriod: string;
   generatedAt: string;
   totalKm: number;
+  totalKmPr: number;
   totalFuelCostDzd: number;
   totalFuelLiters: number;
+  totalFuelLitersPr: number;
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
   totalOtherCostDzd: number;
@@ -2681,8 +2683,10 @@ export interface DepartmentCostGroup {
   departmentId: number | null;
   departmentName: string;
   totalKm: number;
+  totalKmPr: number;
   totalFuelCostDzd: number;
   totalFuelLiters: number;
+  totalFuelLitersPr: number;
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
   totalOtherCostDzd: number;
