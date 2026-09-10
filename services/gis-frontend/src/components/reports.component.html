@@ -1848,7 +1848,7 @@
                         }
                       } @else if (selectedTemplate?.type === 'trips') {
                         @if (!selectedVehicleId) {
-                          <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                          <th class="sortable" (click)="sortBy('vehicleName')">Immatriculation <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         }
                         <th class="th-narrow sortable" (click)="sortBy('isTrip')">Type <span class="sort-icon">{{ getSortIcon('isTrip') }}</span></th>
                         <th class="sortable" (click)="sortBy('startTime')">Début <span class="sort-icon">{{ getSortIcon('startTime') }}</span></th>
@@ -1889,19 +1889,17 @@
                       } @else if (selectedTemplate?.type === 'costs') {
                         <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
-                        <th class="sortable" (click)="sortBy('reference')">Référence <span class="sort-icon">{{ getSortIcon('reference') }}</span></th>
                         <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
                         <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
                         <th class="sortable" (click)="sortBy('laborCost')">Main d'oeuvre <span class="sort-icon">{{ getSortIcon('laborCost') }}</span></th>
                         <th class="sortable" (click)="sortBy('partsCost')">Pièces <span class="sort-icon">{{ getSortIcon('partsCost') }}</span></th>
                         <th class="sortable" (click)="sortBy('totalCost')">Total <span class="sort-icon">{{ getSortIcon('totalCost') }}</span></th>
-                        <th class="sortable" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
                       } @else if (selectedTemplate?.type === 'maintenance') {
-                        <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                        <th class="sortable" (click)="sortBy('vehicleName')">Immatriculation <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
                         <th class="sortable" (click)="sortBy('type')">Type <span class="sort-icon">{{ getSortIcon('type') }}</span></th>
                         <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
-                        <th class="sortable" (click)="sortBy('status')">Statut <span class="sort-icon">{{ getSortIcon('status') }}</span></th>
+                        <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
                         <th class="sortable" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
                         <th class="sortable" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
                       } @else {
@@ -2031,19 +2029,17 @@
                         } @else if (selectedTemplate?.type === 'costs') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>
-                          <td class="reference-cell">{{ row.reference }}</td>
                           <td class="description-cell">{{ row.description }}</td>
                           <td class="supplier-cell">{{ row.supplierName }}</td>
                           <td class="amount-cell">{{ row.laborCostFormatted }}</td>
                           <td class="amount-cell">{{ row.partsCostFormatted }}</td>
                           <td class="amount-cell total-cost">{{ row.totalCostFormatted }}</td>
-                          <td class="status-cell">{{ row.status }}</td>
                         } @else if (selectedTemplate?.type === 'maintenance') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>
                           <td class="type-cell">{{ row.type }}</td>
                           <td class="description-cell">{{ row.description }}</td>
-                          <td class="status-cell">{{ row.status }}</td>
+                          <td class="supplier-cell">{{ row.supplierName }}</td>
                           <td class="amount-cell">{{ row.costFormatted }}</td>
                           <td class="mileage-cell">{{ row.mileage }}</td>
                         } @else {

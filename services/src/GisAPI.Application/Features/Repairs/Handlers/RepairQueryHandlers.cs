@@ -64,6 +64,30 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .ToListAsync(cancellationToken);
+        // Nom du fournisseur. L'entite Repair ne porte que SupplierId, sans
+        // propriete de navigation, et les deux projections de ce fichier
+        // renvoyaient null en dur (« would need to join with suppliers table »).
+        // Consequence : la colonne « Fournisseur » du rapport « Reparations
+        // vehicules » et la fiche detail affichaient « - » pour TOUS les clients,
+        // alors que la valeur est bien saisie (37 reparations sur 37 renseignees
+        // sur le jeu de recette, 3 sur 19 en production le 10/09/2026).
+        // Une seule requete pour toute la page : pas de N+1. Suppliers est une
+        // TenantEntity, donc deja filtree sur la societe courante.
+        var supplierIds = repairs
+            .Where(r => r.SupplierId.HasValue)
+            .Select(r => r.SupplierId!.Value)
+            .Distinct()
+            .ToList();
+
+        var supplierNames = supplierIds.Count == 0
+            ? new Dictionary<int, string>()
+            : await _context.Suppliers
+                .Where(s => supplierIds.Contains(s.Id))
+                .Select(s => new { s.Id, s.Name })
+                .ToDictionaryAsync(x => x.Id, x => x.Name, cancellationToken);
+
+        string? SupplierNameOf(int? id) =>
+            id.HasValue && supplierNames.TryGetValue(id.Value, out var name) ? name : null;
 
         var items = repairs.Select(r => new RepairDto(
             r.Id,
@@ -71,7 +95,7 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
             r.Vehicle?.Name ?? "N/A",
             r.Vehicle?.Plate ?? "N/A",
             r.SupplierId,
-            null, // SupplierName - would need to join with suppliers table
+            SupplierNameOf(r.SupplierId),
             r.Reference,
             r.Description,
             r.RepairDate,
@@ -130,13 +154,22 @@ public class GetRepairByIdQueryHandler : IRequestHandler<GetRepairByIdQuery, Rep
 
         if (repair == null) return null;
 
+        // Meme correction que dans la liste ci-dessus : la fiche detail
+        // renvoyait elle aussi un nom de fournisseur null en dur.
+        var supplierName = repair.SupplierId.HasValue
+            ? await _context.Suppliers
+                .Where(s => s.Id == repair.SupplierId.Value)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         return new RepairDto(
             repair.Id,
             repair.VehicleId,
             repair.Vehicle?.Name ?? "N/A",
             repair.Vehicle?.Plate ?? "N/A",
             repair.SupplierId,
-            null,
+            supplierName,
             repair.Reference,
             repair.Description,
             repair.RepairDate,

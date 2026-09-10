@@ -2,13 +2,27 @@ import { Injectable } from '@angular/core';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+/** Une colonne d\'un tableau PDF.
+ *  `weight` est une largeur RELATIVE facultative : la largeur reelle vaut
+ *  weight / somme des weights x largeur du tableau. Sans elle, la colonne
+ *  reprend le poids par defaut de son `dataKey` (voir getColumnStyles).
+ *  Elle existe parce que ces poids par defaut sont GLOBAUX : « description »
+ *  ou « status » servent a plusieurs rapports, et elargir une colonne pour
+ *  l\'un retrecissait celle d\'un autre. Un rapport qui a besoin d\'un
+ *  reglage propre le pose ici, sans effet de bord ailleurs. */
+export interface PdfColumn {
+  header: string;
+  dataKey: string;
+  weight?: number;
+}
+
 export interface PdfReportConfig {
   title: string;
   subtitle?: string;
   vehicleName?: string;
   dateRange?: string;
   statistics?: Record<string, string>;
-  columns: { header: string; dataKey: string }[];
+  columns: PdfColumn[];
   data: any[];
   formatters?: Record<string, (value: any, row: any) => string>;
 }
@@ -30,7 +44,7 @@ export interface GroupedPdfReportConfig {
   dateRange?: string;
   /** Top statistic cards (global totals) */
   statistics?: Record<string, string>;
-  columns: { header: string; dataKey: string }[];
+  columns: PdfColumn[];
   groups: PdfGroup[];
   formatters?: Record<string, (value: any, row: any) => string>;
   /** Optional grand-total line shown after the last group */
@@ -265,8 +279,13 @@ export class PdfExportService {
     return this.logoDataUrl;
   }
 
-  /** Texte du footer rebrandé Calypso (remplace l'ancien « GIS Fleet Management »). */
-  private readonly footerBrand = 'Calypso · Belive';
+  /** Texte du pied de page de tous les exports PDF.
+   *  « Belive » retiré le 10/09/2026 : c'est la société éditrice, pas la marque
+   *  vue par le client. Un rapport remis à un client français portait donc le nom
+   *  d'une société tunisienne qui ne lui dit rien. Calypso est la marque du
+   *  produit et se suffit. S'applique à TOUS les rapports, pas au seul rapport
+   *  des réparations. */
+  private readonly footerBrand = 'Calypso';
 
   private sanitizeText(text: string): string {
     if (!text) return '';
@@ -274,7 +293,11 @@ export class PdfExportService {
     // Helvetica in jsPDF supports Latin-1 (U+00A0–U+00FF) which includes all French accents
     return text
       .normalize('NFC')
-      .replace(/[^\x20-\x7E\xA0-\xFF]/g, (ch) => {
+      // € est HORS Latin-1 mais present dans WinAnsi, l’encodage que jsPDF
+      // applique aux polices standard : verifie, Helvetica le dessine
+      // correctement en normal comme en gras. Sans cette exception il tombait
+      // dans la table ci-dessous, n’y trouvait rien et disparaissait du PDF.
+      .replace(/[^\x20-\x7E\xA0-\xFF\u20AC]/g, (ch) => {
         const map: Record<string, string> = {
           '\u2019': "'", '\u2018': "'", '\u201C': '"', '\u201D': '"',
           '\u2013': '-', '\u2014': '-', '\u2026': '...',
@@ -416,9 +439,26 @@ export class PdfExportService {
         doc.setFont('helvetica', 'normal');
         const footerY = doc.internal.pageSize.getHeight() - 7;
         doc.text(`${this.footerBrand} · ${this.sanitizeText(config.title)}`, 10, footerY);
-        doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
       }
     });
+
+    // Pagination ecrite APRES le tableau. Dans didDrawPage,
+    // getNumberOfPages() ne connait que les pages deja creees : un rapport de
+    // deux pages affichait donc « Page 1 / 1 » sur la premiere. On repasse une
+    // fois le document termine, quand le total est enfin connu.
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Page ${i} / ${totalPages}`,
+        doc.internal.pageSize.getWidth() - 10,
+        doc.internal.pageSize.getHeight() - 7,
+        { align: 'right' }
+      );
+    }
 
     // ── Save ──
     const filename = this.sanitizeFilename(config.title);
@@ -503,7 +543,6 @@ export class PdfExportService {
       // encore « GIS Fleet Management » alors que l'export simple était déjà
       // passé à footerBrand — deux marques différentes selon le rapport.
       doc.text(`${this.footerBrand} - ${this.sanitizeText(config.title)}`, 10, footerY);
-      doc.text(`Page ${pageNum} / ${pageCount}`, pageWidth - 10, footerY, { align: 'right' });
     };
 
     // ── Render each group ──
@@ -612,13 +651,31 @@ export class PdfExportService {
     // when it actually renders a table on that page — the grand total alone wouldn't).
     drawPageChrome();
 
+    // Pagination ecrite APRES le tableau. Dans didDrawPage,
+    // getNumberOfPages() ne connait que les pages deja creees : un rapport de
+    // deux pages affichait donc « Page 1 / 1 » sur la premiere. On repasse une
+    // fois le document termine, quand le total est enfin connu.
+    const totalPages = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.setFont('helvetica', 'normal');
+      doc.text(
+        `Page ${i} / ${totalPages}`,
+        doc.internal.pageSize.getWidth() - 10,
+        doc.internal.pageSize.getHeight() - 7,
+        { align: 'right' }
+      );
+    }
+
     // ── Save ──
     const filename = this.sanitizeFilename(config.title);
     const dateStr = new Date().toISOString().split('T')[0];
     doc.save(`${filename}_${dateStr}.pdf`);
   }
 
-  private getColumnStyles(columns: { header: string; dataKey: string }[]): Record<number, any> {
+  private getColumnStyles(columns: PdfColumn[]): Record<number, any> {
     const styles: Record<number, any> = {};
     const tableWidth = 190; // A4 (210mm) - 10mm margins each side
 
@@ -656,7 +713,9 @@ export class PdfExportService {
     };
 
     const defaultWeight = 1.2;
-    const weights = columns.map(col => widthWeights[col.dataKey] || defaultWeight);
+    // Priorite au poids porte par la colonne elle-meme, puis au poids par
+    // defaut de son dataKey, puis au repli.
+    const weights = columns.map(col => col.weight ?? widthWeights[col.dataKey] ?? defaultWeight);
     const totalWeight = weights.reduce((sum, w) => sum + w, 0);
 
     columns.forEach((_col, i) => {
@@ -676,7 +735,7 @@ export class PdfExportService {
 
   // ── Column definitions per report type ──
 
-  getColumnsForReport(type: string, options?: any): { header: string; dataKey: string }[] {
+  getColumnsForReport(type: string, options?: any): PdfColumn[] {
     switch (type) {
       case 'trips':
         // Calypso 7 (correction client) : la colonne \u00ab Type \u00bb n a aucune
@@ -776,17 +835,30 @@ export class PdfExportService {
           { header: 'Coût est.', dataKey: 'costEstimated' },
           { header: 'Conso. moy.', dataKey: 'avgConsumption' }
         ];
+      // Recette du 10/09/2026 : la colonne « Référence » est retirée. C'est un
+      // identifiant interne de la réparation, sans valeur pour le lecteur du
+      // rapport, et il mangeait la largeur dont Description et Fournisseur ont
+      // besoin. Le champ reste en base et sur la fiche détail.
       case 'costs':
+        // Largeurs mesurees, pas estimees : a la police du corps (Helvetica 7)
+        // et avec 5 mm de marges internes, « 1 385,28 EUR » occupe 20,4 mm et
+        // « Complétée » 16,9 mm. Aux poids globaux ces colonnes tombaient a
+        // 16,6 mm et coupaient le montant en deux (« 327,60 / EUR »).
+        // Largeurs mesurees a la police du corps (Helvetica 7) avec 5 mm de
+        // marges internes. Le passage de « EUR » au symbole € rend 3,9 mm par
+        // montant : ils repartent a Description (49 mm pour la plus longue) et
+        // a Fournisseur (32,6 mm pour « Garage Renault Lyon Est »), qui
+        // passaient jusqu’ici sur deux lignes.
+        // Statut retire : le handler de creation force Status a completed, si
+        // bien que la colonne repetait « Complétée » sur chaque ligne.
         return [
-          { header: 'Véhicule', dataKey: 'vehicleName' },
-          { header: 'Date', dataKey: 'date' },
-          { header: 'Référence', dataKey: 'reference' },
-          { header: 'Description', dataKey: 'description' },
-          { header: 'Fournisseur', dataKey: 'supplierName' },
-          { header: 'Main d\'oeuvre', dataKey: 'laborCostFormatted' },
-          { header: 'Pièces', dataKey: 'partsCostFormatted' },
-          { header: 'Total', dataKey: 'totalCostFormatted' },
-          { header: 'Statut', dataKey: 'status' }
+          { header: 'Immatriculation', dataKey: 'vehicleName', weight: 1.75 },
+          { header: 'Date', dataKey: 'date', weight: 1 },
+          { header: 'Description', dataKey: 'description', weight: 3.7 },
+          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.3 },
+          { header: 'Main d\'oeuvre', dataKey: 'laborCostFormatted', weight: 1.5 },
+          { header: 'Pièces', dataKey: 'partsCostFormatted', weight: 1.15 },
+          { header: 'Total', dataKey: 'totalCostFormatted', weight: 1.2 }
         ];
       // Recette du 10/09/2026 : le statut ne sert plus à rien dans l'export —
       // le rapport ne contient que des entretiens réalisés depuis que les
@@ -794,17 +866,19 @@ export class PdfExportService {
       // « Terminée » sur toutes les lignes. Le fournisseur la remplace :
       // c'est l'information qu'on cherche sur un historique d'entretien.
       case 'maintenance':
+        // Largeurs mesurees (Helvetica 7 pour le corps, 7,5 gras pour les
+        // en-tetes, 5 mm de marges internes) : « Immatriculation » 24,7 mm,
+        // « Révision périodique » 26,5 mm, « Garage Renault Lyon Est » 32,6 mm,
+        // « 154 546 km » 17,8 mm, « 265,00 € » 14,5 mm. Le reste va a
+        // Description, seule colonne dont le retour a la ligne est normal.
         return [
-          { header: 'Véhicule', dataKey: 'vehicleName' },
-          { header: 'Date', dataKey: 'date' },
-          { header: 'Type', dataKey: 'type' },
-          { header: 'Description', dataKey: 'description' },
-          { header: 'Fournisseur', dataKey: 'supplierName' },
-          { header: 'Coût', dataKey: 'costFormatted' },
-          // « Km » et non « Kilométrage » : l'intitulé long se coupait en deux
-          // lignes (« Kilométrag / e ») dans une colonne dont la largeur ne doit
-          // pas augmenter — la valeur porte déjà l'unité (« 154 546 km »).
-          { header: 'Km', dataKey: 'mileage' }
+          { header: 'Immatriculation', dataKey: 'vehicleName', weight: 2 },
+          { header: 'Date', dataKey: 'date', weight: 1.15 },
+          { header: 'Type', dataKey: 'type', weight: 2.1 },
+          { header: 'Description', dataKey: 'description', weight: 4.1 },
+          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.65 },
+          { header: 'Coût', dataKey: 'costFormatted', weight: 1.25 },
+          { header: 'Km', dataKey: 'mileage', weight: 1.4 }
         ];
       default:
         return [
