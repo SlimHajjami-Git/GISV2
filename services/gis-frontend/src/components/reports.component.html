@@ -327,25 +327,40 @@
             <!-- Summary stats cards -->
             <div class="stats-cards-row">
               @if (monthlyCostReportType === 'costs') {
-                <div class="stat-card">
-                  <span class="stat-label">KM Total</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20 8 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M20 20 16 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 5v3M12 11v3M12 17v2"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value">{{ monthlyCostReport.totalKm | appDistance:0 }}</span>
+                  <span class="stat-label">KM Total</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Carburant</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v14"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3 20h12"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M6 9h5"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M16 8l3 3v6a1.5 1.5 0 0 0 3 0v-8l-3-3"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value accent">{{ formatCurrency(monthlyCostReport.totalFuelCostDzd) }}</span>
+                  <span class="stat-label">Carburant</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Entretien</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--ambre"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M14.5 5.5a4 4 0 1 0 3.9 5L21 13l-2 2-1.5-1.5L16 15l-1.5-1.5-4.6 4.6a2.1 2.1 0 0 1-3-3l4.6-4.6A4 4 0 0 1 14.5 5.5Z"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value warning">{{ formatCurrency(monthlyCostReport.totalMaintenanceCostDzd) }}</span>
+                  <span class="stat-label">Entretien</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Réparation</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--rouge"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a3.5 3.5 0 0 0 4.6 4.6l-8 8a2.3 2.3 0 0 1-3.2-3.2Z"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 5l3 3"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value danger">{{ formatCurrency(monthlyCostReport.totalRepairCostDzd) }}</span>
+                  <span class="stat-label">Réparation</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Coût Total</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--ardoise"><svg viewBox="0 0 24 24" aria-hidden="true"><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="3" y="6" width="18" height="13" rx="2"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3 10h18"/><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="17" cy="14.5" r="1.2"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value">{{ formatCurrency(monthlyCostReport.totalCostDzd) }}</span>
+                  <span class="stat-label">Coût Total</span>
+                  </span>
                 </div>
                 <!-- Sixieme carte : repartition des trois postes de depense. Meme
                      gabarit que les cinq cartes de chiffres, donc meme taille dans la
@@ -367,21 +382,33 @@
                   </div>
                 }
               } @else {
-                <div class="stat-card">
-                  <span class="stat-label">KM Total</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20 8 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M20 20 16 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 5v3M12 11v3M12 17v2"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value">{{ monthlyCostReport.totalKm | appDistance:0 }}</span>
+                  <span class="stat-label">KM Total</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Litres Total</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20V6a2 2 0 0 1 2-2h5a2 2 0 0 1 2 2v14"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3 20h12"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M6 9h5"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M16 8l3 3v6a1.5 1.5 0 0 0 3 0v-8l-3-3"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value accent">{{ monthlyCostReport.totalFuelLiters | appVolume:0 }}</span>
+                  <span class="stat-label">Litres Total</span>
+                  </span>
                 </div>
-                <div class="stat-card">
-                  <span class="stat-label">Coût Carburant</span>
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--ardoise"><svg viewBox="0 0 24 24" aria-hidden="true"><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="8"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M15 9.5a3.5 3.5 0 1 0 0 5"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M9 11h4M9 13h4"/></svg></span>
+                  <span class="stat-corps">
                   <span class="stat-value">{{ formatCurrency(monthlyCostReport.totalFuelCostDzd) }}</span>
+                  <span class="stat-label">Coût Carburant</span>
+                  </span>
                 </div>
-                <div class="stat-card">
+                <div class="stat-card stat-card--icone">
+                  <span class="stat-icone stat-icone--vert"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="6" y="12" width="3" height="6" rx="1"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="11" y="8" width="3" height="10" rx="1"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="16" y="4" width="3" height="14" rx="1"/></svg></span>
+                  <span class="stat-corps">
+                  <span class="stat-value">{{ monthlyCostReport.totalKm > 0 ? formatDecimal((monthlyCostReport.totalFuelLiters / monthlyCostReport.totalKm) * 100) : '-' }} L/100km</span>
                   <span class="stat-label">Conso. Moyenne</span>
-                  <span class="stat-value">{{ monthlyCostReport.totalKm > 0 ? ((monthlyCostReport.totalFuelLiters / monthlyCostReport.totalKm) * 100).toFixed(2) : '0' }} L/100km</span>
+                  </span>
                 </div>
               }
             </div>
@@ -463,15 +490,20 @@
                           <td class="num"><strong>{{ formatCurrency(dept.totalRepairCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(dept.totalOtherCostDzd) }}</strong></td>
                           <td class="num total-cell"><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? (dept.totalCostDzd / dept.totalKm).toFixed(2) : '0' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelCostDzd / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? (((dept.totalMaintenanceCostDzd + dept.totalRepairCostDzd) / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                          <!-- Ratios au format francais, comme les lignes au-dessus : ils
+                               sortaient de toFixed, donc « 0.13 » a cote de « 250,77 € ». -->
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal(dept.totalCostDzd / dept.totalKm) : '-' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal((dept.totalFuelCostDzd / dept.totalKm) * 100) : '-' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal(((dept.totalMaintenanceCostDzd + dept.totalRepairCostDzd) / dept.totalKm) * 100) : '-' }}</strong></td>
                         } @else {
-                          <td class="num"><strong>{{ formatNumber(dept.totalKm) }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalFuelLiters.toFixed(1) }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalFuelLiters.toFixed(1) }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelLiters / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? ((dept.totalFuelLiters / dept.totalKm) * 100).toFixed(2) : '0' }}</strong></td>
+                          <!-- Les trois colonnes « mois precedent » recopiaient le mois
+                               COURANT : la ligne de total contredisait ses propres lignes
+                               vehicule, qui affichent bien deux mois differents. -->
+                          <td class="num"><strong>{{ formatNumber(dept.totalKmPr) }}</strong></td>
+                          <td class="num"><strong>{{ formatLitres(dept.totalFuelLiters) }}</strong></td>
+                          <td class="num"><strong>{{ formatLitres(dept.totalFuelLitersPr) }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal((dept.totalFuelLiters / dept.totalKm) * 100) : '-' }}</strong></td>
+                          <td class="num"><strong>{{ dept.totalKmPr > 0 ? formatDecimal((dept.totalFuelLitersPr / dept.totalKmPr) * 100) : '-' }}</strong></td>
                         }
                       </tr>
                     </tfoot>
