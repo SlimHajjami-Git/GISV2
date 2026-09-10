@@ -3885,6 +3885,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return UserPreferencesService.currencySymbol(this.userPrefs.current.currency);
   }
 
+  /** Volume a une decimale, au format francais. */
+  formatLitres(value: number | null | undefined): string {
+    return (value ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+
   /** Nombre a deux decimales au format francais (virgule, espace des
    *  milliers). toFixed rendait « 0.13 » a cote de « 250,77 € » : deux
    *  conventions decimales dans un meme tableau. */
@@ -5811,6 +5816,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
     // Ratio a deux decimales : idem.
     const rt = (v: any) => pourPdf ? this.formatDecimal(Number(v) || 0) : n2(v);
+    // Volume : une decimale.
+    const lt = (v: any) => pourPdf ? this.formatLitres(Number(v) || 0) : n2(v);
     // Distance : le PDF porte l’unite, le tableur non.
     const km = (v: any) => pourPdf ? this.formatNumber(Number(v) || 0) + ' km' : n2(v);
 
@@ -5832,11 +5839,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: 'Conducteur', dataKey: 'driverName', weight: 3 },
           { header: 'Immatriculation', dataKey: 'vehicle', weight: 2.6 },
           { header: 'Km', dataKey: 'km', weight: 1.7 },
-          { header: 'Km PR', dataKey: 'kmPr', weight: 1.7 },
-          { header: 'Total (L)', dataKey: 'fuelLiters', weight: 1.8 },
-          { header: 'PR (L)', dataKey: 'fuelLitersPr', weight: 1.8 },
+          { header: 'Km mois préc.', dataKey: 'kmPr', weight: 2.1 },
+          { header: 'Litres', dataKey: 'fuelLiters', weight: 1.8 },
+          { header: 'Litres mois préc.', dataKey: 'fuelLitersPr', weight: 2.4 },
           { header: 'L/100km', dataKey: 'consumptionPer100Km', weight: 1.8 },
-          { header: 'L/100km PR', dataKey: 'consumptionPrPer100Km', weight: 2 }
+          { header: 'L/100km mois préc.', dataKey: 'consumptionPrPer100Km', weight: 2.6 }
         ];
 
     const data = (r.vehicles || []).map((v: any) => ({
@@ -5854,8 +5861,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       costPerKm: rt(v.costPerKm),
       fuelPer100Km: rt(v.fuelPer100Km),
       maintRepairPer100Km: rt(v.maintenanceRepairPer100Km),
-      fuelLiters: rt(v.fuelLiters),
-      fuelLitersPr: rt(v.fuelLitersPr),
+      // Volume a UNE decimale : « 145,8 L », pas « 145,80 ».
+      fuelLiters: lt(v.fuelLiters),
+      fuelLitersPr: lt(v.fuelLitersPr),
       consumptionPer100Km: rt(v.consumptionPer100Km),
       consumptionPrPer100Km: rt(v.consumptionPrPer100Km)
     }));
@@ -5870,7 +5878,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
         }
       : {
           'KM total': String(km(r.totalKm)),
-          'Carburant (L)': String(rt(r.totalFuelLiters))
+          // Le PDF et le tableur ne portaient ni le cout du mois ni la
+          // consommation moyenne, deux chiffres pourtant affiches a l’ecran
+          // juste avant de cliquer sur Exporter.
+          'Litres': String(pourPdf ? this.formatLitres(r.totalFuelLiters) + ' L' : n2(r.totalFuelLiters)),
+          'Coût carburant': String(mt(r.totalFuelCostDzd)),
+          'Conso. moyenne': String(
+            r.totalKm > 0
+              ? (pourPdf
+                  ? this.formatDecimal((r.totalFuelLiters / r.totalKm) * 100) + ' L/100km'
+                  : n2((r.totalFuelLiters / r.totalKm) * 100))
+              : (pourPdf ? '-' : 0))
         };
 
     return {

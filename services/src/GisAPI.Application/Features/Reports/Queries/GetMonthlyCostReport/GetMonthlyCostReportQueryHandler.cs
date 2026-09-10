@@ -26,6 +26,13 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
         var companyId = _tenantService.CompanyId ?? 0;
         var startDate = DateTime.SpecifyKind(new DateTime(request.Year, request.Month, 1), DateTimeKind.Utc);
         var endDate = DateTime.SpecifyKind(startDate.AddMonths(1), DateTimeKind.Utc);
+        // Mois PRECEDENT : les colonnes « PR » du rapport servent a comparer le
+        // mois affiche au precedent. Elles existaient dans le contrat de donnees
+        // mais recopiaient litteralement leurs voisines (« Same as GPS KM for
+        // now ») : le client croyait disposer d’un point de comparaison alors
+        // qu’il relisait deux fois le meme chiffre, et l’ecart — le seul signal
+        // utile — ne pouvait par construction jamais apparaitre.
+        var startPrevDate = DateTime.SpecifyKind(startDate.AddMonths(-1), DateTimeKind.Utc);
 
         // 1. Fetch vehicles scoped to current company
         // Explicit CompanyId filter (defense in depth; system admins also get scoped to their
@@ -126,36 +133,20 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .Select(r => new { r.VehicleId, r.TotalCost })
             .ToListAsync(ct);
 
-        // 5. Compute mileage from GPS odometer readings (start of month vs end of month)
+        // 5. Kilometrage du mois affiche, puis du mois PRECEDENT.
+        //
+        // La regle depend de l’EQUIPEMENT, pas de l’offre commerciale : compteur
+        // du boitier quand il y en a un branche au bus CAN (Calypso GPS), sinon
+        // releves saisis par le client — pleins, entretiens, reparations,
+        // depenses (Calypso GPA, ou vehicule sans boitier). Un vehicule equipe
+        // qui n’a pas roule du mois doit afficher 0 km depuis son boitier, et
+        // surtout pas basculer sur les saisies.
         var deviceVehicleMap = vehicles
             .Where(v => v.GpsDeviceId.HasValue)
             .ToDictionary(v => v.GpsDeviceId!.Value, v => v.Id);
         var deviceIds = deviceVehicleMap.Keys.ToList();
 
-        var mileagePerVehicle = new Dictionary<int, decimal>();
-
-        // Vehicules dont le BOITIER a effectivement remonte un compteur, donc
-        // equipes d’un boitier branche au bus CAN. C’est l’EQUIPEMENT qui decide
-        // de la source, pas la valeur trouvee : un vehicule equipe qui n’a pas
-        // roule du mois doit afficher 0 km depuis son boitier, et surtout pas
-        // basculer sur les saisies du client.
-        var kilometrageDepuisBoitier = new HashSet<int>();
-
-        if (deviceIds.Any())
-        {
-            // Take the CHRONOLOGICALLY first and last odometer values per
-            // device, not MIN/MAX. The firmware on some NEMS L boîtiers
-            // sporadically emits low-value odometer "ghost" readings in
-            // the middle of the month (e.g. device 250 TU 5217 emitted
-            // 50,176 alongside the real 58,000-59,000 range from April 9
-            // onwards). Naive MAX-MIN turned that into "9,459 km in
-            // April" for a vehicle that actually did 1,528 km.
-            //
-            // Chronological first/last avoids this: outliers in the
-            // middle don't affect the answer because we only read the
-            // earliest and latest valid frames. Postgres DISTINCT ON
-            // computes this with a single index scan per device.
-            const string firstSql = @"
+        const string firstSql = @"
 SELECT DISTINCT ON (device_id)
     device_id   AS ""DeviceId"",
     odometer_km AS ""Odo""
@@ -168,7 +159,7 @@ WHERE device_id = ANY({0})
   AND odometer_km <> 1048574
 ORDER BY device_id, recorded_at ASC;
 ";
-            const string lastSql = @"
+        const string lastSql = @"
 SELECT DISTINCT ON (device_id)
     device_id   AS ""DeviceId"",
     odometer_km AS ""Odo""
@@ -181,71 +172,79 @@ WHERE device_id = ANY({0})
   AND odometer_km <> 1048574
 ORDER BY device_id, recorded_at DESC;
 ";
-            var deviceIdsArr = deviceIds.ToArray();
-            var firstOdos = await _context.Database
-                .SqlQueryRaw<OdometerEndpoint>(firstSql, deviceIdsArr, startDate, endDate)
-                .ToListAsync(ct);
-            var lastOdos = await _context.Database
-                .SqlQueryRaw<OdometerEndpoint>(lastSql, deviceIdsArr, startDate, endDate)
-                .ToListAsync(ct);
+        // Une seule implementation, appelee pour le mois courant et pour le
+        // precedent : deux copies auraient fini par diverger.
+        async Task<Dictionary<int, decimal>> KilometrageAsync(DateTime debut, DateTime finExclue)
+        {
+            var parVehicule = new Dictionary<int, decimal>();
+            var depuisBoitier = new HashSet<int>();
 
-            var firstMap = firstOdos.ToDictionary(x => x.DeviceId, x => x.Odo);
-            var lastMap = lastOdos.ToDictionary(x => x.DeviceId, x => x.Odo);
-
-            foreach (var deviceId in deviceIds)
+            if (deviceIds.Any())
             {
-                if (firstMap.TryGetValue(deviceId, out var first)
-                    && lastMap.TryGetValue(deviceId, out var last)
-                    && deviceVehicleMap.TryGetValue(deviceId, out var vehicleId))
+                var deviceIdsArr = deviceIds.ToArray();
+                var premiers = await _context.Database
+                    .SqlQueryRaw<OdometerEndpoint>(firstSql, deviceIdsArr, debut, finExclue)
+                    .ToListAsync(ct);
+                var derniers = await _context.Database
+                    .SqlQueryRaw<OdometerEndpoint>(lastSql, deviceIdsArr, debut, finExclue)
+                    .ToListAsync(ct);
+
+                var mapPremier = premiers.ToDictionary(x => x.DeviceId, x => x.Odo);
+                var mapDernier = derniers.ToDictionary(x => x.DeviceId, x => x.Odo);
+
+                foreach (var deviceId in deviceIds)
                 {
-                    // Clamp to zero if the device's odometer reset
-                    // mid-month — surfacing a negative number would be
-                    // worse than under-reporting.
-                    var km = Math.Max(0, last - first);
-                    mileagePerVehicle[vehicleId] = km;
-                    kilometrageDepuisBoitier.Add(vehicleId);
+                    if (mapPremier.TryGetValue(deviceId, out var premier)
+                        && mapDernier.TryGetValue(deviceId, out var dernier)
+                        && deviceVehicleMap.TryGetValue(deviceId, out var vehicleId))
+                    {
+                        // Ramene a zero si le compteur du boitier a ete remis a
+                        // zero en cours de periode : un nombre negatif serait pire
+                        // qu’un kilometrage sous-estime.
+                        parVehicule[vehicleId] = Math.Max(0, dernier - premier);
+                        depuisBoitier.Add(vehicleId);
+                    }
                 }
             }
-        }
 
-        // 5 bis. Repli sur les releves compteur SAISIS, pour tout vehicule
-        // dont les trames GPS n’ont rien donne.
-        //
-        // Le compteur du boitier n’existe que sur l’offre Calypso GPS, et
-        // seulement sur les boitiers branches au bus CAN. Sur l’offre Calypso
-        // GPA, et sur tout vehicule sans boitier, ce rapport affichait donc
-        // « 0 km », puis « Cout/KM : 0,00 », « Carb./100KM : 0,00 » et
-        // « Ent+Rep/100KM : 0,00 » : non pas des cases vides, mais des
-        // chiffres FAUX affirmant que la flotte n’avait pas roule.
-        //
-        // Mesure du 10/09/2026 sur le jeu de recette : juillet 2026 affichait
-        // 0 km pour 12 vehicules ayant reellement parcouru 21 180 km, soit un
-        // cout d’exploitation de 0,323 EUR/km annonce a 0,00.
-        //
-        // Les releves viennent des quatre ecrans de saisie (pleins,
-        // entretiens, reparations, depenses) via OdometerReadings, et la
-        // distance est calculee par OdometerDistance : le meme code que les
-        // rapports de couts, pour qu’un meme vehicule ne rende pas deux
-        // kilometrages differents selon le rapport ouvert.
-        var sansCompteurBoitier = vehicles
-            .Where(v => !kilometrageDepuisBoitier.Contains(v.Id))
-            .Select(v => v.Id)
-            .ToList();
+            var sansCompteurBoitier = vehicles
+                .Where(v => !depuisBoitier.Contains(v.Id))
+                .Select(v => v.Id)
+                .ToList();
 
-        if (sansCompteurBoitier.Count > 0)
-        {
-            // endDate est EXCLUE, comme partout ailleurs dans ce handler :
-            // une borne au jour ferait disparaitre les saisies du dernier jour.
-            var releves = await OdometerReadings.LoadAsync(
-                _context, companyId, sansCompteurBoitier, startDate, endDate, ct);
-
-            foreach (var vehicleId in sansCompteurBoitier)
+            if (sansCompteurBoitier.Count > 0)
             {
-                var distance = OdometerDistance.Compute(releves[vehicleId]);
-                if (distance.Measurable)
-                    mileagePerVehicle[vehicleId] = distance.DistanceKm;
+                var releves = await OdometerReadings.LoadAsync(
+                    _context, companyId, sansCompteurBoitier, debut, finExclue, ct);
+
+                foreach (var vehicleId in sansCompteurBoitier)
+                {
+                    var distance = OdometerDistance.Compute(releves[vehicleId]);
+                    if (distance.Measurable)
+                        parVehicule[vehicleId] = distance.DistanceKm;
+                }
             }
+
+            return parVehicule;
         }
+
+        var mileagePerVehicle = await KilometrageAsync(startDate, endDate);
+        var mileagePrevPerVehicle = await KilometrageAsync(startPrevDate, startDate);
+
+        // Litres du mois precedent, pour la colonne « C. PR (L) ».
+        var fuelEntriesPrev = await _context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId
+                     && f.VehicleId.HasValue
+                     && vehicleIds.Contains(f.VehicleId.Value)
+                     && f.InvoiceDate >= startPrevDate
+                     && f.InvoiceDate < startDate)
+            .Select(f => new { f.VehicleId, f.Volume })
+            .ToListAsync(ct);
+
+        var litersPrevByVehicle = fuelEntriesPrev
+            .Where(f => f.VehicleId.HasValue)
+            .GroupBy(f => f.VehicleId!.Value)
+            .ToDictionary(g => g.Key, g => g.Sum(f => f.Volume));
 
         // 6. Group fuel entries by vehicle
         var fuelByVehicle = fuelEntries
@@ -273,6 +272,9 @@ ORDER BY device_id, recorded_at DESC;
         foreach (var vehicle in vehicles)
         {
             var km = mileagePerVehicle.GetValueOrDefault(vehicle.Id, 0);
+            // Mois precedent, pour les colonnes de comparaison « PR ».
+            var kmPrev = mileagePrevPerVehicle.GetValueOrDefault(vehicle.Id, 0);
+            var litersPrev = litersPrevByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var hasFuel = fuelByVehicle.TryGetValue(vehicle.Id, out var fuel);
             var fuelCost = (hasFuel ? fuel!.TotalCost : 0) + fuelCosts.GetValueOrDefault(vehicle.Id, 0);
             var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
@@ -294,10 +296,10 @@ ORDER BY device_id, recorded_at DESC;
                 DepartmentId = vehicle.DepartmentId,
                 DepartmentName = vehicle.Department?.Name ?? "Non assigné",
                 Km = km,
-                KmPr = km, // Same as GPS KM for now
+                KmPr = kmPrev,
                 FuelCostDzd = fuelCost,
                 FuelLiters = fuelLiters,
-                FuelLitersPr = fuelLiters, // Same for now
+                FuelLitersPr = litersPrev,
                 MaintenanceCostDzd = maintCost,
                 RepairCostDzd = repairCost,
                 OtherCostDzd = otherCost,
@@ -306,7 +308,7 @@ ORDER BY device_id, recorded_at DESC;
                 FuelPer100Km = km > 0 ? Math.Round((fuelCost / km) * 100, 2) : 0,
                 MaintenanceRepairPer100Km = km > 0 ? Math.Round(((maintCost + repairCost) / km) * 100, 2) : 0,
                 ConsumptionPer100Km = km > 0 ? Math.Round((fuelLiters / km) * 100, 2) : 0,
-                ConsumptionPrPer100Km = km > 0 ? Math.Round((fuelLiters / km) * 100, 2) : 0
+                ConsumptionPrPer100Km = kmPrev > 0 ? Math.Round((litersPrev / kmPrev) * 100, 2) : 0
             };
             vehicleRows.Add(row);
         }
