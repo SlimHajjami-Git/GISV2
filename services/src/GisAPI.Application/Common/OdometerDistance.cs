@@ -16,6 +16,7 @@ namespace GisAPI.Application.Common;
 ///     frappe à l'import) est ignoré comme relevé, PAS comme intervalle. Critère :
 ///     ses deux voisins sont cohérents entre eux (0 &lt; Δ ≤ <see cref="MaxSegmentKm"/>)
 ///     alors qu'il s'écarte des deux.</item>
+///   <item>Un écart NUL est neutre : zéro kilomètre ajouté, aucune rupture.</item>
 ///   <item>La distance est la somme des écarts cohérents (0 &lt; Δ ≤ <see cref="MaxSegmentKm"/>)
 ///     entre relevés conservés consécutifs. Un écart hors bornes est une RUPTURE de
 ///     série (changement de compteur, deux imports incompatibles) : il n'est pas
@@ -73,7 +74,15 @@ public static class OdometerDistance
         for (int i = 1; i < kept.Count; i++)
         {
             var dKm = kept[i].Km - kept[i - 1].Km;
-            if (dKm <= 0 || dKm > MaxSegmentKm) { breaks++; continue; }
+            // Un ecart NUL n’est pas une anomalie : le vehicule n’a pas roule
+            // entre les deux relevés, ou le second reprend le compteur du
+            // premier — cas courant quand l’atelier, le plein et la depense du
+            // meme passage notent la meme valeur a quelques jours d’ecart. Il
+            // ajoute zero kilometre, ce qui est exact, et ne doit pas faire
+            // basculer tout le vehicule en « kilometrage incertain ». Seul un
+            // ecart NEGATIF decrit un vrai recul de compteur.
+            if (dKm == 0) continue;
+            if (dKm < 0 || dKm > MaxSegmentKm) { breaks++; continue; }
             segKm += dKm;
             var k = (kept[i].Date.Year, kept[i].Date.Month);
             monthly[k] = monthly.GetValueOrDefault(k) + dKm;

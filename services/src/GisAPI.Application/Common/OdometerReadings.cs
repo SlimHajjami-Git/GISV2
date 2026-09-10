@@ -96,10 +96,23 @@ public static class OdometerReadings
             .Select(c => new { c.VehicleId, Km = (long)c.Mileage!.Value, Date = c.Date })
             .ToListAsync(ct);
 
+        // UN relevé par véhicule et par jour calendaire, le plus haut.
+        //
+        // Le même passage à l’atelier laisse souvent le même compteur sur deux
+        // ou trois écrans : un plein, l’entretien du jour, la dépense qui le
+        // facture, tous à 205 738 km. Deux relevés identiques consécutifs
+        // donnent un écart de zéro, que OdometerDistance compte — à raison, pour
+        // un vrai recul de compteur — comme une RUPTURE. Résultat mesuré le
+        // 10/09/2026 : 12 véhicules sur 12 marqués « kilométrage incertain »
+        // avec 4 à 6 ruptures chacun, un « ? » sur chaque ligne du rapport, pour
+        // une distance pourtant exacte. On dédoublonne ici, à la source, pour
+        // tous les rapports : le compteur d’un jour est sa plus haute valeur.
         return fromFuel
             .Concat(fromMaintenance)
             .Concat(fromRepairs)
             .Concat(fromCosts)
+            .GroupBy(r => (r.VehicleId, Jour: r.Date.Date))
+            .Select(g => g.OrderByDescending(r => r.Km).First())
             .ToLookup(r => r.VehicleId, r => (r.Km, r.Date));
     }
 }

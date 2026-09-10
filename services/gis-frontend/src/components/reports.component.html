@@ -954,25 +954,25 @@
                       <tr>
                         @if (isRanking) {
                           <th class="rank-col">#</th>
-                          <th>Véhicule</th>
-                          <th class="num">Kilométrage (km)</th>
+                          <th>Immatriculation</th>
+                          <th class="num">Km</th>
                           <th class="num">Coût total</th>
                           <th class="num">Coût {{ getCurrencyCode() }}/km</th>
                           <th class="num">Carburant</th>
                           <th class="num">Entretien</th>
                           <th class="num">Réparations</th>
-                          <th class="num">Autres dépenses</th>
+                          <th class="num">Autres</th>
                         } @else {
-                          <th>Véhicule</th>
-                          <th class="num">Kilométrage (km)</th>
+                          <th>Immatriculation</th>
+                          <th class="num">Km</th>
                           <th class="num">Carburant</th>
                           <th class="num">Entretiens</th>
                           <th class="num">Réparations</th>
-                          <th class="num">Autres dépenses</th>
+                          <th class="num">Autres</th>
                           <th class="num">Coût total</th>
                           <th class="num">Coût {{ getCurrencyCode() }}/km</th>
                         }
-                        <th class="num">Écart vs moyenne</th>
+                        <th class="num">Écart vs moy.</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -980,7 +980,11 @@
                         <tr [class.muted]="v.costPerKm == null">
                           @if (isRanking) {
                             <td class="rank-cell">{{ v.rank }}</td>
-                            <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                            <!-- Immatriculation SEULE : le nom interne (« Logistique 01 ») ne dit rien
+                                 au lecteur du rapport, et doubler nom + plaque prenait la
+                                 largeur de deux colonnes de chiffres. Repli sur le nom si la
+                                 plaque manque. Le nom reste dans l’info-bulle. -->
+                            <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
                             <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
                             <td class="num total-cell">{{ formatCurrency(v.totalCost) }}</td>
                             <td class="num">{{ formatCostPerKm(v.costPerKm) }}</td>
@@ -989,7 +993,11 @@
                             <td class="num">{{ formatCurrency(v.repairCost) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCost) }}</td>
                           } @else {
-                            <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                            <!-- Immatriculation SEULE : le nom interne (« Logistique 01 ») ne dit rien
+                                 au lecteur du rapport, et doubler nom + plaque prenait la
+                                 largeur de deux colonnes de chiffres. Repli sur le nom si la
+                                 plaque manque. Le nom reste dans l’info-bulle. -->
+                            <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
                             <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
                             <td class="num">{{ formatCurrency(v.fuelCost) }}</td>
                             <td class="num">{{ formatCurrency(v.maintenanceCost) }}</td>
