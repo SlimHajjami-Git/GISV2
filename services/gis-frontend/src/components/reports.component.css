@@ -2512,6 +2512,22 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .export-btn-group .export-btn-sm[disabled] { opacity: .5; cursor: not-allowed; }
 .report-toolbar-export { display: flex; justify-content: flex-end; margin: 0 0 12px; }
 
+/* En-tete du rapport : titre a gauche, boutons d’export a droite, sur UNE
+   ligne. La barre d’export seule au-dessus du titre laissait une bande vide. */
+.report-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.report-head-row .report-toolbar-export { margin: 0; flex: 0 0 auto; }
+.report-head-row .report-title-row { flex: 1 1 auto; min-width: 0; }
+
+/* Sixieme carte du rapport mensuel : le camembert au GABARIT d’une carte de
+   chiffres, pour qu’il occupe exactement la meme place dans la grille. */
+.stat-card-donut .stat-donut-body { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.stat-card-donut .stat-donut-canvas { position: relative; width: 52px; height: 52px; flex: 0 0 52px; }
+.stat-card-donut .stat-donut-legend { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stat-card-donut .stat-donut-item { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: #334155; white-space: nowrap; }
+.stat-card-donut .stat-donut-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.stat-card-donut .stat-donut-item .stat-donut-lbl { font-weight: 500; color: #64748b; margin-right: 2px; }
+.stat-card-donut { cursor: default; }
+
 /* ==================== RAPPORTS DE COÛTS (04/09/2026) ====================
    Coût d'exploitation, Évolution des coûts, Véhicules les plus coûteux,
    Fréquence des réparations — réutilisent le workspace monthly-cost-report-workspace. */

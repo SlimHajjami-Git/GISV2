@@ -19,6 +19,9 @@ import { ToastService } from './toast.service';
 export interface ReportExportColumn {
   header: string;
   dataKey: string;
+  /** Largeur relative facultative dans le PDF (voir PdfColumn). Ignoree par
+   *  les exports CSV et Excel, qui n’ont pas de largeur de colonne. */
+  weight?: number;
 }
 
 /** Même forme que PdfReportConfig : un rapport décrit ses colonnes une seule fois. */
@@ -31,6 +34,10 @@ export interface ReportExportConfig {
   columns: ReportExportColumn[];
   data: any[];
   formatters?: Record<string, (value: any, row: any) => string>;
+  /** Orientation de la page PDF. Un tableau a plus de huit colonnes ne tient
+   *  pas en portrait : ses en-tetes se coupent en deux ou trois lignes.
+   *  Ignoree par les exports CSV et Excel. */
+  orientation?: 'portrait' | 'landscape';
 }
 
 @Injectable({ providedIn: 'root' })

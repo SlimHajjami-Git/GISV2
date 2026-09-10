@@ -3509,7 +3509,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             this.currentPage = 1;
             this.cdr.detectChanges();
             this.appRef.tick();
-            // Le canvas n’existe qu’une fois le bloc rendu : on dessine au tick suivant.
+            // Le canvas n’existe qu’une fois la carte rendue : on dessine au tick suivant.
             setTimeout(() => this.drawMonthlyCostDonut(), 120);
           });
         },
@@ -5722,7 +5722,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       dateRange = new Date(this.dailyReportDate).toLocaleDateString('fr-FR');
     }
 
-    const config = this.buildExportConfig(type, vehicleName, dateRange);
+    const config = this.buildExportConfig(type, vehicleName, dateRange, format);
     if (!config) return;
     this.dispatchExport(format, config);
   }
@@ -5748,10 +5748,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * coûts/carburant mensuels, carburant réel vs GPS, IA flotte — décrivent
    * leurs colonnes ici, à partir des données déjà affichées à l'écran.
    */
-  private buildExportConfig(type: string, vehicleName: string, dateRange: string): ReportExportConfig | null {
+  private buildExportConfig(type: string, vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     if (type === 'monthly' && this.monthlyReport) return this.buildMonthlyExport();
     if (type === 'fuel-estimation' && this.fuelEstimationReport) return this.buildFuelEstimationExport(vehicleName, dateRange);
-    if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport();
+    if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport(format);
     if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
     if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
     if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange);
@@ -5784,71 +5784,93 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** Coûts mensuels / carburant mensuel : mêmes colonnes que le tableau à l'écran. */
-  private buildMonthlyCostExport(): ReportExportConfig | null {
+  /**
+   * Recette du 10/09/2026 sur le PDF de ce rapport. Il sortait douze colonnes
+   * sur une page PORTRAIT de 190 mm : chaque en-tete se coupait en deux ou
+   * trois lignes (« Ent+Re / p/100K / M »), et les valeurs partaient brutes,
+   * « 4007.87 » a cote d’un en-tete « Carburant (€) ».
+   *
+   * Corrige en quatre points : colonne Departement retiree (elle repetait le
+   * meme libelle sur toutes les lignes), vehicule reduit a sa plaque, intitules
+   * abreges, et page en PAYSAGE. Les onze en-tetes abreges mesurent 192 mm a
+   * eux seuls : ils ne tiennent PAS en portrait, quoi qu’on abrege. En paysage
+   * (277 mm) ils tiennent tous sur une ligne, avec de la marge.
+   *
+   * `format` : le PDF recoit des valeurs FORMATEES (« 4 007,87 € »), Excel et
+   * CSV gardent des NOMBRES, sans quoi on ne pourrait plus calculer dessus.
+   */
+  private buildMonthlyCostExport(format = 'pdf'): ReportExportConfig | null {
     const r = this.monthlyCostReport;
     if (!r) return null;
     const cur = this.getCurrencyCode();
-    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     const isCosts = this.monthlyCostReportType === 'costs';
+    const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
+
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    // Montant : formate pour le PDF, brut pour les tableurs.
+    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    // Ratio a deux decimales : idem.
+    const rt = (v: any) => pourPdf ? this.formatDecimal(Number(v) || 0) : n2(v);
+    // Distance : le PDF porte l’unite, le tableur non.
+    const km = (v: any) => pourPdf ? this.formatNumber(Number(v) || 0) + ' km' : n2(v);
 
     const columns = isCosts
       ? [
-          { header: 'Département', dataKey: 'departmentName' },
-          { header: 'Conducteur', dataKey: 'driverName' },
-          { header: 'Véhicule', dataKey: 'vehicle' },
-          { header: 'KM', dataKey: 'km' },
-          { header: `Carburant (${cur})`, dataKey: 'fuelCost' },
-          { header: `Entretien (${cur})`, dataKey: 'maintenanceCost' },
-          { header: `Réparation (${cur})`, dataKey: 'repairCost' },
-          { header: `Autres (${cur})`, dataKey: 'otherCost' },
-          { header: `Total (${cur})`, dataKey: 'totalCost' },
-          { header: 'Coût/KM', dataKey: 'costPerKm' },
-          { header: 'Carb./100KM', dataKey: 'fuelPer100Km' },
-          { header: 'Ent+Rép/100KM', dataKey: 'maintRepairPer100Km' }
+          { header: 'Conducteur', dataKey: 'driverName', weight: 3.6 },
+          { header: 'Immatriculation', dataKey: 'vehicle', weight: 3 },
+          { header: 'Km', dataKey: 'km', weight: 1.7 },
+          { header: `Carburant ${cur}`, dataKey: 'fuelCost', weight: 2.2 },
+          { header: `Entretien ${cur}`, dataKey: 'maintenanceCost', weight: 2.1 },
+          { header: `Répar. ${cur}`, dataKey: 'repairCost', weight: 1.9 },
+          { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
+          { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
+          { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.5 },
+          { header: `Carb. ${cur}/100km`, dataKey: 'fuelPer100Km', weight: 2.5 },
+          { header: `E+R ${cur}/100km`, dataKey: 'maintRepairPer100Km', weight: 2.3 }
         ]
       : [
-          { header: 'Département', dataKey: 'departmentName' },
-          { header: 'Conducteur', dataKey: 'driverName' },
-          { header: 'Véhicule', dataKey: 'vehicle' },
-          { header: 'KM', dataKey: 'km' },
-          { header: 'KM PR', dataKey: 'kmPr' },
-          { header: 'C. Total (L)', dataKey: 'fuelLiters' },
-          { header: 'C. PR (L)', dataKey: 'fuelLitersPr' },
-          { header: 'C/100KM', dataKey: 'consumptionPer100Km' },
-          { header: 'C/100KM PR', dataKey: 'consumptionPrPer100Km' }
+          { header: 'Conducteur', dataKey: 'driverName', weight: 3 },
+          { header: 'Immatriculation', dataKey: 'vehicle', weight: 2.6 },
+          { header: 'Km', dataKey: 'km', weight: 1.7 },
+          { header: 'Km PR', dataKey: 'kmPr', weight: 1.7 },
+          { header: 'Total (L)', dataKey: 'fuelLiters', weight: 1.8 },
+          { header: 'PR (L)', dataKey: 'fuelLitersPr', weight: 1.8 },
+          { header: 'L/100km', dataKey: 'consumptionPer100Km', weight: 1.8 },
+          { header: 'L/100km PR', dataKey: 'consumptionPrPer100Km', weight: 2 }
         ];
 
     const data = (r.vehicles || []).map((v: any) => ({
-      departmentName: v.departmentName || '-',
+      // Plaque SEULE : le nom interne (« Commercial 01 ») ne dit rien au lecteur
+      // du rapport et doublait la largeur de la colonne.
+      vehicle: v.plate || v.vehicleName || '-',
       driverName: v.driverName || '-',
-      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : (v.vehicleName || '-'),
-      km: n2(v.km),
-      kmPr: n2(v.kmPr),
-      fuelCost: n2(v.fuelCostDzd),
-      maintenanceCost: n2(v.maintenanceCostDzd),
-      repairCost: n2(v.repairCostDzd),
-      otherCost: n2(v.otherCostDzd),
-      totalCost: n2(v.totalCostDzd),
-      costPerKm: n2(v.costPerKm),
-      fuelPer100Km: n2(v.fuelPer100Km),
-      maintRepairPer100Km: n2(v.maintenanceRepairPer100Km),
-      fuelLiters: n2(v.fuelLiters),
-      fuelLitersPr: n2(v.fuelLitersPr),
-      consumptionPer100Km: n2(v.consumptionPer100Km),
-      consumptionPrPer100Km: n2(v.consumptionPrPer100Km)
+      km: km(v.km),
+      kmPr: km(v.kmPr),
+      fuelCost: mt(v.fuelCostDzd),
+      maintenanceCost: mt(v.maintenanceCostDzd),
+      repairCost: mt(v.repairCostDzd),
+      otherCost: mt(v.otherCostDzd),
+      totalCost: mt(v.totalCostDzd),
+      costPerKm: rt(v.costPerKm),
+      fuelPer100Km: rt(v.fuelPer100Km),
+      maintRepairPer100Km: rt(v.maintenanceRepairPer100Km),
+      fuelLiters: rt(v.fuelLiters),
+      fuelLitersPr: rt(v.fuelLitersPr),
+      consumptionPer100Km: rt(v.consumptionPer100Km),
+      consumptionPrPer100Km: rt(v.consumptionPrPer100Km)
     }));
 
     const statistics: Record<string, string> = isCosts
       ? {
-          'KM total': String(n2(r.totalKm)),
-          [`Carburant (${cur})`]: String(n2(r.totalFuelCostDzd)),
-          [`Entretien (${cur})`]: String(n2(r.totalMaintenanceCostDzd)),
-          [`Réparation (${cur})`]: String(n2(r.totalRepairCostDzd)),
-          [`Total (${cur})`]: String(n2(r.totalCostDzd))
+          'KM total': String(km(r.totalKm)),
+          'Carburant': String(mt(r.totalFuelCostDzd)),
+          'Entretien': String(mt(r.totalMaintenanceCostDzd)),
+          'Réparation': String(mt(r.totalRepairCostDzd)),
+          'Coût total': String(mt(r.totalCostDzd))
         }
       : {
-          'KM total': String(n2(r.totalKm)),
-          'Carburant (L)': String(n2(r.totalFuelLiters))
+          'KM total': String(km(r.totalKm)),
+          'Carburant (L)': String(rt(r.totalFuelLiters))
         };
 
     return {
@@ -5856,7 +5878,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       dateRange: r.reportPeriod || `${r.monthName || ''} ${r.year || ''}`.trim(),
       statistics,
       columns,
-      data
+      data,
+      orientation: 'landscape'
     };
   }
 
@@ -8150,6 +8173,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Detail complet des postes, pour l’info-bulle native de la carte :
+   *  « Carburant : 4 007,87 € (88 %) — Réparation : 528,00 € (12 %) ». */
+  monthlyCostDonutTitle(): string {
+    return this.monthlyCostCategoryTotals()
+      .map(c => `${c.label} : ${this.formatCurrency(c.amount)} (${c.percent.toFixed(0)} %)`)
+      .join(' — ');
+  }
+
   /** Les trois postes de depense du rapport mensuel, avec leur part du total.
    *  « Autres » n’est ajoute que s’il porte un montant : une part a zero dans
    *  un camembert est une legende de plus a lire pour rien. */
@@ -8165,12 +8196,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (autres > 0.005) postes.push({ key: 'other', label: 'Autres', amount: autres, color: '#8B5CF6' });
     const total = postes.reduce((s, p) => s + p.amount, 0);
     if (total <= 0) return [];
-    return postes
-      .filter(p => p.amount > 0)
-      .map(p => ({ ...p, percent: (p.amount / total) * 100 }));
+    return postes.filter(p => p.amount > 0).map(p => ({ ...p, percent: (p.amount / total) * 100 }));
   }
 
-  /** Camembert « Repartition des couts » du rapport mensuel par vehicule. */
+  /** Camembert de la sixieme carte du rapport mensuel. Format carte : pas de
+   *  legende Chart.js, elle est rendue en HTML a cote, en pourcentages seuls. */
   drawMonthlyCostDonut() {
     if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
     const canvas = this.monthlyCostDonutCanvasRef?.nativeElement;
@@ -8189,26 +8219,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
           data: postes.map(x => x.amount),
           backgroundColor: postes.map(x => x.color),
           borderColor: '#ffffff',
-          borderWidth: 2,
-          hoverOffset: 8
+          borderWidth: 1.5,
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        cutout: '62%',
+        cutout: '58%',
         plugins: {
-          // Legende rendue en HTML sous le graphe (montant + part), comme
-          // sur « Evolution des couts » : elle y tient sur une ligne par poste.
           legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (item: any) => {
-                const v = Number(item.parsed) || 0;
-                return `${item.label} : ${this.formatCurrency(v)} (${((v / total) * 100).toFixed(1)} %)`;
-              }
-            }
-          }
+          // Info-bulle Chart.js DESACTIVEE : elle est dessinee a l’interieur du
+          // canevas, qui ne fait que 52 px de cote dans cette carte — le libelle
+          // sortait rogne (« Carbura… »). Le detail complet est porte par
+          // l’attribut title de la carte, une info-bulle du navigateur, jamais
+          // rognee, et la legende porte deja libelle et pourcentage.
+          tooltip: { enabled: false }
         }
       }
     });

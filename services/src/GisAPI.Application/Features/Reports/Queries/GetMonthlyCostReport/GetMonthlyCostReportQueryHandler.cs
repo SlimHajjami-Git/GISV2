@@ -134,6 +134,13 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
 
         var mileagePerVehicle = new Dictionary<int, decimal>();
 
+        // Vehicules dont le BOITIER a effectivement remonte un compteur, donc
+        // equipes d’un boitier branche au bus CAN. C’est l’EQUIPEMENT qui decide
+        // de la source, pas la valeur trouvee : un vehicule equipe qui n’a pas
+        // roule du mois doit afficher 0 km depuis son boitier, et surtout pas
+        // basculer sur les saisies du client.
+        var kilometrageDepuisBoitier = new HashSet<int>();
+
         if (deviceIds.Any())
         {
             // Take the CHRONOLOGICALLY first and last odometer values per
@@ -196,6 +203,7 @@ ORDER BY device_id, recorded_at DESC;
                     // worse than under-reporting.
                     var km = Math.Max(0, last - first);
                     mileagePerVehicle[vehicleId] = km;
+                    kilometrageDepuisBoitier.Add(vehicleId);
                 }
             }
         }
@@ -219,19 +227,19 @@ ORDER BY device_id, recorded_at DESC;
         // distance est calculee par OdometerDistance : le meme code que les
         // rapports de couts, pour qu’un meme vehicule ne rende pas deux
         // kilometrages differents selon le rapport ouvert.
-        var sansReleveGps = vehicles
-            .Where(v => mileagePerVehicle.GetValueOrDefault(v.Id, 0) == 0)
+        var sansCompteurBoitier = vehicles
+            .Where(v => !kilometrageDepuisBoitier.Contains(v.Id))
             .Select(v => v.Id)
             .ToList();
 
-        if (sansReleveGps.Count > 0)
+        if (sansCompteurBoitier.Count > 0)
         {
             // endDate est EXCLUE, comme partout ailleurs dans ce handler :
             // une borne au jour ferait disparaitre les saisies du dernier jour.
             var releves = await OdometerReadings.LoadAsync(
-                _context, companyId, sansReleveGps, startDate, endDate, ct);
+                _context, companyId, sansCompteurBoitier, startDate, endDate, ct);
 
-            foreach (var vehicleId in sansReleveGps)
+            foreach (var vehicleId in sansCompteurBoitier)
             {
                 var distance = OdometerDistance.Compute(releves[vehicleId]);
                 if (distance.Measurable)

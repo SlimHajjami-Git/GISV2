@@ -23,6 +23,10 @@ export interface PdfReportConfig {
   dateRange?: string;
   statistics?: Record<string, string>;
   columns: PdfColumn[];
+  /** Orientation de la page. Par defaut portrait. Un tableau large — le
+   *  rapport « Couts mensuel par vehicule » en a onze colonnes — n’y tient
+   *  pas : ses en-tetes se coupaient en trois lignes (« Ent+Re / p/100K / M »). */
+  orientation?: 'portrait' | 'landscape';
   data: any[];
   formatters?: Record<string, (value: any, row: any) => string>;
 }
@@ -336,7 +340,7 @@ export class PdfExportService {
   }
 
   private exportReportSync(config: PdfReportConfig): void {
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const doc = new jsPDF({ orientation: config.orientation ?? 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
 
@@ -358,7 +362,11 @@ export class PdfExportService {
     // ── Statistics block ──
     if (config.statistics && Object.keys(config.statistics).length > 0) {
       const entries = Object.entries(config.statistics);
-      const colCount = Math.min(entries.length, 4);
+      // Jusqu’a CINQ cartes sur une ligne. Le plafond etait a quatre : un
+      // rapport a cinq chiffres de synthese en renvoyait un seul, tout seul,
+      // sur une deuxieme ligne. A cinq colonnes chaque carte fait encore
+      // 34 mm utiles en portrait, de quoi loger « 10 410,00 € » a 12 points.
+      const colCount = entries.length <= 5 ? entries.length : 4;
       const cardW = (pageWidth - 28) / colCount;
       const cardH = 20;
 
@@ -423,7 +431,7 @@ export class PdfExportService {
       alternateRowStyles: {
         fillColor: [248, 250, 252]
       },
-      columnStyles: this.getColumnStyles(config.columns),
+      columnStyles: this.getColumnStyles(config.columns, pageWidth - 20),
       margin: { left: 10, right: 10 },
       tableWidth: pageWidth - 20,
       didDrawPage: (data: any) => {
@@ -606,7 +614,7 @@ export class PdfExportService {
         alternateRowStyles: {
           fillColor: [248, 250, 252]
         },
-        columnStyles: this.getColumnStyles(config.columns),
+        columnStyles: this.getColumnStyles(config.columns, pageWidth - 20),
         margin: { left: 10, right: 10 },
         tableWidth: pageWidth - 20,
         didDrawPage: drawPageChrome
@@ -675,9 +683,8 @@ export class PdfExportService {
     doc.save(`${filename}_${dateStr}.pdf`);
   }
 
-  private getColumnStyles(columns: PdfColumn[]): Record<number, any> {
+  private getColumnStyles(columns: PdfColumn[], tableWidth = 190): Record<number, any> {
     const styles: Record<number, any> = {};
-    const tableWidth = 190; // A4 (210mm) - 10mm margins each side
 
     // Assign proportional weight to each column based on content type
     const widthWeights: Record<string, number> = {
