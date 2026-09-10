@@ -5879,7 +5879,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
       statistics,
       columns,
       data,
-      orientation: 'landscape'
+      orientation: 'landscape',
+      // Les intitules de colonnes sont abreges pour tenir sur une seule ligne :
+      // cette note dit ce qu’ils recouvrent. « E+R » surtout, qui ne se devine
+      // pas quand on decouvre le rapport.
+      footnote: isCosts
+        ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.`
+        : undefined,
     };
   }
 

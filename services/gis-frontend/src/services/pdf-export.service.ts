@@ -27,6 +27,9 @@ export interface PdfReportConfig {
    *  rapport « Couts mensuel par vehicule » en a onze colonnes — n’y tient
    *  pas : ses en-tetes se coupaient en trois lignes (« Ent+Re / p/100K / M »). */
   orientation?: 'portrait' | 'landscape';
+  /** Note affichee sous le tableau, en petit. Sert a expliquer les intitules
+   *  abreges des colonnes : « E+R €/100km » ne se devine pas. */
+  footnote?: string;
   data: any[];
   formatters?: Record<string, (value: any, row: any) => string>;
 }
@@ -130,7 +133,7 @@ export class PdfExportService {
     this.drawHeaderGradient(doc, bandH);
     doc.setTextColor(...this.primaryColor);
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(this.brandFont, 'bold');
     doc.text(this.sanitizeText(title), left, 8);
     doc.setFillColor(...this.brandOrange);
     doc.rect(0, bandH, pageWidth, 0.8, 'F');
@@ -174,19 +177,19 @@ export class PdfExportService {
     // sur fond clair (12,4:1), là où le bandeau bleu le portait par le blanc.
     doc.setTextColor(...this.primaryColor);
     doc.setFontSize(17);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont(this.brandFont, 'bold');
     doc.text(this.sanitizeText(opts.title), textLeft, opts.meta?.length ? 14 : 18);
 
     if (opts.meta?.length) {
       // Métadonnées en bleu-gris : lisibles, sans concurrencer le titre.
       doc.setFontSize(8.5);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       doc.setTextColor(82, 103, 133);
       doc.text(opts.meta.map(m => this.sanitizeText(m)).join('   •   '), textLeft, 21.5);
     }
     if (opts.rightNote) {
       doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       doc.setTextColor(82, 103, 133);
       doc.text(this.sanitizeText(opts.rightNote), pageWidth - 14, 14, { align: 'right' });
     }
@@ -215,7 +218,7 @@ export class PdfExportService {
       doc.setDrawColor(226, 232, 240);
       doc.line(14, pageHeight - 12, pageWidth - 14, pageHeight - 12);
       doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       doc.setTextColor(130, 130, 130);
       doc.text(
         `${this.footerBrand}  |  ${this.sanitizeText('Généré le')} ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
@@ -239,6 +242,79 @@ export class PdfExportService {
   /** Rapport largeur/hauteur du fichier de logo, mesuré au chargement.
    *  Repli sur 3:1, le rapport du logo Calypso actuel, si la mesure échoue. */
   private logoAspect = 3;
+
+  /** Police de marque du PDF.
+   *
+   *  Les exports sortaient en Helvetica, la police par defaut des PDF, alors
+   *  que l’application est en Manrope : un rapport remis au client n’avait pas
+   *  l’air de venir de Calypso. Manrope est embarquee dans le document, un PDF
+   *  ne pouvant pas pointer vers une police distante.
+   *
+   *  Cout mesure le 10/09/2026 : deux fontes de 95 Ko chacune, chargees UNE
+   *  fois par session comme le logo, et environ 40 Ko ajoutes au PDF une fois
+   *  sous-ensemble et compresse par jsPDF. Manrope n’est que 2 a 7 % plus large
+   *  qu’Helvetica : les largeurs de colonnes mesurees gardent leur marge.
+   *
+   *  En cas d’echec de chargement on retombe sur Helvetica : un rapport moins
+   *  joli vaut mieux qu’un rapport qui ne sort pas. */
+  private static readonly BrandFont = 'Manrope';
+  private static readonly FallbackFont = 'helvetica';
+
+  private fontRegular: string | null = null;
+  private fontBold: string | null = null;
+  private fontsLoading?: Promise<void>;
+
+  /** Nom de police a utiliser : la marque si elle a pu etre chargee. */
+  private get brandFont(): string {
+    return this.fontRegular && this.fontBold
+      ? PdfExportService.BrandFont
+      : PdfExportService.FallbackFont;
+  }
+
+  private preloadFonts(): Promise<void> {
+    if (this.fontsLoading) return this.fontsLoading;
+    const enBase64 = (chemin: string) => fetch(chemin)
+      .then(r => r.ok ? r.arrayBuffer() : null)
+      .then(buf => {
+        if (!buf) return null;
+        let binaire = '';
+        const octets = new Uint8Array(buf);
+        // Par tranches : String.fromCharCode(...tableau) depasse la pile
+        // d’appels au-dela de quelques dizaines de milliers d’octets.
+        for (let i = 0; i < octets.length; i += 8192) {
+          binaire += String.fromCharCode(...octets.subarray(i, i + 8192));
+        }
+        return btoa(binaire);
+      })
+      .catch(() => null);
+
+    this.fontsLoading = Promise.all([
+      enBase64('assets/fonts/manrope-regular.ttf'),
+      enBase64('assets/fonts/manrope-bold.ttf')
+    ]).then(([reg, gras]) => {
+      this.fontRegular = reg;
+      this.fontBold = gras;
+    });
+    return this.fontsLoading;
+  }
+
+  /** Declare la police de marque dans un document et la selectionne.
+   *  A faire par document : le magasin de fichiers de jsPDF est porte par
+   *  l’instance. Sans police chargee, le document reste en Helvetica. */
+  private applyBrandFont(doc: jsPDF): void {
+    if (!this.fontRegular || !this.fontBold) return;
+    try {
+      doc.addFileToVFS('Manrope-Regular.ttf', this.fontRegular);
+      doc.addFont('Manrope-Regular.ttf', PdfExportService.BrandFont, 'normal');
+      doc.addFileToVFS('Manrope-Bold.ttf', this.fontBold);
+      doc.addFont('Manrope-Bold.ttf', PdfExportService.BrandFont, 'bold');
+      doc.setFont(PdfExportService.BrandFont, 'normal');
+    } catch {
+      // Police refusee : on laisse Helvetica plutot que de casser l’export.
+      this.fontRegular = null;
+      this.fontBold = null;
+    }
+  }
 
   private preloadLogo(): Promise<string | null> {
     if (this.logoDataUrl) return Promise.resolve(this.logoDataUrl);
@@ -335,12 +411,13 @@ export class PdfExportService {
 
   async exportReport(config: PdfReportConfig): Promise<void> {
     // Calypso 7 — on attend le logo (preloaded au boot du service).
-    await this.preloadLogo();
+    await Promise.all([this.preloadLogo(), this.preloadFonts()]);
     return this.exportReportSync(config);
   }
 
   private exportReportSync(config: PdfReportConfig): void {
     const doc = new jsPDF({ orientation: config.orientation ?? 'portrait', unit: 'mm', format: 'a4' });
+    this.applyBrandFont(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     let y = 15;
 
@@ -381,12 +458,12 @@ export class PdfExportService {
 
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(this.brandFont, 'normal');
         doc.text(this.sanitizeText(label), x + 4, cy + 7);
 
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(this.brandFont, 'bold');
         doc.text(this.sanitizeText(String(value)), x + 4, cy + 15);
       });
 
@@ -418,12 +495,13 @@ export class PdfExportService {
         lineColor: [226, 232, 240],
         lineWidth: 0.2,
         textColor: [30, 41, 59],
-        font: 'helvetica',
+        font: this.brandFont,
         overflow: 'linebreak'
       },
       headStyles: {
         fillColor: this.primaryColor,
         textColor: [255, 255, 255],
+        font: this.brandFont,
         fontStyle: 'bold',
         fontSize: 7.5,
         cellPadding: 2.5
@@ -444,11 +522,30 @@ export class PdfExportService {
         const pageCount = (doc as any).internal.getNumberOfPages();
         doc.setFontSize(7);
         doc.setTextColor(148, 163, 184);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(this.brandFont, 'normal');
         const footerY = doc.internal.pageSize.getHeight() - 7;
         doc.text(`${this.footerBrand} · ${this.sanitizeText(config.title)}`, 10, footerY);
       }
     });
+
+    // ── Note de bas de tableau ──
+    // Les intitules de colonnes sont abreges pour tenir sur une ligne ; la
+    // note dit ce qu’ils recouvrent. Posee sous le tableau, sur une page
+    // neuve si le tableau finit trop bas.
+    if (config.footnote) {
+      const finTableau = (doc as any).lastAutoTable?.finalY ?? 0;
+      let ny = finTableau + 6;
+      if (ny > doc.internal.pageSize.getHeight() - 18) {
+        doc.addPage();
+        ny = 20;
+      }
+      doc.setFontSize(7.5);
+      doc.setFont(this.brandFont, 'normal');
+      doc.setTextColor(100, 116, 139);
+      const largeur = doc.internal.pageSize.getWidth() - 28;
+      const texte = doc.splitTextToSize(this.sanitizeText(config.footnote), largeur);
+      doc.text(texte, 14, ny);
+    }
 
     // Pagination ecrite APRES le tableau. Dans didDrawPage,
     // getNumberOfPages() ne connait que les pages deja creees : un rapport de
@@ -459,7 +556,7 @@ export class PdfExportService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       doc.text(
         `Page ${i} / ${totalPages}`,
         doc.internal.pageSize.getWidth() - 10,
@@ -480,12 +577,13 @@ export class PdfExportService {
    * Reuses the same header bar, footer, column sizing and sanitizer as exportReport.
    */
   async exportGroupedReport(config: GroupedPdfReportConfig): Promise<void> {
-    await this.preloadLogo();
+    await Promise.all([this.preloadLogo(), this.preloadFonts()]);
     return this.exportGroupedReportSync(config);
   }
 
   private exportGroupedReportSync(config: GroupedPdfReportConfig): void {
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    this.applyBrandFont(doc);
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     let y = 15;
@@ -521,12 +619,12 @@ export class PdfExportService {
 
         doc.setTextColor(100, 116, 139);
         doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(this.brandFont, 'normal');
         doc.text(this.sanitizeText(label), x + 4, cy + 7);
 
         doc.setTextColor(15, 23, 42);
         doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(this.brandFont, 'bold');
         doc.text(this.sanitizeText(String(value)), x + 4, cy + 15);
       });
 
@@ -545,7 +643,7 @@ export class PdfExportService {
       const pageCount = (doc as any).internal.getNumberOfPages();
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       const footerY = pageHeight - 7;
       // Oubli du rebrand Calypso : ce pied de page (export groupé) affichait
       // encore « GIS Fleet Management » alors que l'export simple était déjà
@@ -566,12 +664,12 @@ export class PdfExportService {
       // Section header bar
       doc.setFillColor(...this.lightBg);
       doc.roundedRect(10, y, pageWidth - 20, 10, 1.5, 1.5, 'F');
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(this.brandFont, 'bold');
       doc.setFontSize(11);
       doc.setTextColor(...this.primaryColor);
       doc.text(this.sanitizeText(group.groupLabel), 14, y + 7);
       if (group.groupSubtitle) {
-        doc.setFont('helvetica', 'normal');
+        doc.setFont(this.brandFont, 'normal');
         doc.setFontSize(9);
         doc.setTextColor(100, 116, 139);
         doc.text(this.sanitizeText(group.groupSubtitle), pageWidth - 14, y + 7, { align: 'right' });
@@ -601,12 +699,13 @@ export class PdfExportService {
           lineColor: [226, 232, 240],
           lineWidth: 0.2,
           textColor: [30, 41, 59],
-          font: 'helvetica',
+          font: this.brandFont,
           overflow: 'linebreak'
         },
         headStyles: {
           fillColor: this.primaryColor,
           textColor: [255, 255, 255],
+          font: this.brandFont,
           fontStyle: 'bold',
           fontSize: 7.5,
           cellPadding: 2.5
@@ -630,7 +729,7 @@ export class PdfExportService {
         }
         doc.setFillColor(241, 245, 249);
         doc.rect(10, y, pageWidth - 20, 7, 'F');
-        doc.setFont('helvetica', 'bold');
+        doc.setFont(this.brandFont, 'bold');
         doc.setFontSize(8.5);
         doc.setTextColor(30, 41, 59);
         doc.text(this.sanitizeText(group.subtotal), pageWidth - 14, y + 5, { align: 'right' });
@@ -648,7 +747,7 @@ export class PdfExportService {
       }
       doc.setFillColor(...this.primaryColor);
       doc.rect(10, y, pageWidth - 20, 10, 'F');
-      doc.setFont('helvetica', 'bold');
+      doc.setFont(this.brandFont, 'bold');
       doc.setFontSize(11);
       doc.setTextColor(255, 255, 255);
       doc.text(this.sanitizeText(config.grandTotal), pageWidth - 14, y + 7, { align: 'right' });
@@ -668,7 +767,7 @@ export class PdfExportService {
       doc.setPage(i);
       doc.setFontSize(7);
       doc.setTextColor(148, 163, 184);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont(this.brandFont, 'normal');
       doc.text(
         `Page ${i} / ${totalPages}`,
         doc.internal.pageSize.getWidth() - 10,
@@ -847,7 +946,7 @@ export class PdfExportService {
       // rapport, et il mangeait la largeur dont Description et Fournisseur ont
       // besoin. Le champ reste en base et sur la fiche détail.
       case 'costs':
-        // Largeurs mesurees, pas estimees : a la police du corps (Helvetica 7)
+        // Largeurs mesurees a la police REELLE du corps (Manrope 7, 5 mm de
         // et avec 5 mm de marges internes, « 1 385,28 EUR » occupe 20,4 mm et
         // « Complétée » 16,9 mm. Aux poids globaux ces colonnes tombaient a
         // 16,6 mm et coupaient le montant en deux (« 327,60 / EUR »).
@@ -859,12 +958,12 @@ export class PdfExportService {
         // Statut retire : le handler de creation force Status a completed, si
         // bien que la colonne repetait « Complétée » sur chaque ligne.
         return [
-          { header: 'Immatriculation', dataKey: 'vehicleName', weight: 1.75 },
-          { header: 'Date', dataKey: 'date', weight: 1 },
-          { header: 'Description', dataKey: 'description', weight: 3.7 },
-          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.3 },
-          { header: 'Main d\'oeuvre', dataKey: 'laborCostFormatted', weight: 1.5 },
-          { header: 'Pièces', dataKey: 'partsCostFormatted', weight: 1.15 },
+          { header: 'Immatriculation', dataKey: 'vehicleName', weight: 1.8 },
+          { header: 'Date', dataKey: 'date', weight: 1.2 },
+          { header: 'Description', dataKey: 'description', weight: 3.2 },
+          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.35 },
+          { header: 'Main d\'oeuvre', dataKey: 'laborCostFormatted', weight: 1.68 },
+          { header: 'Pièces', dataKey: 'partsCostFormatted', weight: 1.2 },
           { header: 'Total', dataKey: 'totalCostFormatted', weight: 1.2 }
         ];
       // Recette du 10/09/2026 : le statut ne sert plus à rien dans l'export —
@@ -880,12 +979,12 @@ export class PdfExportService {
         // Description, seule colonne dont le retour a la ligne est normal.
         return [
           { header: 'Immatriculation', dataKey: 'vehicleName', weight: 2 },
-          { header: 'Date', dataKey: 'date', weight: 1.15 },
-          { header: 'Type', dataKey: 'type', weight: 2.1 },
-          { header: 'Description', dataKey: 'description', weight: 4.1 },
-          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.65 },
+          { header: 'Date', dataKey: 'date', weight: 1.25 },
+          { header: 'Type', dataKey: 'type', weight: 2.15 },
+          { header: 'Description', dataKey: 'description', weight: 3.35 },
+          { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.6 },
           { header: 'Coût', dataKey: 'costFormatted', weight: 1.25 },
-          { header: 'Km', dataKey: 'mileage', weight: 1.4 }
+          { header: 'Km', dataKey: 'mileage', weight: 1.5 }
         ];
       default:
         return [
