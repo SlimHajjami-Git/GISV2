@@ -204,6 +204,9 @@ Procédure détaillée et vérifications : **`/deploy`**. L'essentiel :
   présent n'est jamais re-tiré) ; `docker push` sur `localhost:5000` (pas `registry.local:5000`, IPv6 refusé) ;
   `kubectl set image deployment/<frontend|gis-api> … registry.local:5000/gisv2/<image>:<tag> -n gisv2` ;
   `kubectl rollout status`. Rollback gratuit : `kubectl rollout undo`.
+  **Après chaque build TN : `docker builder prune -af` + suppression des vieux tags `gisv2/*`** (garder le
+  déployé et le précédent) — le 09/09/2026, 39 Go d'artefacts de build ont mis le disque sous le seuil
+  d'éviction du kubelet et K3s a expulsé toute la prod 13 min. `df -h /` doit rester sous 80 %.
   JAMAIS `git pull` / `reset` / `checkout -- .` sur `~/GISV2` de TN (historique divergé, CRLF, modifs locales).
 - Contextes de build : API = `services/` avec `GisAPI/Dockerfile` ; frontend = `services/gis-frontend/` avec
   `Dockerfile.prod` ; ingest = `services/gps-ingest-rust/` (image `gisv2/gps-ingest`, deployment `gps-ingest` —
