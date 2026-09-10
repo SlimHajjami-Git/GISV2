@@ -2308,7 +2308,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 16px 18px;
+  /* 16 -> 13 px : un peu moins hautes, l’espace vertical va au tableau. */
+  padding: 13px 18px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2579,10 +2580,19 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
    Fréquence des réparations — réutilisent le workspace monthly-cost-report-workspace. */
 .cost-two-col {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 20px;
-  align-items: start;
+  /* 65 / 35 : le tableau a neuf colonnes, le classement une seule barre par
+     ligne. Et « stretch » : les deux cartes partent de la meme hauteur et
+     finissent a la meme hauteur, au lieu d’un graphique court au-dessus
+     d’un grand vide (recette du 10/09/2026). */
+  grid-template-columns: minmax(0, 13fr) minmax(0, 7fr);
+  gap: 16px;
+  align-items: stretch;
 }
+/* Chaque carte de la grille est une colonne flex : la boite du graphique
+   prend toute la hauteur restante, et Chart.js (maintainAspectRatio: false)
+   la remplit. */
+.cost-two-col > .dept-group { display: flex; flex-direction: column; }
+.cost-two-col > .dept-group > .cost-chart-box { flex: 1 1 auto; min-height: 380px; }
 .cost-three-col {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr);
@@ -2609,6 +2619,17 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .monthly-cost-report-workspace .stat-card .stat-sub { font-size: 11px; color: #94a3b8; line-height: 1.35; }
 .monthly-cost-report-workspace .stat-card .stat-value small { font-size: 12px; font-weight: 600; color: #64748b; }
 .monthly-cost-report-workspace .stat-card .stat-value.success { color: #16a34a; }
+/* Tableau des couts : neuf colonnes sur 947 px. Un cran plus compact que
+   le tableau mensuel, sans rien retirer : en-tetes et cellules moins
+   rembourres, police 12,5 px, et le nom du vehicule avec sa plaque tenus sur
+   une seule ligne. Avant : la cellule Vehicule etait comprimee a 101 px, le
+   nom et la plaque s’empilaient sur trois lignes, le tableau faisait
+   1 154 px de haut et debordait de 106 px avec un ascenseur horizontal. */
+.cost-table thead th { padding: 9px 10px; font-size: 10px; letter-spacing: 0.4px; }
+.cost-table tbody td { padding: 8px 10px; font-size: 12.5px; }
+.cost-table tfoot .dept-total-row td { padding: 10px 10px; font-size: 12.5px; }
+.cost-table td.vehicle-cell { white-space: nowrap; }
+.cost-table td.vehicle-cell .plate-tag { margin-left: 6px; }
 .cost-table th.rank-col { width: 36px; }
 .cost-table td.rank-cell { font-weight: 700; color: #64748b; }
 .cost-table td.deviation.over { color: #dc2626; font-weight: 600; }

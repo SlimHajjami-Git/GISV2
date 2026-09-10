@@ -80,6 +80,31 @@ public class OdometerReadingsTests
         toutesSources.DistanceKm.Should().Be(1_200m);
     }
 
+    [Fact]
+    public async Task Deux_sources_le_meme_jour_ne_creent_pas_de_rupture()
+    {
+        using var ctx = TestDbContextFactory.Create();
+
+        // Le 17/07 : un plein, un entretien et la dépense qui le facture portent
+        // le MÊME compteur. Avant le dédoublonnage, ces deux écarts de zéro
+        // comptaient comme deux ruptures et le véhicule sortait « incertain ».
+        ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Atelier", CompanyId = CompanyId });
+        ctx.FuelEntries.AddRange(
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(5, 5), Volume = 40, TotalAmount = 60, OdometerKm = 10_000 },
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(6, 17), Volume = 40, TotalAmount = 60, OdometerKm = 11_500 });
+        ctx.MaintenanceLogs.Add(new MaintenanceLog { Id = 1, VehicleId = 1, CompanyId = CompanyId, TemplateId = 1, DoneDate = Utc(6, 17), DoneKm = 11_500, ActualCost = 200 });
+        ctx.VehicleCosts.Add(new VehicleCost { VehicleId = 1, CompanyId = CompanyId, Type = "maintenance", Amount = 200, Date = Utc(6, 17), Mileage = 11_500 });
+        await ctx.SaveChangesAsync();
+
+        var releves = await OdometerReadings.LoadAsync(ctx, CompanyId, new[] { 1 }, Debut, FinExclue, CancellationToken.None);
+
+        releves[1].Should().HaveCount(2, "un seul relevé par jour, le plus haut");
+        var distance = OdometerDistance.Compute(releves[1]);
+        distance.DistanceKm.Should().Be(1_500m);
+        distance.Breaks.Should().Be(0, "deux relevés identiques le même jour ne sont pas un recul de compteur");
+        distance.Reliable.Should().BeTrue();
+    }
+
     // ══════════════ Ce qui doit être écarté ══════════════
 
     [Fact]

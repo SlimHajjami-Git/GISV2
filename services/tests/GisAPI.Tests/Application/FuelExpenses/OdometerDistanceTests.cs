@@ -119,6 +119,22 @@ public class OdometerDistanceTests
     }
 
     [Fact]
+    public void Un_ecart_nul_est_neutre_un_ecart_negatif_est_une_rupture()
+    {
+        // Deux relevés identiques à quelques jours : le véhicule n'a pas roulé,
+        // ou l'atelier a repris le compteur du plein. Zéro km, aucune rupture.
+        var nul = OdometerDistance.Compute(new[] { (10_000L, D(1)), (10_000L, D(5)), (10_800L, D(20)) });
+        nul.DistanceKm.Should().Be(800m);
+        nul.Breaks.Should().Be(0);
+        nul.Reliable.Should().BeTrue("un compteur qui ne bouge pas n'est pas une anomalie");
+
+        // Un compteur qui RECULE, lui, reste une rupture.
+        var negatif = OdometerDistance.Compute(new[] { (10_000L, D(1)), (9_500L, D(5)), (10_800L, D(20)) });
+        negatif.Breaks.Should().Be(1);
+        negatif.Reliable.Should().BeFalse();
+    }
+
+    [Fact]
     public void Gap_exactly_at_the_ceiling_is_accepted_one_km_more_is_a_break()
     {
         var accepted = OdometerDistance.Compute(new[] { (10_000L, D(1)), (13_000L, D(20)) });
