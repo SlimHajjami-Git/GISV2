@@ -313,6 +313,13 @@
           <!-- ========== MONTHLY COST / FUEL REPORT ========== -->
           <div class="monthly-cost-report-workspace">
             <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+            <!-- Titre : ce bloc n’en portait aucun. A l’ecran comme sur une
+                 capture transmise, rien ne disait quel rapport on lisait ni sur
+                 quelle periode. -->
+            <div class="report-title-row">
+              <h2 class="report-title">{{ selectedTemplate?.name }}</h2>
+              <span class="report-subtitle">{{ monthlyCostReport.reportPeriod }}</span>
+            </div>
             <!-- Summary stats cards -->
             <div class="stats-cards-row">
               @if (monthlyCostReportType === 'costs') {
@@ -356,6 +363,32 @@
               }
             </div>
 
+            <!-- Repartition des trois postes de depense (recette du 10/09/2026).
+                 Le rapport alignait cinq chiffres sans jamais montrer leur poids
+                 relatif : ou part l’argent se lit d’un coup d’oeil sur un
+                 camembert, pas dans une rangee de cartes. -->
+            @if (monthlyCostReportType === 'costs' && monthlyCostCategoryTotals().length) {
+              <div class="dept-group">
+                <div class="dept-header">
+                  <span class="dept-badge">Répartition des coûts</span>
+                  <span class="dept-summary">{{ formatCurrency(monthlyCostReport.totalCostDzd) }}</span>
+                </div>
+                <div class="cost-chart-box" style="height:210px;">
+                  <canvas #monthlyCostDonutCanvas></canvas>
+                </div>
+                <div class="ai-cost-items cost-legend">
+                  @for (c of monthlyCostCategoryTotals(); track c.key) {
+                    <div class="ai-cost-item">
+                      <span class="ai-cost-dot" [style.background]="c.color"></span>
+                      <span class="ai-cost-lbl">{{ c.label }}</span>
+                      <span class="ai-cost-val">{{ formatCurrency(c.amount) }}</span>
+                      <span class="ai-cost-pct">{{ c.percent.toFixed(1) }} %</span>
+                    </div>
+                  }
+                </div>
+              </div>
+            }
+
             <!-- Department grouped tables -->
             @for (dept of monthlyCostReport.departments; track dept.departmentId) {
               <div class="dept-group">
@@ -383,9 +416,9 @@
                           <th class="num">Réparation {{ getCurrencyCode() }}</th>
                           <th class="num">Autres</th>
                           <th class="num">Total Coût</th>
-                          <th class="num">Coût/KM</th>
-                          <th class="num">Carb./100KM</th>
-                          <th class="num">Ent+Rép/100KM</th>
+                          <th class="num">Coût {{ getCurrencyCode() }}/KM</th>
+                          <th class="num">Carb. {{ getCurrencyCode() }}/100KM</th>
+                          <th class="num">Ent+Rép {{ getCurrencyCode() }}/100KM</th>
                         } @else {
                           <th class="num">KM PR</th>
                           <th class="num">C. Total (L)</th>
@@ -399,7 +432,10 @@
                       @for (v of dept.vehicles; track v.vehicleId) {
                         <tr>
                           <td>{{ v.driverName || '-' }}</td>
-                          <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                          <!-- Recette du 10/09/2026 : la plaque SEULE. Le nom interne
+                               (« Commercial 01 ») ne dit rien a qui lit le rapport, et
+                               doubler nom + plaque mangeait la largeur de la colonne. -->
+                          <td>{{ v.plate || v.vehicleName }}</td>
                           <td class="num">{{ formatNumber(v.km) }}</td>
                           @if (monthlyCostReportType === 'costs') {
                             <td class="num">{{ formatCurrency(v.fuelCostDzd) }}</td>
@@ -407,9 +443,9 @@
                             <td class="num">{{ formatCurrency(v.repairCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCostDzd) }}</td>
                             <td class="num total-cell">{{ formatCurrency(v.totalCostDzd) }}</td>
-                            <td class="num">{{ v.costPerKm.toFixed(2) }}</td>
-                            <td class="num">{{ v.fuelPer100Km.toFixed(2) }}</td>
-                            <td class="num">{{ v.maintenanceRepairPer100Km.toFixed(2) }}</td>
+                            <td class="num">{{ formatDecimal(v.costPerKm) }}</td>
+                            <td class="num">{{ formatDecimal(v.fuelPer100Km) }}</td>
+                            <td class="num">{{ formatDecimal(v.maintenanceRepairPer100Km) }}</td>
                           } @else {
                             <td class="num">{{ formatNumber(v.kmPr) }}</td>
                             <td class="num">{{ v.fuelLiters.toFixed(1) }}</td>

@@ -1,3 +1,4 @@
+using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
@@ -196,6 +197,45 @@ ORDER BY device_id, recorded_at DESC;
                     var km = Math.Max(0, last - first);
                     mileagePerVehicle[vehicleId] = km;
                 }
+            }
+        }
+
+        // 5 bis. Repli sur les releves compteur SAISIS, pour tout vehicule
+        // dont les trames GPS n’ont rien donne.
+        //
+        // Le compteur du boitier n’existe que sur l’offre Calypso GPS, et
+        // seulement sur les boitiers branches au bus CAN. Sur l’offre Calypso
+        // GPA, et sur tout vehicule sans boitier, ce rapport affichait donc
+        // « 0 km », puis « Cout/KM : 0,00 », « Carb./100KM : 0,00 » et
+        // « Ent+Rep/100KM : 0,00 » : non pas des cases vides, mais des
+        // chiffres FAUX affirmant que la flotte n’avait pas roule.
+        //
+        // Mesure du 10/09/2026 sur le jeu de recette : juillet 2026 affichait
+        // 0 km pour 12 vehicules ayant reellement parcouru 21 180 km, soit un
+        // cout d’exploitation de 0,323 EUR/km annonce a 0,00.
+        //
+        // Les releves viennent des quatre ecrans de saisie (pleins,
+        // entretiens, reparations, depenses) via OdometerReadings, et la
+        // distance est calculee par OdometerDistance : le meme code que les
+        // rapports de couts, pour qu’un meme vehicule ne rende pas deux
+        // kilometrages differents selon le rapport ouvert.
+        var sansReleveGps = vehicles
+            .Where(v => mileagePerVehicle.GetValueOrDefault(v.Id, 0) == 0)
+            .Select(v => v.Id)
+            .ToList();
+
+        if (sansReleveGps.Count > 0)
+        {
+            // endDate est EXCLUE, comme partout ailleurs dans ce handler :
+            // une borne au jour ferait disparaitre les saisies du dernier jour.
+            var releves = await OdometerReadings.LoadAsync(
+                _context, companyId, sansReleveGps, startDate, endDate, ct);
+
+            foreach (var vehicleId in sansReleveGps)
+            {
+                var distance = OdometerDistance.Compute(releves[vehicleId]);
+                if (distance.Measurable)
+                    mileagePerVehicle[vehicleId] = distance.DistanceKm;
             }
         }
 
