@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef, NgZone, ChangeDete
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod, OperatingCostReportDto, VehicleOperatingCostDto, VehicleCostEvolutionDto, MonthlyVehicleCostDto, RepairFrequencyReportDto, VehicleRepairFrequencyDto } from '../services/api.service';
+import { ApiService, FuelRecordsResult, FuelRecord, DailyActivityReport, ActivitySegment, MileageReport, DailyMileage, MonthlyFleetReport, MonthlyFleetVehicleRow, MileagePeriodReport, MileagePeriodType, HourlyMileagePeriod, DailyMileagePeriod, MonthlyMileagePeriod, VehicleStopsResult, VehicleStopDto, FleetFuelStatisticsDto, VehicleFuelExpenseDto, FuelTypeDistributionDto, MonthlyFuelTrendDto, MonthlyCostReport, VehicleMonthlyCost, DepartmentCostGroup, FuelAuditReport, FuelLevelPoint, FuelCardFill, FuelConsumptionComparisonReport, ConsumptionSegmentsReport, ConsumptionSegment, ConsumptionByTonnageReport, VehicleLoadPeriod, OperatingCostReportDto, VehicleOperatingCostDto, VehicleCostEvolutionDto, MonthlyVehicleCostDto, RepairFrequencyReportDto, VehicleRepairFrequencyDto } from '../services/api.service';
 import { Subject, forkJoin, of, takeUntil, catchError } from 'rxjs';
 import { GeocodingService } from '../services/geocoding.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -34,9 +34,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('chartCanvas') chartCanvas?: ElementRef<HTMLCanvasElement>;
   @ViewChild('chartScrollContainer') chartScrollContainer?: ElementRef<HTMLDivElement>;
   @ViewChild('secondaryChartCanvas') secondaryChartCanvas?: ElementRef<HTMLCanvasElement>;
-  @ViewChild('kmBarChart') kmBarChartRef?: ElementRef<HTMLCanvasElement>;
-  @ViewChild('fuelPieChart') fuelPieChartRef?: ElementRef<HTMLCanvasElement>;
-  @ViewChild('maintenanceAreaChart') maintenanceAreaChartRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mfCostDonutCanvas') mfCostDonutCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mfKmCanvas') mfKmCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('mfTrendCanvas') mfTrendCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('mileagePeriodChart') mileagePeriodChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('comparisonCanvas') comparisonCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('comparisonConsoCanvas') comparisonConsoCanvasRef?: ElementRef<HTMLCanvasElement>;
@@ -56,10 +56,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   mapPopupData: { latitude: number; longitude: number; vehicle: string; speed: string; limit: string; time: string; address: string; severityLabel: string } | null = null;
   private popupMap?: L.Map;
 
-  // Chart instances for monthly report
-  private kmBarChart?: Chart;
-  private fuelPieChart?: Chart;
-  private maintenanceAreaChart?: Chart;
+  // Graphes du rapport mensuel flotte
+  private mfCostDonut?: Chart;
+  private mfKmChart?: Chart;
+  private mfTrendChart?: Chart;
   private mileagePeriodChart?: Chart;
   
   // Chart color palette
@@ -391,7 +391,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
   
   // Monthly fleet report data
   monthlyReport: MonthlyFleetReport | null = null;
-  monthlyActiveSection = 'summary';
   
   // Monthly cost report data
   monthlyCostReport: MonthlyCostReport | null = null;
@@ -477,15 +476,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     'Quel est le coût total de possession par véhicule ?'
   ];
 
-  monthlySections = [
-    { id: 'summary', label: 'Résumé', icon: '📊' },
-    { id: 'fleet', label: 'Flotte', icon: '🚗' },
-    { id: 'utilization', label: 'Utilisation', icon: '📈' },
-    { id: 'fuel', label: 'Carburant', icon: '⛽' },
-    { id: 'drivers', label: 'Conducteurs', icon: '👤' },
-    { id: 'costs', label: 'Coûts', icon: '💰' },
-    { id: 'kpis', label: 'KPIs', icon: '🎯' }
-  ];
   selectedMonthlyYear: number = new Date().getFullYear();
   selectedMonthlyMonth: number = new Date().getMonth(); // Previous month
   monthlyYears: number[] = [];
@@ -920,9 +910,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.chart) { this.chart.destroy(); this.chart = undefined; }
     if (this.secondaryChart) { this.secondaryChart.destroy(); this.secondaryChart = undefined; }
     if (this.mileagePeriodChart) { this.mileagePeriodChart.destroy(); this.mileagePeriodChart = undefined; }
-    if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
-    if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
-    if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
+    this.destroyMonthlyCharts();
     if (this.comparisonChart) { this.comparisonChart.destroy(); this.comparisonChart = undefined; }
     if (this.comparisonConsoChart) { this.comparisonConsoChart.destroy(); this.comparisonConsoChart = undefined; }
     if (this.consumptionChart) { this.consumptionChart.destroy(); this.consumptionChart = undefined; }
@@ -3490,7 +3478,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.reportGenerated = true;
           this.loading = false;
           this.activeTab = 'table';
-          this.monthlyActiveSection = 'summary';
           this.cdr.detectChanges();
           this.appRef.tick();
           setTimeout(() => this.createMonthlyCharts(), 100);
@@ -3514,6 +3501,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   onMonthlyPeriodChange() {
     if (this.selectedTemplate?.type === 'monthly') {
+      // L'ancien mois restait affiché sans indication pendant le chargement.
+      this.loading = true;
       this.executeMonthlyReport();
     }
     if (this.selectedTemplate?.type === 'monthly-costs' || this.selectedTemplate?.type === 'monthly-fuel') {
@@ -3587,185 +3576,175 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }));
   }
 
-  setMonthlySection(sectionId: string) {
-    this.monthlyActiveSection = sectionId;
-    setTimeout(() => this.createMonthlyCharts(), 100);
-  }
-
+  /**
+   * Rapport mensuel flotte (recette du 11/09/2026). L'écran lit directement
+   * monthlyReport.vehicles (une ligne par véhicule, avec ou sans boîtier) et
+   * monthlyReport.totals ; il n'y a plus de tableau reconstruit ici. L'ancien
+   * tableau reposait sur utilization.byVehicle — les seuls véhicules équipés —
+   * et restait vide pour un compte GPA.
+   */
   processMonthlyReport(report: MonthlyFleetReport) {
-    // Build statistics from executive summary
-    this.statisticsData = {
-      'Période': report.reportPeriod,
-      'Véhicules totaux': report.executiveSummary.totalVehicles.toString(),
-      'Véhicules actifs': report.executiveSummary.activeVehicles.toString(),
-      'Distance totale': `${this.formatNumber(report.executiveSummary.totalDistanceKm)} km`,
-      'Carburant consommé': `${this.formatNumber(report.executiveSummary.totalFuelConsumedLiters)} L`,
-      'Coût total': this.formatCurrency(report.executiveSummary.totalOperationalCost),
-      'Taux utilisation': `${report.executiveSummary.fleetUtilizationRate.toFixed(1)}%`,
-      'Trajets': report.executiveSummary.totalTrips.toString()
-    };
-
-    // Calculate fleet averages for variance calculations
-    const fleetAvgConsumption = report.fuelAnalytics.averageConsumptionPer100Km;
-    const totalMaintenanceCost = report.maintenance.totalMaintenanceCost;
-    const avgMaintenanceCost = report.utilization.byVehicle.length > 0 
-      ? totalMaintenanceCost / report.utilization.byVehicle.length : 0;
-
-    // Build enhanced table data with fuel consumption, variance, and cost metrics
-    this.tableData = report.utilization.byVehicle.map((v, index) => {
-      // Get fuel data for this vehicle
-      const fuelData = report.fuelAnalytics.byVehicle?.find(f => f.vehicleId === v.vehicleId);
-      const consumption = fuelData?.consumptionPer100Km || 0;
-      const consumptionVariance = fleetAvgConsumption > 0 
-        ? ((consumption - fleetAvgConsumption) / fleetAvgConsumption) * 100 : 0;
-      
-      // Get maintenance data for this vehicle
-      const maintenanceData = report.maintenance.byVehicle?.find(m => m.vehicleId === v.vehicleId);
-      const maintenanceCost = maintenanceData?.totalCost || 0;
-      const costVariance = avgMaintenanceCost > 0 
-        ? ((maintenanceCost - avgMaintenanceCost) / avgMaintenanceCost) * 100 : 0;
-
-      return {
-        vehicleId: v.vehicleId,
-        vehicleName: v.vehicleName,
-        plate: v.plate || '-',
-        utilizationRate: v.utilizationRate,
-        utilizationRateFormatted: `${v.utilizationRate.toFixed(1)}%`,
-        totalDistanceKm: v.totalDistanceKm,
-        totalDistanceFormatted: `${this.formatNumber(v.totalDistanceKm)} km`,
-        totalTrips: v.totalTrips,
-        operatingDays: v.operatingDays,
-        avgDailyKm: `${this.formatNumber(v.avgDailyKm)} km`,
-        // Enhanced columns
-        fuelConsumption: consumption,
-        fuelConsumptionFormatted: `${consumption.toFixed(1)} L/100km`,
-        consumptionVariance: consumptionVariance,
-        consumptionVarianceFormatted: `${consumptionVariance >= 0 ? '+' : ''}${consumptionVariance.toFixed(1)}%`,
-        maintenanceCost: maintenanceCost,
-        maintenanceCostFormatted: this.formatCurrency(maintenanceCost),
-        costVariance: costVariance,
-        costVarianceFormatted: `${costVariance >= 0 ? '+' : ''}${costVariance.toFixed(1)}%`,
-        colorIndex: index
-      };
-    });
-
-    // Build chart data from daily trend
-    this.chartData = report.utilization.dailyTrend.map(d => ({
-      label: new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }),
-      value: d.totalDistanceKm
-    }));
+    this.statisticsData = {};
+    this.tableData = report.vehicles || [];
+    this.chartData = [];
   }
 
   createMonthlyCharts() {
     if (!this.monthlyReport) return;
-
-    // Destroy existing charts
     this.destroyMonthlyCharts();
-
-    // Create all charts with slight delay to ensure DOM is ready
+    // Les canvas n'existent qu'une fois le bloc rendu.
     setTimeout(() => {
-      this.createKmBarChart();
-      this.createFuelPieChart();
-      this.createMaintenanceAreaChart();
-      this.createMainLineChart();
-    }, 100);
+      this.drawMfCostDonut();
+      this.drawMfKmChart();
+      if (this.monthlyReport?.fleetHasGps) this.drawMfTrendChart();
+    }, 60);
   }
 
   destroyMonthlyCharts() {
-    if (this.chart) { this.chart.destroy(); this.chart = undefined; }
-    if (this.kmBarChart) { this.kmBarChart.destroy(); this.kmBarChart = undefined; }
-    if (this.fuelPieChart) { this.fuelPieChart.destroy(); this.fuelPieChart = undefined; }
-    if (this.maintenanceAreaChart) { this.maintenanceAreaChart.destroy(); this.maintenanceAreaChart = undefined; }
+    if (this.mfCostDonut) { this.mfCostDonut.destroy(); this.mfCostDonut = undefined; }
+    if (this.mfKmChart) { this.mfKmChart.destroy(); this.mfKmChart = undefined; }
+    if (this.mfTrendChart) { this.mfTrendChart.destroy(); this.mfTrendChart = undefined; }
   }
 
-  // Bar Chart: Kilometers per vehicle
-  createKmBarChart() {
-    if (!this.kmBarChartRef?.nativeElement || !this.monthlyReport) return;
-    
-    const ctx = this.kmBarChartRef.nativeElement.getContext('2d');
-    if (!ctx) return;
+  // ---------- Rapport mensuel flotte : aides d'affichage ----------
 
-    const vehicleData = this.monthlyReport.utilization.byVehicle;
-    
-    this.kmBarChart = new Chart(ctx, {
-      type: 'bar',
+  /** « Août 2026 » (le serveur renvoie « août 2026 »). */
+  mfMoisLibelle(): string {
+    const n = this.monthlyReport?.monthName || '';
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  }
+
+  private mfMoisPrecedent(): string {
+    const r = this.monthlyReport;
+    if (!r) return 'le mois précédent';
+    return new Date(r.year, r.month - 2, 1).toLocaleDateString('fr-FR', { month: 'long' });
+  }
+
+  /** Sous-titre du KPI Kilométrage : d'où viennent les km, et combien de véhicules sont mesurés. */
+  mfSourceKm(): string {
+    const r = this.monthlyReport;
+    if (!r) return '';
+    const lignes = r.vehicles ?? [];
+    const n = lignes.length;
+    const gps = lignes.filter(v => v.distanceSource === 'gps').length;
+    const releves = lignes.filter(v => v.distanceSource === 'odometer').length;
+    if (gps && releves) return `GPS ${gps} · relevés ${releves} · sur ${n}`;
+    if (gps) return `boîtiers GPS · ${gps}/${n}`;
+    if (releves) return `relevés saisis · ${releves}/${n}`;
+    return 'aucun kilométrage mesuré';
+  }
+
+  /** Info-bulle de la cellule Km : origine du kilométrage. */
+  mfSourceTitre(v: MonthlyFleetVehicleRow): string {
+    switch (v.distanceSource) {
+      case 'gps': return 'Distance mesurée par le boîtier GPS';
+      case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)'
+        + (v.reliableDistance ? '' : ' — incertain : rupture de compteur ou relevé écarté');
+      default: return 'Kilométrage non mesurable ce mois : moins de deux relevés compteur';
+    }
+  }
+
+  /** Sous-titre du KPI Coût total : variation vs le mois précédent (coûts réels des deux mois). */
+  mfVariationCout(): string {
+    const c = this.monthlyReport?.monthOverMonth?.cost;
+    if (!c) return '';
+    const mois = this.mfMoisPrecedent();
+    if (!(c.previousValue > 0)) return `aucune dépense en ${mois}`;
+    return `${this.formatSignedPct(c.changePercent)} vs ${mois}`;
+  }
+
+  /** Un coût qui monte est en rouge, qui baisse en vert. */
+  mfVariationClasse(): string {
+    const c = this.monthlyReport?.monthOverMonth?.cost;
+    if (!c || !(c.previousValue > 0) || c.changePercent === 0) return '';
+    return c.changePercent > 0 ? 'mf-hausse' : 'mf-baisse';
+  }
+
+  mfSousVehicules(): string {
+    const r = this.monthlyReport;
+    if (!r) return '';
+    return r.fleetHasGps
+      ? `${r.vehiclesWithGps} avec GPS · ${this.formatPct(r.utilization.overallUtilizationRate)} d’utilisation`
+      : 'sans boîtier GPS';
+  }
+
+  private readonly mfCouleursCategories: Record<string, string> = {
+    'Carburant': '#3b82f6', 'Entretien': '#10b981', 'Réparations': '#ef4444', 'Assurance': '#8b5cf6',
+    'Visite technique': '#f59e0b', 'Taxe / vignette': '#0ea5e9', 'Péage': '#64748b'
+  };
+  private readonly mfPalette = ['#6366f1', '#14b8a6', '#f97316', '#84cc16', '#ec4899', '#94a3b8'];
+
+  mfCouleurCategorie(categorie: string, i: number): string {
+    return this.mfCouleursCategories[categorie] ?? this.mfPalette[i % this.mfPalette.length];
+  }
+
+  /** Véhicules au kilométrage connu, du plus roulant au moins roulant. */
+  mfVehiculesMesures(): MonthlyFleetVehicleRow[] {
+    return (this.monthlyReport?.vehicles || [])
+      .filter(v => (v.distanceKm ?? 0) > 0)
+      .sort((a, b) => (b.distanceKm ?? 0) - (a.distanceKm ?? 0));
+  }
+
+  /** Hauteur utile du graphe km : 18 px par véhicule, 126 px au moins. Le cadre
+   *  peut être plus haut (il s'aligne sur le tableau) ; au-delà de ~20 véhicules
+   *  il défile au lieu d'allonger la page. */
+  mfKmHauteur(): number {
+    // Plancher bas (72 px) : pour un petit parc, un graphe plus haut que le
+    // tableau voisin laissait un vide sous la note (revue du 11/09/2026).
+    return Math.max(72, 18 * this.mfVehiculesMesures().length + 40);
+  }
+
+  /** Montant d'une cellule du tableau mensuel : avec « € » ou « $ », mais SANS le
+   *  code quand la devise n'a pas de symbole (TND, DZD) — il passe alors dans
+   *  l'en-tête. Cinq colonnes de « 1 234,56 TND » faisaient déborder le tableau
+   *  (ascenseur horizontal) sur un écran de 1536 px avec les colonnes GPS. */
+  mfMontant(v: number): string {
+    return this.getCurrencyCode().length > 1
+      ? (Number(v) || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : this.formatCurrency(v);
+  }
+
+  /** « TND » à la fin des intitulés de montant quand la devise n'a pas de symbole. */
+  mfDeviseEntete(): string {
+    const c = this.getCurrencyCode();
+    return c.length > 1 ? ' ' + c : '';
+  }
+
+  /** Donut « Répartition des coûts » : les catégories RÉELLES (costAnalysis.byCategory).
+   *  Il remplace « Coûts de maintenance par période », qui répartissait chaque
+   *  total à 25/30/20/25 % sur quatre semaines inventées. */
+  drawMfCostDonut() {
+    const canvas = this.mfCostDonutCanvasRef?.nativeElement;
+    const cats = this.monthlyReport?.costAnalysis?.byCategory || [];
+    if (!canvas || !cats.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const police = getComputedStyle(canvas).fontFamily || 'Inter, sans-serif';
+    this.mfCostDonut = new Chart(ctx, {
+      type: 'doughnut',
       data: {
-        labels: vehicleData.map(v => v.vehicleName),
+        labels: cats.map(c => c.category),
         datasets: [{
-          label: 'Kilomètres parcourus',
-          data: vehicleData.map(v => v.totalDistanceKm),
-          backgroundColor: vehicleData.map((_, i) => this.chartColors[i % this.chartColors.length]),
-          borderColor: vehicleData.map((_, i) => this.chartColors[i % this.chartColors.length]),
-          borderWidth: 1,
-          borderRadius: 6
+          data: cats.map(c => Math.max(0, Number(c.amount) || 0)),
+          backgroundColor: cats.map((c, i) => this.mfCouleurCategorie(c.category, i)),
+          borderColor: '#ffffff',
+          borderWidth: 2,
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        cutout: '62%',
+        layout: { padding: 4 },
         plugins: {
           legend: { display: false },
           tooltip: {
+            bodyFont: { family: police },
             callbacks: {
-              label: (ctx) => `${(ctx.parsed.y ?? 0).toLocaleString('fr-FR')} km`
-            }
-          }
-        },
-        scales: {
-          x: { 
-            title: { display: true, text: 'Véhicule' },
-            ticks: { maxRotation: 45, minRotation: 45 }
-          },
-          y: { 
-            beginAtZero: true, 
-            title: { display: true, text: 'Distance (km)' },
-            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')}` }
-          }
-        }
-      }
-    });
-  }
-
-  // Pie Chart: Fuel consumption distribution
-  createFuelPieChart() {
-    if (!this.fuelPieChartRef?.nativeElement || !this.monthlyReport) return;
-    
-    const ctx = this.fuelPieChartRef.nativeElement.getContext('2d');
-    if (!ctx) return;
-
-    const fuelData = this.monthlyReport.fuelAnalytics.byVehicle || [];
-    const totalFuel = fuelData.reduce((sum, v) => sum + (v.totalConsumedLiters || 0), 0);
-    
-    this.fuelPieChart = new Chart(ctx, {
-      type: 'pie',
-      data: {
-        labels: fuelData.map(v => v.vehicleName),
-        datasets: [{
-          data: fuelData.map(v => v.totalConsumedLiters || 0),
-          backgroundColor: fuelData.map((_, i) => this.chartColors[i % this.chartColors.length]),
-          borderColor: '#ffffff',
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { 
-            display: true, 
-            position: 'right',
-            labels: { 
-              usePointStyle: true,
-              padding: 15,
-              font: { size: 11 }
-            }
-          },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => {
-                const value = ctx.parsed;
-                const percentage = totalFuel > 0 ? ((value / totalFuel) * 100).toFixed(1) : 0;
-                return `${ctx.label}: ${value.toLocaleString('fr-FR')} L (${percentage}%)`;
+              label: (item) => {
+                const c = cats[item.dataIndex];
+                return `${c.category} : ${this.formatCurrency(c.amount)} (${this.formatPct(c.percentage)})`;
               }
             }
           }
@@ -3774,121 +3753,140 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  // Area Chart: Maintenance costs over time
-  createMaintenanceAreaChart() {
-    if (!this.maintenanceAreaChartRef?.nativeElement || !this.monthlyReport) return;
-    
-    const ctx = this.maintenanceAreaChartRef.nativeElement.getContext('2d');
+  /** Barres horizontales des km par véhicule (plaques), valeur au bout de la barre. */
+  drawMfKmChart() {
+    const canvas = this.mfKmCanvasRef?.nativeElement;
+    const rows = this.mfVehiculesMesures();
+    if (!canvas || !rows.length) return;
+    const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Use daily trend or generate mock maintenance data based on report
-    const maintenanceByVehicle = this.monthlyReport.maintenance.byVehicle || [];
-    const daysInMonth = new Date(this.monthlyReport.year, this.monthlyReport.month, 0).getDate();
-    
-    // Generate labels for each week of the month
-    const weekLabels = ['Semaine 1', 'Semaine 2', 'Semaine 3', 'Semaine 4'];
-    
-    // Create datasets for each vehicle with maintenance costs distributed over weeks
-    const datasets = maintenanceByVehicle.slice(0, 5).map((vehicle, index) => {
-      const weeklyData = [0, 0, 0, 0];
-      // Distribute maintenance cost across weeks (simulated breakdown)
-      const totalCost = vehicle.totalCost || 0;
-      weeklyData[0] = totalCost * 0.25;
-      weeklyData[1] = totalCost * 0.30;
-      weeklyData[2] = totalCost * 0.20;
-      weeklyData[3] = totalCost * 0.25;
-      
-      return {
-        label: vehicle.vehicleName,
-        data: weeklyData,
-        backgroundColor: this.hexToRgba(this.chartColors[index % this.chartColors.length], 0.3),
-        borderColor: this.chartColors[index % this.chartColors.length],
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4
-      };
-    });
-
-    this.maintenanceAreaChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: weekLabels,
-        datasets: datasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { 
-            display: true, 
-            position: 'top',
-            labels: { usePointStyle: true }
-          },
-          tooltip: {
-            mode: 'index',
-            intersect: false,
-            callbacks: {
-              label: (ctx) => `${ctx.dataset.label}: ${(ctx.parsed.y ?? 0).toLocaleString('fr-FR', { minimumFractionDigits: 2 })} ${this.getCurrencyCode()}`
-            }
+    const police = getComputedStyle(canvas).fontFamily || 'Inter, sans-serif';
+    const valeurs = rows.map(v => v.distanceKm ?? 0);
+    const max = Math.max(...valeurs, 1);
+    const valeurAuBout = {
+      id: 'mfKmValeur',
+      afterDatasetsDraw: (chart: any) => {
+        const c = chart.ctx as CanvasRenderingContext2D;
+        const meta = chart.getDatasetMeta(0);
+        c.save();
+        c.font = `600 11px ${police}`;
+        c.fillStyle = '#334155';
+        c.textBaseline = 'middle';
+        meta.data.forEach((bar: any, i: number) => {
+          const txt = this.formatNumber(valeurs[i]);
+          const w = c.measureText(txt).width;
+          // Dans la barre si elle déborderait du cadre, sinon juste après.
+          if (bar.x + 6 + w > chart.chartArea.right) {
+            c.fillStyle = '#ffffff';
+            c.textAlign = 'right';
+            c.fillText(txt, bar.x - 6, bar.y);
+            c.fillStyle = '#334155';
+          } else {
+            c.textAlign = 'left';
+            c.fillText(txt, bar.x + 6, bar.y);
           }
-        },
-        scales: {
-          x: { title: { display: true, text: 'Période' } },
-          y: { 
-            beginAtZero: true, 
-            stacked: true,
-            title: { display: true, text: `Coût maintenance (${this.getCurrencyCode()})` },
-            ticks: { callback: (value) => `${value.toLocaleString('fr-FR')} ${this.getCurrencyCode()}` }
-          }
-        },
-        interaction: {
-          mode: 'nearest',
-          axis: 'x',
-          intersect: false
-        }
+        });
+        c.restore();
       }
-    });
-  }
-
-  // Main line chart (distance + utilization trends)
-  createMainLineChart() {
-    if (!this.chartCanvas?.nativeElement || !this.monthlyReport) return;
-
-    const ctx = this.chartCanvas.nativeElement.getContext('2d');
-    if (!ctx) return;
-
-    const chartData = this.monthlyReport.utilization.dailyTrend;
-    
-    this.chart = new Chart(ctx, {
-      type: 'line',
+    };
+    this.mfKmChart = new Chart(ctx, {
+      type: 'bar',
       data: {
-        labels: chartData.map(d => new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })),
+        labels: rows.map(v => v.plate || v.vehicleName),
         datasets: [{
-          label: 'Distance (km)',
-          data: chartData.map(d => d.totalDistanceKm),
-          borderColor: '#3B82F6',
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          fill: true,
-          tension: 0.4
-        }, {
-          label: 'Utilisation (%)',
-          data: chartData.map(d => d.utilizationRate),
-          borderColor: '#10B981',
-          backgroundColor: 'rgba(16, 185, 129, 0.1)',
-          fill: false,
-          tension: 0.4,
-          yAxisID: 'y1'
+          data: valeurs,
+          backgroundColor: rows.map(v => v.distanceSource === 'gps' ? 'rgba(16,185,129,.75)' : 'rgba(59,130,246,.75)'),
+          borderColor: rows.map(v => v.distanceSource === 'gps' ? 'rgba(16,185,129,1)' : 'rgba(59,130,246,1)'),
+          borderWidth: 1,
+          borderRadius: 5,
+          barPercentage: .72,
+          categoryPercentage: .82
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        indexAxis: 'y',
+        animation: false,
         plugins: {
-          legend: { display: false }
+          legend: { display: false },
+          tooltip: {
+            titleFont: { family: police, weight: 'bold' },
+            bodyFont: { family: police },
+            callbacks: {
+              title: (items) => {
+                const v = rows[items[0]?.dataIndex ?? 0];
+                return v ? (v.plate ? `${v.plate} — ${v.vehicleName}` : v.vehicleName) : '';
+              },
+              label: (item) => {
+                const v = rows[item.dataIndex];
+                return [`${this.formatNumber(v.distanceKm ?? 0)} km`, v.distanceSource === 'gps' ? 'boîtier GPS' : 'relevés saisis'];
+              }
+            }
+          }
         },
         scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Distance (km)' } },
-          y1: { beginAtZero: true, position: 'right', max: 100, title: { display: true, text: 'Utilisation (%)' }, grid: { drawOnChartArea: false } }
+          x: {
+            beginAtZero: true,
+            suggestedMax: max * 1.12,
+            ticks: { font: { family: police, size: 10.5 }, color: '#64748b', callback: (val: any) => this.formatNumber(Number(val)) },
+            grid: { color: 'rgba(148,163,184,.22)' }
+          },
+          y: { grid: { display: false }, ticks: { font: { family: police, size: 11, weight: 600 }, color: '#334155' } }
+        }
+      },
+      plugins: [valeurAuBout]
+    });
+  }
+
+  /** Tendance journalière — seulement avec un boîtier (aucun relevé par jour sans GPS). */
+  drawMfTrendChart() {
+    const canvas = this.mfTrendCanvasRef?.nativeElement;
+    const jours = this.monthlyReport?.utilization?.dailyTrend || [];
+    if (!canvas || !jours.length) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const police = getComputedStyle(canvas).fontFamily || 'Inter, sans-serif';
+    this.mfTrendChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: jours.map(d => new Date(d.date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })),
+        datasets: [
+          {
+            label: 'Distance (km)',
+            data: jours.map(d => d.totalDistanceKm),
+            borderColor: '#3b82f6',
+            backgroundColor: 'rgba(59,130,246,.12)',
+            fill: true,
+            tension: .3,
+            pointRadius: 0,
+            borderWidth: 2,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Véhicules en activité',
+            data: jours.map(d => d.activeVehicles),
+            borderColor: '#10b981',
+            backgroundColor: 'transparent',
+            tension: .3,
+            pointRadius: 0,
+            borderWidth: 2,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: true, position: 'top', align: 'end', labels: { boxWidth: 10, font: { family: police, size: 11 } } },
+          tooltip: { titleFont: { family: police }, bodyFont: { family: police } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { family: police, size: 10 }, color: '#64748b', maxRotation: 0, autoSkip: true, maxTicksLimit: 16 } },
+          y: { beginAtZero: true, ticks: { font: { family: police, size: 10 }, color: '#64748b' }, grid: { color: 'rgba(148,163,184,.22)' } },
+          y1: { beginAtZero: true, position: 'right', ticks: { precision: 0, font: { family: police, size: 10 }, color: '#64748b' }, grid: { display: false } }
         }
       }
     });
@@ -5795,7 +5793,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * leurs colonnes ici, à partir des données déjà affichées à l'écran.
    */
   private buildExportConfig(type: string, vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
-    if (type === 'monthly' && this.monthlyReport) return this.buildMonthlyExport();
+    if (type === 'monthly' && this.monthlyReport) return this.buildMonthlyExport(format);
     if (type === 'fuel-estimation' && this.fuelEstimationReport) return this.buildFuelEstimationExport(vehicleName, dateRange);
     if ((type === 'monthly-costs' || type === 'monthly-fuel') && this.monthlyCostReport) return this.buildMonthlyCostExport(format);
     if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
@@ -6029,40 +6027,121 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return { title: 'Rapport IA Flotte', statistics, columns, data };
   }
 
-  private buildMonthlyExport(): ReportExportConfig | null {
-    if (!this.monthlyReport) return null;
+  /**
+   * Rapport mensuel flotte : le tableau par véhicule (une ligne par véhicule,
+   * avec ou sans boîtier), sa ligne TOTAL et 5 KPI. Recette du 11/09/2026 :
+   * l'export lisait des champs qui n'existent pas (vehicleReports,
+   * totalDistanceKm, totalTrips) et sortait VIDE pour tous les comptes, avec
+   * des colonnes GPS seulement. Valeurs formatées dans le PDF, brutes pour les
+   * tableurs ; plaques ; en-têtes abrégés ; TOTAL mis en évidence.
+   */
+  private buildMonthlyExport(format = 'pdf'): ReportExportConfig | null {
     const r = this.monthlyReport;
-    const columns = [
-      { header: 'Véhicule', dataKey: 'vehicleName' },
-      { header: 'Distance', dataKey: 'distance' },
-      { header: 'Trajets', dataKey: 'trips' },
-      { header: 'Temps conduite', dataKey: 'drivingTime' },
-      { header: 'Vit. max', dataKey: 'maxSpeed' },
-      { header: 'Arrêts', dataKey: 'stops' },
-      { header: 'Score', dataKey: 'score' }
-    ];
-    const data = (r as any).vehicleReports?.map((v: any) => ({
-      vehicleName: v.vehicleName || v.plate || '-',
-      distance: `${(v.totalDistanceKm || 0).toFixed(1)} km`,
-      trips: v.totalTrips || 0,
-      drivingTime: this.formatDuration(v.totalDrivingTimeSeconds || 0),
-      maxSpeed: `${(v.maxSpeed || 0).toFixed(0)} km/h`,
-      stops: v.totalStops || 0,
-      score: `${(v.drivingScore || 0).toFixed(0)}/100`
-    })) || [];
+    if (!r) return null;
+    const cur = this.getCurrencyCode();
+    const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
+    const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const n3 = (v: any) => Math.round((Number(v) || 0) * 1000) / 1000;
+    const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
+    const vide = pourPdf ? '—' : '';
+    // Devise sans symbole (TND, DZD) : le code est dans l'en-tête, pas dans
+    // chaque cellule (cinq colonnes de montants élargissaient le tableau).
+    const mt = (v: any) => !pourPdf ? n2(v) : this.mfMontant(Number(v) || 0);
+    const km = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatNumber(v) : n2(v));
+    const litres = (v: number) => pourPdf ? this.formatNumber(v, 1) : n2(v);
+    const l100 = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatNumber(v, 2) : n2(v));
+    const parKm = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatCostPerKm(v) : n3(v));
+    const pct = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatPct(v) : n1(v));
+    const gps = r.fleetHasGps;
 
-    const monthLabel = this.monthlyMonths.find((m: any) => m.value === this.selectedMonthlyMonth)?.label || '';
+    // Largeurs mesurées en Manrope : 168 mm pour 190 sans les colonnes GPS
+    // (portrait), 193 mm avec (paysage).
+    const columns = pourPdf
+      ? [
+          { header: 'Immat.', dataKey: 'vehicle', weight: 2.0 },
+          { header: 'Km*', dataKey: 'km', weight: 1.6 },
+          { header: 'Litres', dataKey: 'liters', weight: 1.7 },
+          { header: 'L/100', dataKey: 'l100', weight: 1.4 },
+          { header: `Carb. ${cur}`, dataKey: 'fuel', weight: 2.0 },
+          { header: `Entr. ${cur}`, dataKey: 'maintenance', weight: 2.0 },
+          { header: `Répar. ${cur}`, dataKey: 'repair', weight: 2.0 },
+          { header: `Autres ${cur}`, dataKey: 'other', weight: 2.0 },
+          { header: `Total ${cur}`, dataKey: 'total', weight: 2.1 },
+          { header: `${cur}/km`, dataKey: 'perKm', weight: 1.4 },
+          ...(gps ? [{ header: 'Util.', dataKey: 'util', weight: 1.4 }, { header: 'Trajets', dataKey: 'trips', weight: 1.3 }] : [])
+        ]
+      : [
+          { header: 'Immatriculation', dataKey: 'vehicle' },
+          { header: 'Véhicule', dataKey: 'vehicleName' },
+          { header: 'Kilométrage (km)', dataKey: 'km' },
+          { header: 'Origine du kilométrage', dataKey: 'source' },
+          { header: 'Litres', dataKey: 'liters' },
+          { header: 'Consommation (L/100 km)', dataKey: 'l100' },
+          { header: `Carburant (${cur})`, dataKey: 'fuel' },
+          { header: `Entretiens (${cur})`, dataKey: 'maintenance' },
+          { header: `Réparations (${cur})`, dataKey: 'repair' },
+          { header: `Autres dépenses (${cur})`, dataKey: 'other' },
+          { header: `Coût total (${cur})`, dataKey: 'total' },
+          { header: `Coût au km (${cur}/km)`, dataKey: 'perKm' },
+          ...(gps ? [{ header: 'Utilisation (%)', dataKey: 'util' }, { header: 'Trajets', dataKey: 'trips' }] : [])
+        ];
+    const origine = (s: string) => s === 'gps' ? 'GPS' : s === 'odometer' ? 'relevés saisis' : 'non mesurable';
+    const data: any[] = (r.vehicles || []).map(v => ({
+      vehicle: v.plate || v.vehicleName,
+      vehicleName: v.vehicleName,
+      km: km(v.distanceKm),
+      source: origine(v.distanceSource),
+      liters: litres(v.liters),
+      l100: l100(v.consumptionPer100Km),
+      fuel: mt(v.fuelCost),
+      maintenance: mt(v.maintenanceCost),
+      repair: mt(v.repairCost),
+      other: mt(v.otherCost),
+      total: mt(v.totalCost),
+      perKm: parKm(v.costPerKm),
+      util: pct(v.utilizationRate),
+      trips: v.trips == null ? vide : v.trips
+    }));
+    const t = r.totals;
+    data.push({
+      vehicle: 'TOTAL',
+      vehicleName: '',
+      km: km(t.measuredVehicles ? t.distanceKm : null),
+      source: '',
+      liters: litres(t.liters),
+      l100: l100(t.consumptionPer100Km),
+      fuel: mt(t.fuelCost),
+      maintenance: mt(t.maintenanceCost),
+      repair: mt(t.repairCost),
+      other: mt(t.otherCost),
+      total: mt(t.totalCost),
+      perKm: parKm(t.costPerKm),
+      util: gps ? pct(r.utilization.overallUtilizationRate) : vide,
+      trips: gps ? r.executiveSummary.totalTrips : vide
+    });
+
+    const statistics: Record<string, string> = {
+      'Kilométrage': t.measuredVehicles ? `${this.formatNumber(t.distanceKm)} km` : '—',
+      'Carburant': `${this.formatNumber(t.liters)} L`,
+      'Coût total': this.formatCurrency(t.totalCost),
+      'Coût au km': t.costPerKm == null ? '—' : `${this.formatCostPerKm(t.costPerKm)} ${cur}/km`,
+      'Véhicules': String(r.fleetOverview.totalVehicles)
+    };
+
     return {
-      title: 'Rapport mensuel flotte',
-      subtitle: `${monthLabel} ${this.selectedMonthlyYear}`,
-      dateRange: `${monthLabel} ${this.selectedMonthlyYear}`,
-      statistics: {
-        'Véhicules': String((r as any).vehicleReports?.length || 0),
-        'Distance totale': `${((r as any).totalDistanceKm || 0).toFixed(1)} km`,
-        'Trajets': String((r as any).totalTrips || 0)
-      },
+      title: this.selectedTemplate?.name || 'Rapport mensuel flotte',
+      vehicleName: pourPdf ? undefined : 'Tout le parc',
+      dateRange: this.mfMoisLibelle(),
+      statistics,
       columns,
-      data
+      data,
+      orientation: gps && pourPdf ? 'landscape' : 'portrait',
+      highlightLastRow: true,
+      footnote: pourPdf
+        ? `* Km : boîtier GPS pour un véhicule équipé, sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) ; « — » = non mesurable ce mois. `
+          + `L/100 = litres aux 100 km ; Entr. = entretiens ; Répar. = réparations ; Autres = assurance, vignette, péages… `
+          + `Les mensualités d’acquisition ne sont pas comptées.`
+        : undefined,
     };
   }
 

@@ -2848,6 +2848,53 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   }
 }
 
+/* ── « Rapport mensuel flotte » (recette du 11/09/2026) ───────────────────
+   Quatre graphes de 280 px (dont deux vides sans GPS et un inventé) et un
+   tableau vide laissaient ~1 100 px de vide avant la première donnée. Ici :
+   KPI, tableau par véhicule, petit donut des coûts réels, km par véhicule —
+   un écran, sans ascenseur horizontal, sans grand graphe. */
+.mf-workspace { gap: 14px; }
+.mf-workspace .mf-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mf-workspace .stat-card .stat-sub.mf-hausse { color: #dc2626; font-weight: 600; }
+.mf-workspace .stat-card .stat-sub.mf-baisse { color: #16a34a; font-weight: 600; }
+/* Grille 65 / 35. « stretch » : les deux colonnes finissent à la même hauteur,
+   le graphe des km s'étirant (flex) jusqu'au bas du tableau et de sa note. */
+.mf-grid { display: grid; grid-template-columns: minmax(0, 13fr) minmax(0, 7fr); gap: 14px; align-items: stretch; }
+.mf-gauche, .mf-droite { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mf-droite .mf-km-carte { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+/* Cadre du graphe : s'étire, mais au-delà de ~20 véhicules il défile plutôt
+   que d'allonger la page (le graphe garde 18 px par véhicule). */
+.mf-workspace .mf-km-box { flex: 1 1 auto; min-height: 0; max-height: 420px; overflow-y: auto; overflow-x: hidden; padding: 6px 12px 8px; }
+.mf-workspace .mf-km-box::-webkit-scrollbar { width: 6px; }
+.mf-km-inner { position: relative; height: 100%; }
+/* Tableau : colonnes à la largeur de leur contenu, rien ne passe à la ligne.
+   Ascenseur VERTICAL au-delà de ~12 véhicules, en-têtes et TOTAL épinglés. */
+.mf-workspace .table-wrapper.mf-recap-wrapper { flex: none; height: auto; min-height: 0; max-height: 460px; overflow-x: auto; overflow-y: auto; }
+.mf-workspace .mf-recap-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+.mf-table thead th { white-space: nowrap; padding: 8px 7px; position: sticky; top: 0; z-index: 2; }
+.mf-table thead th[title] { cursor: help; }
+.mf-table tbody td { padding: 6px 7px; white-space: nowrap; font-size: 12.5px; }
+.mf-table tfoot .dept-total-row td { padding: 8px 7px; white-space: nowrap; font-size: 12.5px; position: sticky; bottom: 0; z-index: 2; box-shadow: inset 0 2px 0 #cbd5e1; border-top: 0; }
+.mf-table thead th:first-child, .mf-table tbody td:first-child, .mf-table tfoot .dept-total-row td:first-child { padding-left: 14px; }
+.mf-table thead th:last-child, .mf-table tbody td:last-child, .mf-table tfoot .dept-total-row td:last-child { padding-right: 14px; }
+.mf-workspace .report-note.mf-note { padding: 9px 14px; font-size: 12px; line-height: 1.5; }
+.mf-vide { padding: 18px 16px; }
+.mf-workspace .mf-tendance-box { height: 200px; padding: 8px 14px 10px; }
+/* 1536 px (1920 affiché à 125 %) : cellules un cran plus serrées. */
+@media (max-width: 1700px) {
+  .mf-table thead th { padding: 7px 5px; font-size: 9.5px; letter-spacing: 0; }
+  .mf-table tbody td, .mf-table tfoot .dept-total-row td { padding-left: 5px; padding-right: 5px; font-size: 11.5px; }
+  .mf-table thead th:first-child, .mf-table tbody td:first-child, .mf-table tfoot .dept-total-row td:first-child { padding-left: 10px; }
+  .mf-table thead th:last-child, .mf-table tbody td:last-child, .mf-table tfoot .dept-total-row td:last-child { padding-right: 10px; }
+  .mf-workspace .mf-kpis .stat-card .stat-value { font-size: 20px; }
+}
+@media (max-width: 1449px) {
+  .mf-workspace .mf-kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .mf-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 .cost-table th.rank-col { width: 36px; }
 /* Intitulé abrégé : le libellé complet est dans l'info-bulle. */
 .cost-table thead th[title] { cursor: help; }

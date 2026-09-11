@@ -2656,6 +2656,48 @@ export interface MonthlyFleetReport {
   alerts: FleetAlert[];
   keyPerformanceIndicators: Kpi[];
   charts: ChartDataCollection;
+  /** Au moins un véhicule du périmètre a un boîtier GPS (sinon utilisation et trajets ne sont pas mesurés). */
+  fleetHasGps: boolean;
+  vehiclesWithGps: number;
+  /** Une ligne par véhicule, avec ou sans boîtier (recette du 11/09/2026). */
+  vehicles: MonthlyFleetVehicleRow[];
+  totals: MonthlyFleetTotals;
+}
+
+export interface MonthlyFleetVehicleRow {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string | null;
+  hasGps: boolean;
+  /** null : kilométrage non mesurable sur le mois. */
+  distanceKm: number | null;
+  /** 'gps' | 'odometer' (relevés saisis) | 'none' */
+  distanceSource: string;
+  reliableDistance: boolean;
+  /** Litres achetés (pleins + dépenses carburant), jamais estimés. */
+  liters: number;
+  consumptionPer100Km: number | null;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+  utilizationRate: number | null;
+  trips: number | null;
+}
+
+export interface MonthlyFleetTotals {
+  distanceKm: number;
+  measuredVehicles: number;
+  liters: number;
+  consumptionPer100Km: number | null;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
 }
 
 // ==================== MONTHLY COST REPORT ====================
