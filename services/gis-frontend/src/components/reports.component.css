@@ -2659,12 +2659,198 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .evolution-workspace .cost-table tbody td { padding: 6px 10px; }
 .evolution-workspace .cost-table tfoot .dept-total-row td { padding: 8px 10px; }
 .evolution-workspace .report-note { padding: 9px 14px; font-size: 12px; line-height: 1.5; }
+/* Tableau récapitulatif (recette du 11/09/2026) : plus d'ascenseur horizontal
+   (intitulés raccourcis, voir le HTML), et un ascenseur VERTICAL au-delà de
+   12 mois (période personnalisée longue) pour que la page reste compacte.
+   Douze mois et le TOTAL tiennent sans défiler (448 px) : un ascenseur pour
+   18 px n'aidait personne. En-têtes et ligne TOTAL restent épinglés. */
+.evolution-workspace .evolution-recap-wrapper { max-height: 460px; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.evolution-workspace .evolution-recap-wrapper::-webkit-scrollbar { width: 6px; }
+.evolution-workspace .evolution-recap-wrapper thead th { position: sticky; top: 0; z-index: 2; }
+.evolution-workspace .evolution-recap-wrapper tfoot .dept-total-row td { position: sticky; bottom: 0; z-index: 2; box-shadow: inset 0 2px 0 #cbd5e1; border-top: 0; }
+/* Sous 1536 px la colonne rétrécit encore : les intitulés passent à la ligne
+   plutôt que de déborder. */
+@media (max-width: 1535px) {
+  .evolution-workspace .evolution-recap-wrapper thead th { white-space: normal; }
+}
 @media (max-width: 1100px) {
   .donut-split { flex-direction: column; align-items: stretch; }
   .donut-split-canvas { align-self: center; }
 }
 
+/* ── « Fréquence des réparations » (recette du 11/09/2026) ────────────────
+   Règle de la maquette de Karim : chaque carte a la hauteur de son contenu,
+   jamais celle de sa voisine. Un véhicule = un petit tableau, douze = un
+   tableau de douze lignes ; et le détail remonte dans la place libérée.
+   Les sélecteurs commencent par .rf-workspace : Angular ajoute un attribut
+   par élément du sélecteur, et plusieurs règles .rf-* perdaient contre des
+   règles plus anciennes (.cost-synthesis, .report-note, .cost-table…). */
+.rf-workspace { gap: 14px; }
+.rf-periode { display: inline-flex; align-items: center; color: #64748b; font-variant-numeric: tabular-nums; }
+.rf-periode::before { content: '•'; margin: 0 6px 0 4px; color: #cbd5e1; }
+/* Cinq KPI sur une seule ligne dès qu'il y a la place (1450 px et plus). */
+.rf-workspace .rf-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.rf-workspace .rf-kpis .stat-value.danger,
+.rf-workspace .rf-kpis .stat-value.success { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Grille : 1re colonne à la largeur de son tableau (au plus 42 %) — ses
+   intitulés sont abrégés et rien n'y passe à la ligne ; le reste va au graphe
+   et au donut (demande de Karim du 11/09). « align-items: start » : aucune
+   carte n'est étirée à la hauteur de sa voisine. La 2e rangée est en 1fr :
+   quand la colonne de droite couvre les deux rangées (.rf-grid--cote), c'est
+   elle qui grandit, et la 1re garde la hauteur du classement et du graphe. */
+.rf-grid {
+  display: grid;
+  grid-template-columns: fit-content(42%) minmax(0, 52fr) minmax(0, 48fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "classement graphe cote"
+    "detail     detail detail";
+  gap: 14px;
+  align-items: start;
+}
+.rf-grid.rf-grid--cote {
+  grid-template-areas:
+    "classement graphe cote"
+    "detail     detail cote";
+}
+.rf-classement { grid-area: classement; }
+.rf-graphe { grid-area: graphe; }
+.rf-cote { grid-area: cote; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.rf-detail { grid-area: detail; }
+/* Le « table-wrapper » global impose 200 px de haut minimum et 100 % : c'était
+   le vide sous le tableau d'un seul véhicule. Ici, la hauteur du contenu.
+   L'ascenseur horizontal reste en secours pour les écrans étroits (tablette,
+   vue admin intégrée) : sur ordinateur la disposition évite tout débordement,
+   il n'apparaît donc pas. */
+.rf-workspace .table-wrapper { flex: none; height: auto; min-height: 0; overflow-x: auto; overflow-y: hidden; }
+
+/* Tableaux : largeurs laissées au navigateur (contenu), nombres jamais coupés. */
+.rf-table thead th { white-space: normal; padding: 8px 7px; font-size: 10px; letter-spacing: 0.3px; line-height: 1.3; vertical-align: bottom; }
+.rf-table tbody td { padding: 6px 7px; font-size: 12.5px; }
+.rf-table tfoot .dept-total-row td { padding: 8px 7px; font-size: 12.5px; }
+.rf-table td.num, .rf-table td.vehicle-cell { white-space: nowrap; }
+/* 1re et dernière colonnes décollées du bord de la carte. Même longueur de
+   sélecteur que les règles de rembourrage ci-dessus, sinon elles gagnaient
+   (la ligne TOTAL était décalée de 7 px). */
+.rf-table thead th:first-child, .rf-table tbody td:first-child, .rf-table tfoot .dept-total-row td:first-child { padding-left: 14px; }
+.rf-table thead th:last-child, .rf-table tbody td:last-child, .rf-table tfoot .dept-total-row td:last-child { padding-right: 14px; }
+.rf-workspace .rf-table th.rank-col { width: 26px; }
+/* Classement : rien ne passe à la ligne, ni les intitulés (abrégés), ni
+   « TOTAL / MOY. ». Deux ou trois lignes d'en-tête l'élargissaient pour rien. */
+.rf-classement .rf-table thead th,
+.rf-classement .rf-table tfoot td { white-space: nowrap; }
+.rf-classement .rf-table thead th[title] { cursor: help; }
+/* Largeur naturelle en 3 colonnes : à « width: 100% », un tableau réclame
+   toute la place offerte et la colonne restait bloquée à son plafond de 42 %.
+   Seul sur sa rangée (2 colonnes, 1 colonne ou .rf-grid--large), il reprend
+   toute la largeur. */
+.rf-classement .rf-table { width: auto; }
+
+/* Graphe : hauteur calculée par véhicule, pas de minimum hérité. */
+.rf-chart-box { padding: 6px 12px 8px; }
+.rf-chart-inner { position: relative; height: 100%; }
+
+/* Classement plus haut que la colonne de droite (tout le parc) : classement et
+   graphe prennent la hauteur de la colonne de droite, les trois blocs
+   finissent au bas de « Synthèse » (demande de Karim du 11/09/2026). Le
+   tableau défile dans son cadre, en-têtes et ligne TOTAL / MOYENNE épinglés.
+   Au-delà de ~16 véhicules, le graphe défile aussi (voir rfGrapheInterne). */
+.rf-grid--aligne .rf-classement,
+.rf-grid--aligne .rf-graphe { display: flex; flex-direction: column; }
+.rf-workspace .rf-grid--aligne .rf-classement .table-wrapper { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.rf-grid--aligne .rf-classement thead th { position: sticky; top: 0; z-index: 2; }
+.rf-grid--aligne .rf-classement tfoot .dept-total-row td { position: sticky; bottom: 0; z-index: 2; box-shadow: inset 0 2px 0 #cbd5e1; border-top: 0; }
+.rf-grid--aligne .rf-graphe .rf-chart-box { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+/* Ascenseurs fins : leur largeur s'ajoute à celle de la colonne. (Pas de
+   « scrollbar-width » : Chrome ignorerait alors ces règles.) */
+.rf-workspace .rf-grid--aligne .rf-classement .table-wrapper::-webkit-scrollbar,
+.rf-grid--aligne .rf-graphe .rf-chart-box::-webkit-scrollbar { width: 6px; }
+
+/* Donut compact, légende chiffrée à côté, qui ne déborde plus de sa carte
+   (« (42,4 %) » sortait à droite en 1536 px). */
+.rf-donut { padding: 10px 14px; gap: 12px; }
+.rf-donut .donut-split-canvas.rf-donut-canvas { width: 96px; height: 96px; flex: 0 0 96px; }
+.rf-donut .donut-split-legend { gap: 6px; min-width: 0; }
+.rf-donut .donut-split-row { font-size: 12px; gap: 6px; }
+.rf-donut .donut-split-row .lbl { min-width: 0; }
+.rf-donut .donut-split-row .val small { font-size: 11px; }
+.rf-donut .donut-split-total { padding-top: 6px; }
+.rf-donut .donut-split-total .lbl { padding-left: 14px; }
+
+/* Synthèse : quatre lignes serrées. */
+.rf-workspace .cost-synthesis.rf-synthesis { gap: 7px; padding: 10px 16px 12px; }
+.rf-workspace .rf-synthesis .cost-synthesis-row { font-size: 12.5px; }
+
+/* Détail : en-tête qui passe à la ligne plutôt que d'être rogné. */
+.rf-detail-header { flex-wrap: wrap; row-gap: 8px; padding-top: 12px; padding-bottom: 12px; }
+.rf-detail-count { font-size: 12.5px; font-weight: 600; color: #475569; }
+.rf-workspace .rf-detail-table td.desc-cell { max-width: none; }
+/* Date, type, kilométrage et coût à la largeur de leur contenu ; description
+   et fournisseur se partagent le reste. */
+.rf-detail-table thead th.rf-etroit { width: 1%; white-space: nowrap; }
+.rf-detail-table td:first-child, .rf-detail-table td:nth-child(2) { white-space: nowrap; }
+.rf-type-dot { display: inline-block; margin-right: 6px; vertical-align: middle; }
+
+.rf-workspace .report-note.rf-note { padding: 9px 14px; font-size: 12px; line-height: 1.5; }
+
+/* Entre 1536 et 1700 px (un écran 1920 affiché à 125 % donne 1536) : cellules
+   un cran plus serrées, classement un cran plus petit (~470 px au lieu de
+   512) ; la place gagnée va au graphe et au donut (demande de Karim). */
+@media (max-width: 1700px) {
+  .rf-table thead th { padding: 7px 5px; }
+  .rf-table tbody td, .rf-table tfoot .dept-total-row td { padding-left: 5px; padding-right: 5px; font-size: 12px; }
+  .rf-table thead th:first-child, .rf-table tbody td:first-child, .rf-table tfoot .dept-total-row td:first-child { padding-left: 10px; }
+  .rf-table thead th:last-child, .rf-table tbody td:last-child, .rf-table tfoot .dept-total-row td:last-child { padding-right: 10px; }
+  .rf-classement .rf-table thead th { font-size: 9.5px; letter-spacing: 0; }
+  .rf-classement .rf-table tbody td, .rf-classement .rf-table tfoot .dept-total-row td { font-size: 11.5px; }
+  /* « TOTAL / MOY. » couvre « # » et « Véhicule » : en 11,5 px gras il
+     imposait 110 px à ces deux colonnes, contre 98 pour les plaques. */
+  .rf-classement .rf-table tfoot .dept-total-row td:first-child { font-size: 10.5px; }
+  .rf-workspace .rf-kpis .stat-card .stat-value { font-size: 20px; }
+}
+/* Classement trop large pour ses 42 % malgré tout (montants à six
+   chiffres…) : il prend toute la largeur plutôt que d'être rogné (voir
+   ajusterDispositionReparations). Seulement en disposition 3 colonnes. */
+@media (min-width: 1536px) {
+  .rf-grid.rf-grid--large {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "classement classement"
+      "graphe     cote"
+      "detail     detail";
+  }
+  .rf-grid.rf-grid--large .rf-classement .rf-table { width: 100%; }
+}
+/* Moins de 1536 px : le classement passe seul sur toute la largeur, le
+   graphe et la colonne de droite dessous. */
+@media (max-width: 1535px) {
+  .rf-grid, .rf-grid.rf-grid--cote, .rf-grid.rf-grid--aligne {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      "classement classement"
+      "graphe     cote"
+      "detail     detail";
+  }
+  .rf-classement .rf-table { width: 100%; }
+}
+/* Moins de 1450 px : les cinq KPI passent sur deux rangées plutôt que de
+   couper la plaque (« GH-619-… » en 1280 px). */
+@media (max-width: 1449px) {
+  .rf-workspace .rf-kpis { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+}
+@media (max-width: 1100px) {
+  .rf-grid, .rf-grid.rf-grid--cote, .rf-grid.rf-grid--aligne {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "classement" "graphe" "cote" "detail";
+  }
+}
+
 .cost-table th.rank-col { width: 36px; }
+/* Intitulé abrégé : le libellé complet est dans l'info-bulle. */
+.cost-table thead th[title] { cursor: help; }
 .cost-table td.rank-cell { font-weight: 700; color: #64748b; }
 /* Écart et variation : rouge quand ça coûte plus, vert quand ça coûte moins.
    Les règles portaient « .cost-table td.deviation.over », que la règle grise

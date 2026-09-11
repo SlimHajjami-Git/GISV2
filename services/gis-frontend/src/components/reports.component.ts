@@ -48,6 +48,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @ViewChild('monthlyCostDonutCanvas') monthlyCostDonutCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('repairFreqCanvas') repairFreqCanvasRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('repairTypeCanvas') repairTypeCanvasRef?: ElementRef<HTMLCanvasElement>;
+  @ViewChild('rfGrid') rfGridRef?: ElementRef<HTMLElement>;
   @ViewChild('mapPopupContainer') mapPopupContainer?: ElementRef<HTMLDivElement>;
   
   // Map popup state
@@ -403,6 +404,26 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Mois cliqué (graphe ou tableau) dont le détail par catégorie est affiché ; défaut = mois le plus élevé. */
   selectedEvolutionMonth: MonthlyVehicleCostDto | null = null;
   repairFrequency: RepairFrequencyReportDto | null = null;
+  /** R4 : le détail des interventions remonte sous le classement, à côté de la
+   *  colonne de droite, au lieu d'attendre qu'elle se termine (voir
+   *  ajusterDispositionReparations). */
+  rfDetailACote = false;
+  /** R4 : le classement ne tient pas dans ses 42 % (il déborderait et serait
+   *  rogné) : il passe sur toute la largeur. */
+  rfClassementLarge = false;
+  /** R4 : hauteur commune (px) du classement et du graphe quand le classement
+   *  est plus haut que la colonne de droite : les trois blocs finissent sur la
+   *  même ligne que « Synthèse », le classement défile (demande de Karim du
+   *  11/09/2026). null = hauteurs naturelles. */
+  rfHauteurAlignee: number | null = null;
+  /** R4 aligné : hauteur (px) du graphe quand ses barres ne tiennent plus dans
+   *  la hauteur commune (grand parc) ; il défile alors dans son cadre. null =
+   *  le graphe remplit son cadre. */
+  rfGrapheInterne: number | null = null;
+  /** Périmètre du rapport R4 affiché, figé à l'exécution : changer le filtre
+   *  sans relancer ne doit pas changer le titre d'un rapport déjà calculé. */
+  private rfPerimetreExecute: { vehicule: boolean; departement: string | null } = { vehicule: false, departement: null };
+  private rfResizeRaf = 0;
 
   // Carburant réel vs GPS : courbe du niveau de réservoir (jauge) avec les pleins
   // réellement facturés posés dessus (single vehicle). Une remontée sans cercle = plein non déclaré.
@@ -854,6 +875,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event) {
     this.showTemplateDropdown = false;
+  }
+
+  /** R4 : la largeur change la hauteur des cartes, donc la disposition du détail. */
+  @HostListener('window:resize')
+  onWindowResizeReparations() {
+    if (this.selectedTemplate?.type !== 'repair-frequency' || !this.repairFrequency) return;
+    cancelAnimationFrame(this.rfResizeRaf);
+    this.rfResizeRaf = requestAnimationFrame(() => this.ajusterDispositionReparations());
   }
 
   toggleSection(section: string) {
@@ -5773,7 +5802,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
     if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange, format);
     if (type === 'cost-evolution' && this.costEvolution) return this.buildCostEvolutionExport(vehicleName, dateRange, format);
-    if (type === 'repair-frequency' && this.repairFrequency) return this.buildRepairFrequencyExport(vehicleName, dateRange);
+    if (type === 'repair-frequency' && this.repairFrequency) return this.buildRepairFrequencyExport(vehicleName, dateRange, format);
 
     const allVehicles = !this.selectedVehicleId;
     const options: any = { allVehicles };
@@ -7870,7 +7899,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       case 'gps':
         return 'Kilométrage issu des trajets GPS';
       case 'odometer': {
-        let s = 'Kilométrage issu des relevés compteur saisis aux pleins';
+        // Quatre sources depuis le 10/09/2026, plus seulement les pleins.
+        let s = 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
         if (v.reliableDistance === false) s += ' (incertain)';
         if (v.ignoredOdometerReadings) s += ` — ${v.ignoredOdometerReadings} relevé(s) ignoré(s)`;
         if (v.odometerBreaks) s += ` — ${v.odometerBreaks} rupture(s) de compteur`;
@@ -8368,15 +8398,27 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const { from, to } = this.costReportRange(startDate, endDate);
     const deptId = this.selectedDepartmentId ? parseInt(this.selectedDepartmentId) : undefined;
+    const departement = deptId
+      ? (this.departments.find(d => String(d.id) === String(deptId))?.name || 'Département')
+      : null;
 
     this.apiService.getRepairFrequencyReport(from, to, vehicleId, deptId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (report) => {
         this.ngZone.run(() => {
           this.repairFrequency = report;
+          this.rfPerimetreExecute = { vehicule: vehicleId != null, departement };
+          // Disposition « naturelle » pour la mesure d'ajusterDispositionReparations.
+          this.rfDetailACote = false;
+          this.rfClassementLarge = false;
+          this.rfHauteurAlignee = null;
+          this.rfGrapheInterne = null;
           this.resetGenericReportData();
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
+          // Dans la même tâche que le rendu : la disposition est choisie avant
+          // que le navigateur ne peigne, sans saut visible.
+          this.ajusterDispositionReparations();
           setTimeout(() => { this.drawRepairFreqChart(); this.drawRepairTypeChart(); }, 120);
         });
       },
@@ -8394,9 +8436,162 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Hauteur du graphe « Répartition des interventions par véhicule » : 28 px par véhicule, 240 px minimum. */
+  /** Hauteur du graphe « Répartition des réparations par véhicule » : 26 px par
+   *  véhicule plus les axes et l'étiquette de moyenne, 140 px au minimum. Le
+   *  minimum était de 240 px : pour un seul véhicule, une barre perdue dans un
+   *  grand cadre (recette du 11/09/2026, « inutile d'utiliser un graphique très
+   *  haut »). */
   repairFreqChartHeight(): number {
-    return Math.max(240, 28 * (this.repairFrequency?.vehicles.length ?? 0) + 60);
+    return Math.max(140, 26 * (this.repairFrequency?.vehicles.length ?? 0) + 72);
+  }
+
+  /** Titre de la page R4 : « Nom (plaque) » pour un véhicule, sinon le nom du
+   *  rapport (demande de Karim du 11/09/2026 : pas « Tout le parc (12 véhicules) »,
+   *  que le fil d'Ariane dit déjà). */
+  rfTitre(): string {
+    const r = this.repairFrequency;
+    if (!r) return '';
+    if (this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) {
+      const v = r.vehicles[0];
+      return v.plate ? `${v.vehicleName} (${v.plate})` : v.vehicleName;
+    }
+    return this.selectedTemplate?.name || 'Fréquence des réparations';
+  }
+
+  /** Périmètre en clair pour l'export : « Logistique 01 (GH-619-XC) »,
+   *  « Tout le parc (12 véhicules) » ou « Atelier (3 véhicules) ». */
+  private rfPerimetreLibelle(): string {
+    const r = this.repairFrequency;
+    if (!r) return '';
+    if (this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return this.rfTitre();
+    const n = `${r.fleetSize} véhicule${r.fleetSize > 1 ? 's' : ''}`;
+    return `${this.rfPerimetreExecute.departement || 'Tout le parc'} (${n})`;
+  }
+
+  /** Dernier maillon du fil d'Ariane R4. */
+  rfPerimetre(): string {
+    const r = this.repairFrequency;
+    if (r && this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return r.vehicles[0].vehicleName;
+    return this.rfPerimetreExecute.departement || 'Tout le parc';
+  }
+
+  rfInterventions(n: number): string {
+    return `${n} intervention${n > 1 ? 's' : ''}`;
+  }
+
+  /** Info-bulle des KPI « le plus / le moins fréquent » : plaque ET nom. La
+   *  plaque peut être coupée (« GH-619-… ») sur un écran étroit ; l'info-bulle
+   *  ne montrait que le nom, si bien qu'on ne la lisait nulle part. */
+  rfInfoBulleVehicule(v: VehicleRepairFrequencyDto | null): string {
+    if (!v) return '';
+    return v.plate ? `${v.plate} — ${v.vehicleName}` : v.vehicleName;
+  }
+
+  /** Kilométrage de la ligne TOTAL : somme des véhicules mesurables, celle qui sert
+   *  à la fréquence du parc pour 1000 km. L'écran affichait « — » alors que
+   *  l'export donnait la somme. null si aucun véhicule n'a de kilométrage. */
+  rfTotalKm(): number | null {
+    const mesurables = (this.repairFrequency?.vehicles || []).filter(v => (Number(v.distanceKm) || 0) > 0);
+    return mesurables.length ? mesurables.reduce((s, v) => s + Number(v.distanceKm), 0) : null;
+  }
+
+  /** « 12 interventions », ou « 50 plus récentes sur 63 interventions » quand le
+   *  serveur a plafonné la liste (50 lignes) : le titre ne doit pas annoncer plus
+   *  de lignes que le tableau n'en montre. */
+  rfDetailCompte(): string {
+    const r = this.repairFrequency;
+    const v = r?.mostFrequentVehicle;
+    if (!r || !v) return '';
+    const affichees = r.mostFrequentVehicleInterventions.length;
+    return affichees < v.interventions
+      ? `${affichees} plus récentes sur ${this.rfInterventions(v.interventions)}`
+      : this.rfInterventions(v.interventions);
+  }
+
+  /**
+   * R4 : choisit où va le détail des interventions (recette du 11/09/2026).
+   *
+   * Les cartes de la grille gardent la hauteur de leur contenu. Avec un seul
+   * véhicule, le classement fait ~160 px et le graphe ~190 px, mais la colonne
+   * de droite (donut + synthèse) ~350 px : un détail placé sous toute la ligne
+   * attendait donc la colonne de droite et laissait un grand vide sous le
+   * classement. Dans ce cas, le détail remonte sous le classement et le graphe
+   * (sur leurs deux colonnes) et la note passe dans la colonne de droite.
+   * Avec beaucoup de véhicules, c'est le classement qui est le plus haut : le
+   * détail reste alors sur toute la largeur. Le classement et le graphe
+   * prennent la hauteur de la colonne de droite et finissent sur la même
+   * ligne que « Synthèse », le classement défilant dans son cadre (demande de
+   * Karim du 11/09/2026).
+   *
+   * Mesure faite dans la disposition « naturelle », synchrone : le rendu, la
+   * mesure et la disposition finale se font dans la même tâche, avant que le
+   * navigateur ne peigne.
+   */
+  private ajusterDispositionReparations(): void {
+    if (!this.repairFrequency) return;
+    // Disposition naturelle d'abord, RENDUE tout de suite. Sans ce rendu, la
+    // mesure lisait encore l'écran du rapport précédent (un seul véhicule) et
+    // choisissait la mauvaise disposition pour tout le parc.
+    this.rfDetailACote = false;
+    this.rfClassementLarge = false;
+    this.rfHauteurAlignee = null;
+    this.rfGrapheInterne = null;
+    this.rendreMaintenant();
+    const grille = this.rfGridRef?.nativeElement;
+    if (!grille) return;
+    // Les trois cas ci-dessous ne valent qu'en disposition 3 colonnes : en 2 ou
+    // 1 colonne, chaque bloc a déjà toute la largeur ou sa propre rangée.
+    const colonnes = getComputedStyle(grille).gridTemplateColumns.split(' ').filter(Boolean).length;
+    if (colonnes !== 3) return;
+    // Garde-fou : les colonnes du classement ont la largeur de leur contenu.
+    // Si des montants à six chiffres le rendent plus large que ses 42 %, il
+    // passe sur toute la largeur plutôt que d'être rogné ou de défiler.
+    const cadre = grille.querySelector('.rf-classement .table-wrapper') as HTMLElement | null;
+    if (cadre && cadre.scrollWidth > cadre.clientWidth + 1) {
+      this.rfClassementLarge = true;
+      this.rendreMaintenant();
+      return;
+    }
+    const hauteur = (sel: string) => (grille.querySelector(sel) as HTMLElement | null)?.getBoundingClientRect().height ?? 0;
+    const classement = hauteur('.rf-classement');
+    const graphe = hauteur('.rf-graphe');
+    const cote = hauteur('.rf-cote');
+    // 90 px : en dessous, remonter le détail ne gagne presque rien et laisserait
+    // la colonne de droite finir bien avant lui.
+    if (!!this.repairFrequency.mostFrequentVehicle && cote - Math.max(classement, graphe) > 90) {
+      this.rfDetailACote = true;
+      this.rendreMaintenant();
+      return;
+    }
+    // Classement (ou graphe) plus haut que la colonne de droite : les trois
+    // blocs s'arrêtent au bas de « Synthèse », quelle que soit la taille du
+    // parc. Le classement défile dans son cadre ; le graphe aussi quand ses
+    // barres ne tiennent plus à 18 px par véhicule (en production, des parcs
+    // de 24, 75 et 255 véhicules). Pas d'arrondi : la colonne de droite mesure
+    // 413,6 px, et 413 laissait ses voisins finir un demi-pixel plus haut.
+    if (Math.max(classement, graphe) > cote + 2) {
+      const cadreGraphe = hauteur('.rf-chart-box');
+      const enteteGraphe = graphe - cadreGraphe;
+      const interieurDispo = cote - enteteGraphe - 14;   // 14 = marges haute et basse du cadre
+      const interieurUtile = 18 * this.repairFrequency.vehicles.length + 60;
+      this.rfHauteurAlignee = cote;
+      this.rfGrapheInterne = interieurUtile > interieurDispo ? interieurUtile : null;
+      this.rendreMaintenant();
+    }
+  }
+
+  /** Rendu immédiat de la page. Son contenu est un ng-template affiché dans
+   *  <app-layout> : cdr.detectChanges() ne le rafraîchit pas (vérifié : la
+   *  classe de la grille ne changeait pas), d'où les appRef.tick() déjà
+   *  présents ailleurs dans ce composant. */
+  private rendreMaintenant(): void {
+    try {
+      this.appRef.tick();
+    } catch {
+      // Appel pendant un tick en cours (tick récursif interdit) : le tick en
+      // cours rendra la page, on se contente de la vue du composant.
+      this.cdr.detectChanges();
+    }
   }
 
   /** « 100 % du parc » sous le KPI Véhicules concernés quand tous les véhicules ont au moins une intervention. */
@@ -8422,6 +8617,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const fmt1 = (n: number) => n.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
     const barColor = (v: VehicleRepairFrequencyDto, alpha: string) =>
       v.interventions === 0 ? `rgba(148,163,184,${alpha})` : (v.deviationFromAveragePct ?? 0) > 0 ? `rgba(239,68,68,${alpha})` : `rgba(59,130,246,${alpha})`;
+    // Police de l'application (Inter) plutôt que le « sans-serif » du canvas :
+    // les chiffres du graphe juraient avec ceux des tableaux voisins.
+    const police = getComputedStyle(canvas).fontFamily || 'Inter, sans-serif';
 
     const valueAndAvgPlugin = {
       id: 'repairFreqValueAndAvg',
@@ -8432,7 +8630,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         const area = chart.chartArea;
         const meta = chart.getDatasetMeta(0);
         c.save();
-        c.font = '11px sans-serif';
+        c.font = `600 11px ${police}`;
         c.fillStyle = '#334155';
         c.textAlign = 'left';
         c.textBaseline = 'middle';
@@ -8451,13 +8649,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.lineTo(x, area.bottom);
         c.stroke();
         c.setLineDash([]);
-        c.font = 'bold 11px sans-serif';
+        c.font = `700 11px ${police}`;
         c.fillStyle = '#dc2626';
-        const alignRight = x > (area.left + area.right) / 2;
-        c.textAlign = alignRight ? 'right' : 'left';
         c.textBaseline = 'top';
+        // Libellé long si la place le permet, sinon abrégé ; puis tenu dans le
+        // canvas : en 1536 px il sortait à droite (« … / véhicul », recette du
+        // 11/09/2026).
+        const largeurDispo = chart.width - 8;
+        let libelle = `Moyenne flotte : ${fmt1(avg)} interventions / véhicule`;
+        if (c.measureText(libelle).width > largeurDispo) libelle = `Moy. flotte : ${fmt1(avg)} interv. / véh.`;
+        const tw = c.measureText(libelle).width;
+        const alignRight = x > (area.left + area.right) / 2;
+        let tx = alignRight ? x - 5 - tw : x + 5;
+        tx = Math.max(4, Math.min(tx, chart.width - 4 - tw));
+        c.textAlign = 'left';
         // Dessinée dans la marge haute (layout.padding.top) pour ne pas chevaucher la première barre
-        c.fillText(`Moyenne flotte : ${fmt1(avg)} interventions / véhicule`, alignRight ? x - 5 : x + 5, area.top - 15);
+        c.fillText(libelle, tx, area.top - 15);
         c.restore();
       }
     };
@@ -8465,7 +8672,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.repairFreqChart = new Chart(ctx, {
       type: 'bar',
       data: {
-        labels: rows.map(v => v.vehicleName),
+        // Plaques, comme le tableau voisin (règle de Karim : la plaque identifie
+        // le véhicule) ; le nom reste dans l'info-bulle.
+        labels: rows.map(v => v.plate || v.vehicleName),
         datasets: [{
           data: values,
           backgroundColor: rows.map(v => barColor(v, '.75')),
@@ -8484,11 +8693,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
         plugins: {
           legend: { display: false },
           tooltip: {
+            titleFont: { family: police, weight: 'bold' },
+            bodyFont: { family: police },
             callbacks: {
+              title: (items) => {
+                const v = rows[items[0]?.dataIndex ?? 0];
+                return v ? (v.plate ? `${v.plate} — ${v.vehicleName}` : v.vehicleName) : '';
+              },
               label: (item) => {
                 const v = rows[item.dataIndex];
-                const lines = [`${v.interventions} intervention(s)`, `Coût total : ${this.formatCurrency(v.totalCost)}`];
-                if (v.frequencyPer1000Km != null) lines.push(`${v.frequencyPer1000Km.toFixed(2)} interv. / 1000 km`);
+                const lines = [this.rfInterventions(v.interventions), `Coût total : ${this.formatCurrency(v.totalCost)}`];
+                if (v.frequencyPer1000Km != null) lines.push(`${this.formatNumber(v.frequencyPer1000Km, 2)} interv. / 1000 km`);
                 if (v.deviationFromAveragePct != null) lines.push(`Écart vs moyenne : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
                 return lines;
               }
@@ -8499,11 +8714,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
           x: {
             beginAtZero: true,
             suggestedMax: maxValue * 1.3,
-            ticks: { precision: 0 },
-            title: { display: true, text: 'Interventions' },
+            ticks: { precision: 0, font: { family: police, size: 11 }, color: '#64748b' },
+            title: { display: true, text: 'Nombre d’interventions', font: { family: police, size: 11 }, color: '#64748b' },
             grid: { color: 'rgba(148,163,184,.25)' }
           },
-          y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+          y: { grid: { display: false }, ticks: { font: { family: police, size: 11.5, weight: 600 }, color: '#334155' } }
         }
       },
       plugins: [valueAndAvgPlugin]
@@ -8520,6 +8735,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const total = byType.reduce((s, t) => s + t.count, 0);
+    const police = getComputedStyle(canvas).fontFamily || 'Inter, sans-serif';
 
     this.repairTypeChart = new Chart(ctx, {
       type: 'doughnut',
@@ -8530,20 +8746,23 @@ export class ReportsComponent implements OnInit, OnDestroy {
           backgroundColor: byType.map(t => this.repairTypeColor(t.type)),
           borderColor: '#ffffff',
           borderWidth: 2,
-          hoverOffset: 8
+          // 4 au lieu de 8 : le donut est petit, un secteur survolé sortait du cadre.
+          hoverOffset: 4
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         cutout: '62%',
+        layout: { padding: 4 },
         plugins: {
           legend: { display: false },
           tooltip: {
+            bodyFont: { family: police },
             callbacks: {
               label: (item) => {
                 const v = Number(item.parsed) || 0;
-                return `${item.label} : ${v} (${total > 0 ? ((v / total) * 100).toFixed(1) : '0'} %)`;
+                return `${item.label} : ${v} (${this.formatPct(total > 0 ? (v / total) * 100 : 0)})`;
               }
             }
           }
@@ -8644,7 +8863,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
   }
 
-  /** R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué se déduit du tableau). */
   /**
    * R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué reste à
    * l’écran). Recette du 11/09/2026 : valeurs formatées dans le PDF, brutes pour
@@ -8730,66 +8948,120 @@ export class ReportsComponent implements OnInit, OnDestroy {
     };
   }
 
-  /** R4 : classement par véhicule + KPI et synthèse (le donut et le détail du véhicule restent à l'écran). */
-  private buildRepairFrequencyExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+  /**
+   * R4 : le classement par véhicule + les 5 KPI (le donut et le détail restent
+   * à l’écran). Recette du 11/09/2026 : valeurs formatées dans le PDF, brutes
+   * pour les tableurs ; plaque seule dans le PDF ; en-têtes abrégés mesurés à
+   * la police réelle (Manrope) ; ligne TOTAL / MOYENNE mise en évidence ; 5
+   * cartes sur une ligne ; abréviations expliquées par une note étoilée.
+   */
+  private buildRepairFrequencyExport(vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     const r = this.repairFrequency;
     if (!r) return null;
     const cur = this.getCurrencyCode();
     const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    // Le PDF reçoit des valeurs FORMATÉES (« 6 559,20 € »), Excel et CSV des
+    // NOMBRES : le PDF sortait « 6559.2 » et « 34506 », sans devise.
+    const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
+    const vide = pourPdf ? '—' : '';
+    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    const km = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatNumber(v) : n2(v));
+    const f2 = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatNumber(v, 2) : n2(v));
+    const ecart = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatSignedPct(v) : n1(v));
 
-    const columns = [
-      { header: '#', dataKey: 'rank' },
-      { header: 'Véhicule', dataKey: 'vehicle' },
-      { header: 'Interventions (nb)', dataKey: 'interventions' },
-      { header: 'Kilométrage (km)', dataKey: 'km' },
-      { header: 'Fréquence (interv./1000 km)', dataKey: 'frequencyPer1000Km' },
-      { header: `Coût total réparations (${cur})`, dataKey: 'totalCost' },
-      { header: `Coût moyen / intervention (${cur})`, dataKey: 'avgCost' },
-      { header: 'Écart vs moyenne (%)', dataKey: 'deviationPct' }
-    ];
+    // Intitulés abrégés, largeurs mesurées en Manrope (en-tête 7,5 gras) :
+    // 141 mm pour 190, donc portrait. La colonne véhicule porte aussi
+    // « TOTAL / MOYENNE » en gras sur la dernière ligne (26,8 mm).
+    const columns = pourPdf
+      ? [
+          { header: '#', dataKey: 'rank', weight: 0.8 },
+          { header: 'Immat.', dataKey: 'vehicle', weight: 2.7 },
+          { header: 'Interv.*', dataKey: 'interventions', weight: 1.4 },
+          { header: 'Km', dataKey: 'km', weight: 1.5 },
+          { header: 'Interv./1000 km', dataKey: 'frequencyPer1000Km', weight: 2.5 },
+          { header: `Coût total ${cur}`, dataKey: 'totalCost', weight: 2.1 },
+          { header: `Coût moyen ${cur}`, dataKey: 'avgCost', weight: 2.3 },
+          { header: 'Écart moy.*', dataKey: 'deviationPct', weight: 1.9 }
+        ]
+      : [
+          { header: '#', dataKey: 'rank' },
+          { header: 'Immatriculation', dataKey: 'vehicle' },
+          { header: 'Véhicule', dataKey: 'vehicleName' },
+          { header: 'Interventions (nb)', dataKey: 'interventions' },
+          { header: 'Kilométrage (km)', dataKey: 'km' },
+          { header: 'Interventions / 1000 km', dataKey: 'frequencyPer1000Km' },
+          { header: `Coût total réparations (${cur})`, dataKey: 'totalCost' },
+          { header: `Coût moyen / intervention (${cur})`, dataKey: 'avgCost' },
+          { header: 'Écart vs moyenne (%)', dataKey: 'deviationPct' }
+        ];
     const vehicles = r.vehicles || [];
     const data: any[] = vehicles.map(v => ({
       rank: v.rank,
-      vehicle: v.plate ? `${v.vehicleName} (${v.plate})` : v.vehicleName,
+      // Immatriculation seule : règle de Karim pour tous les rapports.
+      vehicle: v.plate || v.vehicleName,
+      vehicleName: v.vehicleName,
       interventions: v.interventions,
-      km: v.distanceKm == null ? '' : n2(v.distanceKm),
-      frequencyPer1000Km: v.frequencyPer1000Km == null ? '' : n2(v.frequencyPer1000Km),
-      totalCost: n2(v.totalCost),
-      avgCost: v.averageCostPerIntervention == null ? '' : n2(v.averageCostPerIntervention),
-      deviationPct: v.deviationFromAveragePct == null ? '' : n1(v.deviationFromAveragePct)
+      km: km(v.distanceKm),
+      frequencyPer1000Km: f2(v.frequencyPer1000Km),
+      totalCost: mt(v.totalCost),
+      avgCost: v.averageCostPerIntervention == null ? vide : mt(v.averageCostPerIntervention),
+      deviationPct: ecart(v.deviationFromAveragePct)
     }));
-    const totalKm = vehicles.reduce((s, v) => s + (Number(v.distanceKm) || 0), 0);
+    // Même total kilométrique qu'à l'écran : les véhicules mesurables seulement.
     data.push({
       rank: '',
       vehicle: 'TOTAL / MOYENNE',
+      vehicleName: '',
       interventions: r.totalInterventions,
-      km: n2(totalKm),
-      frequencyPer1000Km: r.averageFrequencyPer1000Km == null ? '' : n2(r.averageFrequencyPer1000Km),
-      totalCost: n2(r.totalRepairCost),
-      avgCost: r.averageCostPerIntervention == null ? '' : n2(r.averageCostPerIntervention),
-      deviationPct: ''
+      km: km(this.rfTotalKm()),
+      frequencyPer1000Km: f2(r.averageFrequencyPer1000Km),
+      totalCost: mt(r.totalRepairCost),
+      avgCost: r.averageCostPerIntervention == null ? vide : mt(r.averageCostPerIntervention),
+      deviationPct: vide
     });
 
-    const vLabel = (v: VehicleRepairFrequencyDto | null) => v ? `${v.vehicleName} (${v.interventions} interventions)` : '—';
+    // Cinq cartes sur une ligne (27,9 mm de texte chacune) : la plaque en
+    // valeur, jamais « Nom (12 interventions) » qui débordait. Les huit cartes
+    // d'avant passaient sur deux rangées de quatre.
+    const plaque = (v: VehicleRepairFrequencyDto | null) => v ? (v.plate || v.vehicleName) : '—';
     const statistics: Record<string, string> = {
       'Total interventions': String(r.totalInterventions),
       'Véhicules concernés': `${r.vehiclesConcerned} / ${r.fleetSize}`,
-      'Fréquence moyenne': `${n2(r.averageInterventionsPerVehicle)} interventions / véhicule`,
-      'Véhicule le plus fréquent': vLabel(r.mostFrequentVehicle),
-      'Véhicule le moins fréquent': vLabel(r.leastFrequentVehicle),
-      'Véhicules > moyenne / < moyenne': `${r.vehiclesAboveAverage} / ${r.vehiclesBelowAverage}`,
-      [`Coût total réparations (${cur})`]: String(n2(r.totalRepairCost)),
-      [`Coût moyen par intervention (${cur})`]: r.averageCostPerIntervention == null ? '—' : String(n2(r.averageCostPerIntervention))
+      'Fréquence moyenne': pourPdf
+        ? `${this.formatNumber(r.averageInterventionsPerVehicle, 1)} interv.`
+        : String(n2(r.averageInterventionsPerVehicle)),
+      'Le plus fréquent': plaque(r.mostFrequentVehicle),
+      'Le moins fréquent': plaque(r.leastFrequentVehicle)
     };
+    if (!pourPdf) {
+      statistics['Véhicules au-dessus de la moyenne'] = String(r.vehiclesAboveAverage);
+      statistics['Véhicules en dessous de la moyenne'] = String(r.vehiclesBelowAverage);
+    }
 
+    // Un véhicule : « Fréquence des réparations — Logistique 01 (GH-619-XC) »,
+    // le véhicule n'est pas répété dans la ligne d'infos. Tout le parc ou un
+    // département : le nom du rapport en titre, le périmètre dans la ligne
+    // d'infos (« Véhicule: Tout le parc (12 véhicules) »).
+    const nomRapport = this.selectedTemplate?.name || 'Fréquence des réparations';
+    const unVehicule = this.rfPerimetreExecute.vehicule && vehicles.length === 1;
     return {
-      title: this.selectedTemplate?.name || 'Fréquence des réparations',
-      vehicleName,
+      // Le fichier Excel ne reprend que le titre (ni ligne d'infos ni
+      // cartes) : il y porte le périmètre, sinon l'export d'un département
+      // ressemblait à s'y méprendre à celui de tout le parc.
+      title: unVehicule || !pourPdf ? `${nomRapport} — ${this.rfPerimetreLibelle()}` : nomRapport,
+      vehicleName: unVehicule && pourPdf ? undefined : this.rfPerimetreLibelle(),
       dateRange,
       statistics,
       columns,
-      data
+      data,
+      highlightLastRow: true,
+      footnote: pourPdf
+        ? `* Interv. = interventions (réparations saisies, non annulées) ; Interv./1000 km = interventions pour 1 000 km parcourus ; `
+          + `Coût moyen = par intervention ; Écart moy. = écart du nombre d’interventions à la moyenne du parc `
+          + `(${this.formatNumber(r.averageInterventionsPerVehicle, 1)} par véhicule). `
+          + `Véhicules au-dessus de la moyenne : ${r.vehiclesAboveAverage} ; en dessous : ${r.vehiclesBelowAverage}.`
+        : undefined,
     };
   }
 

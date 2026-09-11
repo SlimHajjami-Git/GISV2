@@ -973,27 +973,30 @@
                   <table class="report-table monthly-cost-table cost-table">
                     <thead>
                       <tr>
+                        <!-- Intitulés courts, libellé complet en info-bulle : en 1536 px (1920 à 125 %),
+                             « Immatriculation », « Coût €/km » et « Écart vs moy. » faisaient déborder le
+                             tableau de 26 à 54 px, avec un ascenseur horizontal (recette du 11/09/2026). -->
                         @if (isRanking) {
                           <th class="rank-col">#</th>
-                          <th>Immatriculation</th>
-                          <th class="num">Km</th>
+                          <th title="Immatriculation">Immat.</th>
+                          <th class="num" title="Kilométrage de la période">Km</th>
                           <th class="num">Coût total</th>
-                          <th class="num">Coût {{ getCurrencyCode() }}/km</th>
+                          <th class="num" title="Coût d’exploitation par kilomètre">{{ getCurrencyCode() }}/km</th>
                           <th class="num">Carburant</th>
                           <th class="num">Entretien</th>
                           <th class="num">Réparations</th>
                           <th class="num">Autres</th>
                         } @else {
-                          <th>Immatriculation</th>
-                          <th class="num">Km</th>
+                          <th title="Immatriculation">Immat.</th>
+                          <th class="num" title="Kilométrage de la période">Km</th>
                           <th class="num">Carburant</th>
                           <th class="num">Entretiens</th>
                           <th class="num">Réparations</th>
                           <th class="num">Autres</th>
                           <th class="num">Coût total</th>
-                          <th class="num">Coût {{ getCurrencyCode() }}/km</th>
+                          <th class="num" title="Coût d’exploitation par kilomètre">{{ getCurrencyCode() }}/km</th>
                         }
-                        <th class="num">Écart vs moy.</th>
+                        <th class="num" title="Écart du coût au kilomètre à la moyenne du parc">Écart</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1189,7 +1192,7 @@
                   <span class="dept-badge">Tableau récapitulatif</span>
                   <span class="dept-summary">Une ligne par mois &bull; cliquez pour sélectionner</span>
                 </div>
-                <div class="table-wrapper">
+                <div class="table-wrapper evolution-recap-wrapper">
                   <table class="report-table monthly-cost-table cost-table">
                     <thead>
                       <tr>
@@ -1197,9 +1200,11 @@
                         <th class="num">Carburant</th>
                         <th class="num">Entretiens</th>
                         <th class="num">Réparations</th>
-                        <th class="num">Autres dépenses</th>
+                        <!-- Intitulés courts sur une ligne : « Autres dépenses » et « Variation vs mois
+                             précédent » faisaient déborder le tableau de 50 px en 1536 px (recette du 11/09). -->
+                        <th class="num" title="Autres dépenses">Autres</th>
                         <th class="num">Total</th>
-                        <th class="num">Variation vs mois précédent</th>
+                        <th class="num" title="Variation par rapport au mois précédent">Var. / mois préc.</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1283,63 +1288,96 @@
             </p>
           </div>
         } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency) {
-          <!-- ========== R4 FRÉQUENCE DES RÉPARATIONS ========== -->
-          <div class="monthly-cost-report-workspace cost-report-workspace">
-            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+          <!-- ========== R4 FRÉQUENCE DES RÉPARATIONS ==========
+               Recette du 11/09/2026 (maquette de Karim) : en-tête « Véhicule (plaque) »
+               et fil d'Ariane, 5 KPI à icône sur une ligne, grille 42 / 33 / 25 dont
+               les cartes gardent la hauteur de leur contenu, et un détail qui remonte
+               sous le classement quand la colonne de droite est plus haute (voir
+               ajusterDispositionReparations). -->
+          <div class="monthly-cost-report-workspace cost-report-workspace rf-workspace">
+            <div class="report-head-row">
+              <div class="report-title-row">
+                <h2 class="report-title">{{ rfTitre() }}</h2>
+                <nav class="report-breadcrumb" aria-label="Fil d’Ariane">
+                  <span>Rapports</span><span class="sep" aria-hidden="true">›</span>
+                  <span>Maintenance</span><span class="sep" aria-hidden="true">›</span>
+                  <span>{{ selectedTemplate?.name }}</span><span class="sep" aria-hidden="true">›</span>
+                  <span class="current">{{ rfPerimetre() }}</span>
+                  <span class="rf-periode">Du {{ formatDateLong(repairFrequency.startDate) }} au {{ formatDateLong(repairFrequency.endDate) }}</span>
+                </nav>
+              </div>
+              <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
+            </div>
 
-            <div class="stats-cards-row">
-              <div class="stat-card">
-                <span class="stat-label">Total interventions</span>
-                <span class="stat-value">{{ repairFrequency.totalInterventions }}</span>
-                <span class="stat-sub">réparations non annulées</span>
+            <div class="stats-cards-row rf-kpis">
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M14.7 6.3a3.5 3.5 0 0 0 4.6 4.6l-8 8a2.3 2.3 0 0 1-3.2-3.2Z"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 5l3 3"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Total interventions</span>
+                  <span class="stat-value">{{ repairFrequency.totalInterventions }}</span>
+                  <span class="stat-sub">réparations non annulées</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Véhicules concernés</span>
-                <span class="stat-value">{{ repairFrequency.vehiclesConcerned }} / {{ repairFrequency.fleetSize }}</span>
-                <span class="stat-sub">{{ repairCoverageIsFull() ? '100 % du parc' : (repairFrequency.fleetSize > 0 ? formatPct(repairFrequency.vehiclesConcerned / repairFrequency.fleetSize * 100) + ' du parc' : '') }}</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 15h16l-1.4-4.2A2 2 0 0 0 16.7 9.4H7.3a2 2 0 0 0-1.9 1.4Z"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3 15h18v3H3z"/><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="7.5" cy="18" r="1.4"/><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="16.5" cy="18" r="1.4"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Véhicules concernés</span>
+                  <span class="stat-value">{{ repairFrequency.vehiclesConcerned }} / {{ repairFrequency.fleetSize }}</span>
+                  <span class="stat-sub">{{ repairCoverageIsFull() ? '100 % du parc' : (repairFrequency.fleetSize > 0 ? formatPct(repairFrequency.vehiclesConcerned / repairFrequency.fleetSize * 100) + ' du parc' : '') }}</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Fréquence moyenne</span>
-                <span class="stat-value accent">{{ formatNumber(repairFrequency.averageInterventionsPerVehicle, 1) }} <small>interventions / véhicule</small></span>
-                <span class="stat-sub" *ngIf="repairFrequency.averageFrequencyPer1000Km != null">{{ formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) }} interv. / 1000 km</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M17 3l3 3-3 3"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 11V10a4 4 0 0 1 4-4h12"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M7 21l-3-3 3-3"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M20 13v1a4 4 0 0 1-4 4H4"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Fréquence moyenne</span>
+                  <span class="stat-value accent" title="Interventions par véhicule">{{ formatNumber(repairFrequency.averageInterventionsPerVehicle, 1) }} <small>interv. / véhicule</small></span>
+                  <span class="stat-sub">{{ repairFrequency.averageFrequencyPer1000Km == null ? 'kilométrage non mesurable' : formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) + ' interv. / 1000 km' }}</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Véhicule le plus fréquent</span>
-                <span class="stat-value danger">{{ repairFrequency.mostFrequentVehicle ? repairFrequency.mostFrequentVehicle.vehicleName : '—' }}</span>
-                <span class="stat-sub" *ngIf="repairFrequency.mostFrequentVehicle">{{ repairFrequency.mostFrequentVehicle.interventions }} interventions</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--rouge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="9"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 16.5v-9M8 11.5l4-4 4 4"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Véhicule le plus fréquent</span>
+                  <span class="stat-value danger" [title]="rfInfoBulleVehicule(repairFrequency.mostFrequentVehicle)">{{ repairFrequency.mostFrequentVehicle ? (repairFrequency.mostFrequentVehicle.plate || repairFrequency.mostFrequentVehicle.vehicleName) : '—' }}</span>
+                  <span class="stat-sub">{{ repairFrequency.mostFrequentVehicle ? rfInterventions(repairFrequency.mostFrequentVehicle.interventions) : '' }}</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Véhicule le moins fréquent</span>
-                <span class="stat-value success">{{ repairFrequency.leastFrequentVehicle ? repairFrequency.leastFrequentVehicle.vehicleName : '—' }}</span>
-                <span class="stat-sub" *ngIf="repairFrequency.leastFrequentVehicle">{{ repairFrequency.leastFrequentVehicle.interventions }} intervention(s)</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--vert"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 21s7.5-3.6 7.5-9.5V5.8L12 3 4.5 5.8v5.7C4.5 17.4 12 21 12 21Z"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2.2 2.2L15.5 10"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Véhicule le moins fréquent</span>
+                  <span class="stat-value success" [title]="rfInfoBulleVehicule(repairFrequency.leastFrequentVehicle)">{{ repairFrequency.leastFrequentVehicle ? (repairFrequency.leastFrequentVehicle.plate || repairFrequency.leastFrequentVehicle.vehicleName) : '—' }}</span>
+                  <span class="stat-sub">{{ repairFrequency.leastFrequentVehicle ? rfInterventions(repairFrequency.leastFrequentVehicle.interventions) : '' }}</span>
+                </span>
               </div>
             </div>
 
-            <div class="cost-three-col">
-              <!-- Classement -->
-              <div class="dept-group">
+            <div class="rf-grid" #rfGrid [class.rf-grid--cote]="rfDetailACote" [class.rf-grid--large]="rfClassementLarge" [class.rf-grid--aligne]="rfHauteurAlignee != null">
+              <!-- Classement : hauteur de son contenu ; s'il dépasse la colonne de droite, il s'arrête au bas de « Synthèse » et défile -->
+              <div class="dept-group rf-classement" [style.height.px]="rfHauteurAlignee">
                 <div class="dept-header">
-                  <span class="dept-badge">Classement des véhicules par fréquence de réparations</span>
+                  <span class="dept-badge">Répartition des véhicules par fréquence de réparation</span>
                 </div>
                 <div class="table-wrapper">
-                  <table class="report-table monthly-cost-table cost-table">
+                  <table class="report-table monthly-cost-table cost-table rf-table">
                     <thead>
                       <tr>
                         <th class="rank-col">#</th>
                         <th>Véhicule</th>
-                        <th class="num">Interventions (nb)</th>
-                        <th class="num">Kilométrage (km)</th>
-                        <th class="num">Fréquence (interv./1000 km)</th>
-                        <th class="num">Coût total réparations</th>
-                        <th class="num">Coût moyen / intervention</th>
-                        <th class="num">Écart vs moyenne</th>
+                        <!-- Intitulés abrégés sur une ligne (demande de Karim) ; le libellé complet en info-bulle -->
+                        <th class="num" title="Nombre d’interventions">Interv.</th>
+                        <th class="num" title="Kilométrage de la période">Km</th>
+                        <th class="num" title="Interventions pour 1000 km parcourus">/1000 km</th>
+                        <th class="num" title="Coût total des réparations">Coût total</th>
+                        <th class="num" title="Coût moyen par intervention">Coût moy.</th>
+                        <th class="num" title="Écart du nombre d’interventions à la moyenne du parc">Écart</th>
                       </tr>
                     </thead>
                     <tbody>
                       @for (v of repairFrequency.vehicles; track v.vehicleId) {
                         <tr [class.muted]="v.interventions === 0">
                           <td class="rank-cell">{{ v.rank }}</td>
-                          <td>{{ v.vehicleName }} <span class="plate-tag" *ngIf="v.plate">{{ v.plate }}</span></td>
+                          <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
                           <td class="num"><strong>{{ v.interventions }}</strong></td>
                           <td class="num" [title]="distanceSourceTitle(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}</td>
                           <td class="num">{{ v.frequencyPer1000Km == null ? '—' : formatNumber(v.frequencyPer1000Km, 2) }}</td>
@@ -1351,9 +1389,9 @@
                     </tbody>
                     <tfoot>
                       <tr class="dept-total-row">
-                        <td colspan="2"><strong>TOTAL / MOYENNE</strong></td>
+                        <td colspan="2" title="Total / moyenne du parc"><strong>TOTAL / MOY.</strong></td>
                         <td class="num"><strong>{{ repairFrequency.totalInterventions }}</strong></td>
-                        <td class="num">—</td>
+                        <td class="num">{{ rfTotalKm() == null ? '—' : formatNumber(rfTotalKm()!) }}</td>
                         <td class="num"><strong>{{ repairFrequency.averageFrequencyPer1000Km == null ? '—' : formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) }}</strong></td>
                         <td class="num total-cell"><strong>{{ formatCurrency(repairFrequency.totalRepairCost) }}</strong></td>
                         <td class="num"><strong>{{ repairFrequency.averageCostPerIntervention == null ? '—' : formatCurrency(repairFrequency.averageCostPerIntervention) }}</strong></td>
@@ -1364,96 +1402,111 @@
                 </div>
               </div>
 
-              <!-- Barres horizontales + moyenne -->
-              <div class="dept-group">
+              <!-- Barres horizontales + moyenne : hauteur selon le nombre de véhicules -->
+              <div class="dept-group rf-graphe" [style.height.px]="rfHauteurAlignee">
                 <div class="dept-header">
-                  <span class="dept-badge">Répartition des interventions par véhicule</span>
+                  <span class="dept-badge">Répartition des réparations par véhicule</span>
                 </div>
-                <div class="cost-chart-box" [style.height.px]="repairFreqChartHeight()">
-                  <canvas #repairFreqCanvas></canvas>
+                <div class="cost-chart-box rf-chart-box" [style.height.px]="rfHauteurAlignee == null ? repairFreqChartHeight() : null">
+                  <!-- Cadre intérieur : remplit la boîte, ou garde la hauteur utile du graphe (grand parc) pour qu'il défile -->
+                  <div class="rf-chart-inner" [style.height.px]="rfGrapheInterne"><canvas #repairFreqCanvas></canvas></div>
                 </div>
               </div>
 
-              <!-- Donut par type + synthèse -->
-              <div class="cost-stack">
+              <!-- Colonne de droite : donut compact + synthèse (+ la note quand le détail remonte à côté) -->
+              <div class="rf-cote">
                 <div class="dept-group">
                   <div class="dept-header">
                     <span class="dept-badge">Répartition par type d'intervention</span>
                   </div>
-                  <div class="cost-chart-box" style="height:200px;">
-                    <canvas #repairTypeCanvas></canvas>
-                  </div>
-                  <div class="ai-cost-items cost-legend">
-                    @for (t of repairFrequency.byType; track t.type) {
-                      <div class="ai-cost-item">
-                        <span class="ai-cost-dot" [style.background]="repairTypeColor(t.type)"></span>
-                        <span class="ai-cost-lbl">{{ t.label }}</span>
-                        <span class="ai-cost-val">{{ t.count }} <small>({{ formatPct(t.pct) }})</small></span>
+                  <div class="donut-split rf-donut">
+                    <div class="donut-split-canvas rf-donut-canvas"><canvas #repairTypeCanvas></canvas></div>
+                    <div class="donut-split-legend">
+                      @for (t of repairFrequency.byType; track t.type) {
+                        <div class="donut-split-row">
+                          <span class="ai-cost-dot" [style.background]="repairTypeColor(t.type)"></span>
+                          <span class="lbl">{{ t.label }}</span>
+                          <span class="val">{{ t.count }} <small>({{ formatPct(t.pct) }})</small></span>
+                        </div>
+                      }
+                      @if (!repairFrequency.byType.length) {
+                        <div class="ai-no-data">Aucun type d'intervention</div>
+                      }
+                      <div class="donut-split-row donut-split-total">
+                        <span class="lbl">Total</span>
+                        <span class="val">{{ repairFrequency.totalInterventions }} <small>({{ repairFrequency.totalInterventions > 0 ? '100 %' : '—' }})</small></span>
                       </div>
-                    }
-                    @if (!repairFrequency.byType.length) {
-                      <div class="ai-no-data">Aucun type d'intervention</div>
-                    }
+                    </div>
                   </div>
                 </div>
                 <div class="dept-group">
                   <div class="dept-header">
                     <span class="dept-badge">Synthèse</span>
                   </div>
-                  <div class="cost-synthesis">
+                  <div class="cost-synthesis rf-synthesis">
                     <div class="cost-synthesis-row"><span>Véhicules avec fréquence &gt; moyenne</span><strong class="over">{{ repairFrequency.vehiclesAboveAverage }}</strong></div>
                     <div class="cost-synthesis-row"><span>Véhicules avec fréquence &lt; moyenne</span><strong class="under">{{ repairFrequency.vehiclesBelowAverage }}</strong></div>
                     <div class="cost-synthesis-row"><span>Coût total réparations</span><strong>{{ formatCurrency(repairFrequency.totalRepairCost) }}</strong></div>
                     <div class="cost-synthesis-row"><span>Coût moyen par intervention</span><strong>{{ repairFrequency.averageCostPerIntervention == null ? '—' : formatCurrency(repairFrequency.averageCostPerIntervention) }}</strong></div>
                   </div>
                 </div>
+                @if (rfDetailACote) {
+                  <ng-container *ngTemplateOutlet="rfNote"></ng-container>
+                }
               </div>
+
+              <!-- Détail des interventions du véhicule le plus fréquent -->
+              @if (repairFrequency.mostFrequentVehicle) {
+                <div class="dept-group rf-detail">
+                  <div class="dept-header rf-detail-header">
+                    <span class="dept-badge">Détail des interventions &mdash; {{ repairFrequency.mostFrequentVehicle.vehicleName }}{{ repairFrequency.mostFrequentVehicle.plate ? ' (' + repairFrequency.mostFrequentVehicle.plate + ')' : '' }}</span>
+                    <span class="rf-detail-count">{{ rfDetailCompte() }}</span>
+                    <span class="cost-badge">Véhicule le plus fréquent</span>
+                    <a class="repairs-link" [routerLink]="['/repairs']" [queryParams]="{ vehicleId: repairFrequency.mostFrequentVehicle.vehicleId }">Voir toutes les interventions &rarr;</a>
+                  </div>
+                  <div class="table-wrapper">
+                    <table class="report-table monthly-cost-table cost-table rf-table rf-detail-table">
+                      <thead>
+                        <tr>
+                          <th class="rf-etroit">Date</th>
+                          <th class="rf-etroit">Type d'intervention</th>
+                          <th>Description</th>
+                          <th>Fournisseur</th>
+                          <th class="num rf-etroit">Kilométrage</th>
+                          <th class="num rf-etroit">Coût</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (i of repairFrequency.mostFrequentVehicleInterventions; track i.repairId) {
+                          <tr>
+                            <td>{{ i.date | date:'dd/MM/yyyy' }}</td>
+                            <td><span class="ai-cost-dot rf-type-dot" [style.background]="repairTypeColor(i.type)"></span>{{ i.typeLabel }}<span class="inferred-tag" *ngIf="i.typeInferred" title="Type déduit de la description (aucun type saisi sur la réparation)">(déduit)</span></td>
+                            <td class="desc-cell">{{ i.description || '—' }}</td>
+                            <td>{{ i.supplierName || '—' }}</td>
+                            <td class="num">{{ i.mileageAtRepair == null ? '—' : formatNumber(i.mileageAtRepair) + ' km' }}</td>
+                            <td class="num total-cell">{{ formatCurrency(i.totalCost) }}</td>
+                          </tr>
+                        }
+                        @if (!repairFrequency.mostFrequentVehicleInterventions.length) {
+                          <tr><td colspan="6" class="ai-no-data">Aucune intervention détaillée</td></tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
             </div>
 
-            <!-- Détail des interventions du véhicule le plus fréquent -->
-            @if (repairFrequency.mostFrequentVehicle) {
-              <div class="dept-group">
-                <div class="dept-header">
-                  <span class="dept-badge">Détail des interventions &mdash; {{ repairFrequency.mostFrequentVehicle.vehicleName }}{{ repairFrequency.mostFrequentVehicle.plate ? ' (' + repairFrequency.mostFrequentVehicle.plate + ')' : '' }} ({{ repairFrequency.mostFrequentVehicle.interventions }} interventions)</span>
-                  <span class="cost-badge">Véhicule le plus fréquent</span>
-                  <a class="repairs-link" [routerLink]="['/repairs']" [queryParams]="{ vehicleId: repairFrequency.mostFrequentVehicle.vehicleId }">Voir toutes les interventions &rarr;</a>
-                </div>
-                <div class="table-wrapper">
-                  <table class="report-table monthly-cost-table cost-table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Type d'intervention</th>
-                        <th>Description</th>
-                        <th>Fournisseur</th>
-                        <th class="num">Kilométrage</th>
-                        <th class="num">Coût</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      @for (i of repairFrequency.mostFrequentVehicleInterventions; track i.repairId) {
-                        <tr>
-                          <td>{{ i.date | date:'dd/MM/yyyy' }}</td>
-                          <td><span class="ai-cost-dot" [style.background]="repairTypeColor(i.type)" style="display:inline-block;margin-right:6px;vertical-align:middle;"></span>{{ i.typeLabel }}<span class="inferred-tag" *ngIf="i.typeInferred" title="Type déduit de la description (aucun type saisi sur la réparation)">(déduit)</span></td>
-                          <td class="desc-cell">{{ i.description || '—' }}</td>
-                          <td>{{ i.supplierName || '—' }}</td>
-                          <td class="num">{{ i.mileageAtRepair == null ? '—' : formatNumber(i.mileageAtRepair) + ' km' }}</td>
-                          <td class="num total-cell">{{ formatCurrency(i.totalCost) }}</td>
-                        </tr>
-                      }
-                      @if (!repairFrequency.mostFrequentVehicleInterventions.length) {
-                        <tr><td colspan="6" class="ai-no-data">Aucune intervention détaillée</td></tr>
-                      }
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+            @if (!rfDetailACote) {
+              <ng-container *ngTemplateOutlet="rfNote"></ng-container>
             }
 
-            <div class="report-note">
-              <span>ℹ️</span>
-              <span>Une intervention = une réparation saisie (non annulée) sur la période. La fréquence moyenne rapporte le total des interventions au nombre de véhicules du périmètre, y compris ceux sans intervention (grisés). La fréquence pour 1000 km utilise le kilométrage des relevés compteur (véhicules sans boîtier) ou des trajets GPS. Le type d'intervention est celui saisi sur la réparation ; à défaut il est déduit de la description (mention « déduit »).</span>
-            </div>
+            <ng-template #rfNote>
+              <div class="report-note rf-note">
+                <span>ℹ️</span>
+                <span>Une intervention = une réparation saisie, non annulée. Fréquence moyenne = interventions ÷ véhicules du périmètre, y compris ceux sans intervention (en gris). Pour 1000 km : kilométrage des trajets GPS ou, sans boîtier, des relevés compteur saisis. Coûts = ceux des réparations comptées (les dépenses « Réparation » figurent dans « Coût d’exploitation »). Type = celui saisi, sinon déduit de la description (« déduit »).</span>
+              </div>
+            </ng-template>
           </div>
         } @else {
           <!-- ========== OTHER REPORTS SECTION ========== -->

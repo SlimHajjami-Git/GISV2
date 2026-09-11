@@ -143,6 +143,40 @@ export class PdfExportService {
     doc.rect(0, bandH, pageWidth, 0.8, 'F');
   }
 
+  /** Une carte de statistique : libellé gris, valeur en gras. Commune aux deux
+   *  gabarits de rapport (tableau simple et tableau groupé), qui en portaient
+   *  chacun une copie. Un libellé ou une valeur trop long pour la carte (un
+   *  véhicule sans plaque dont le nom sert de valeur) en sortait : la taille se
+   *  réduit jusqu'à tenir, sans passer sous un plancher lisible. */
+  private drawStatCard(doc: jsPDF, x: number, cy: number, cardW: number, cardH: number, label: string, value: unknown): void {
+    doc.setFillColor(...this.lightBg);
+    doc.roundedRect(x, cy, cardW - 3, cardH, 2, 2, 'F');
+
+    const largeur = cardW - 3 - 4 - 1.5;
+    // Réduit la taille jusqu'au plancher ; au plancher, s'il déborde encore
+    // (« Renault Kangoo Atelier Nord »), le texte est coupé avec « … » plutôt
+    // que de chevaucher la carte voisine.
+    const ajuster = (texte: string, taille: number, plancher: number): string => {
+      doc.setFontSize(taille);
+      while (taille > plancher && doc.getTextWidth(texte) > largeur) {
+        taille -= 0.5;
+        doc.setFontSize(taille);
+      }
+      if (doc.getTextWidth(texte) <= largeur) return texte;
+      let coupe = texte;
+      while (coupe.length > 1 && doc.getTextWidth(coupe + '...') > largeur) coupe = coupe.slice(0, -1);
+      return coupe.trimEnd() + '...';
+    };
+
+    doc.setTextColor(100, 116, 139);
+    doc.setFont(this.brandFont, 'normal');
+    doc.text(ajuster(this.sanitizeText(label), 8, 6.5), x + 4, cy + 7);
+
+    doc.setTextColor(15, 23, 42);
+    doc.setFont(this.brandFont, 'bold');
+    doc.text(ajuster(this.sanitizeText(String(value)), 12, 8), x + 4, cy + 15);
+  }
+
   drawBrandHeader(doc: jsPDF, opts: { title: string; meta?: string[]; rightNote?: string }): number {
     const pageWidth = doc.internal.pageSize.getWidth();
     const bandH = 30;
@@ -482,18 +516,7 @@ export class PdfExportService {
         const x = 14 + col * cardW;
         const cy = y + row * (cardH + 3);
 
-        doc.setFillColor(...this.lightBg);
-        doc.roundedRect(x, cy, cardW - 3, cardH, 2, 2, 'F');
-
-        doc.setTextColor(100, 116, 139);
-        doc.setFontSize(8);
-        doc.setFont(this.brandFont, 'normal');
-        doc.text(this.sanitizeText(label), x + 4, cy + 7);
-
-        doc.setTextColor(15, 23, 42);
-        doc.setFontSize(12);
-        doc.setFont(this.brandFont, 'bold');
-        doc.text(this.sanitizeText(String(value)), x + 4, cy + 15);
+        this.drawStatCard(doc, x, cy, cardW, cardH, label, value);
       });
 
       const totalRows = Math.ceil(entries.length / colCount);
@@ -654,18 +677,7 @@ export class PdfExportService {
         const x = 14 + col * cardW;
         const cy = y + row * (cardH + 3);
 
-        doc.setFillColor(...this.lightBg);
-        doc.roundedRect(x, cy, cardW - 3, cardH, 2, 2, 'F');
-
-        doc.setTextColor(100, 116, 139);
-        doc.setFontSize(8);
-        doc.setFont(this.brandFont, 'normal');
-        doc.text(this.sanitizeText(label), x + 4, cy + 7);
-
-        doc.setTextColor(15, 23, 42);
-        doc.setFontSize(12);
-        doc.setFont(this.brandFont, 'bold');
-        doc.text(this.sanitizeText(String(value)), x + 4, cy + 15);
+        this.drawStatCard(doc, x, cy, cardW, cardH, label, value);
       });
 
       const totalRows = Math.ceil(entries.length / colCount);

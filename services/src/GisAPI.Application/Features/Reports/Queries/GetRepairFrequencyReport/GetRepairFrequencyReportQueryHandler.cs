@@ -27,21 +27,34 @@ public class GetRepairFrequencyReportQueryHandler : IRequestHandler<GetRepairFre
         var data = await OperatingCostAggregator.LoadAsync(
             _context, _tenantService, startUtc, endExclusiveUtc, request.VehicleId, request.DepartmentId, ct);
 
+        // Coûts du rapport = ceux des interventions qu'il compte (table repairs),
+        // les mêmes que le détail et la répartition par type. Pas v.Total.Repair :
+        // depuis le 11/09/2026 l'agrégateur y ajoute les dépenses « Réparation »
+        // (scan de facture, sinistre), qui ne sont pas des interventions. Comptées
+        // ici, elles gonflaient le coût moyen par intervention (une réparation de
+        // 100 + une facture de sinistre de 2 000 = « 1 intervention, 2 100 en
+        // moyenne ») et le total ne recoupait plus la somme des types.
+        var repairCostByVehicle = data.Repairs
+            .GroupBy(r => r.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(r => r.TotalCost));
+        decimal RepairCost(VehicleCostData v) => repairCostByVehicle.GetValueOrDefault(v.VehicleId);
+
         var fleetSize = data.Vehicles.Count;
         var totalInterventions = data.Vehicles.Sum(v => v.Total.RepairCount);
-        var totalRepairCost = data.Vehicles.Sum(v => v.Total.Repair);
+        var totalRepairCost = data.Vehicles.Sum(RepairCost);
         var average = fleetSize > 0 ? (decimal)totalInterventions / fleetSize : 0m;
 
         var measurableKm = data.Vehicles.Where(v => v.DistanceKm is > 0).Sum(v => v.DistanceKm!.Value);
 
         var vehicles = data.Vehicles
             .OrderByDescending(v => v.Total.RepairCount)
-            .ThenByDescending(v => v.Total.Repair)
+            .ThenByDescending(RepairCost)
             .ThenBy(v => v.VehicleName)
             .Select((v, i) =>
             {
                 var interventions = v.Total.RepairCount;
                 var km = v.DistanceKm;
+                var cost = RepairCost(v);
                 return new VehicleRepairFrequencyDto(
                     Rank: i + 1,
                     VehicleId: v.VehicleId,
@@ -51,8 +64,8 @@ public class GetRepairFrequencyReportQueryHandler : IRequestHandler<GetRepairFre
                     DistanceKm: km.HasValue ? Math.Round(km.Value, 2) : null,
                     DistanceSource: v.DistanceSource,
                     FrequencyPer1000Km: km is > 0 ? Math.Round(interventions / km.Value * 1000m, 2) : null,
-                    TotalCost: Math.Round(v.Total.Repair, 2),
-                    AverageCostPerIntervention: interventions > 0 ? Math.Round(v.Total.Repair / interventions, 2) : null,
+                    TotalCost: Math.Round(cost, 2),
+                    AverageCostPerIntervention: interventions > 0 ? Math.Round(cost / interventions, 2) : null,
                     DeviationFromAveragePct: average > 0 ? Math.Round((interventions - average) / average * 100m, 1) : null);
             })
             .ToList();
