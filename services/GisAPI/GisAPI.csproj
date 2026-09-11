@@ -46,4 +46,8 @@
   <ItemGroup>
     <None Include="GeoIp/dbip-country-lite.mmdb" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GisAPI.Tests" />
+  </ItemGroup>
+
 </Project>

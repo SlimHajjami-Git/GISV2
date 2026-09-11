@@ -10,22 +10,44 @@ public class GroqLlmService : ILlmService
 {
     private readonly HttpClient _httpClient;
     private readonly string _model;
-    private readonly string _visionModel;
+    private readonly IReadOnlyList<string> _visionModels;
     private readonly string _completionsPath;
     private readonly ILogger<GroqLlmService> _logger;
 
+    /// <summary>
+    /// Modèles multimodaux essayés DANS L'ORDRE pour un scan d'image (facture).
+    ///
+    /// Pourquoi une liste : Groq a retiré meta-llama/llama-4-scout début août 2026 —
+    /// chaque scan d'image répondait 404 « model_not_found » et le client lisait
+    /// « service IA momentanément indisponible ». Aucun scan n'a abouti du 06/08 au
+    /// 11/09. Un modèle retiré, saturé (429) ou en panne fait désormais passer au
+    /// suivant au lieu de casser la fonctionnalité en silence.
+    /// Configurable par Groq:VisionModels (séparés par des virgules) ou Groq:VisionModel.
+    /// </summary>
+    public static readonly string[] DefaultVisionModels = { "qwen/qwen3.8-27b", "qwen/qwen3.6-27b" };
+
     public GroqLlmService(IConfiguration configuration, ILogger<GroqLlmService> logger)
+        : this(configuration, logger, null) { }
+
+    /// <summary>Handler HTTP injectable pour les tests ; null = réseau réel.</summary>
+    internal GroqLlmService(IConfiguration configuration, ILogger<GroqLlmService> logger, HttpMessageHandler? handler)
     {
         _logger = logger;
         _model = configuration["Groq:Model"] ?? "llama-3.3-70b-versatile";
-        // Multimodal model used when an image is supplied (invoice scan). Groq's
-        // current vision model; override via Groq:VisionModel.
-        _visionModel = configuration["Groq:VisionModel"] ?? "meta-llama/llama-4-scout-17b-16e-instruct";
+        var configured = configuration["Groq:VisionModels"] ?? configuration["Groq:VisionModel"];
+        var models = (configured ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+        // Les modèles par défaut restent en repli derrière ceux de la configuration :
+        // une valeur périmée dans appsettings ne peut plus, à elle seule, couper le scan.
+        foreach (var m in DefaultVisionModels)
+            if (!models.Contains(m, StringComparer.OrdinalIgnoreCase)) models.Add(m);
+        _visionModels = models;
 
         var apiUrl = configuration["Groq:ApiUrl"] ?? "https://api.groq.com/openai/v1/chat/completions";
         var uri = new Uri(apiUrl);
         // Separate base address (scheme+host) from path so HttpClient resolves correctly
-        _httpClient = new HttpClient
+        _httpClient = new HttpClient(handler ?? new HttpClientHandler())
         {
             BaseAddress = new Uri($"{uri.Scheme}://{uri.Authority}"),
             Timeout = TimeSpan.FromSeconds(60)
@@ -167,24 +189,64 @@ public class GroqLlmService : ILlmService
         if (!string.IsNullOrWhiteSpace(imageDataUrl))
             userContent.Add(new { type = "image_url", image_url = new { url = imageDataUrl } });
 
-        var requestBody = new
+        var messages = new object[]
         {
-            model = imageDataUrl != null ? _visionModel : _model,
-            messages = new object[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userContent }
-            },
-            temperature = 0.1,
-            max_tokens = maxTokens,
-            // Force a parseable JSON object — no prose, no code fences.
-            response_format = new { type = "json_object" }
+            new { role = "system", content = systemPrompt },
+            new { role = "user", content = userContent }
         };
 
-        var result = await SendAsync(requestBody, ct);
-        var reply = result?.Choices?.FirstOrDefault()?.Message?.Content ?? "{}";
-        return new LlmResponse(reply, result?.Usage?.TotalTokens ?? 0);
+        // Texte seul (PDF avec couche texte) : un modèle, comme avant.
+        if (string.IsNullOrWhiteSpace(imageDataUrl))
+        {
+            var textResult = await SendAsync(JsonRequest(_model, messages, maxTokens), ct);
+            return new LlmResponse(textResult?.Choices?.FirstOrDefault()?.Message?.Content ?? "{}", textResult?.Usage?.TotalTokens ?? 0);
+        }
+
+        // Image (photo, PDF scanné) : les modèles vision dans l'ordre.
+        Exception? last = null;
+        foreach (var model in _visionModels)
+        {
+            try
+            {
+                var result = await SendAsync(JsonRequest(model, messages, maxTokens), ct);
+                var reply = result?.Choices?.FirstOrDefault()?.Message?.Content ?? "{}";
+                return new LlmResponse(reply, result?.Usage?.TotalTokens ?? 0);
+            }
+            catch (GroqApiException ex) when (IsWorthNextModel(ex.StatusCode))
+            {
+                _logger.LogWarning("Modèle vision {Model} indisponible ({Status}) — repli sur le suivant", model, (int)ex.StatusCode);
+                last = ex;
+            }
+            catch (Exception ex) when (ex is not GroqApiException && !ct.IsCancellationRequested)
+            {
+                // Timeout ou connexion : le modèle suivant a sa chance aussi.
+                _logger.LogWarning(ex, "Modèle vision {Model} en échec — repli sur le suivant", model);
+                last = ex;
+            }
+        }
+        throw last ?? new Exception("Aucun modèle vision configuré.");
     }
+
+    /// <summary>
+    /// Requête d'extraction JSON (mode json_object : ni prose, ni balises de code).
+    /// Les Qwen 3 sont des modèles « à raisonnement » : leur réflexion par défaut casse
+    /// le mode JSON (400 « Failed to validate JSON » mesuré sur qwen3.6 le 11/09/2026).
+    /// On la coupe, ce qui rend aussi la réponse plus rapide.
+    /// </summary>
+    internal static object JsonRequest(string model, object[] messages, int maxTokens) =>
+        model.Contains("qwen", StringComparison.OrdinalIgnoreCase)
+            ? new { model, messages, temperature = 0.1, max_tokens = maxTokens, response_format = new { type = "json_object" }, reasoning_effort = "none" }
+            : new { model, messages, temperature = 0.1, max_tokens = maxTokens, response_format = new { type = "json_object" } };
+
+    /// <summary>
+    /// Un autre modèle peut réussir là où celui-ci échoue : retiré (404/410), requête
+    /// refusée par CE modèle (400 — format, JSON invalide), saturé (429) ou en panne (5xx).
+    /// Une clé invalide (401/403) échouerait partout : inutile d'insister.
+    /// </summary>
+    internal static bool IsWorthNextModel(System.Net.HttpStatusCode status) =>
+        status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Gone
+            or System.Net.HttpStatusCode.BadRequest or System.Net.HttpStatusCode.TooManyRequests
+        || (int)status >= 500;
 
     public async Task<LlmResponse> ChatStreamWithToolsAsync(
         string systemPrompt,
@@ -406,8 +468,8 @@ public class GroqLlmService : ILlmService
             {
                 _logger.LogError("Groq API error {StatusCode}: {Body}", response.StatusCode, responseBody);
                 if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized)
-                    throw new Exception("Clé API Groq invalide ou expirée. Vérifiez votre clé sur https://console.groq.com/keys");
-                throw new Exception($"Erreur Groq API: {response.StatusCode}");
+                    throw new GroqApiException(response.StatusCode, "Clé API Groq invalide ou expirée. Vérifiez votre clé sur https://console.groq.com/keys");
+                throw new GroqApiException(response.StatusCode, $"Erreur Groq API: {response.StatusCode}");
             }
 
             return JsonSerializer.Deserialize<GroqChatResponse>(responseBody);
@@ -422,6 +484,13 @@ public class GroqLlmService : ILlmService
             throw new Exception("Impossible de se connecter au service IA.");
         }
     }
+}
+
+/// <summary>Réponse HTTP d'erreur de Groq, avec son statut (sert au repli entre modèles).</summary>
+public class GroqApiException : Exception
+{
+    public System.Net.HttpStatusCode StatusCode { get; }
+    public GroqApiException(System.Net.HttpStatusCode statusCode, string message) : base(message) => StatusCode = statusCode;
 }
 
 // Groq API response models
