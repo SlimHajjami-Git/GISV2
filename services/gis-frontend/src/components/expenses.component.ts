@@ -209,7 +209,25 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   /** Quota mensuel de scans IA de la société (null tant que non chargé). */
-  scanQuota: { used: number; limit: number; remaining: number } | null = null;
+  scanQuota: { used: number; limit: number; remaining: number; resetsAt?: string } | null = null;
+
+  /** « 1er octobre » : jour de la prochaine remise à zéro du compteur de scans. */
+  get scanQuotaResetLabel(): string {
+    const iso = this.scanQuota?.resetsAt;
+    if (!iso) return 'le 1er du mois prochain';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return 'le 1er du mois prochain';
+    const mois = d.toLocaleDateString('fr-FR', { month: 'long', timeZone: 'UTC' });
+    return 'le ' + (d.getUTCDate() === 1 ? '1er' : String(d.getUTCDate())) + ' ' + mois;
+  }
+
+  /** Bulle d'aide du bouton : ce que veut dire le compteur, et quand il repart à zéro. */
+  get scanQuotaTitle(): string {
+    const q = this.scanQuota;
+    if (!q) return 'Scanner une facture avec l\'IA';
+    if (q.remaining === 0) return `Quota mensuel atteint (${q.used}/${q.limit}) — nouveau quota ${this.scanQuotaResetLabel}. Votre administrateur peut augmenter la limite.`;
+    return `${q.used} scan${q.used > 1 ? 's' : ''} utilisé${q.used > 1 ? 's' : ''} sur ${q.limit} ce mois-ci — il en reste ${q.remaining}. Compteur remis à zéro ${this.scanQuotaResetLabel}.`;
+  }
 
   private loadScanQuota(): void {
     if (!this.canScanInvoice) return;
