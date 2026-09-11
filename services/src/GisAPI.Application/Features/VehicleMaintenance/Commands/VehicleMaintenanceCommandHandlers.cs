@@ -179,6 +179,34 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         if (vehicle == null)
             throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
 
+        // Un compteur ne recule pas — même règle que les pleins
+        // (CreateFuelEntryCommandHandler). Un kilométrage inférieur à
+        // vehicles.mileage était accepté et NextDueKm recalculé EN ARRIÈRE :
+        // « 4 500 » tapé au lieu de « 45 000 » plaçait la prochaine échéance à
+        // 14 500 km, l'entretien passait aussitôt « en retard ». Contrairement au
+        // plein, le zéro n'est pas exempté : ici le kilométrage est obligatoire et
+        // sert d'ancre à l'échéance, 0 sur un véhicule à 80 000 km produirait
+        // exactement ce recul. Un véhicule neuf à 0 km passe toujours.
+        // Contrôle AVANT toute écriture : rien n'est enregistré en cas de refus.
+        if (request.Mileage < vehicle.Mileage)
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
+                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+        }
+
+        // Le fournisseur doit appartenir à la société de l'appelant : le filtre
+        // multi-tenant est contourné pour l'administrateur système, et un
+        // identifiant périmé (fournisseur supprimé depuis l'ouverture de l'écran)
+        // doit donner un message clair plutôt qu'une erreur serveur.
+        if (request.SupplierId.HasValue
+            && !await _context.Suppliers.AnyAsync(
+                s => s.Id == request.SupplierId.Value && s.CompanyId == companyId, cancellationToken))
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Le fournisseur choisi n'existe plus. Rechargez la page et sélectionnez-le à nouveau.");
+        }
+
         // Get or create schedule FIRST (we need to know if a free benefit applies)
         var schedule = await _context.VehicleMaintenanceSchedules
             .FirstOrDefaultAsync(s => s.VehicleId == request.VehicleId && s.TemplateId == request.TemplateId, cancellationToken);

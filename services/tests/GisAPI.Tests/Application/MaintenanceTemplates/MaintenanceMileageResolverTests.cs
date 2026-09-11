@@ -3,6 +3,7 @@ using GisAPI.Application.Features.VehicleMaintenance.Commands;
 using GisAPI.Application.Features.VehicleMaintenance.Queries;
 using GisAPI.Application.Services;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Tests.Common;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
@@ -213,10 +214,50 @@ public class MaintenanceMileageResolverTests
     }
 
     [Fact]
-    public async Task MarkDone_WithMileageLowerThanVehicle_DoesNotDecreaseVehicleMileage()
+    public async Task MarkDone_WithMileageLowerThanVehicle_IsRefusedAndWritesNothing()
     {
-        // Garde-fou : si le user saisit un km plus petit que vehicle.Mileage
-        // (par erreur de frappe), on ne doit jamais reculer le compteur.
+        // Un compteur ne recule pas : un km inférieur à vehicle.Mileage (erreur
+        // de frappe) recalculait NextDueKm en arrière. La saisie est refusée
+        // avec un message en français, et RIEN n'est écrit — ni coût, ni
+        // historique, ni échéance — sinon un nouvel essai créerait des doublons.
+        using var context = TestDbContextFactory.Create();
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: 1);
+        context.Vehicles.Add(new Vehicle { Id = 1, Name = "X", CompanyId = 1, Mileage = 80_000 });
+        context.MaintenanceTemplates.Add(new MaintenanceTemplate
+        {
+            Id = 1, Name = "V", Category = "M", Priority = "medium",
+            IntervalKm = 10_000, CompanyId = 1
+        });
+        context.VehicleMaintenanceSchedules.Add(new VehicleMaintenanceSchedule
+        {
+            Id = 1, VehicleId = 1, TemplateId = 1,
+            LastDoneKm = 70_000, NextDueKm = 80_000, Status = "due"
+        });
+        await context.SaveChangesAsync();
+
+        var handler = new MarkMaintenanceDoneCommandHandler(context, tenant.Object);
+        var act = () => handler.Handle(new MarkMaintenanceDoneCommand(
+            VehicleId: 1, TemplateId: 1,
+            Date: DateTime.UtcNow.Date, Mileage: 8_000, // « 8 000 » tapé au lieu de « 80 000 »
+            Cost: 100m, SupplierId: null, Notes: null
+        ), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>()
+            .WithMessage("*inférieur au kilométrage actuel du véhicule*Un compteur ne recule pas*");
+
+        (await context.Vehicles.FindAsync(1))!.Mileage.Should().Be(80_000);
+        context.MaintenanceLogs.Should().BeEmpty();
+        context.VehicleCosts.Should().BeEmpty();
+        var schedule = context.VehicleMaintenanceSchedules.Single();
+        schedule.LastDoneKm.Should().Be(70_000);
+        schedule.NextDueKm.Should().Be(80_000); // pas recalculé à 18 000
+    }
+
+    [Fact]
+    public async Task MarkDone_WithMileageEqualToVehicle_IsAccepted()
+    {
+        // La valeur pré-remplie par l'écran est vehicles.mileage lui-même :
+        // l'égalité doit passer, sinon « Confirmer » serait refusé d'office.
         using var context = TestDbContextFactory.Create();
         var tenant = TestDbContextFactory.CreateMockTenantService(companyId: 1);
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "X", CompanyId = 1, Mileage = 80_000 });
@@ -228,14 +269,65 @@ public class MaintenanceMileageResolverTests
         await context.SaveChangesAsync();
 
         var handler = new MarkMaintenanceDoneCommandHandler(context, tenant.Object);
-        await handler.Handle(new MarkMaintenanceDoneCommand(
+        var logId = await handler.Handle(new MarkMaintenanceDoneCommand(
             VehicleId: 1, TemplateId: 1,
-            Date: DateTime.UtcNow.Date, Mileage: 50_000, // < vehicle.Mileage = 80000
+            Date: DateTime.UtcNow.Date, Mileage: 80_000,
             Cost: 100m, SupplierId: null, Notes: null
         ), CancellationToken.None);
 
-        var vehicle = await context.Vehicles.FindAsync(1);
-        vehicle!.Mileage.Should().Be(80_000); // pas reculé
+        logId.Should().BeGreaterThan(0);
+        context.VehicleMaintenanceSchedules.Single().NextDueKm.Should().Be(90_000);
+    }
+
+    [Fact]
+    public async Task MarkDone_WithSupplier_StoresSupplierOnLog()
+    {
+        // Le garage choisi dans « Entretien effectué » doit arriver sur
+        // maintenance_logs.supplier_id (l'écran envoyait un texte libre perdu).
+        using var context = TestDbContextFactory.Create();
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: 1);
+        context.Vehicles.Add(new Vehicle { Id = 1, Name = "X", CompanyId = 1, Mileage = 50_000 });
+        context.MaintenanceTemplates.Add(new MaintenanceTemplate
+        {
+            Id = 1, Name = "V", Category = "M", Priority = "medium",
+            IntervalKm = 10_000, CompanyId = 1
+        });
+        context.Suppliers.Add(new Supplier { Id = 7, Name = "Garage du Centre", Type = "garage", CompanyId = 1 });
+        await context.SaveChangesAsync();
+
+        var handler = new MarkMaintenanceDoneCommandHandler(context, tenant.Object);
+        var logId = await handler.Handle(new MarkMaintenanceDoneCommand(
+            VehicleId: 1, TemplateId: 1,
+            Date: DateTime.UtcNow.Date, Mileage: 55_000,
+            Cost: 100m, SupplierId: 7, Notes: null
+        ), CancellationToken.None);
+
+        (await context.MaintenanceLogs.FindAsync(logId))!.SupplierId.Should().Be(7);
+    }
+
+    [Fact]
+    public async Task MarkDone_WithSupplierOfAnotherCompany_IsRefused()
+    {
+        using var context = TestDbContextFactory.Create();
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: 1);
+        context.Vehicles.Add(new Vehicle { Id = 1, Name = "X", CompanyId = 1, Mileage = 50_000 });
+        context.MaintenanceTemplates.Add(new MaintenanceTemplate
+        {
+            Id = 1, Name = "V", Category = "M", Priority = "medium",
+            IntervalKm = 10_000, CompanyId = 1
+        });
+        context.Suppliers.Add(new Supplier { Id = 8, Name = "Garage d'une autre société", Type = "garage", CompanyId = 2 });
+        await context.SaveChangesAsync();
+
+        var handler = new MarkMaintenanceDoneCommandHandler(context, tenant.Object);
+        var act = () => handler.Handle(new MarkMaintenanceDoneCommand(
+            VehicleId: 1, TemplateId: 1,
+            Date: DateTime.UtcNow.Date, Mileage: 55_000,
+            Cost: 100m, SupplierId: 8, Notes: null
+        ), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*fournisseur*");
+        context.MaintenanceLogs.Should().BeEmpty();
     }
 
     [Fact]
