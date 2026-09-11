@@ -54,15 +54,18 @@
       @if (canScanInvoice) {
         <button class="btn-scan" (click)="invoiceInput.click()"
                 [disabled]="scanning || scanQuota?.remaining === 0"
-                [title]="scanQuota?.remaining === 0 ? 'Quota mensuel de scans atteint — contactez votre administrateur' : 'Scanner une facture avec l\'IA'">
+                [title]="scanQuotaTitle">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
             <line x1="3" y1="12" x2="21" y2="12"/>
           </svg>
           {{ scanning ? 'Analyse…' : 'Scanner une facture' }}
           @if (scanQuota) {
+            <!-- Scans UTILISÉS ce mois / quota — même lecture que la fiche admin. Avant le
+                 11/09/2026 la bulle affichait le RESTE (« 16/20 »), qui se lisait comme
+                 16 scans consommés et laissait croire que le compteur ne repartait jamais à zéro. -->
             <span class="scan-quota-chip" [class.scan-quota-chip-empty]="scanQuota.remaining === 0">
-              {{ scanQuota.remaining }}/{{ scanQuota.limit }}
+              {{ scanQuota.used }}/{{ scanQuota.limit }} ce mois
             </span>
           }
         </button>

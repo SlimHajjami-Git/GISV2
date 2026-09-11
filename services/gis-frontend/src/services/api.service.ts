@@ -712,7 +712,7 @@ export class ApiService {
   }
 
   /** Quota mensuel de scans IA de la société — { used, limit, remaining }. */
-  getScanQuota(): Observable<{ used: number; limit: number; remaining: number }> {
+  getScanQuota(): Observable<{ used: number; limit: number; remaining: number; resetsAt?: string }> {
     return this.http.get<{ used: number; limit: number; remaining: number }>(
       `${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
   }

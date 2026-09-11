@@ -101,7 +101,12 @@ public class CostsController : ControllerBase
     /// admin company page (0 = feature disabled).</summary>
     private const int DefaultScanMonthlyLimit = 20;
 
-    private async Task<(int Limit, int Used)> GetScanQuotaAsync(int companyId, CancellationToken ct)
+    /// <summary>
+    /// Quota du MOIS CIVIL en cours : le compteur repart à zéro le 1er de chaque mois
+    /// (minuit UTC). <c>ResetsAt</c> est cette prochaine remise à zéro — l'écran l'affiche,
+    /// sans quoi le client croyait ses scans cumulés sans fin (recette du 11/09/2026).
+    /// </summary>
+    private async Task<(int Limit, int Used, DateTime ResetsAt)> GetScanQuotaAsync(int companyId, CancellationToken ct)
     {
         var limit = await _context.Societes
             .AsNoTracking()
@@ -115,7 +120,7 @@ public class CostsController : ControllerBase
             .AsNoTracking()
             .CountAsync(l => l.CompanyId == companyId && l.CreatedAt >= monthStart, ct);
 
-        return (limit, used);
+        return (limit, used, monthStart.AddMonths(1));
     }
 
     /// <summary>Current company's monthly scan quota — drives the counter shown
@@ -123,8 +128,8 @@ public class CostsController : ControllerBase
     [HttpGet("scan-quota")]
     public async Task<ActionResult> GetScanQuota(CancellationToken ct)
     {
-        var (limit, used) = await GetScanQuotaAsync(GetCompanyId(), ct);
-        return Ok(new { used, limit, remaining = Math.Max(0, limit - used) });
+        var (limit, used, resetsAt) = await GetScanQuotaAsync(GetCompanyId(), ct);
+        return Ok(new { used, limit, remaining = Math.Max(0, limit - used), resetsAt });
     }
 
     /// <summary>
@@ -148,7 +153,7 @@ public class CostsController : ControllerBase
         // Monthly quota per société — checked BEFORE storing anything or paying
         // for a Groq call. Only successful scans count against the quota.
         var companyId = GetCompanyId();
-        var (limit, used) = await GetScanQuotaAsync(companyId, ct);
+        var (limit, used, resetsAt) = await GetScanQuotaAsync(companyId, ct);
         if (limit <= 0)
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
@@ -158,8 +163,8 @@ public class CostsController : ControllerBase
         if (used >= limit)
             return StatusCode(StatusCodes.Status429TooManyRequests, new
             {
-                message = $"Quota mensuel de scans atteint ({used}/{limit}). Contactez votre administrateur pour augmenter la limite.",
-                used, limit
+                message = $"Quota mensuel de scans atteint ({used}/{limit}). Il repart à zéro le {resetsAt:dd/MM/yyyy} ; d'ici là, votre administrateur peut augmenter la limite.",
+                used, limit, resetsAt
             });
 
         byte[] bytes;
@@ -193,7 +198,7 @@ public class CostsController : ControllerBase
             {
                 extraction = result.Extraction,
                 receiptUrl,
-                quota = new { used = used + 1, limit, remaining = Math.Max(0, limit - used - 1) }
+                quota = new { used = used + 1, limit, remaining = Math.Max(0, limit - used - 1), resetsAt }
             });
         }
         catch (InvalidOperationException ex)
