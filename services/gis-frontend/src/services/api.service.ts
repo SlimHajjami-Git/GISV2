@@ -2800,8 +2800,10 @@ export interface MonthlyVehicleCostDto {
   otherCost: number;
   totalCost: number;
   distanceKm: number | null;
-  /** Variation vs mois précédent (%) ; null pour le 1er mois ou si le précédent est à 0. */
+  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si le mois est incomplet. */
   variationPct: number | null;
+  /** La période s’arrête avant la fin du mois (mois en cours, période personnalisée). */
+  isPartial?: boolean;
 }
 
 /** R4 — fréquence des réparations (réparations non annulées). */

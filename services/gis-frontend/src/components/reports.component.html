@@ -1088,45 +1088,72 @@
             </p>
           </div>
         } @else if (selectedTemplate?.type === 'cost-evolution' && costEvolution) {
-          <!-- ========== R2 ÉVOLUTION DES COÛTS PAR VÉHICULE ========== -->
-          <div class="monthly-cost-report-workspace cost-report-workspace">
-            <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
-
-            <div class="cost-report-title">
-              {{ costEvolution.vehicleName }} <span class="plate-tag" *ngIf="costEvolution.plate">{{ costEvolution.plate }}</span>
-              <span class="cost-report-subtitle">&mdash; {{ evolutionPeriodLabel() }}<ng-container *ngIf="costEvolution.totalDistanceKm != null"> &bull; {{ formatNumber(costEvolution.totalDistanceKm) }} km parcourus</ng-container></span>
+          <!-- ========== R2 ÉVOLUTION DES COÛTS PAR VÉHICULE ==========
+               Mise en page de la recette du 11/09/2026 : la même grille 65 / 35
+               répétée deux fois, pour que chaque bloc de droite s’aligne sur celui
+               de gauche — graphique → tableau mensuel, donut → détail par catégorie.
+               Ordre de lecture : combien le véhicule a coûté, par mois en moyenne,
+               quel mois a coûté le plus, quelle catégorie domine, comment les coûts
+               évoluent, puis le détail. -->
+          <div class="monthly-cost-report-workspace cost-report-workspace evolution-workspace">
+            <div class="report-head-row">
+              <div class="report-title-row">
+                <h2 class="report-title">{{ costEvolution.vehicleName }}<ng-container *ngIf="costEvolution.plate"> ({{ costEvolution.plate }})</ng-container></h2>
+                <nav class="report-breadcrumb" aria-label="Fil d’Ariane">
+                  <span>Rapports</span><span class="sep" aria-hidden="true">›</span>
+                  <span>Finances</span><span class="sep" aria-hidden="true">›</span>
+                  <span>{{ selectedTemplate?.name }}</span><span class="sep" aria-hidden="true">›</span>
+                  <span class="current">{{ costEvolution.vehicleName }}</span>
+                </nav>
+              </div>
+              <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
             </div>
 
             <div class="stats-cards-row">
-              <div class="stat-card">
-                <span class="stat-label">Coût total sur la période</span>
-                <span class="stat-value">{{ formatCurrency(costEvolution.totalCost) }}</span>
-                <span class="stat-sub">{{ costEvolution.months.length }} mois</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="3" y="6" width="18" height="13" rx="2"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3 10h18"/><circle stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="17" cy="14.5" r="1.2"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Coût total sur la période</span>
+                  <span class="stat-value">{{ formatCurrency(costEvolution.totalCost) }}</span>
+                  <span class="stat-sub">{{ costEvolution.months.length }} mois<ng-container *ngIf="costEvolution.totalDistanceKm != null"> &bull; {{ formatNumber(costEvolution.totalDistanceKm) }} km</ng-container></span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Coût moyen mensuel</span>
-                <span class="stat-value accent">{{ formatCurrency(costEvolution.averageMonthlyCost) }}</span>
-                <span class="stat-sub">Total divisé par le nombre de mois de la période</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><ellipse stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="6" rx="7" ry="2.5"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 6v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5V6"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 10v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M5 14v4c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-4"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Coût moyen mensuel</span>
+                  <span class="stat-value accent">{{ formatCurrency(costEvolution.averageMonthlyCost) }}</span>
+                  <span class="stat-sub">Total divisé par le nombre de mois</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Mois le plus élevé</span>
-                <span class="stat-value danger">{{ costEvolution.highestMonth ? costEvolution.highestMonth.monthName : '—' }}</span>
-                <span class="stat-sub" *ngIf="costEvolution.highestMonth">{{ formatCurrency(costEvolution.highestMonth.totalCost) }}</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--rouge"><svg viewBox="0 0 24 24" aria-hidden="true"><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="3.5" y="5" width="17" height="15" rx="2"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3.5 9.5h17"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M8 3v4M16 3v4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Mois le plus élevé</span>
+                  <span class="stat-value danger">{{ costEvolution.highestMonth ? costEvolution.highestMonth.monthName : '—' }}</span>
+                  <span class="stat-sub" *ngIf="costEvolution.highestMonth">{{ formatCurrency(costEvolution.highestMonth.totalCost) }}</span>
+                </span>
               </div>
-              <div class="stat-card">
-                <span class="stat-label">Mois le moins élevé</span>
-                <span class="stat-value success">{{ costEvolution.lowestMonth ? costEvolution.lowestMonth.monthName : '—' }}</span>
-                <span class="stat-sub" *ngIf="costEvolution.lowestMonth">{{ formatCurrency(costEvolution.lowestMonth.totalCost) }}</span>
+              <div class="stat-card stat-card--icone">
+                <span class="stat-icone stat-icone--vert"><svg viewBox="0 0 24 24" aria-hidden="true"><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="3.5" y="5" width="17" height="15" rx="2"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M3.5 9.5h17"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M8 3v4M16 3v4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01"/></svg></span>
+                <span class="stat-corps">
+                  <span class="stat-label">Mois le moins élevé</span>
+                  <span class="stat-value success">{{ costEvolution.lowestMonth ? costEvolution.lowestMonth.monthName : '—' }}</span>
+                  <!-- Parmi les mois COMPLETS : un mois en cours serait par construction
+                       le moins élevé (voir GetVehicleCostEvolutionQueryHandler). -->
+                  <span class="stat-sub" *ngIf="costEvolution.lowestMonth">{{ formatCurrency(costEvolution.lowestMonth.totalCost) }}<ng-container *ngIf="hasPartialEvolutionMonth()"> &bull; mois complets</ng-container></span>
+                </span>
               </div>
             </div>
 
+            <!-- Graphiques : même hauteur à gauche et à droite, 28 % plus bas qu’avant. -->
             <div class="cost-two-col">
               <div class="dept-group">
                 <div class="dept-header">
                   <span class="dept-badge">Évolution mensuelle des coûts</span>
                   <span class="dept-summary">Cliquez sur un mois pour afficher son détail</span>
                 </div>
-                <div class="cost-chart-box" style="height:340px;">
+                <div class="cost-chart-box evolution-chart-box">
                   <canvas #evolutionCanvas></canvas>
                 </div>
               </div>
@@ -1134,21 +1161,28 @@
                 <div class="dept-header">
                   <span class="dept-badge">Répartition des coûts sur la période</span>
                 </div>
-                <div class="cost-chart-box" style="height:210px;">
-                  <canvas #evolutionDonutCanvas></canvas>
-                </div>
-                <div class="ai-cost-items cost-legend">
-                  @for (c of evolutionCategoryTotals(); track c.key) {
-                    <div class="ai-cost-item">
-                      <span class="ai-cost-dot" [style.background]="c.color"></span>
-                      <span class="ai-cost-lbl">{{ c.label }}</span>
-                      <span class="ai-cost-val">{{ formatCurrency(c.amount) }} <small>({{ formatPct(c.pct) }})</small></span>
+                <!-- Donut réduit à gauche, légende chiffrée à droite : l’information
+                     prime sur la taille du graphique. -->
+                <div class="donut-split">
+                  <div class="donut-split-canvas"><canvas #evolutionDonutCanvas></canvas></div>
+                  <div class="donut-split-legend">
+                    @for (c of evolutionCategoryTotals(); track c.key) {
+                      <div class="donut-split-row">
+                        <span class="ai-cost-dot" [style.background]="c.color"></span>
+                        <span class="lbl">{{ c.label }}</span>
+                        <span class="val">{{ formatCurrency(c.amount) }} <small>({{ formatPct(c.pct) }})</small></span>
+                      </div>
+                    }
+                    <div class="donut-split-row donut-split-total">
+                      <span class="lbl">Total</span>
+                      <span class="val">{{ formatCurrency(costEvolution.totalCost) }} <small>({{ costEvolution.totalCost > 0 ? '100 %' : '—' }})</small></span>
                     </div>
-                  }
+                  </div>
                 </div>
               </div>
             </div>
 
+            <!-- Tableaux : la même grille, collée aux graphiques. -->
             <div class="cost-two-col">
               <div class="dept-group">
                 <div class="dept-header">
@@ -1161,7 +1195,7 @@
                       <tr>
                         <th>Mois</th>
                         <th class="num">Carburant</th>
-                        <th class="num">Entretien</th>
+                        <th class="num">Entretiens</th>
                         <th class="num">Réparations</th>
                         <th class="num">Autres dépenses</th>
                         <th class="num">Total</th>
@@ -1170,8 +1204,8 @@
                     </thead>
                     <tbody>
                       @for (m of costEvolution.months; track (m.year + '-' + m.month)) {
-                        <tr class="clickable" [class.highlighted]="isSelectedEvolutionMonth(m)" [class.muted]="m.totalCost === 0" (click)="selectEvolutionMonth(m)">
-                          <td><strong>{{ m.monthName }}</strong></td>
+                        <tr class="clickable" [class.highlighted]="isSelectedEvolutionMonth(m)" [class.muted]="m.totalCost === 0" [class.partial]="m.isPartial" (click)="selectEvolutionMonth(m)">
+                          <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" title="La période s’arrête avant la fin de ce mois">en cours</span></td>
                           <td class="num">{{ formatCurrency(m.fuelCost) }}</td>
                           <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
                           <td class="num">{{ formatCurrency(m.repairCost) }}</td>
@@ -1197,46 +1231,46 @@
               </div>
               <div class="dept-group">
                 <div class="dept-header">
-                  <span class="dept-badge">Détail du mois sélectionné : {{ selectedEvolutionMonth ? selectedEvolutionMonth.monthName : '—' }}</span>
-                  <span class="dept-summary" *ngIf="selectedEvolutionMonth && selectedEvolutionMonth.distanceKm != null">{{ formatNumber(selectedEvolutionMonth.distanceKm) }} km ce mois</span>
+                  <!-- Toute la période par défaut, le mois cliqué sinon : le bloc garde
+                       l’interaction « cliquez sur un mois » sans rester vide au départ. -->
+                  <span class="dept-badge">Détail des coûts par catégorie — {{ evolutionDetailLabel() }}</span>
+                  @if (selectedEvolutionMonth) {
+                    <button type="button" class="link-reset" (click)="clearEvolutionMonth()">Toute la période</button>
+                  }
                 </div>
-                @if (selectedEvolutionMonth) {
-                  <div class="table-wrapper">
-                    <table class="report-table monthly-cost-table cost-table">
-                      <thead>
+                <div class="table-wrapper">
+                  <table class="report-table monthly-cost-table cost-table">
+                    <thead>
+                      <tr>
+                        <th>Catégorie</th>
+                        <th class="num">Montant</th>
+                        <th class="num">% du total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (c of evolutionDetailRows(); track c.key) {
                         <tr>
-                          <th>Catégorie</th>
-                          <th class="num">Montant</th>
-                          <th class="num">% du total</th>
+                          <td><span class="ai-cost-dot" [style.background]="c.color" style="display:inline-block;margin-right:8px;vertical-align:middle;"></span>{{ c.label }}</td>
+                          <td class="num">{{ formatCurrency(c.amount) }}</td>
+                          <td class="num">{{ formatPct(c.pct) }}</td>
                         </tr>
-                      </thead>
-                      <tbody>
-                        @for (c of evolutionMonthDetail(); track c.key) {
-                          <tr>
-                            <td><span class="ai-cost-dot" [style.background]="c.color" style="display:inline-block;margin-right:8px;vertical-align:middle;"></span>{{ c.label }}</td>
-                            <td class="num">{{ formatCurrency(c.amount) }}</td>
-                            <td class="num">{{ formatPct(c.pct) }}</td>
-                          </tr>
-                        }
-                      </tbody>
-                      <tfoot>
-                        <tr class="dept-total-row">
-                          <td><strong>Total</strong></td>
-                          <td class="num total-cell"><strong>{{ formatCurrency(selectedEvolutionMonth.totalCost) }}</strong></td>
-                          <td class="num"><strong>{{ selectedEvolutionMonth.totalCost > 0 ? '100,0 %' : '—' }}</strong></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                } @else {
-                  <div class="ai-no-data">Cliquez sur un mois du graphe ou du tableau.</div>
-                }
+                      }
+                    </tbody>
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td><strong>Total</strong></td>
+                        <td class="num total-cell"><strong>{{ formatCurrency(evolutionDetailTotal()) }}</strong></td>
+                        <td class="num"><strong>{{ evolutionDetailTotal() > 0 ? '100 %' : '—' }}</strong></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             </div>
 
             <div class="report-note">
               <span>ℹ️</span>
-              <span>Les mois sans dépense apparaissent à 0. La variation compare le total du mois au mois précédent (« — » pour le premier mois ou si le mois précédent est à 0). Carburant = pleins saisis, Entretien = coûts d'entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d'acquisition ne sont pas comptées.</span>
+              <span>Les mois sans dépense apparaissent à 0. La variation compare le total du mois au mois précédent (« — » pour le premier mois, si le mois précédent est à 0, ou pour un mois « en cours » : dix jours ne se comparent pas à un mois entier). Un mois en cours n’entre pas dans les mois le plus et le moins élevés. Carburant = pleins saisis, Entretiens = coûts d’entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d’acquisition ne sont pas comptées.</span>
             </div>
           </div>
         } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency && repairFrequency.totalInterventions === 0) {

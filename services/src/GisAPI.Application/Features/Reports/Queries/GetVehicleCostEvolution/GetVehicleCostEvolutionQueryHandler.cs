@@ -43,6 +43,17 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
 
             var km = vehicle.MonthlyKm.GetValueOrDefault((year, month));
 
+            // Mois INCOMPLET : la période s’arrête avant son dernier jour. C’est
+            // le cas du mois en cours sur « 12 derniers mois » et « Cette année ».
+            // Présenté comme un mois normal, il affichait une chute de 33 à
+            // 100 % sur les 12 véhicules du jeu de recette (10 jours sur 30), et
+            // la carte « Mois le moins élevé » le désignait presque toujours :
+            // un fait faux, affiché en gros (recette du 11/09/2026).
+            var finDuMois = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+            var incomplet = endExclusiveUtc < finDuMois;
+            if (incomplet)
+                variation = null;   // comparer 10 jours à un mois entier n’a pas de sens
+
             months.Add(new MonthlyVehicleCostDto(
                 Year: year,
                 Month: month,
@@ -53,13 +64,16 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
                 OtherCost: Math.Round(bucket.Other, 2),
                 TotalCost: Math.Round(total, 2),
                 DistanceKm: km > 0 ? Math.Round(km, 2) : null,
-                VariationPct: variation.HasValue ? Math.Round(variation.Value, 1) : null));
+                VariationPct: variation.HasValue ? Math.Round(variation.Value, 1) : null,
+                IsPartial: incomplet));
 
             previousTotal = total;
         }
 
         var totalCost = vehicle.Total.Total;
-        var withCost = months.Where(m => m.TotalCost > 0).ToList();
+        // Mois le plus et le moins élevés : parmi les mois COMPLETS seulement.
+        // Un mois incomplet est par construction « le moins élevé ».
+        var withCost = months.Where(m => m.TotalCost > 0 && !m.IsPartial).ToList();
 
         return new VehicleCostEvolutionDto(
             VehicleId: vehicle.VehicleId,

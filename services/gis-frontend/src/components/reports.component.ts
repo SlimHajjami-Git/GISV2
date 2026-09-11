@@ -5772,7 +5772,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (type === 'fuel-comparison' && this.comparisonAudit) return this.buildFuelComparisonExport(vehicleName, dateRange);
     if (type === 'ai-fleet' && this.aiFleetReport) return this.buildAiFleetExport();
     if ((type === 'operating-cost' || type === 'cost-ranking') && this.operatingCost) return this.buildOperatingCostExport(vehicleName, dateRange, format);
-    if (type === 'cost-evolution' && this.costEvolution) return this.buildCostEvolutionExport(vehicleName, dateRange);
+    if (type === 'cost-evolution' && this.costEvolution) return this.buildCostEvolutionExport(vehicleName, dateRange, format);
     if (type === 'repair-frequency' && this.repairFrequency) return this.buildRepairFrequencyExport(vehicleName, dateRange);
 
     const allVehicles = !this.selectedVehicleId;
@@ -8075,9 +8075,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       next: (report) => {
         this.ngZone.run(() => {
           this.costEvolution = report;
-          // Mois sélectionné par défaut = le plus élevé ; repli : dernier mois de la plage.
-          this.selectedEvolutionMonth = this.findEvolutionMonth(report, report.highestMonth)
-            ?? (report.months?.length ? report.months[report.months.length - 1] : null);
+          // Aucun mois sélectionné au départ : le bloc de détail montre toute la
+          // période (recette du 11/09/2026). Un clic sur un mois le restreint.
+          this.selectedEvolutionMonth = null;
           this.resetGenericReportData();
           this.reportGenerated = true;
           this.loading = false;
@@ -8106,8 +8106,37 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   selectEvolutionMonth(m: MonthlyVehicleCostDto) {
-    this.selectedEvolutionMonth = m;
+    // Second clic sur le même mois : retour à toute la période.
+    this.selectedEvolutionMonth = this.isSelectedEvolutionMonth(m) ? null : m;
     this.cdr.detectChanges();
+  }
+
+  clearEvolutionMonth() {
+    this.selectedEvolutionMonth = null;
+    this.cdr.detectChanges();
+  }
+
+  hasPartialEvolutionMonth(): boolean {
+    return !!this.costEvolution?.months?.some(m => m.isPartial);
+  }
+
+  /** Lignes du bloc de détail : le mois sélectionné, sinon toute la période. */
+  evolutionDetailRows(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
+    return this.selectedEvolutionMonth ? this.evolutionMonthDetail() : this.evolutionCategoryTotals();
+  }
+
+  evolutionDetailTotal(): number {
+    return this.evolutionDetailRows().reduce((s, c) => s + (Number(c.amount) || 0), 0);
+  }
+
+  /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
+  evolutionDetailLabel(): string {
+    const sel = this.selectedEvolutionMonth;
+    if (sel) return sel.monthName + (sel.isPartial ? ' (en cours)' : '');
+    const mois = this.costEvolution?.months ?? [];
+    if (!mois.length) return '';
+    const premier = mois[0].monthName, dernier = mois[mois.length - 1].monthName;
+    return premier === dernier ? premier : `${premier} à ${dernier}`;
   }
 
   isSelectedEvolutionMonth(m: MonthlyVehicleCostDto): boolean {
@@ -8147,7 +8176,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const c = this.costCategoryColors;
     return [
       { key: 'fuel', label: 'Carburant', amount: f, pct: pct(f), color: c.fuel },
-      { key: 'maintenance', label: 'Entretien', amount: m, pct: pct(m), color: c.maintenance },
+      { key: 'maintenance', label: 'Entretiens', amount: m, pct: pct(m), color: c.maintenance },
       { key: 'repair', label: 'Réparations', amount: r, pct: pct(r), color: c.repair },
       { key: 'other', label: 'Autres dépenses', amount: o, pct: pct(o), color: c.other }
     ];
@@ -8165,24 +8194,36 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const months = report.months;
     const c = this.costCategoryColors;
+    // Mois INCOMPLET estompé : ses barres sont forcément plus basses, il ne
+    // doit pas se lire comme une chute des coûts (recette du 11/09/2026).
+    const estompe = (hex: string) => {
+      const h = hex.replace('#', '');
+      const n = parseInt(h.length === 3 ? h.split('').map(x => x + x).join('') : h, 16);
+      return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, 0.38)`;
+    };
+    const couleurs = (color: string) => months.map(m => m.isPartial ? estompe(color) : color);
     const bar = (label: string, data: number[], color: string) => ({
-      type: 'bar', label, data, backgroundColor: color, stack: 'costs', borderRadius: 2, barPercentage: .7, categoryPercentage: .8
+      type: 'bar', label, data, backgroundColor: couleurs(color), stack: 'costs', borderRadius: 2, barPercentage: .7, categoryPercentage: .8
     });
     const datasets: any[] = [
       bar('Carburant', months.map(m => m.fuelCost), c.fuel),
-      bar('Entretien', months.map(m => m.maintenanceCost), c.maintenance),
+      bar('Entretiens', months.map(m => m.maintenanceCost), c.maintenance),
       bar('Réparations', months.map(m => m.repairCost), c.repair),
       bar('Autres dépenses', months.map(m => m.otherCost), c.other),
       {
         type: 'line', label: 'Total', data: months.map(m => m.totalCost),
         borderColor: c.total, backgroundColor: c.total, borderWidth: 2, tension: .3,
-        pointRadius: 4, pointHoverRadius: 6, fill: false, stack: 'total', order: 0
+        pointRadius: 4, pointHoverRadius: 6, fill: false, stack: 'total', order: 0,
+        // Segment vers un mois incomplet en pointillé : la baisse est un
+        // artefact de la période, pas une économie.
+        segment: { borderDash: (ctx: any) => months[ctx.p1DataIndex]?.isPartial ? [5, 4] : undefined }
       }
     ];
 
     this.evolutionChart = new Chart(ctx, {
       type: 'bar',
-      data: { labels: months.map(m => m.monthName), datasets },
+      // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (en cours) ».
+      data: { labels: months.map(m => m.isPartial ? [m.monthName, '(en cours)'] : m.monthName), datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -8190,13 +8231,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
         onClick: (_evt, elements) => {
           if (!elements.length) return;
           const idx = elements[0].index;
-          this.ngZone.run(() => {
-            this.selectedEvolutionMonth = months[idx];
-            this.cdr.detectChanges();
-          });
+          this.ngZone.run(() => this.selectEvolutionMonth(months[idx]));
         },
         plugins: {
-          legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 14, font: { size: 11 } } },
+          legend: { display: true, position: 'top', labels: { usePointStyle: true, boxWidth: 8, boxHeight: 8, padding: 12, font: { size: 11 } } },
           tooltip: {
             callbacks: {
               label: (item) => `${item.dataset.label} : ${this.formatCurrency(Number((item.parsed as any)?.y) || 0)}`
@@ -8281,7 +8319,6 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Donut « Répartition des coûts sur la période » (légende HTML à côté : montant + %). */
   drawEvolutionDonut() {
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
-    if (this.monthlyCostDonutChart) { this.monthlyCostDonutChart.destroy(); this.monthlyCostDonutChart = undefined; }
     const canvas = this.evolutionDonutCanvasRef?.nativeElement;
     if (!canvas) return;
     const cats = this.evolutionCategoryTotals();
@@ -8608,48 +8645,88 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué se déduit du tableau). */
-  private buildCostEvolutionExport(vehicleName: string, dateRange: string): ReportExportConfig | null {
+  /**
+   * R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué reste à
+   * l’écran). Recette du 11/09/2026 : valeurs formatées dans le PDF, brutes pour
+   * les tableurs ; largeurs mesurées à la police réelle ; ligne TOTAL ajoutée et
+   * mise en évidence ; mois en cours signalé.
+   */
+  private buildCostEvolutionExport(vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     const r = this.costEvolution;
     if (!r) return null;
     const cur = this.getCurrencyCode();
     const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
+    const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
+    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    const pct = (v: number | null) => v == null
+      ? (pourPdf ? '—' : '')
+      : pourPdf
+        ? (v > 0 ? '+' : '') + v.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' %'
+        : n1(v);
 
+    // Largeurs mesurées (Manrope 7, 5 mm de marges internes) : la colonne la
+    // plus exigeante est « Variation / mois préc. », 32,2 mm ; le tout fait
+    // 159,5 mm pour 190, donc le PDF reste en portrait.
     const columns = [
-      { header: 'Mois', dataKey: 'monthName' },
-      { header: `Carburant (${cur})`, dataKey: 'fuelCost' },
-      { header: `Entretien (${cur})`, dataKey: 'maintenanceCost' },
-      { header: `Réparations (${cur})`, dataKey: 'repairCost' },
-      { header: `Autres dépenses (${cur})`, dataKey: 'otherCost' },
-      { header: `Total (${cur})`, dataKey: 'totalCost' },
-      { header: 'Variation vs mois précédent (%)', dataKey: 'variationPct' }
+      { header: 'Mois', dataKey: 'monthName', weight: 3.2 },
+      { header: `Carburant ${cur}`, dataKey: 'fuelCost', weight: 2.2 },
+      { header: `Entretiens ${cur}`, dataKey: 'maintenanceCost', weight: 2.2 },
+      { header: `Réparations ${cur}`, dataKey: 'repairCost', weight: 2.4 },
+      { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
+      { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
+      { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
-    const data = (r.months || []).map(m => ({
-      monthName: m.monthName,
-      fuelCost: n2(m.fuelCost),
-      maintenanceCost: n2(m.maintenanceCost),
-      repairCost: n2(m.repairCost),
-      otherCost: n2(m.otherCost),
-      totalCost: n2(m.totalCost),
-      variationPct: m.variationPct == null ? '' : n1(m.variationPct)
+    const data: any[] = (r.months || []).map(m => ({
+      // Le mois en cours est dit tel dans le PDF ; le tableur garde le mois brut.
+      monthName: m.monthName + (pourPdf && m.isPartial ? ' (en cours)' : ''),
+      fuelCost: mt(m.fuelCost),
+      maintenanceCost: mt(m.maintenanceCost),
+      repairCost: mt(m.repairCost),
+      otherCost: mt(m.otherCost),
+      totalCost: mt(m.totalCost),
+      variationPct: pct(m.variationPct)
     }));
+    // Ligne de total, que le PDF n’avait pas alors que l’écran l’affiche.
+    data.push({
+      monthName: 'TOTAL',
+      fuelCost: mt(r.totalFuelCost),
+      maintenanceCost: mt(r.totalMaintenanceCost),
+      repairCost: mt(r.totalRepairCost),
+      otherCost: mt(r.totalOtherCost),
+      totalCost: mt(r.totalCost),
+      variationPct: pourPdf ? '—' : ''
+    });
 
-    const monthLabel = (m: MonthlyVehicleCostDto | null) => m ? `${m.monthName} — ${n2(m.totalCost)} ${cur}` : '—';
+    // Cartes : le MONTANT en valeur, le mois dans le libellé. « Juil. 2026 —
+    // 515,77 € » mesurait 41,1 mm à 12 points pour 35,5 mm de carte : il
+    // débordait. Les quatre cartes montrent ainsi toutes un montant.
     const statistics: Record<string, string> = {
-      [`Coût total sur la période (${cur})`]: String(n2(r.totalCost)),
-      [`Coût moyen mensuel (${cur})`]: String(n2(r.averageMonthlyCost)),
-      'Mois le plus élevé': monthLabel(r.highestMonth),
-      'Mois le moins élevé': monthLabel(r.lowestMonth)
+      'Coût total sur la période': String(mt(r.totalCost)),
+      'Coût moyen mensuel': String(mt(r.averageMonthlyCost)),
     };
+    if (r.highestMonth) statistics[`Plus élevé : ${r.highestMonth.monthName}`] = String(mt(r.highestMonth.totalCost));
+    else statistics['Mois le plus élevé'] = '—';
+    if (r.lowestMonth) statistics[`Moins élevé : ${r.lowestMonth.monthName}`] = String(mt(r.lowestMonth.totalCost));
+    else statistics['Mois le moins élevé'] = '—';
 
+    const enCours = (r.months || []).find(m => m.isPartial);
     const label = r.plate ? `${r.vehicleName} (${r.plate})` : (r.vehicleName || vehicleName);
     return {
       title: `${this.selectedTemplate?.name || 'Évolution des coûts'} — ${label}`,
-      vehicleName: label,
+      // Dans le PDF le véhicule est déjà dans le titre : le répéter en
+      // « Véhicule: … » faisait sortir la ligne d'infos de la page.
+      vehicleName: pourPdf ? undefined : label,
       dateRange,
       statistics,
       columns,
-      data
+      data,
+      highlightLastRow: true,
+      // Dit pourquoi le mois en cours n’a pas de variation et n’entre pas
+      // dans les mois le plus et le moins élevés.
+      footnote: enCours
+        ? `* ${enCours.monthName} est en cours : la période s’arrête avant la fin du mois. Il n’est comparé à aucun autre mois et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+        : undefined,
     };
   }
 

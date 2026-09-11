@@ -179,17 +179,32 @@ export class PdfExportService {
 
     // Titre dans le bleu profond de la charte : c'est lui qui porte le contraste
     // sur fond clair (12,4:1), là où le bandeau bleu le portait par le blanc.
+    // Largeur utile à droite du logo. Un titre long (« Évolution des coûts —
+    // Commercial 01 (GD-421-NV) ») ou une ligne de métadonnées chargée
+    // sortaient de la page : on réduit la taille jusqu'à ce que ça tienne,
+    // sans descendre sous un plancher lisible.
+    const largeurUtile = pageWidth - 14 - textLeft;
+    const ajuster = (texte: string, taille: number, plancher: number) => {
+      doc.setFontSize(taille);
+      while (taille > plancher && doc.getTextWidth(texte) > largeurUtile) {
+        taille -= 0.5;
+        doc.setFontSize(taille);
+      }
+    };
+
     doc.setTextColor(...this.primaryColor);
-    doc.setFontSize(17);
     doc.setFont(this.brandFont, 'bold');
-    doc.text(this.sanitizeText(opts.title), textLeft, opts.meta?.length ? 14 : 18);
+    const titre = this.sanitizeText(opts.title);
+    ajuster(titre, 17, 13);
+    doc.text(titre, textLeft, opts.meta?.length ? 14 : 18);
 
     if (opts.meta?.length) {
       // Métadonnées en bleu-gris : lisibles, sans concurrencer le titre.
-      doc.setFontSize(8.5);
       doc.setFont(this.brandFont, 'normal');
       doc.setTextColor(82, 103, 133);
-      doc.text(opts.meta.map(m => this.sanitizeText(m)).join('   •   '), textLeft, 21.5);
+      const ligne = opts.meta.map(m => this.sanitizeText(m)).join('   •   ');
+      ajuster(ligne, 8.5, 7);
+      doc.text(ligne, textLeft, 21.5);
     }
     if (opts.rightNote) {
       doc.setFontSize(9);
