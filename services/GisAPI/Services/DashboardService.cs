@@ -619,27 +619,16 @@ public class DashboardService : IDashboardService
     /// — comportement identique à l'ancien par défaut, modifiable dès qu'une
     /// ligne existe. JAMAIS de synchronisation ici : le dashboard est mis en
     /// cache et pré-chauffé hors requête, sans contexte tenant.
+    /// Le calcul lui-même vit dans la couche Application
+    /// (<see cref="AcquisitionCostCalculator.PeriodCostAsync"/>), partagé avec le
+    /// tableau de bord GPA ; seul le repli en cas de panne reste propre à ce service.
     /// </summary>
     private async Task<decimal> AcquisitionCostAsync(int companyId, List<int>? scopeIds, List<Vehicle> vehicles,
         DateTime from, DateTime to, DateTime now, CancellationToken ct)
     {
         try
         {
-            var persisted = _context.AcquisitionPayments.AsNoTracking()
-                .Where(p => p.CompanyId == companyId);
-            if (scopeIds != null)
-                persisted = persisted.Where(p => scopeIds.Contains(p.VehicleId));
-
-            // La somme AVANT la liste des véhicules déjà synchronisés : si une
-            // autre requête génère un échéancier entre les deux lectures, le
-            // véhicule est alors compté par la liste (donc exclu du repli) sans
-            // l'être par la somme — il manque une fois, au lieu d'être compté
-            // deux fois. Une omission se corrige au calcul suivant ; un doublon
-            // resterait affiché dix minutes, le temps du cache.
-            var counted = await AcquisitionPaymentRules.CountedCostAsync(persisted, from, to, now, ct);
-            var syncedIds = (await persisted.Select(p => p.VehicleId).Distinct().ToListAsync(ct)).ToHashSet();
-
-            return counted + AcquisitionSchedule.Cost(vehicles.Where(v => !syncedIds.Contains(v.Id)), from, to, now);
+            return await AcquisitionCostCalculator.PeriodCostAsync(_context, companyId, scopeIds, vehicles, from, to, now, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

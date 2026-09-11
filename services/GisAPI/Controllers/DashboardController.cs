@@ -8,6 +8,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardKpis;
 using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
+using GisAPI.Application.Features.Dashboard.Queries.GetGpaDashboard;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Services;
 using System.Security.Claims;
@@ -612,6 +613,35 @@ public class DashboardController : ControllerBase
                 periodStart, periodEnd, prevStart, prevEnd, now, today, token),
             HttpContext.RequestAborted);
 
+        return Ok(result);
+    }
+
+    /// <summary>
+    /// Tableau de bord d'un compte SANS GPS (offre Calypso GPA) : coûts
+    /// d'exploitation, acquisitions, interventions, échéances et alertes, sur
+    /// les seules données saisies. Bornes en jours entiers, jour de fin inclus ;
+    /// défaut : du 1er janvier de l'année en cours à aujourd'hui.
+    /// Pas de cache : la réponse dépend de la portée véhicules de l'appelant
+    /// (appliquée par le handler). /api/dashboard est exempté du contrôle
+    /// d'abonnement dans PermissionMiddleware, ce chemin compris.
+    /// </summary>
+    /// <response code="200">Tableau de bord GPA</response>
+    /// <response code="400">Date de début postérieure à la date de fin</response>
+    [HttpGet("gpa")]
+    [ProducesResponseType(typeof(GpaDashboardDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<GpaDashboardDto>> GetGpaDashboard(
+        [FromQuery] DateTime? from = null,
+        [FromQuery] DateTime? to = null)
+    {
+        var today = DateTime.UtcNow.Date;
+        var start = from?.Date ?? new DateTime(today.Year, 1, 1);
+        var end = to?.Date ?? today;
+
+        if (start > end)
+            return BadRequest(new { message = "La date de début doit précéder la date de fin." });
+
+        var result = await _mediator.Send(new GetGpaDashboardQuery(start, end), HttpContext.RequestAborted);
         return Ok(result);
     }
 

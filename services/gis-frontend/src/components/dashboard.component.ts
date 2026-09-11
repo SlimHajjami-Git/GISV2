@@ -1,11 +1,11 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ViewChild, ElementRef, ChangeDetectorRef } from '@angular/core';
 import * as L from 'leaflet';
-import { PermissionService } from '../services/permission.service';
+import { PermissionService, ModuleKey } from '../services/permission.service';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService, VehicleExpiryDto } from '../services/api.service';
+import { ApiService, VehicleExpiryDto, GpaDashboard, GpaDashboardAlert, GpaDashboardIntervention, GpaDashboardTopVehicle } from '../services/api.service';
 import { SignalRService } from '../services/signalr.service';
 import { Company } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
@@ -15,7 +15,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 @Component({
   selector: 'app-dashboard',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, ...USER_PREF_PIPES],
   template: `
 <app-layout>
 <div class="dash">
@@ -25,7 +25,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     <header class="mast anim" style="--i:0">
       <div class="mast-top">
         <div class="brand">
-          <span class="live" [class.off]="!isConnected"><span class="live-dot"></span>{{ isConnected ? 'En direct' : 'Hors ligne' }}</span>
+          <span class="live" *ngIf="hasGps" [class.off]="!isConnected"><span class="live-dot"></span>{{ isConnected ? 'En direct' : 'Hors ligne' }}</span>
           <span>Calypso&nbsp;·&nbsp;<b>{{ company?.name || 'Flotte' }}</b></span>
         </div>
         <div class="mast-date">{{ todayLabel }}</div>
@@ -64,13 +64,12 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </div>
 
       <!-- ════ 2 · KPIs en filets (dans le masthead) ════ -->
-      <div class="kpis" [class.k2]="!hasGps">
+      <div class="kpis" *ngIf="hasGps">
         <div class="kpi">
           <span class="kpi-l">Véhicules</span>
           <span class="kpi-v">{{ dVehicles }}</span>
           <span class="kpi-s">flotte totale</span>
         </div>
-        <ng-container *ngIf="hasGps">
         <div class="kpi">
           <span class="kpi-l"><span class="dot" style="background:#34d399"></span>En circulation</span>
           <span class="kpi-v">{{ dMoving }}</span>
@@ -86,7 +85,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
           <span class="kpi-v">{{ dFuel | number:'1.0-0' }}<span class="kpi-u">L</span></span>
           <span class="kpi-s">sur la période</span>
         </div>
-        </ng-container>
         <div class="kpi">
           <span class="kpi-l">Coût total</span>
           <span class="kpi-v">{{ costValue }}<span class="kpi-u">{{ currencyCode }}</span></span>
@@ -98,11 +96,59 @@ import { AppLayoutComponent } from './shared/app-layout.component';
           </span>
           <span class="kpi-s" *ngIf="costTrend===null || costTrend===0">sur la période</span>
         </div>
-        <div class="kpi" *ngIf="hasGps">
+        <div class="kpi">
           <span class="kpi-l">Alertes</span>
           <span class="kpi-v">{{ dAlerts }}</span>
           <span class="kpi-s">sur la période</span>
         </div>
+      </div>
+
+      <!-- Offre GPA (sans GPS) : cinq indicateurs de gestion, une icône chacun -->
+      <div class="kpis k5" *ngIf="!hasGps">
+        <div class="kpi kpi-ic" title="Coût total sur la période : carburant, entretiens, réparations et autres dépenses, remboursements d'assurance déduits. Les achats de véhicules sont à part.">
+          <span class="kic" style="--kc:#a5b4fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 6.2A7 7 0 1 0 17.5 17.8"/><path d="M4 10.2h9M4 13.8h9"/></svg></span>
+          <div class="ktx">
+            <span class="kpi-l">Coût total</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.costs.total) }}<span class="kpi-dec">{{ decimales(gpa.costs.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <span class="kpi-s">sur la période · hors achats</span>
+          </div>
+        </div>
+        <div class="kpi kpi-ic" title="Coût complet du parc, quelle que soit la période : prix d'achat des véhicules achetés comptant, apports et toutes les mensualités des contrats de crédit ou de leasing (échues et à venir).">
+          <span class="kic" style="--kc:#7dd3fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16l-1.4 11a2 2 0 0 1-2 1.7H7.4a2 2 0 0 1-2-1.7z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/></svg></span>
+          <div class="ktx">
+            <span class="kpi-l">Coût d'achats</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.acquisition.total) }}<span class="kpi-dec">{{ decimales(gpa.acquisition.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <span class="kpi-s" *ngIf="gpa">{{ achatsSousTitre }}</span>
+          </div>
+        </div>
+        <div class="kpi kpi-ic" title="Somme des mensualités de leasing et de crédit encore à venir, tous contrats confondus.">
+          <span class="kic" style="--kc:#c4b5fd"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14.5h3"/></svg></span>
+          <div class="ktx">
+            <span class="kpi-l">Reste à payer leasing</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.leasingRemaining.amount) }}<span class="kpi-dec">{{ decimales(gpa.leasingRemaining.amount) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <span class="kpi-s" *ngIf="gpa && gpa.leasingRemaining.installments>0">{{ gpa.leasingRemaining.installments }}&nbsp;échéance{{ gpa.leasingRemaining.installments>1?'s':'' }} · {{ gpa.leasingRemaining.contracts }}&nbsp;contrat{{ gpa.leasingRemaining.contracts>1?'s':'' }}</span>
+            <span class="kpi-s" *ngIf="gpa && gpa.leasingRemaining.installments===0">aucune échéance à venir</span>
+          </div>
+        </div>
+        <div class="kpi kpi-ic" title="Nombre d'interventions sur la période : entretiens et réparations enregistrés (réparations annulées exclues).">
+          <span class="kic" style="--kc:#fcd34d"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z"/></svg></span>
+          <div class="ktx">
+            <span class="kpi-l">Interventions</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash">{{ nombre(gpa.interventions.total) }}</ng-container></span>
+            <span class="kpi-s" *ngIf="gpa">{{ gpa.interventions.maintenance }}&nbsp;entretien{{ gpa.interventions.maintenance>1?'s':'' }} · {{ gpa.interventions.repairs }}&nbsp;réparation{{ gpa.interventions.repairs>1?'s':'' }}</span>
+          </div>
+        </div>
+        <div class="kpi kpi-ic" title="Entretiens planifiés qui arrivent à échéance dans les 30 prochains jours ; les entretiens déjà dépassés sont comptés à part.">
+          <span class="kic" [style.--kc]="gpa && gpa.upcomingMaintenance.overdue>0 ? '#fca5a5' : '#6ee7b7'"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.8M9.5 2.8h5"/></svg></span>
+          <div class="ktx">
+            <span class="kpi-l">Entretiens à venir</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash">{{ gpa.upcomingMaintenance.next30Days }}</ng-container></span>
+            <span class="kpi-s" *ngIf="gpa">sous 30&nbsp;jours
+              <span class="kchip kchip-danger" *ngIf="gpa.upcomingMaintenance.overdue>0">{{ gpa.upcomingMaintenance.overdue }}&nbsp;en retard</span>
+            </span>
+          </div>
+        </div>
+        <ng-template #kDash><span class="kpi-na">—</span></ng-template>
       </div>
     </header>
 
@@ -224,7 +270,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </ng-container>
 
       <!-- ── Dépenses ── -->
-      <section class="card acc-indigo spend anim" style="--i:5">
+      <section class="card acc-indigo spend anim" *ngIf="hasGps" style="--i:5">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6.5H9.8a2.8 2.8 0 0 0 0 5.6h4.4a2.8 2.8 0 0 1 0 5.6H6.5"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Finances</div><h2>Dépenses</h2></div>
@@ -240,7 +286,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── Échéances à venir ── -->
-      <section class="card acc-amber anim" [class.span-8]="!hasGps" style="--i:6">
+      <section class="card acc-amber anim" *ngIf="hasGps" style="--i:6">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10.5h17"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Conformité</div><h2>Échéances à venir</h2></div>
@@ -256,78 +302,191 @@ import { AppLayoutComponent } from './shared/app-layout.component';
         <div class="empty" *ngIf="!deadlines.length"><span>Aucune échéance sous 60 jours</span></div>
       </section>
 
-      <!-- ════ Offre GPA (sans boîtier GPS) : widgets alimentés par des données
-           réelles NON-GPS — carburant saisi, éco-conduite dérivée, notifications.
-           Ils remplacent les cartes GPS masquées ci-dessous. ════ -->
+      <!-- ════ Offre GPA (sans boîtier GPS) : tableau de bord de gestion.
+           Aucune donnée GPS : coûts saisis, entretiens, réparations, pleins et
+           échéances. Source : /dashboard/gpa, et /fuel-expenses/real-consumption
+           pour la consommation par véhicule (même calcul que l'écran Carburant). ════ -->
       <ng-container *ngIf="!hasGps">
 
-      <!-- ── Carburant (pleins saisis, sans GPS) ── -->
-      <section class="card acc-cyan span-8 anim" style="--i:7">
+      <!-- ── 3a · Répartition des coûts d'exploitation ── -->
+      <section class="card acc-indigo spend gpa-split anim" style="--i:1">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h7"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Finances</div><h2 title="Répartition des coûts d'exploitation">Répartition des coûts d'exploitation</h2></div>
+        </div>
+        <div class="rows" *ngIf="gpa">
+          <div *ngFor="let c of gpaSplit" class="row">
+            <div class="lblc"><i [style.background]="c.color"></i><span>{{ c.name }}</span></div>
+            <div class="bar"><i [style.width.%]="c.pct" [style.background]="c.color"></i></div>
+            <div class="val num">{{ c.value | appCurrency:2 }}</div>
+            <div class="pct num">{{ gpa.costs.total > 0 ? pctLabel(c.pct) : '—' }}</div>
+          </div>
+          <div class="row tot">
+            <div class="lblc"><span>Total</span></div>
+            <div class="grow"></div>
+            <div class="val num">{{ gpa.costs.total | appCurrency:2 }}</div>
+            <div class="pct num">{{ gpa.costs.total > 0 ? '100 %' : '—' }}</div>
+          </div>
+        </div>
+        <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
+      </section>
+
+      <!-- ── 3b · Dernières alertes (entretiens et documents — aucune alerte GPS) ── -->
+      <section class="card acc-red gpa-list anim" style="--i:2">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8v.2"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Suivi</div><h2>Dernières alertes</h2></div>
+          <div class="head-right" *ngIf="gpa && gpa.alerts.length">
+            <span class="chip down" *ngIf="gpa.alertCounts.critical>0">{{ gpa.alertCounts.critical }}&nbsp;critique{{ gpa.alertCounts.critical>1?'s':'' }}</span>
+            <span class="chip" [title]="gpa.alerts.length < gpa.alertCounts.total ? gpa.alerts.length + ' alertes affichées sur ' + gpa.alertCounts.total + ' (les plus urgentes)' : ''">{{ gpa.alertCounts.total }}&nbsp;au total</span>
+          </div>
+        </div>
+        <div class="scroll" *ngIf="gpa && gpa.alerts.length">
+          <div class="rows">
+            <div *ngFor="let a of gpa.alerts" class="row" [title]="alerteInfoBulle(a)">
+              <span class="al-ic" [class.dang]="a.severity==='critical'" [class.warn]="a.severity!=='critical'">
+                <svg *ngIf="a.kind!=='document'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z"/></svg>
+                <svg *ngIf="a.kind==='document'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
+              </span>
+              <div class="grow">
+                <div class="t1">{{ a.title }}</div>
+                <div class="t2"><span class="plate xs" *ngIf="a.plate || a.vehicleName">{{ a.plate || a.vehicleName }}</span>{{ a.detail }}</div>
+              </div>
+              <span class="due" *ngIf="a.daysLeft!=null" [ngClass]="a.daysLeft<0?'red':a.daysLeft<=30?'amber':'green'">{{ joursLabel(a.daysLeft) }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="empty" *ngIf="gpa && !gpa.alerts.length">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
+          <span>Aucune alerte</span>
+        </div>
+        <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
+      </section>
+
+      <!-- ── 3c · Consommation par véhicule (pleins saisis, L/100 km) ── -->
+      <section class="card acc-cyan gpa-list anim" style="--i:3">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3.5 20h11"/><path d="M15 9h2.2a1.8 1.8 0 0 1 1.8 1.8V17a1.5 1.5 0 0 0 3 0v-6.4L19.5 8"/></svg></span>
-          <div class="head-txt"><div class="eyebrow">Carburant</div><h2>Carburant</h2></div>
-          <div class="head-right"><span class="chip" *ngIf="realFuel"><b class="num">{{ realFuel.totalFuelCost | appCurrency:0 }}</b></span></div>
+          <div class="head-txt"><div class="eyebrow">Conduite</div><h2>Consommation par véhicule</h2></div>
+          <div class="head-right" *ngIf="realFuel?.fleetConsumptionPer100Km != null">
+            <span class="chip" title="Moyenne de la flotte sur la période : litres achetés ÷ kilomètres mesurés">Moy.&nbsp;<b class="num">{{ l100(realFuel.fleetConsumptionPer100Km) }}</b>&nbsp;L/100</span>
+          </div>
         </div>
-        <div class="rows" *ngIf="realFuel && realFuel.totalLiters">
-          <div class="row"><div class="grow"><div class="t1">Litres consommés</div></div><div class="val num">{{ realFuel.totalLiters | number:'1.0-0' }} L</div></div>
-          <div class="row"><div class="grow"><div class="t1">Distance parcourue</div></div><div class="val num">{{ realFuel.totalDistanceKm | number:'1.0-0' }} km</div></div>
-          <div class="row"><div class="grow"><div class="t1">Consommation moyenne</div></div><div class="val num">{{ realFuel.fleetConsumptionPer100Km != null ? (realFuel.fleetConsumptionPer100Km | number:'1.1-1') + ' L/100' : '—' }}</div></div>
-          <div class="row"><div class="grow"><div class="t1">Coût par km</div></div><div class="val num">{{ realFuel.fleetCostPerKm != null ? (realFuel.fleetCostPerKm | appCurrency:3) : '—' }}</div></div>
+        <div class="scroll" *ngIf="consoRows.length">
+          <div class="rows">
+            <div *ngFor="let v of consoRows" class="row" [title]="consoInfoBulle(v)">
+              <span class="plate">{{ v.plate }}</span>
+              <div class="grow"><div class="bar"><i [style.width.%]="v.pct"></i></div></div>
+              <span class="val num" *ngIf="v.c!=null">{{ l100(v.c) }}<small>&nbsp;L/100</small></span>
+              <span class="val num muted" *ngIf="v.c==null">—</span>
+            </div>
+          </div>
         </div>
-        <div class="gpa-note" *ngIf="realFuel && realFuel.entriesWithoutOdometer > 0">
-          {{ realFuel.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le kilométrage au plein pour la consommation.
-        </div>
-        <div class="empty" *ngIf="realFuel && !realFuel.totalLiters"><span>Aucun plein saisi sur la période</span></div>
+        <div class="empty" *ngIf="realFuel && !consoRows.length"><span>Aucun plein saisi sur la période</span></div>
         <div class="empty" *ngIf="!realFuel"><span>Chargement…</span></div>
       </section>
 
-      <!-- ── Éco-conduite (indicateur dérivé du carburant, sans GPS) ── -->
-      <section class="card acc-green span-4 anim" style="--i:8">
+      <!-- ── 4a · Évolution mensuelle des coûts (12 mois, barres empilées + total) ── -->
+      <section class="card span-8 acc-indigo gpa-evo anim" style="--i:4">
         <div class="card-head">
-          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6"/></svg></span>
-          <div class="head-txt"><div class="eyebrow">Conduite</div><h2>Éco-conduite</h2></div>
-        </div>
-        <div class="rows" *ngIf="ecoRows.length">
-          <div *ngFor="let e of ecoRows" class="row">
-            <span class="plate">{{ e.plate }}</span>
-            <div class="grow">
-              <div class="eco-dots" *ngIf="e.rating">
-                <i *ngFor="let d of [1,2,3,4,5]" [class.on]="d<=e.rating" [ngClass]="'r'+e.rating"></i>
-              </div>
-              <div class="t2" *ngIf="!e.rating">données insuffisantes</div>
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Tendance · 12 derniers mois</div><h2>Évolution mensuelle des coûts</h2></div>
+          <div class="head-right">
+            <div class="mlegend">
+              <span *ngFor="let s of gpaSeries"><i [style.background]="s.color"></i>{{ s.name }}</span>
+              <span *ngIf="gpaPartiel" title="Le dernier mois n'est pas terminé"><i class="hatch"></i>mois en cours</span>
             </div>
-            <span class="val num sm" *ngIf="e.consumption != null">{{ e.consumption | number:'1.1-1' }}<small> L/100</small></span>
-            <span class="val num sm muted" *ngIf="e.consumption == null">—</span>
+            <span class="chip" *ngIf="gpa" title="Total des 12 mois affichés (indépendant de la période choisie en haut)">12 mois&nbsp;<b class="num">{{ gpaTotal12 | appCurrency:2 }}</b></span>
           </div>
         </div>
-        <div class="gpa-note">Basé sur la consommation réelle des pleins saisis.</div>
-        <div class="empty" *ngIf="!ecoRows.length"><span>Aucune donnée carburant</span></div>
+        <div class="mchart" *ngIf="gpa && gpaMonths.length" (mouseleave)="mHover=-1">
+          <div class="m-axis">
+            <span *ngFor="let t of gpaTicks" [style.bottom.%]="t.pct">{{ t.label }}</span>
+          </div>
+          <div class="m-area">
+            <i class="m-grid" *ngFor="let t of gpaTicks" [style.bottom.%]="t.pct"></i>
+            <div class="m-col" *ngFor="let m of gpaMonths; let i=index" (mouseenter)="mHover=i" [class.on]="mHover===i" [class.partial]="m.isPartial">
+              <span class="m-tot num" *ngIf="m.total" [style.bottom]="'calc(' + m.h + '% + 3px)'">{{ m.totLabel }}</span>
+              <div class="m-bar" [style.height.%]="m.h">
+                <i *ngFor="let s of m.segs" [style.flex-grow]="s.v" [style.background-color]="s.color"></i>
+              </div>
+              <span class="m-lbl">{{ m.lbl }}</span>
+            </div>
+            <div class="m-tip" *ngIf="mHover>=0 && gpaMonths[mHover]" [ngClass]="tipCls(mHover)" [style.left.%]="(mHover+0.5)/gpaMonths.length*100">
+              <b>{{ gpaMonths[mHover].full }}</b>
+              <span *ngFor="let s of gpaMonths[mHover].detail"><i [style.background]="s.color"></i>{{ s.name }}<em class="num">{{ s.v | appCurrency:2 }}</em></span>
+              <span class="tt">Total<em class="num">{{ gpaMonths[mHover].total | appCurrency:2 }}</em></span>
+            </div>
+          </div>
+        </div>
+        <div class="empty" *ngIf="gpa && !gpaMonths.length"><span>Aucune dépense sur les 12 derniers mois</span></div>
+        <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
       </section>
 
-      <!-- ── Notifications (échéances, entretien, admin — sans GPS) ── -->
-      <section class="card acc-amber span-12 anim" style="--i:9">
+      <!-- ── 4b · Top 5 des véhicules par coût d'entretien et réparation ── -->
+      <section class="card acc-amber gpa-top anim" style="--i:5">
         <div class="card-head">
-          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-          <div class="head-txt"><div class="eyebrow">Suivi</div><h2>Notifications</h2></div>
-          <div class="head-right">
-            <span class="chip down" *ngIf="notifsUnread>0">{{ notifsUnread }} non lues</span>
-            <div class="pager" *ngIf="notifs.length>5">
-              <button type="button" (click)="notifsP=notifsP-1" [disabled]="notifsP===0" aria-label="Précédent"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-              <span class="num">{{ notifsP+1 }}&thinsp;/&thinsp;{{ Math.ceil(notifs.length/5) }}</span>
-              <button type="button" (click)="notifsP=notifsP+1" [disabled]="(notifsP+1)*5>=notifs.length" aria-label="Suivant"><svg viewBox="0 0 24 24" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
-            </div>
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Entretien + réparation</div><h2 title="Top 5 des véhicules par coût d'entretien et réparation">Top 5 des véhicules par coût</h2></div>
+          <div class="head-right mlegend" *ngIf="gpa && gpa.top5.length">
+            <span><i style="background:#059669"></i>Entretien</span><span><i style="background:#d97706"></i>Réparation</span>
           </div>
         </div>
-        <div class="rows" *ngIf="notifs.length">
-          <div *ngFor="let n of pNotifs" class="row" [class.is-new]="!n.isRead">
-            <span class="al-ic" [class.dang]="n.priority==='urgent'||n.priority==='high'" [class.info]="n.priority!=='urgent'&&n.priority!=='high'">
-              <svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16v.2"/></svg>
-            </span>
-            <div class="grow"><div class="t1">{{ n.title }}</div><div class="t2">{{ n.message }}</div></div>
-            <span class="t2 num nof">{{ n.createdAt | date:'dd/MM HH:mm' }}</span>
+        <div class="rows" *ngIf="gpa && gpa.top5.length">
+          <div *ngFor="let v of gpa.top5; let i=index" class="row" [title]="top5InfoBulle(v)">
+            <span class="rank" [class.r1]="i===0" [class.r2]="i===1" [class.r3]="i===2" [class.rx]="i>2">{{ i+1 }}</span>
+            <span class="plate">{{ v.plate || v.vehicleName }}</span>
+            <div class="grow"><div class="bar stack"><i style="background:#059669" [style.width.%]="pctTop(v.maintenance)"></i><i style="background:#d97706" [style.left.%]="pctTop(v.maintenance)" [style.width.%]="pctTop(v.repair)"></i></div></div>
+            <span class="val num">{{ v.total | appCurrency:2 }}</span>
           </div>
         </div>
-        <div class="empty" *ngIf="!notifs.length"><span>Aucune notification</span></div>
+        <div class="empty" *ngIf="gpa && !gpa.top5.length"><span>Aucun entretien ni réparation sur la période</span></div>
+        <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
+      </section>
+
+      <!-- ── 5 · Dernières interventions (tableau compact, pleine largeur) ── -->
+      <section class="card span-12 acc-slate gpa-int anim" style="--i:6">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1.2"/><path d="M9 12h6M9 16h4"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Maintenance</div><h2>Dernières interventions</h2></div>
+        </div>
+        <div class="tbl-wrap" *ngIf="gpa && gpa.recentInterventions.length">
+          <table class="itbl">
+            <thead><tr>
+              <th class="c-date">Date</th><th class="c-veh" title="Immatriculation du véhicule">Véhicule</th><th class="c-type">Type</th>
+              <th>Description</th><th class="c-sup">Fournisseur</th>
+              <th class="c-km r" title="Kilométrage relevé lors de l'intervention">Kilométrage</th><th class="c-cost r">Coût</th>
+            </tr></thead>
+            <tbody>
+              <tr *ngFor="let r of gpa.recentInterventions">
+                <td class="num">{{ r.date | date:'dd/MM/yyyy' }}</td>
+                <td><span class="plate" [title]="r.vehicleName || ''">{{ r.plate || r.vehicleName }}</span></td>
+                <td><span class="kind" [class.rep]="r.kind==='reparation'">{{ r.kind==='reparation' ? 'Réparation' : 'Entretien' }}</span></td>
+                <td [title]="interventionLibelle(r)">{{ interventionLibelle(r) }}</td>
+                <td class="c-sup" [title]="r.supplier || ''">{{ r.supplier || '—' }}</td>
+                <td class="c-km r num">{{ r.mileageKm != null ? nombre(r.mileageKm) + ' km' : '—' }}</td>
+                <td class="r num b">{{ r.cost | appCurrency:2 }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="empty" *ngIf="gpa && !gpa.recentInterventions.length"><span>Aucune intervention enregistrée</span></div>
+        <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
+      </section>
+
+      <!-- ── 6 · Accès rapides (mêmes droits que le menu) ── -->
+      <section class="card span-12 acc-indigo gpa-quick anim" style="--i:7" *ngIf="accesRapides.length">
+        <div class="card-head">
+          <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4.5 13.5H12L11 22l8.5-11.5H12z"/></svg></span>
+          <div class="head-txt"><div class="eyebrow">Raccourcis</div><h2>Accès rapides</h2></div>
+        </div>
+        <nav class="quick" [style.--qn]="accesRapides.length">
+          <a *ngFor="let q of accesRapides" class="qk" [routerLink]="q.route" [ngClass]="q.acc" [title]="q.label + ' — ' + q.sub">
+            <span class="qk-ic"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path *ngFor="let d of q.d" [attr.d]="d"/></svg></span>
+            <span class="qk-t"><b>{{ q.label }}</b><small>{{ q.sub }}</small></span>
+            <svg class="qk-go" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+          </a>
+        </nav>
       </section>
 
       </ng-container>
@@ -492,7 +651,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </ng-container>
 
       <!-- ── Conducteurs ── -->
-      <section class="card span-12 acc-indigo anim" style="--i:14">
+      <section class="card span-12 acc-indigo anim" *ngIf="hasGps" style="--i:14">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.6 3.1-5.6 6.2-5.6s5.6 2 6.2 5.6"/><circle cx="17.5" cy="9.5" r="2.6"/><path d="M16 14.7c3-.3 5 1.6 5.4 4.3"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Équipe</div><h2>Conducteurs</h2></div>
@@ -677,7 +836,18 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
     /* ── rangée KPI (filets) ── */
     .kpis{display:grid;grid-template-columns:repeat(6,1fr);padding-top:16px}
-    .kpis.k2{grid-template-columns:repeat(2,1fr)}
+    /* Offre GPA : cinq KPI avec icône, sur une ligne */
+    .kpis.k5{grid-template-columns:repeat(5,minmax(0,1fr))}
+    .kpi.kpi-ic{display:flex;align-items:flex-start;gap:12px;cursor:default}
+    .kic{
+      width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;margin-top:1px;
+      background:color-mix(in srgb,var(--kc) 16%,transparent);
+      border:1px solid color-mix(in srgb,var(--kc) 30%,transparent);
+    }
+    .kic svg{width:17px;height:17px;stroke:var(--kc)}
+    .ktx{min-width:0;display:flex;flex-direction:column}
+    .kpi-dec{font-size:.56em;font-weight:700;letter-spacing:-.01em;color:#cbd5e1}
+    .kpi-na{color:var(--mast-sub);font-weight:600}
     .kpi{padding:2px 22px 4px;border-left:1px solid var(--mast-hair);min-width:0}
     .kpi:first-child{border-left:none;padding-left:2px}
     .kpi-l{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mast-sub);white-space:nowrap}
@@ -817,15 +987,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     .score.sm{font-size:13px}
     .tint-ok{color:var(--ok-600)}.tint-warn{color:var(--warn-600)}.tint-bad{color:var(--bad-600)}
 
-    /* Offre GPA (sans GPS) : puces éco-conduite + note explicative */
-    .row .val.sm{font-size:12px}
     .row .val.muted{color:var(--text-muted)}
-    .eco-dots{display:flex;gap:4px}
-    .eco-dots i{width:9px;height:9px;border-radius:50%;background:var(--chip-bg);border:1px solid var(--border-color);flex:none}
-    .eco-dots i.on.r5,.eco-dots i.on.r4{background:var(--ok-600);border-color:var(--ok-600)}
-    .eco-dots i.on.r3{background:var(--warn-600);border-color:var(--warn-600)}
-    .eco-dots i.on.r2,.eco-dots i.on.r1{background:var(--bad-600);border-color:var(--bad-600)}
-    .gpa-note{margin-top:10px;padding:8px 11px;background:var(--chip-bg);border:1px solid var(--border-color);border-radius:9px;color:var(--text-muted);font-size:11.5px;line-height:1.35}
 
     .drivers{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
     .driver{
@@ -909,8 +1071,111 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     .empty svg{width:26px;height:26px;opacity:.6}
     .empty span{font-size:12px;font-weight:500}
 
+    /* ════ OFFRE GPA (sans GPS) ════ */
+    /* Répartition : colonne % et ligne TOTAL surlignée */
+    .gpa-split.spend .val{min-width:92px}
+    .gpa-split .row .pct{width:44px;flex:none;text-align:right;font-size:11px;font-weight:600;color:var(--text-muted)}
+    .gpa-split .rows .row.tot{margin-top:6px;padding:8px 10px;border:0;border-radius:10px;background:color-mix(in srgb,var(--accent) 9%,transparent)}
+    .gpa-split .rows .row.tot .lblc span{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--text-primary)}
+    .gpa-split .rows .row.tot .val{font-size:13px;font-weight:800}
+    .gpa-split .rows .row.tot .pct{color:var(--text-secondary);font-weight:700}
+
+    /* Alertes et consommation : même hauteur que la répartition, défilement vertical interne */
+    .gpa-list .scroll{
+      flex:1 1 0;height:0;min-height:150px;overflow-y:auto;overflow-x:hidden;
+      margin-right:-10px;padding-right:10px;
+      scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--text-muted) 40%,transparent) transparent;
+    }
+    .gpa-list .scroll::-webkit-scrollbar{width:6px}
+    .gpa-list .scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--text-muted) 40%,transparent);border-radius:6px}
+    .gpa-list .rows .row{padding:7px 0}
+    .gpa-list .rows .row:first-child{padding-top:2px}
+    .gpa-list .plate{min-width:82px;text-align:center}
+    .gpa-list .bar i{background:var(--acc-cyan)}
+    .gpa-list .val{min-width:76px;text-align:right}
+    .plate.xs{font-size:10px;padding:1px 5px;border-radius:5px;margin-right:6px;min-width:0}
+
+    /* Évolution mensuelle : barres empilées en HTML (texte jamais déformé) */
+    .gpa-evo .head-right{gap:12px}
+    .mlegend{display:flex;align-items:center;gap:10px}
+    .mlegend span{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap}
+    .mlegend i{width:8px;height:8px;border-radius:2.5px;flex:none}
+    .mlegend i.hatch{background:repeating-linear-gradient(135deg,var(--text-muted) 0 1.5px,transparent 1.5px 3.5px);border:1px solid color-mix(in srgb,var(--text-muted) 55%,transparent)}
+    .mchart{flex:1;min-height:170px;display:flex;position:relative}
+    .m-axis{position:relative;width:40px;flex:none;margin:18px 0 20px}
+    .m-axis span{position:absolute;right:8px;transform:translateY(50%);font-size:10px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+    .m-area{position:relative;flex:1;min-width:0;margin:18px 0 20px;display:flex;gap:6px;border-bottom:1px solid var(--border-color)}
+    .m-grid{position:absolute;left:0;right:0;height:0;border-top:1px dashed var(--grid-line)}
+    .m-col{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;cursor:default}
+    .m-col::before{content:"";position:absolute;inset:-18px -3px -20px;border-radius:8px;transition:background .15s}
+    .m-col.on::before{background:color-mix(in srgb,var(--primary) 6%,transparent)}
+    .m-bar{position:relative;width:min(34px,72%);display:flex;flex-direction:column-reverse;border-radius:5px 5px 2px 2px;overflow:hidden}
+    .m-bar i{display:block;flex:0 0 0;min-height:0;border-top:1px solid var(--bg-card)}
+    .m-col.partial .m-bar i{background-image:repeating-linear-gradient(135deg,rgba(255,255,255,.4) 0 2px,transparent 2px 5px)}
+    .m-tot{position:absolute;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;color:var(--text-secondary);white-space:nowrap}
+    .m-lbl{position:absolute;bottom:-17px;font-size:10px;font-weight:600;color:var(--text-muted);white-space:nowrap}
+    .m-col.on .m-lbl,.m-col.on .m-tot{color:var(--text-primary)}
+    .m-tip{
+      position:absolute;top:-8px;transform:translateX(-50%);z-index:5;pointer-events:none;min-width:200px;
+      background:var(--bg-card);border:1px solid var(--border-color);border-radius:10px;box-shadow:var(--card-shadow-hover);
+      padding:8px 11px;display:flex;flex-direction:column;gap:3px;
+    }
+    .m-tip.al{transform:none}
+    .m-tip.ar{transform:translateX(-100%)}
+    .m-tip b{font-size:11.5px;font-weight:800;color:var(--text-primary);margin-bottom:2px}
+    .m-tip span{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-secondary)}
+    .m-tip span i{width:8px;height:8px;border-radius:2.5px;flex:none}
+    .m-tip em{margin-left:auto;padding-left:16px;font-style:normal;font-weight:700;color:var(--text-primary)}
+    .m-tip .tt{border-top:1px solid var(--border-color);padding-top:4px;margin-top:2px;font-weight:800;color:var(--text-primary)}
+
+    /* Top 5 : barre entretien + réparation */
+    .gpa-top .rows .row{padding:9px 0}
+    .gpa-top .plate{min-width:82px;text-align:center}
+    .gpa-top .val{min-width:84px;text-align:right}
+    /* La légende passe sous le titre quand la carte est trop étroite (titre jamais tronqué) */
+    .gpa-top .card-head{flex-wrap:wrap;row-gap:4px}
+    .gpa-top .head-right{gap:10px}
+    .bar.stack i{border-radius:0}
+
+    /* Dernières interventions : tableau compact, largeur fixe, jamais d'ascenseur horizontal */
+    .tbl-wrap{max-height:344px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
+    .itbl{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}
+    .itbl th.c-date{width:96px}.itbl th.c-veh{width:116px}.itbl th.c-type{width:112px}
+    .itbl th.c-sup{width:19%}.itbl th.c-km{width:118px}.itbl th.c-cost{width:112px}
+    .itbl thead th{
+      position:sticky;top:0;z-index:1;background:var(--bg-card);text-align:left;
+      font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);
+      padding:0 10px 8px;border-bottom:1px solid var(--border-color);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    }
+    .itbl tbody td{padding:7px 10px;border-bottom:1px solid var(--border-color);color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .itbl tbody tr:last-child td{border-bottom:0}
+    .itbl tbody tr:hover td{background:color-mix(in srgb,var(--primary) 4%,transparent)}
+    .itbl thead th.r,.itbl tbody td.r{text-align:right}
+    .itbl tbody td.b{font-weight:700;color:var(--text-primary)}
+    .kind{display:inline-block;font-size:10.5px;font-weight:700;padding:2.5px 9px;border-radius:999px;color:var(--ok-600);background:color-mix(in srgb,var(--acc-green) 11%,transparent)}
+    .kind.rep{color:var(--warn-600);background:color-mix(in srgb,var(--acc-amber) 12%,transparent)}
+
+    /* Accès rapides */
+    .gpa-quick .card-head{margin-bottom:12px}
+    .quick{display:grid;grid-template-columns:repeat(var(--qn,6),minmax(0,1fr));gap:10px}
+    .qk{
+      display:flex;align-items:center;gap:10px;min-width:0;padding:10px 12px;border-radius:13px;
+      border:1px solid var(--border-color);background:var(--bg-secondary);color:inherit;text-decoration:none;
+      transition:transform .18s,box-shadow .18s,border-color .18s;
+    }
+    .qk:hover{transform:translateY(-1px);box-shadow:var(--card-shadow);border-color:color-mix(in srgb,var(--accent) 45%,var(--border-color))}
+    .qk-ic{width:32px;height:32px;border-radius:10px;flex:none;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 13%,transparent)}
+    .qk-ic svg{width:16px;height:16px;stroke:var(--accent-ink)}
+    .qk-t{flex:1;min-width:0;display:flex;flex-direction:column}
+    .qk-t b{font-size:12.5px;font-weight:700;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .qk-t small{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .qk-go{width:14px;height:14px;stroke:var(--text-muted);flex:none;opacity:.6}
+
     /* ════ RESPONSIVE ════ */
     @media (max-width:1280px){
+      .kpis.k5{grid-template-columns:repeat(3,minmax(0,1fr))}
+      .card.gpa-split,.card.gpa-top{grid-column:span 12}
+      .quick{grid-template-columns:repeat(3,minmax(0,1fr))}
       .shell{padding:16px 16px 48px}
       .span-8{grid-column:span 12}
       .card{grid-column:span 6}
@@ -936,7 +1201,10 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       .range input[type="date"]{flex:1;min-width:0}
       .rfield{flex:1}
       .tb-sep{display:none}
-      .kpis{grid-template-columns:repeat(2,1fr)}
+      .kpis,.kpis.k5{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .quick{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .itbl .c-sup,.itbl .c-km{display:none}
+      .gpa-evo .mlegend{display:none}
       .kpi{padding:13px 16px}
       .kpi:nth-child(3n+1){border-left:1px solid var(--mast-hair);padding-left:16px}
       .kpi:nth-child(2n+1){border-left:none;padding-left:2px}
@@ -1021,10 +1289,25 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     return Math.round(v).toLocaleString('fr-FR');
   }
 
-  // ── Widgets offre GPA (sans GPS) : carburant réel, éco-conduite, notifications ──
+  // ── Offre GPA (sans GPS) : /dashboard/gpa + consommation réelle des pleins ──
+  gpa:GpaDashboard|null=null;
+  gpaErreur=false;
+  private gpaSeq=0;
+  private fuelSeq=0;
   realFuel:any=null;
-  ecoRows:{plate:string;consumption:number|null;rating:number;label:string}[]=[];
-  notifs:any[]=[]; notifsUnread=0; notifsP=0;
+  consoRows:{plate:string;name:string;c:number|null;pct:number;liters:number;km:number|null}[]=[];
+  gpaSplit:{name:string;color:string;value:number;pct:number}[]=[];
+  gpaMonths:any[]=[];
+  gpaTicks:{pct:number;label:string}[]=[];
+  gpaTotal12=0; gpaPartiel=false; mHover=-1;
+  /** Mêmes teintes que la carte Dépenses de l'offre GPS. */
+  readonly gpaSeries=[
+    {key:'fuel',name:'Carburant',color:'#4f46e5'},
+    {key:'maintenance',name:'Entretiens',color:'#059669'},
+    {key:'repair',name:'Réparations',color:'#d97706'},
+    {key:'other',name:'Autres',color:'#94a3b8'},
+  ] as const;
+  accesRapides:{label:string;sub:string;route:string;acc:string;d:string[]}[]=[];
 
   scP=0;unP=0;fuP=0;alertsP=0;trP=0;drP=0;
   get pScores(){return this.drivingScores.slice(this.scP*5,this.scP*5+5);}
@@ -1033,11 +1316,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get pagedAlerts(){return this.alerts.slice(this.alertsP*5,this.alertsP*5+5);}
   get pTrips(){return this.recentTrips.slice(this.trP*5,this.trP*5+5);}
   get pDrv(){return this.drivers.slice(this.drP*8,this.drP*8+8);}
-  get pNotifs(){return this.notifs.slice(this.notifsP*5,this.notifsP*5+5);}
 
   constructor(private router:Router,private apiService:ApiService,private signalrService:SignalRService,private cdr:ChangeDetectorRef,private userPrefs:UserPreferencesService,private permissionService:PermissionService){}
 
   get currencyCode():string{return this.userPrefs.current.currency;}
+  get currencySym():string{return UserPreferencesService.currencySymbol(this.currencyCode);}
   /** GPS modules available? false for the "Gestion sans GPS" tier (moduleMonitoring off) → hide GPS-only widgets. */
   get hasGps():boolean{return this.permissionService.hasModuleAccess('monitoring');}
 
@@ -1062,10 +1345,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     this.todayLabel=today.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     this.setRangeFor(this.selectedPeriod);
     this.loadAll();
-    this.loadDeadlines();
-    // Widgets propres à l'offre sans GPS (indépendants de la période pour les
-    // notifications ; le carburant réel suit la période via loadAll).
-    if(!this.hasGps) this.loadNotifs();
+    if(this.hasGps) this.loadDeadlines();
+    else this.construireAccesRapides();
     this.wire();
   }
 
@@ -1231,9 +1512,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   loadAll(){
-    // Offre sans GPS : le carburant réel (pleins saisis) remplace la conso GPS ;
-    // il suit la période affichée.
-    if(!this.hasGps) this.loadFuelReal();
+    // Offre sans GPS : tableau de bord de gestion (/dashboard/gpa) et carburant
+    // réel des pleins saisis ; les deux suivent la période affichée (Du/Au).
+    if(!this.hasGps){ this.loadGpa(); this.loadFuelReal(); }
     const custom=this.selectedPeriod==='custom'&&!!this.fromDate&&!!this.toDate;
     this.apiService.getDashboardAll(custom?'custom':this.selectedPeriod,custom?this.fromDate:undefined,custom?this.toDate:undefined)
       .pipe(takeUntil(this.destroy$)).subscribe({
@@ -1283,49 +1564,158 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   tintCls(level:number):string{return level===0?'tint-ok':level===1?'tint-warn':'tint-bad';}
 
   // ── Chargements offre GPA (sans GPS) ──
+  // Un compteur par requête : un clic rapide sur plusieurs périodes n'affiche
+  // jamais la réponse d'une période précédente arrivée en retard.
+  private loadGpa(){
+    if(!this.fromDate||!this.toDate) return;
+    const seq=++this.gpaSeq;
+    this.apiService.getGpaDashboard(this.fromDate,this.toDate).pipe(takeUntil(this.destroy$)).subscribe({
+      next:(d)=>{
+        if(seq!==this.gpaSeq) return;
+        this.gpa=d; this.gpaErreur=false; this.mHover=-1;
+        this.construireGpa();
+        this.cdr.detectChanges();
+      },
+      error:()=>{
+        if(seq!==this.gpaSeq) return;
+        this.gpa=null; this.gpaErreur=true;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
   private loadFuelReal(){
+    const seq=++this.fuelSeq;
     this.apiService.getRealFuelConsumption(this.fromDate||undefined,this.toDate||undefined)
       .pipe(takeUntil(this.destroy$)).subscribe({
       next:(r:any)=>{
+        if(seq!==this.fuelSeq) return;
         this.realFuel=r||{totalLiters:0,vehicles:[]};
-        // Éco-conduite : note dérivée de la conso réelle (L/100). Aucun capteur —
-        // l'échelle est indicative et le chiffre réel reste affiché à côté.
-        const vs=(r?.vehicles||[]);
-        this.ecoRows=vs.map((v:any)=>{
-          const c=(v.consumptionPer100Km!=null)?Number(v.consumptionPer100Km):null;
-          const r2=this.ecoRating(c);
-          return {plate:v.plate||v.vehicleName||'—',consumption:c,rating:r2,label:this.ecoLabel(r2)};
-        }).sort((a:any,b:any)=>(b.rating-a.rating));
+        // Consommation par véhicule : litres achetés ÷ km mesurés (même calcul
+        // que l'écran Carburant). La plus forte en tête ; sans relevé compteur
+        // suffisant, le véhicule reste listé avec « — ».
+        const vs:any[]=r?.vehicles||[];
+        const lus=vs.map(v=>v.consumptionPer100Km!=null?Number(v.consumptionPer100Km):null);
+        const max=Math.max(0,...lus.map(c=>c??0));
+        this.consoRows=vs.map((v,i)=>{
+          const c=lus[i];
+          return {plate:v.plate||v.vehicleName||'—',name:v.vehicleName||'',c,pct:c!=null&&max>0?(c/max)*100:0,
+            liters:Number(v.totalLiters)||0,km:v.distanceKm!=null?Number(v.distanceKm):null};
+        }).sort((a,b)=>(b.c??-1)-(a.c??-1));
         this.cdr.detectChanges();
       },
-      error:()=>{ this.realFuel={totalLiters:0,vehicles:[]}; this.ecoRows=[]; }
+      error:()=>{ if(seq!==this.fuelSeq) return; this.realFuel={totalLiters:0,vehicles:[]}; this.consoRows=[]; this.cdr.detectChanges(); }
     });
   }
 
-  /** Note éco 1..5 depuis la consommation L/100 (0 = indéterminée). Échelle
-   *  indicative véhicule léger — le nombre réel est toujours montré. */
-  private ecoRating(c:number|null):number{
-    if(c==null||!(c>0)) return 0;
-    if(c<=5.5) return 5;
-    if(c<=7) return 4;
-    if(c<=8.5) return 3;
-    if(c<=10.5) return 2;
-    return 1;
-  }
-  private ecoLabel(r:number):string{return ['—','Très élevée','Élevée','Moyenne','Bonne','Excellente'][r]||'—';}
+  private static readonly MOIS_COURTS=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  private static readonly MOIS_LONGS=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 
-  private loadNotifs(){
-    this.apiService.getNotifications(undefined,undefined,30).pipe(takeUntil(this.destroy$)).subscribe({
-      next:(res:any)=>{
-        // L'endpoint peut renvoyer soit un tableau, soit { items: [...] }.
-        const list=Array.isArray(res)?res:(res?.items||[]);
-        this.notifs=list.slice().sort((a:any,b:any)=>new Date(b.createdAt).getTime()-new Date(a.createdAt).getTime());
-        this.notifsUnread=this.notifs.filter(n=>!n.isRead).length;
-        this.notifsP=0;
-        this.cdr.detectChanges();
-      },
-      error:()=>{ this.notifs=[]; this.notifsUnread=0; }
+  /** Prépare la répartition et le graphique mensuel à partir de la réponse /dashboard/gpa. */
+  private construireGpa(){
+    const d=this.gpa; if(!d) return;
+    const val=(o:any,k:string)=>Number(o?.[k])||0;
+    const tot=d.costs.total;
+    this.gpaSplit=this.gpaSeries.map(s=>{
+      const v=val(d.costs,s.key);
+      return {name:s.name,color:s.color,value:v,pct:tot>0?Math.max(0,Math.min(100,(v/tot)*100)):0};
     });
+
+    const ms=d.monthly||[];
+    // Hauteur des barres : somme des parts positives (un remboursement d'assurance
+    // supérieur aux « autres » ne creuse pas la barre ; le total affiché reste exact).
+    const hauteur=(m:any)=>this.gpaSeries.reduce((a,s)=>a+Math.max(0,val(m,s.key)),0);
+    const {top,step}=this.echelle(Math.max(0,...ms.map(hauteur)));
+    this.gpaTicks=top>0?Array.from({length:Math.round(top/step)+1},(_,i)=>({pct:(i*step/top)*100,label:this.axeLabel(i*step)})):[];
+    this.gpaMonths=ms.map((m,i)=>{
+      const detail=this.gpaSeries.map(s=>({name:s.name,color:s.color,v:val(m,s.key)}));
+      const court=DashboardComponent.MOIS_COURTS[m.month-1]||m.label;
+      return {
+        ...m,
+        detail,
+        segs:detail.filter(s=>s.v>0),
+        h:top>0?(hauteur(m)/top)*100:0,
+        lbl:(i===0||m.month===1)?`${court} ${String(m.year).slice(-2)}`:court,
+        full:`${DashboardComponent.MOIS_LONGS[m.month-1]||m.label} ${m.year}${m.isPartial?' (en cours)':''}`,
+        totLabel:this.nombre(m.total),
+      };
+    });
+    this.gpaTotal12=ms.reduce((a,m)=>a+(Number(m.total)||0),0);
+    this.gpaPartiel=ms.some(m=>m.isPartial);
+  }
+
+  /** Graduation « ronde » (1, 2, 2,5 ou 5 × 10ⁿ) avec 4 à 5 intervalles. */
+  private echelle(max:number):{top:number;step:number}{
+    if(!(max>0)) return {top:0,step:0};
+    const brut=max/4, mag=Math.pow(10,Math.floor(Math.log10(brut))), n=brut/mag;
+    const step=(n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*mag;
+    return {top:Math.ceil(max/step-1e-9)*step,step};
+  }
+  private axeLabel(v:number):string{
+    return v>=100000?(v/1000).toLocaleString('fr-FR',{maximumFractionDigits:0})+' k':Math.round(v).toLocaleString('fr-FR');
+  }
+  tipCls(i:number):string{ const n=this.gpaMonths.length; return i<2?'al':i>=n-2?'ar':''; }
+
+  // Formats français (le pipe number d'Angular sort en en-US faute de locale fr enregistrée).
+  private montant2(v:number|null|undefined):string{ return (Number(v)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  entier(v:number|null|undefined):string{ return this.montant2(v).split(',')[0]; }
+  decimales(v:number|null|undefined):string{ const p=this.montant2(v).split(','); return p.length>1?','+p[1]:''; }
+  nombre(v:number|null|undefined):string{ return Math.round(Number(v)||0).toLocaleString('fr-FR'); }
+  l100(v:number|null|undefined):string{ return (Number(v)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  pctLabel(p:number):string{ return p.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %'; }
+  joursLabel(n:number):string{ return n<0?`${-n} j retard`:n===0?"aujourd'hui":`${n} j`; }
+
+  /** « 11 achetés · 1 financé » — le coût du parc ne dépend pas de la période. */
+  get achatsSousTitre():string{
+    const a=this.gpa?.acquisition; if(!a) return '';
+    const parts:string[]=[];
+    if(a.purchasedVehicles>0) parts.push(`${a.purchasedVehicles} acheté${a.purchasedVehicles>1?'s':''}`);
+    if(a.financedVehicles>0) parts.push(`${a.financedVehicles} financé${a.financedVehicles>1?'s':''}`);
+    return parts.length?parts.join(' · ')+' · tout le parc':'aucun achat renseigné';
+  }
+  private get gpaTopMax():number{ return Math.max(0,...(this.gpa?.top5||[]).map(v=>Number(v.total)||0)); }
+  pctTop(v:number):number{ const m=this.gpaTopMax; return m>0?Math.max(0,(Number(v)||0)/m*100):0; }
+
+  alerteInfoBulle(a:GpaDashboardAlert):string{
+    const veh=[a.plate,a.vehicleName].filter(Boolean).join(' · ');
+    // Minuit UTC côté serveur : afficher le jour UTC, sinon la veille à l'ouest de Greenwich.
+    const date=a.date?new Date(a.date).toLocaleDateString('fr-FR',{timeZone:'UTC'}):'';
+    return [a.title,veh,a.detail,date&&`Échéance : ${date}`].filter(Boolean).join('\n');
+  }
+  consoInfoBulle(v:{name:string;liters:number;km:number|null;c:number|null}):string{
+    const l=`${this.l100(v.liters)} L achetés`;
+    return [v.name,l,v.km!=null?`${this.nombre(v.km)} km mesurés`:'Relevés compteur insuffisants pour calculer la consommation'].filter(Boolean).join('\n');
+  }
+  top5InfoBulle(v:GpaDashboardTopVehicle):string{
+    return [v.vehicleName,`Entretien : ${this.userPrefs.formatCurrency(v.maintenance,2)}`,`Réparation : ${this.userPrefs.formatCurrency(v.repair,2)}`].filter(Boolean).join('\n');
+  }
+  /** La colonne Type dit déjà « Entretien » ou « Réparation » : la description
+   *  ne reprend que le sous-type saisi (« Réparation · Mécanique » → « Mécanique »). */
+  interventionLibelle(r:GpaDashboardIntervention):string{
+    const t=(r.typeLabel||''), i=t.indexOf('·');
+    const sous=i>=0?t.slice(i+1).trim():'';
+    const d=(r.description||'').trim();
+    if(sous&&d&&d.toLowerCase()!==sous.toLowerCase()) return `${sous} — ${d}`;
+    return d||sous||'—';
+  }
+
+  /** Raccourcis de l'offre GPA : chaque tuile suit le même droit que son entrée de menu. */
+  private construireAccesRapides(){
+    const tuiles:{label:string;sub:string;route:string;module:ModuleKey;acc:string;d:string[]}[]=[
+      {label:'Entretiens',sub:'Plans et échéances',route:'/entretien-programmable',module:'maintenance',acc:'acc-green',
+        d:['M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z']},
+      {label:'Réparations',sub:'Suivi des réparations',route:'/reparations',module:'maintenance',acc:'acc-amber',
+        d:['M12 3l8 4.5v9L12 21l-8-4.5v-9z','M12 12l8-4.5M12 12v9M12 12 4 7.5']},
+      {label:'Carburant',sub:'Pleins et consommation',route:'/carburant',module:'carburant',acc:'acc-cyan',
+        d:['M5 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3.5 20h11','M15 9h2.2a1.8 1.8 0 0 1 1.8 1.8V17a1.5 1.5 0 0 0 3 0v-6.4L19.5 8']},
+      {label:'Dépenses',sub:'Toutes les dépenses',route:'/depenses',module:'costs',acc:'acc-indigo',
+        d:['M12 2v20M17 6.5H9.8a2.8 2.8 0 0 0 0 5.6h4.4a2.8 2.8 0 0 1 0 5.6H6.5']},
+      {label:'Rapports',sub:'Analyses et exports',route:'/reports',module:'reports',acc:'acc-red',
+        d:['M4 20V10M10 20V4M16 20v-7M22 20H2']},
+      {label:'Paramètres',sub:'Configuration du compte',route:'/settings',module:'settings',acc:'acc-slate',
+        d:['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z','M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z']},
+    ];
+    this.accesRapides=tuiles.filter(t=>this.permissionService.hasModuleAccess(t.module));
   }
 
   private readonly accCycle=['acc-indigo','acc-cyan','acc-green','acc-amber','acc-slate'];
@@ -1334,7 +1724,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   /** Reflète la période nommée dans les champs Du/Au (miroir de GetPeriodRange côté API). */
   private setRangeFor(p:string){
     const today=new Date();
-    const iso=(d:Date)=>d.toISOString().split('T')[0];
+    // Date LOCALE : toISOString() passe en UTC et, à UTC+1, le 1er janvier minuit
+    // devenait le 31 décembre dans le champ « Du ».
+    const iso=(d:Date)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     switch(p){
       case 'today': this.fromDate=iso(today); this.toDate=iso(today); break;
       case 'yesterday': {const y=new Date(today.getTime()-86400000); this.fromDate=iso(y); this.toDate=iso(y); break;}
@@ -1344,7 +1736,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  private resetPagers(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;this.notifsP=0;}
+  private resetPagers(){this.scP=0;this.unP=0;this.fuP=0;this.alertsP=0;this.trP=0;this.drP=0;}
 
   onPeriodClick(p:string){
     this.selectedPeriod=p;
