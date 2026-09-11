@@ -39,6 +39,11 @@ public class GetRealFuelConsumptionQueryHandler
         var companyId = _tenant.CompanyId ?? throw new InvalidOperationException("Company ID not set");
         var start = request.StartDate ?? DateTime.UtcNow.AddMonths(-12);
         var end = request.EndDate ?? DateTime.UtcNow;
+        // Une date sans heure (« 2026-08-31 », ce que l'ecran envoie) arrive a minuit et
+        // excluait tout le dernier jour de la periode : sur la societe de recette, aout
+        // rendait 1 175 km ici contre 1 725 km dans « Couts mensuel par vehicule », pour
+        // les memes releves. On etend au jour entier, comme le fait tout rapport mensuel.
+        if (end.TimeOfDay == TimeSpan.Zero) end = end.Date.AddDays(1).AddTicks(-1);
 
         // Portee vehicules : ce rapport agrege litres, couts et L/100km par vehicule puis
         // pour le parc. Le filtre est applique AVANT l'agregation, sinon les totaux

@@ -261,4 +261,24 @@ public class OdometerReadingsTests
         carburant.Vehicles.Single().DistanceKm.Should().Be(1_600m, "même source de relevés, même chiffre sur les deux écrans");
         carburant.Vehicles.Single().ConsumptionPer100Km.Should().Be(Math.Round(50m / 1_600m * 100m, 2));
     }
+
+    [Fact]
+    public async Task Carburant_reel_ne_perd_plus_les_saisies_du_dernier_jour_de_la_periode()
+    {
+        using var ctx = TestDbContextFactory.Create();
+
+        // L'ecran envoie « 2026-06-30 » sans heure : le dernier jour tombait entierement.
+        ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Utilitaire", CompanyId = CompanyId });
+        ctx.FuelEntries.AddRange(
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(5, 3), Volume = 50, TotalAmount = 75, OdometerKm = 30_000 },
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = new DateTime(2026, 6, 30, 14, 0, 0, DateTimeKind.Utc), Volume = 40, TotalAmount = 60, OdometerKm = 31_200 });
+        await ctx.SaveChangesAsync();
+
+        var rapport = await new GetRealFuelConsumptionQueryHandler(ctx, TestDbContextFactory.CreateMockTenantService().Object)
+            .Handle(new GetRealFuelConsumptionQuery(new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 30, 0, 0, 0, DateTimeKind.Utc), null), CancellationToken.None);
+
+        var vehicule = rapport.Vehicles.Single();
+        vehicule.EntryCount.Should().Be(2, "le plein du 30/06 a 14 h appartient a la periode");
+        vehicule.DistanceKm.Should().Be(1_200m);
+    }
 }
