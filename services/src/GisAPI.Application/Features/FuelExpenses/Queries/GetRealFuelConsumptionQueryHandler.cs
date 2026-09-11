@@ -68,6 +68,13 @@ public class GetRealFuelConsumptionQueryHandler
             .Select(v => new { v.Id, v.Name, v.Plate, v.FuelType })
             .ToDictionaryAsync(v => v.Id, ct);
 
+        // Relevés compteur de TOUTES les saisies (pleins, entretiens, réparations,
+        // dépenses), comme les rapports de coûts depuis le 10/09/2026 : un véhicule
+        // ne doit pas rendre deux kilométrages différents selon l'écran ouvert.
+        // Même borne haute inclusive que les pleins ci-dessus.
+        var odometerReadings = await OdometerReadings.LoadAsync(
+            _context, companyId, vehicleIds, start, end.AddTicks(1), ct);
+
         var vehicleDtos = new List<VehicleFuelConsumptionDto>();
         var monthLiters = new Dictionary<(int, int), decimal>();
         var monthCost = new Dictionary<(int, int), decimal>();
@@ -115,11 +122,10 @@ public class GetRealFuelConsumptionQueryHandler
             // rupture de série (changement de compteur, deux imports incompatibles) :
             // on ne l'additionne pas, sans rien rejeter d'autre.
             //
-            // Le calcul vit dans OdometerDistance (partagé avec les rapports de
-            // coûts : même kilométrage sur les deux écrans). `list` est déjà trié
-            // par date ; le helper refiltre > 0 et retrie (tri stable) — séquence
-            // identique à l'ancienne boucle locale.
-            var odoResult = OdometerDistance.Compute(list.Select(e => (e.OdometerKm ?? 0L, e.InvoiceDate)));
+            // Le calcul vit dans OdometerDistance et les relevés dans OdometerReadings
+            // (partagés avec les rapports de coûts : même kilométrage sur tous les
+            // écrans). Les pleins sans compteur restent comptés dans `noOdo`.
+            var odoResult = OdometerDistance.Compute(odometerReadings[grp.Key]);
             var segKm = odoResult.DistanceKm;
             var ignored = odoResult.IgnoredReadings;
             foreach (var (k, km) in odoResult.MonthlyKm)

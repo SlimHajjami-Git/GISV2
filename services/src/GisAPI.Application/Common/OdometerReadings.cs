@@ -64,9 +64,12 @@ public static class OdometerReadings
             .ToListAsync(ct);
 
         // ── Entretiens réalisés ───────────────────────────────────────────────
+        // Pas de filtre sur m.CompanyId : maintenance_logs.company_id vaut 0 sur
+        // TOUTES les lignes en production (47/47 sur TN le 10/09/2026), un filtre
+        // société y rendrait cette source vide. Le véhicule suffit : `ids` sont
+        // déjà les véhicules de la société (même règle que GetMaintenanceLogsQuery).
         var fromMaintenance = await context.MaintenanceLogs.AsNoTracking()
-            .Where(m => m.CompanyId == companyId
-                     && ids.Contains(m.VehicleId)
+            .Where(m => ids.Contains(m.VehicleId)
                      && m.DoneKm > 0
                      && m.DoneDate >= startUtc
                      && m.DoneDate < endExclusiveUtc)
@@ -79,7 +82,7 @@ public static class OdometerReadings
                      && ids.Contains(r.VehicleId)
                      && r.MileageAtRepair.HasValue
                      && r.MileageAtRepair.Value > 0
-                     && r.Status != "cancelled"
+                     && (r.Status == null || r.Status.ToLower() != "cancelled")
                      && r.RepairDate >= startUtc
                      && r.RepairDate < endExclusiveUtc)
             .Select(r => new { r.VehicleId, Km = (long)r.MileageAtRepair!.Value, Date = r.RepairDate })

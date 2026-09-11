@@ -283,6 +283,13 @@ export class PdfExportService {
         if (!buf) return null;
         let binaire = '';
         const octets = new Uint8Array(buf);
+        // nginx renvoie index.html (200) pour tout chemin inconnu : une police
+        // absente arriverait ici sous forme de HTML et jsPDF produirait un PDF
+        // illisible. On n'accepte qu'une vraie TrueType/OpenType (magie
+        // 00 01 00 00, « true » ou « OTTO ») ; sinon Helvetica.
+        const magie = octets.length >= 4 ? String.fromCharCode(...octets.subarray(0, 4)) : '';
+        const trueType = (octets[0] === 0 && octets[1] === 1 && octets[2] === 0 && octets[3] === 0) || magie === 'true' || magie === 'OTTO';
+        if (!trueType) return null;
         // Par tranches : String.fromCharCode(...tableau) depasse la pile
         // d’appels au-dela de quelques dizaines de milliers d’octets.
         for (let i = 0; i < octets.length; i += 8192) {
@@ -330,7 +337,10 @@ export class PdfExportService {
     // logo, bien visible sur le dégradé. Il a été détouré (canal alpha déduit du
     // canal minimum), ce qui redonne exactement les couleurs de la charte sur un
     // fond blanc ou quasi blanc, le seul sur lequel ce logo est utilisé.
-    this.logoLoading = fetch('assets/logo/calypso-logo.png')
+    // « ?v=2 » : le logo a change de contenu sous le meme nom (version detouree du
+    // 10/09/2026) et nginx sert les PNG en cache immutable un an ; sans ce suffixe,
+    // les navigateurs qui ont deja exporte un PDF garderaient l'ancien logo opaque.
+    this.logoLoading = fetch('assets/logo/calypso-logo.png?v=2')
       .then(r => r.ok ? r.blob() : null)
       .then(blob => {
         if (!blob) return null;
