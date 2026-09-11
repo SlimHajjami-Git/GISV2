@@ -69,7 +69,12 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                 u.AlertVisiteTechnique,
                 u.AlertEntretien,
                 u.DailyReportEmailEnabled
-            ))
+            )
+            {
+                QuietHoursEnabled = u.QuietHoursEnabled,
+                QuietHoursStart = u.QuietHoursStart,
+                QuietHoursEnd = u.QuietHoursEnd
+            })
             .FirstOrDefaultAsync(ct);
 
         if (user == null)

@@ -55,6 +55,11 @@ export interface SignalRNotification {
   actionUrl?: string;
   metadata?: any;
   createdAt: string;
+  /**
+   * Vrai pendant les heures silencieuses du destinataire (NotificationService) :
+   * la notification va dans la cloche, mais sans toast à l'écran.
+   */
+  silent?: boolean;
 }
 
 export interface UnreadCountChange {

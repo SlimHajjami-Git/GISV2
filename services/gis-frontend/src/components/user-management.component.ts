@@ -363,6 +363,9 @@ interface VehicleOption {
                           <button type="button" class="btn-mini" (click)="deselectAllReports()">Aucun</button>
                         </div>
                       </div>
+                      <!-- Recette du 11/09/2026 : chaque case suit le même filtre canReport()
+                           que l'écran Rapports (sinon « Kilométrique » restait proposé en GPA),
+                           et les cases partagées nomment tous les rapports qu'elles ouvrent. -->
                       <div class="sub-perm-grid">
                         <label class="sub-perm-item" *ngIf="canReport('trips')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportTrips">
@@ -372,7 +375,7 @@ interface VehicleOption {
                           <input type="checkbox" [(ngModel)]="userForm.canReportStops">
                           <span>🅿️ Arrêts</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('mileage')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMileage">
                           <span>📏 Kilométrique</span>
                         </label>
@@ -400,22 +403,37 @@ interface VehicleOption {
                           <input type="checkbox" [(ngModel)]="userForm.canReportFuel">
                           <span>⛽ Carburant</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <!-- canReportCosts gouverne aussi les quatre rapports de coûts du
+                             04/09/2026 (permission.service.ts, userReportMapping) : on les nomme. -->
+                        <label class="sub-perm-item wide" *ngIf="canReport('costs')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportCosts">
-                          <span>🔩 Réparations</span>
+                          <span class="sub-perm-text">
+                            <span>🔩 Réparations et analyses de coûts</span>
+                            <span class="sub-perm-hint">Réparations véhicules · Coût d'exploitation réel · Évolution des coûts · Véhicules les plus coûteux · Fréquence des réparations</span>
+                          </span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('maintenance')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMaintenance">
-                          <span>🔧 Maintenance</span>
+                          <span>🔧 Coûts maintenance</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('monthly')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthly">
                           <span>📊 Mensuel flotte</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <!-- canReportMonthlyCosts ouvre aussi « Consommation carburant mensuel »
+                             (même endpoint /api/reports/monthly-costs). -->
+                        <label class="sub-perm-item wide" *ngIf="canReport('monthly_costs')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyCosts">
-                          <span>💰 Coûts mensuel</span>
+                          <span class="sub-perm-text">
+                            <span>💰 Rapports mensuels coûts et carburant</span>
+                            <span class="sub-perm-hint">Coûts mensuel par véhicule · Consommation carburant mensuel</span>
+                          </span>
                         </label>
+                      </div>
+                      <!-- Le Rapport IA Flotte n'a pas de permission par utilisateur : on
+                           l'affiche pour que la liste montre tous les rapports du compte. -->
+                      <div class="sub-perm-note sub-perm-hint" *ngIf="canReport('ai_fleet')">
+                        🤖 Rapport IA Flotte — inclus pour tout utilisateur ayant le module Rapports
                       </div>
                     </div>
                     <label class="perm-check" *ngIf="canModule('geofences')">
@@ -1685,6 +1703,13 @@ interface VehicleOption {
     }
     .sub-perm-item:hover { border-color: #818cf8; background: #f5f3ff; }
     .sub-perm-item input[type="checkbox"] { accent-color: #6366f1; width: 14px; height: 14px; cursor: pointer; }
+    /* Cases qui ouvrent plusieurs rapports : leur libellé et la liste des rapports
+       débordent de la colonne de 160px, elles prennent toute la largeur. */
+    .sub-perm-item.wide { grid-column: 1 / -1; align-items: flex-start; }
+    .sub-perm-item.wide input[type="checkbox"] { margin-top: 2px; flex-shrink: 0; }
+    .sub-perm-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sub-perm-hint { font-size: 11px; color: #64748b; line-height: 1.4; }
+    .sub-perm-note { margin-top: 8px; padding: 0 2px; }
 
     /* Modal Footer */
     .modal-footer {

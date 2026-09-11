@@ -64,7 +64,10 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                      déjà engagé ; c'est la fin de l'essai qui est affichée. -->
                 <span class="fact-label">{{ isTrial ? "Fin de l'essai gratuit" : 'Échéance' }}</span>
                 @if (expiresAt) {
-                  <span class="fact-value">{{ expiresAt | date:'dd MMMM yyyy' }}</span>
+                  <!-- En toutes lettres et en français : le DatePipe, sans locale
+                       fr enregistrée, écrivait « 10 September 2027 » (recette
+                       client du 11/09/2026). -->
+                  <span class="fact-value">{{ longDate(expiresAt) }}</span>
                   @if (daysRemaining !== null) {
                     <span class="fact-note" [class.warn]="daysRemaining <= 7">
                       {{ daysRemaining > 0 ? 'dans ' + daysRemaining + ' jour(s)' : 'échue' }}
@@ -160,9 +163,19 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
             <h3 class="card-title">Nos formules</h3>
 
             @if (isEuroAccount) {
+            <!-- La carte « en cours » suit le cycle réellement souscrit : elle
+                 était codée en dur sur l'annuel, si bien qu'un client semestriel
+                 lisait l'annuel comme sa formule (recette client du 11/09/2026).
+                 Aucune carte marquée pendant l'essai gratuit. -->
             <div class="plans plans-euro">
-              <article class="plan is-current">
-                <header><h4>Abonnement annuel</h4><span class="badge">Recommandé</span></header>
+              <article class="plan" [class.is-current]="euroCurrentCycle === 'yearly'">
+                <header>
+                  <h4>Abonnement annuel</h4>
+                  <span class="badges">
+                    @if (euroCurrentCycle === 'yearly') { <span class="badge mine">Votre formule</span> }
+                    <span class="badge">Recommandé</span>
+                  </span>
+                </header>
                 <!-- Prix repris du plan serveur, jamais écrit en dur : la carte
                      et le montant commandé ne peuvent pas diverger. -->
                 @if (euroUnitMonthly('yearly') !== null) {
@@ -188,8 +201,11 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                   {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
                 </button>
               </article>
-              <article class="plan">
-                <header><h4>Abonnement semestriel</h4></header>
+              <article class="plan" [class.is-current]="euroCurrentCycle === 'semiannual'">
+                <header>
+                  <h4>Abonnement semestriel</h4>
+                  @if (euroCurrentCycle === 'semiannual') { <span class="badge mine">Votre formule</span> }
+                </header>
                 @if (euroUnitMonthly('semiannual') !== null) {
                   <div class="price">
                     <strong>{{ euroUnitMonthly('semiannual') | appCurrency }}</strong><span>/ véhicule / mois</span>
@@ -285,6 +301,29 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                     </label>
                   }
                 </div>
+                <!-- Ce que change le choix, AVANT de confirmer : cocher un cycle
+                     n'enregistre rien, et une commande validée PROLONGE
+                     l'abonnement à partir de l'échéance en cours. Le client qui
+                     voyait « Semestriel » coché et son offre annuelle inchangée
+                     en haut de page croyait à une erreur de prix (recette client
+                     du 11/09/2026). Aperçu seulement : le serveur fait foi. -->
+                <p class="cycle-effect">
+                  @if (isTrial) {
+                    Votre essai gratuit se poursuit jusqu'à la validation de votre règlement.
+                  } @else if (currentPlan) {
+                    @if (billingCycleLabel && nextPaymentAmount != null) {
+                      Votre offre en cours ({{ billingCycleLabel }}, {{ nextPaymentAmount | appCurrency }})
+                      reste inchangée jusqu'à la validation de votre règlement.
+                    } @else {
+                      Votre offre en cours reste inchangée jusqu'à la validation de votre règlement.
+                    }
+                  }
+                  @if (selectedCyclePrice !== null && projectedExpiryLabel) {
+                    Après validation : <strong>{{ selectedCyclePrice | appCurrency }}</strong>
+                    — {{ cycleLabel(selectedCycle) }}, échéance
+                    {{ extendsCurrentTerm ? 'repoussée' : 'fixée' }} au <strong>{{ projectedExpiryLabel }}</strong>.
+                  }
+                </p>
                 <div class="purchase-actions">
                   <button class="btn-plan buy" [disabled]="busy" (click)="confirmPurchase()">
                     {{ busy ? 'Envoi…' : 'Confirmer ma commande' }}
@@ -375,7 +414,9 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
     .plan.is-current { border-color: #4f46e5; box-shadow: 0 0 0 3px rgba(79,70,229,.1); }
     .plan header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .plan h4 { margin: 0; font-size: 15.5px; font-weight: 700; color: var(--text-primary, #0f172a); }
-    .badge { font-size: 11px; font-weight: 700; color: #4f46e5; background: rgba(79,70,229,.1); padding: 3px 8px; border-radius: 99px; }
+    .badge { font-size: 11px; font-weight: 700; color: #4f46e5; background: rgba(79,70,229,.1); padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+    .badge.mine { color: #fff; background: #4f46e5; }
+    .badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
     .price { display: flex; align-items: baseline; gap: 5px; }
     .price strong { font-size: 20px; font-weight: 800; color: var(--text-primary, #0f172a); }
     .price span { font-size: 12.5px; color: var(--text-secondary, #64748b); }
@@ -435,6 +476,13 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
     .cycle input { display: none; }
     .cycle-name { font-size: 13px; font-weight: 600; color: var(--text-secondary, #64748b); }
     .cycle-price { font-size: 16px; font-weight: 800; color: var(--text-primary, #0f172a); }
+    .cycle-effect {
+      margin: 12px 0 0; padding: 10px 12px;
+      border-radius: 9px; background: var(--bg-card, #fff);
+      border: 1px dashed #c7d2fe;
+      font-size: 13px; line-height: 1.55; color: var(--text-primary, #0f172a);
+    }
+    .cycle-effect:empty { display: none; }
     .purchase-actions { display: flex; gap: 10px; margin-top: 14px; }
     .purchase-actions .btn-plan { margin-top: 0; width: auto; padding: 10px 22px; }
     .purchase-error { margin: 10px 0 0; font-size: 13px; color: #b91c1c; }
@@ -582,6 +630,73 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   get euroPlan(): any | null {
     if (this.isPurchasable(this.currentPlan)) return this.currentPlan;
     return this.plans.find(p => this.isPurchasable(p)) ?? null;
+  }
+
+  /**
+   * Le cycle souscrit, s'il correspond à l'une des deux cartes européennes :
+   * même plan que ces cartes, hors essai gratuit (rien n'est encore souscrit).
+   * null = aucune carte à marquer « Votre formule ».
+   */
+  get euroCurrentCycle(): BillingCycle | null {
+    if (this.isTrial || !this.currentPlan || !this.euroPlan) return null;
+    if (this.currentPlan.id !== this.euroPlan.id) return null;
+    const cycle = (this.billingCycle || '').toLowerCase();
+    return cycle === 'yearly' || cycle === 'semiannual' ? cycle : null;
+  }
+
+  // ── Aperçu de l'effet d'une commande (panneau d'achat) ──
+
+  /** Montant du cycle coché pour le plan commandé, tel que le serveur le facturera. */
+  get selectedCyclePrice(): number | null {
+    if (!this.purchasePlan) return null;
+    return this.availableCycles(this.purchasePlan).find(c => c.value === this.selectedCycle)?.price ?? null;
+  }
+
+  /** L'échéance en cours est-elle encore à venir ? (la commande la prolonge alors) */
+  get extendsCurrentTerm(): boolean {
+    if (!this.expiresAt) return false;
+    const t = new Date(this.expiresAt).getTime();
+    return !isNaN(t) && t > Date.now();
+  }
+
+  /**
+   * Échéance après validation de la commande — miroir EXACT de
+   * RenewSubscriptionCommandHandler : départ = max(maintenant, échéance en
+   * cours), plus la durée du cycle portée par le plan commandé (repli 30 / 90 /
+   * 180 / 365 jours). Une commande prolonge l'abonnement, elle ne remplace pas
+   * la période déjà réglée.
+   */
+  get projectedExpiry(): Date | null {
+    if (!this.purchasePlan) return null;
+    const start = this.extendsCurrentTerm ? new Date(this.expiresAt as string).getTime() : Date.now();
+    return new Date(start + this.cycleDurationDays(this.purchasePlan, this.selectedCycle) * 86400000);
+  }
+
+  get projectedExpiryLabel(): string {
+    return this.longDate(this.projectedExpiry);
+  }
+
+  /** Durée d'un cycle pour un plan, avec les mêmes replis que le serveur. */
+  private cycleDurationDays(plan: any, cycle: BillingCycle): number {
+    const pick = (v: any, fallback: number) => (Number(v) > 0 ? Number(v) : fallback);
+    switch (cycle) {
+      case 'monthly': return pick(plan?.monthlyDurationDays, 30);
+      case 'quarterly': return pick(plan?.quarterlyDurationDays, 90);
+      case 'semiannual': return pick(plan?.semiannualDurationDays, 180);
+      default: return pick(plan?.yearlyDurationDays, 365);
+    }
+  }
+
+  /**
+   * Date en toutes lettres, en français (« 10 septembre 2027 »), sans dépendre
+   * d'une locale Angular enregistrée. Chaîne vide si la date est absente ou
+   * illisible.
+   */
+  longDate(value: Date | string | null | undefined): string {
+    if (!value) return '';
+    const d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
   }
 
   /** Montant du cycle pour LE parc du client — ce que le serveur facturera. */

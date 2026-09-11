@@ -114,6 +114,20 @@ public class User : TenantEntity
     [Column("daily_report_email_enabled")]
     public bool DailyReportEmailEnabled { get; set; } = false;
 
+    // ── Heures silencieuses (migration 045, recette client du 11/09/2026) ──
+    //
+    // L'interrupteur de Paramètres > Notifications n'écrivait que dans le
+    // localStorage et aucun envoi ne le lisait. Persisté ici, il est lu par
+    // NotificationService : pendant la plage, pas de push FCM ni de toast pour
+    // les notifications non « critical » (elles restent dans la cloche).
+    // Heures locales de la SOCIÉTÉ ; la plage peut passer minuit (22:00 → 07:00).
+    [Column("quiet_hours_enabled")]
+    public bool QuietHoursEnabled { get; set; } = false;
+    [Column("quiet_hours_start")]
+    public TimeSpan? QuietHoursStart { get; set; }
+    [Column("quiet_hours_end")]
+    public TimeSpan? QuietHoursEnd { get; set; }
+
     // Navigation
     public Role Role { get; set; } = null!;
     public Societe Societe { get; set; } = null!;

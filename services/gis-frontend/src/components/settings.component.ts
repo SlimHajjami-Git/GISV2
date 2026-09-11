@@ -1,7 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
+import { forkJoin, of } from 'rxjs';
+import { catchError, map } from 'rxjs/operators';
 import { MockDataService } from '../services/mock-data.service';
 import { ApiService } from '../services/api.service';
 import { PermissionService } from '../services/permission.service';
@@ -144,12 +146,15 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
               </div>
 
-              <div class="settings-group" *ngIf="hasGps">
+              <!-- Heures silencieuses : visibles aussi sans GPS (recette client du 11/09/2026 —
+                   les échéances arrivent la nuit pour tous) et désormais persistées côté
+                   serveur, lues par chaque envoi (NotificationService). -->
+              <div class="settings-group">
                 <h3>Heures silencieuses</h3>
                 <div class="setting-item">
                   <div class="setting-info">
                     <span class="setting-label">Activer les heures silencieuses</span>
-                    <span class="setting-desc">Pas de notifications pendant cette période</span>
+                    <span class="setting-desc">Pas de notification push ni d'alerte à l'écran pendant cette période — elles restent dans la cloche.</span>
                   </div>
                   <label class="toggle">
                     <input type="checkbox" [(ngModel)]="settings.notifications.quietHours">
@@ -289,11 +294,11 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             <!-- ══ Données : import / export Excel (recette client du 25/08/2026) ══ -->
             <div class="panel-section" *ngIf="activeTab === 'data'">
               <h2>Données</h2>
-              <p class="section-desc">Exportez votre parc, vos entretiens et vos pleins, ou importez-les en masse depuis un fichier Excel.</p>
+              <p class="section-desc">Exportez votre parc, vos entretiens, vos réparations et vos pleins, ou importez-les en masse depuis un fichier Excel.</p>
 
               <div class="settings-group">
                 <h3>Exporter</h3>
-                <p class="section-desc" style="margin-top:0">Télécharge un fichier Excel avec trois feuilles : Véhicules, Entretiens, Carburant.</p>
+                <p class="section-desc" style="margin-top:0">Télécharge un fichier Excel avec quatre feuilles : Véhicules, Entretiens, Réparations, Carburant.</p>
                 <button class="btn-primary" (click)="exportData()" [disabled]="dataBusy">
                   {{ dataBusy ? 'Préparation…' : 'Exporter mes données (Excel)' }}
                 </button>
@@ -304,6 +309,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 <p class="section-desc" style="margin-top:0">
                   Téléchargez d'abord le modèle, complétez-le, puis importez-le. Rien n'est écrasé :
                   seuls de nouveaux enregistrements sont créés. Un matricule déjà présent est ignoré.
+                  Une réparation déjà présente (même référence) est ignorée.
                 </p>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
                   <button class="btn-secondary" (click)="downloadTemplate()" [disabled]="dataBusy">Télécharger le modèle</button>
@@ -383,13 +389,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
         <!-- Save Button -->
         <div class="save-bar">
-          <button class="btn-primary" (click)="saveSettings()">
+          <button class="btn-primary" (click)="saveSettings()" [disabled]="savingSettings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
               <polyline points="17 21 17 13 7 13 7 21"/>
               <polyline points="7 3 7 8 15 8"/>
             </svg>
-            Enregistrer les paramètres
+            {{ savingSettings ? 'Enregistrement…' : 'Enregistrer les paramètres' }}
           </button>
         </div>
       </div>
@@ -926,6 +932,7 @@ export class SettingsComponent implements OnInit {
   ownerTestSending = false;
   ownerTestMsg = '';
   currentUserEmail = '';
+  savingSettings = false;
 
   sendDailyReportPreview() {
     this.dailyReportTestSending = true;
@@ -934,10 +941,12 @@ export class SettingsComponent implements OnInit {
       next: (res: any) => {
         this.dailyReportTestSending = false;
         this.dailyReportTestMsg = '✅ Aperçu envoyé à ' + (res?.sentTo || 'votre email');
+        this.cdr.detectChanges();
       },
       error: (err: any) => {
         this.dailyReportTestSending = false;
         this.dailyReportTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -950,10 +959,12 @@ export class SettingsComponent implements OnInit {
         this.ownerTestSending = false;
         this.ownerTestMsg = '✅ Rapport envoyé à ' + (res?.sentTo || 'karim.hajjami@gmail.com')
           + ' (' + (res?.vehicleCount ?? 0) + ' véhicules)';
+        this.cdr.detectChanges();
       },
       error: (err: any) => {
         this.ownerTestSending = false;
         this.ownerTestMsg = '❌ Échec : ' + (err?.error?.error || err?.message || 'erreur');
+        this.cdr.detectChanges();
       }
     });
   }
@@ -963,7 +974,8 @@ export class SettingsComponent implements OnInit {
     private dataService: MockDataService,
     private api: ApiService,
     private userPrefs: UserPreferencesService,
-    private permissions: PermissionService
+    private permissions: PermissionService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   // Offre « sans GPS » (GPA) : les alertes temps réel liées au boîtier
@@ -977,7 +989,11 @@ export class SettingsComponent implements OnInit {
    * il n'a plus d'objet (recette client du 03/09/2026).
    */
   get visibleTabs() {
-    return this.hasGps ? this.tabs : this.tabs.filter(t => t.id !== 'display');
+    // « Données » (import/export de tout le parc) est réservé à l'administrateur de la
+    // société, comme l'API (DataPortController, depuis le 11/09/2026).
+    return this.tabs.filter(t =>
+      (t.id !== 'display' || this.hasGps) &&
+      (t.id !== 'data' || this.permissions.isAnyAdmin()));
   }
 
   ngOnInit() {
@@ -1015,14 +1031,54 @@ export class SettingsComponent implements OnInit {
       next: (u: any) => {
         if (u && typeof u.dailyReportEmailEnabled === 'boolean') {
           this.settings.notifications.dailyFleetReport = u.dailyReportEmailEnabled;
+          this.serverDailyPref = u.dailyReportEmailEnabled;
+        }
+        // Heures silencieuses : la valeur serveur fait foi (recette client du
+        // 11/09/2026 — l'ancienne copie localStorage n'était lue par aucun envoi).
+        // Le serveur renvoie « 22:00:00 » : on garde « 22:00 » pour <input type="time">.
+        if (u && typeof u.quietHoursEnabled === 'boolean') {
+          this.settings.notifications.quietHours = u.quietHoursEnabled;
+          if (u.quietHoursStart) this.settings.notifications.quietStart = String(u.quietHoursStart).slice(0, 5);
+          if (u.quietHoursEnd) this.settings.notifications.quietEnd = String(u.quietHoursEnd).slice(0, 5);
+          this.serverQuietHours = this.quietHoursSignature();
         }
         this.currentUserEmail = (u?.email || '').toString();
+        this.cdr.detectChanges();
       },
       error: () => { /* keep default */ }
     });
   }
 
+  /**
+   * Valeurs lues sur /users/me (null tant qu'elles ne sont pas arrivées). saveSettings
+   * n'envoie que ce qui en diffère : sinon chaque enregistrement (même d'un simple thème)
+   * rappelait des routes que l'utilisateur n'a pas le droit d'appeler (rapport journalier
+   * sans CanReportDaily → 403 et message d'échec), et un clic avant la réponse de
+   * /users/me écrasait les heures silencieuses du serveur par les valeurs par défaut.
+   */
+  private serverDailyPref: boolean | null = null;
+  private serverQuietHours: string | null = null;
+
+  private quietHoursSignature(): string {
+    const n = this.settings.notifications;
+    return [!!n.quietHours, (n.quietStart || '').slice(0, 5), (n.quietEnd || '').slice(0, 5)].join('|');
+  }
+
   saveSettings() {
+    const n = this.settings.notifications;
+    // Mêmes règles que le serveur (UpdateQuietHoursCommandHandler), pour un
+    // message immédiat plutôt qu'un aller-retour en erreur.
+    if (n.quietHours) {
+      if (!n.quietStart || !n.quietEnd) {
+        alert("Renseignez l'heure de début et l'heure de fin des heures silencieuses.");
+        return;
+      }
+      if (n.quietStart.slice(0, 5) === n.quietEnd.slice(0, 5)) {
+        alert("L'heure de début et l'heure de fin des heures silencieuses doivent être différentes.");
+        return;
+      }
+    }
+
     // Persist display preferences through the shared service so every
     // subscriber (monitoring map, refresh loop, animations CSS flag)
     // reacts immediately. Other groups still go to the legacy key.
@@ -1038,12 +1094,42 @@ export class SettingsComponent implements OnInit {
     const { display, ...rest } = this.settings;
     localStorage.setItem('appSettings', JSON.stringify(rest));
 
-    // The daily fleet report flag must persist server-side (read by the 06:00 job).
-    this.api.setDailyReportEmailPref(!!this.settings.notifications.dailyFleetReport).subscribe({
-      error: () => { /* non-blocking; localStorage already saved */ }
+    // Le rapport journalier (lu par le job de 06:00) et les heures silencieuses
+    // (lues par chaque notification) doivent être persistés côté serveur. Le
+    // succès n'est annoncé qu'une fois les enregistrements confirmés : avant le
+    // 11/09/2026 l'alerte s'affichait sans attendre, même en cas d'échec.
+    // Le rapport journalier n'est envoyé que si son interrupteur est affiché
+    // (comptes GPS) : sans boîtier, l'abonnement n'inclut pas ce rapport et la
+    // route répond 403 (vu sur TN : plan-basique a report_daily = false).
+    const dailyChanged = this.hasGps && this.serverDailyPref !== null && !!n.dailyFleetReport !== this.serverDailyPref;
+    const daily$ = dailyChanged
+      ? this.api.setDailyReportEmailPref(!!n.dailyFleetReport).pipe(map(() => true), catchError(() => of(false)))
+      : of(true);
+    const quietSig = this.quietHoursSignature();
+    const quietChanged = this.serverQuietHours !== null && quietSig !== this.serverQuietHours;
+    // true = enregistré ; chaîne = refus du serveur à montrer tel quel (plage invalide…).
+    const quiet$ = quietChanged
+      ? this.api.setQuietHours({
+          enabled: !!n.quietHours,
+          start: (n.quietStart || '').slice(0, 5),
+          end: (n.quietEnd || '').slice(0, 5)
+        }).pipe(
+          map(() => true as true | string),
+          catchError((err: any) => of((err?.error?.message as string) || "les heures silencieuses n'ont pas pu être enregistrées")))
+      : of(true as true | string);
+    this.savingSettings = true;
+    forkJoin([daily$, quiet$]).subscribe(([dailyOk, quietOk]) => {
+      this.savingSettings = false;
+      if (dailyOk && dailyChanged) this.serverDailyPref = !!n.dailyFleetReport;
+      if (quietOk === true && quietChanged) this.serverQuietHours = quietSig;
+      this.cdr.detectChanges();
+      const problems: string[] = [];
+      if (!dailyOk) problems.push("la préférence du rapport journalier n'a pas pu être enregistrée");
+      if (quietOk !== true) problems.push(quietOk);
+      alert(problems.length === 0
+        ? 'Paramètres enregistrés avec succès !'
+        : 'Paramètres enregistrés, mais ' + problems.join(' ; ') + '.');
     });
-
-    alert('Paramètres enregistrés avec succès!');
   }
 
   changePassword() {
@@ -1066,6 +1152,7 @@ export class SettingsComponent implements OnInit {
       next: () => {
         alert('Mot de passe modifié avec succès');
         this.passwordForm = { current: '', new: '', confirm: '' };
+        this.cdr.detectChanges();
       },
       error: (err) => {
         const msg = err?.error?.message || 'Erreur lors du changement de mot de passe';
@@ -1086,16 +1173,16 @@ export class SettingsComponent implements OnInit {
   exportData() {
     this.dataBusy = true;
     this.api.exportDataset().subscribe({
-      next: (blob) => { this.saveBlob(blob, `calypso-donnees-${new Date().toISOString().slice(0,10)}.xlsx`); this.dataBusy = false; },
-      error: () => { this.dataBusy = false; alert("L'export a échoué. Réessayez."); }
+      next: (blob) => { this.saveBlob(blob, `calypso-donnees-${new Date().toISOString().slice(0,10)}.xlsx`); this.dataBusy = false; this.cdr.detectChanges(); },
+      error: () => { this.dataBusy = false; this.cdr.detectChanges(); alert("L'export a échoué. Réessayez."); }
     });
   }
 
   downloadTemplate() {
     this.dataBusy = true;
     this.api.downloadImportTemplate().subscribe({
-      next: (blob) => { this.saveBlob(blob, 'calypso-modele-import.xlsx'); this.dataBusy = false; },
-      error: () => { this.dataBusy = false; alert("Le téléchargement du modèle a échoué."); }
+      next: (blob) => { this.saveBlob(blob, 'calypso-modele-import.xlsx'); this.dataBusy = false; this.cdr.detectChanges(); },
+      error: () => { this.dataBusy = false; this.cdr.detectChanges(); alert("Le téléchargement du modèle a échoué."); }
     });
   }
 
@@ -1107,8 +1194,8 @@ export class SettingsComponent implements OnInit {
     this.dataBusy = true;
     this.importResult = null;
     this.api.importDataset(file).subscribe({
-      next: (res: any) => { this.importResult = res; this.dataBusy = false; },
-      error: (err) => { this.dataBusy = false; alert(err?.error?.message || "L'import a échoué. Vérifiez le fichier."); }
+      next: (res: any) => { this.importResult = res; this.dataBusy = false; this.cdr.detectChanges(); },
+      error: (err) => { this.dataBusy = false; this.cdr.detectChanges(); alert(err?.error?.message || "L'import a échoué. Vérifiez le fichier."); }
     });
   }
 

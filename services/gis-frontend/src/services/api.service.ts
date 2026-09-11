@@ -1369,6 +1369,15 @@ export class ApiService {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Heures silencieuses de l'utilisateur connecté, persistées côté serveur (recette
+   * client du 11/09/2026 : elles ne vivaient que dans le localStorage). start/end en
+   * « HH:mm », heure locale de la société. Relues via /users/me (quietHours*).
+   */
+  setQuietHours(body: { enabled: boolean; start: string; end: string }): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/users/me/quiet-hours`, body, { headers: this.getHeaders() });
+  }
+
   // ── Import / export des données (Excel) — DataPortController ──
   exportDataset(): Observable<Blob> {
     return this.http.get(`${this.API_URL}/dataport/export`, { headers: this.getHeaders(), responseType: 'blob' });

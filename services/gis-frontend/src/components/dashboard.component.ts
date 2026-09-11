@@ -64,7 +64,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </div>
 
       <!-- ════ 2 · KPIs en filets (dans le masthead) ════ -->
-      <div class="kpis" [class.k2]="!hasGps">
+      <div class="kpis" [class.k4]="!hasGps">
         <div class="kpi">
           <span class="kpi-l">Véhicules</span>
           <span class="kpi-v">{{ dVehicles }}</span>
@@ -98,6 +98,24 @@ import { AppLayoutComponent } from './shared/app-layout.component';
           </span>
           <span class="kpi-s" *ngIf="costTrend===null || costTrend===0">sur la période</span>
         </div>
+        <!-- Offre sans GPS : les achats de véhicules et le reste à payer du
+             leasing remontent dans le bandeau (recette client du 11/09/2026 —
+             les achats n'apparaissaient que dans la carte Dépenses, le reste
+             dû seulement dans les fiches véhicule). -->
+        <ng-container *ngIf="!hasGps">
+        <div class="kpi">
+          <span class="kpi-l">Achats véhicule</span>
+          <span class="kpi-v">{{ compact(acquisitionCost) }}<span class="kpi-u">{{ currencyCode }}</span></span>
+          <span class="kpi-s">sur la période</span>
+        </div>
+        <div class="kpi">
+          <span class="kpi-l">Reste à payer (leasing)</span>
+          <span class="kpi-v" *ngIf="leasingRemaining!==null">{{ compact(leasingRemaining) }}<span class="kpi-u">{{ currencyCode }}</span></span>
+          <span class="kpi-v" *ngIf="leasingRemaining===null">—</span>
+          <span class="kpi-s" *ngIf="leasingRemaining!==null">{{ leasingRemainingLabel }}</span>
+          <span class="kpi-s" *ngIf="leasingRemaining===null">&nbsp;</span>
+        </div>
+        </ng-container>
         <div class="kpi" *ngIf="hasGps">
           <span class="kpi-l">Alertes</span>
           <span class="kpi-v">{{ dAlerts }}</span>
@@ -677,7 +695,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
     /* ── rangée KPI (filets) ── */
     .kpis{display:grid;grid-template-columns:repeat(6,1fr);padding-top:16px}
-    .kpis.k2{grid-template-columns:repeat(2,1fr)}
+    /* Offre sans GPS : Véhicules | Coût total | Achats véhicule | Reste à payer */
+    .kpis.k4{grid-template-columns:repeat(4,1fr)}
     .kpi{padding:2px 22px 4px;border-left:1px solid var(--mast-hair);min-width:0}
     .kpi:first-child{border-left:none;padding-left:2px}
     .kpi-l{display:flex;align-items:center;gap:6px;font-size:10px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--mast-sub);white-space:nowrap}
@@ -921,6 +940,10 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       .kpi:nth-child(3n+1){border-left:none;padding-left:2px}
       .kpi:nth-child(-n+3){padding-top:2px}
       .kpi:nth-child(n+4){border-top:1px solid var(--mast-hair)}
+      /* Bandeau GPA à 4 tuiles : grille 2×2 plutôt que 3 + 1 orpheline. */
+      .kpis.k4{grid-template-columns:repeat(2,1fr)}
+      .kpis.k4 .kpi:nth-child(3){border-left:none;padding-left:2px;padding-top:14px;border-top:1px solid var(--mast-hair)}
+      .kpis.k4 .kpi:nth-child(4){border-left:1px solid var(--mast-hair);padding-left:22px}
       .drivers{grid-template-columns:repeat(2,1fr)}
     }
     @media (max-width:1024px){
@@ -943,6 +966,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       .kpi:nth-child(-n+3){padding-top:13px}
       .kpi:nth-child(-n+2){padding-top:2px;border-top:none}
       .kpi:nth-child(3){border-top:1px solid var(--mast-hair)}
+      .kpis.k4 .kpi:nth-child(3){padding-top:13px}
+      .kpis.k4 .kpi:nth-child(4){padding-left:16px}
       .donut-flex,.gauge-flex{flex-direction:column;align-items:stretch}
       .donut,.gauge{align-self:center}
       .fleet-map{height:300px}
@@ -1015,10 +1040,34 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get stoppedPct():number{return this.totalMotion?Math.round((this.motionData.stationary/this.totalMotion)*100):0;}
   get activeDrivers():number{return this.drivers.filter(d=>d.active).length;}
   /** Coût compact : au-delà du million, "1,17 M" — la tuile absorbe les gros montants sans casse. */
-  get costValue():string{
-    const v=this.dCost;
+  get costValue():string{ return this.compact(this.dCost); }
+  compact(v:number):string{
     if(v>=1_000_000) return (v/1_000_000).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' M';
     return Math.round(v).toLocaleString('fr-FR');
+  }
+
+  // ── Reste à payer du leasing (offre sans GPS) ──
+  // Solde À DATE DU JOUR, indépendant de la période : mensualités prévues,
+  // non payées, pas encore échues (counted=false, règle serveur
+  // AcquisitionPaymentRules — les échéances passées sont présumées réglées).
+  // Même définition que le popup Crédit de l'écran Véhicules. null = pas chargé.
+  leasingRemaining:number|null=null;
+  leasingRemainingCount=0;
+  get leasingRemainingLabel():string{
+    const n=this.leasingRemainingCount;
+    return n===0?'aucune mensualité à venir':n===1?'1 mensualité à venir':`${n} mensualités à venir`;
+  }
+  loadLeasingRemaining(){
+    this.apiService.getAcquisitionPayments({includeFuture:true}).pipe(takeUntil(this.destroy$)).subscribe({
+      next:(rows)=>{
+        const dues=(rows||[]).filter(p=>p.kind==='mensualite'&&p.status==='planned'&&!p.counted);
+        this.leasingRemaining=dues.reduce((s,p)=>s+(Number(p.amount)||0),0);
+        this.leasingRemainingCount=dues.length;
+        this.cdr.detectChanges();
+      },
+      // Tuile secondaire : en cas d'échec elle affiche « — », sans bruit.
+      error:()=>{ this.leasingRemaining=null; this.leasingRemainingCount=0; this.cdr.detectChanges(); }
+    });
   }
 
   // ── Widgets offre GPA (sans GPS) : carburant réel, éco-conduite, notifications ──
@@ -1065,7 +1114,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     this.loadDeadlines();
     // Widgets propres à l'offre sans GPS (indépendants de la période pour les
     // notifications ; le carburant réel suit la période via loadAll).
-    if(!this.hasGps) this.loadNotifs();
+    if(!this.hasGps){ this.loadNotifs(); this.loadLeasingRemaining(); }
     this.wire();
   }
 

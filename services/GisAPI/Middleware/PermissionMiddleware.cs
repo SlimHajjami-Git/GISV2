@@ -152,6 +152,17 @@ public class PermissionMiddleware
         "/api/statistics",
     };
 
+    /// <summary>
+    /// Routes du compte de l'appelant lui-même, ouvertes à tout utilisateur connecté (voir
+    /// InvokeAsync) : lire son profil, changer son mot de passe (mot de passe actuel exigé),
+    /// régler ses heures silencieuses. Chemins et méthodes EXACTS.
+    /// </summary>
+    internal static bool IsSelfServiceUserRoute(string path, string method) =>
+        (string.Equals(path, "/api/users/me", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(method))
+        || (HttpMethods.IsPut(method)
+            && (string.Equals(path, "/api/users/me/password", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(path, "/api/users/me/quiet-hours", StringComparison.OrdinalIgnoreCase)));
+
     // Shared reference data routes: GET is always allowed (many modules need these),
     // but write operations (POST/PUT/DELETE) still require the specific permission.
     private static readonly HashSet<string> _readOnlySharedRoutes = new(StringComparer.OrdinalIgnoreCase)
@@ -187,6 +198,19 @@ public class PermissionMiddleware
 
         // Skip always-accessible routes
         if (_skipRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+        {
+            await _next(context);
+            return;
+        }
+
+        // Routes « moi-même » : elles ne touchent que le compte de l'appelant. Rangées sous
+        // /api/users, elles exigeaient CanUsers : un employé sans ce droit (utilisateur 51
+        // de la recette du 11/09/2026) ne pouvait ni lire son propre profil ni régler ses
+        // heures silencieuses. Liste EXACTE, pas de préfixe : /api/users/{id} et la gestion
+        // des autres comptes restent soumis à CanUsers. PUT /api/users/me (nom, e-mail) N'EN
+        // FAIT PAS PARTIE : changer son e-mail reste réservé à CanUsers — l'unicité de
+        // l'e-mail n'y est vérifiée que dans la société et en respectant la casse.
+        if (IsSelfServiceUserRoute(path, context.Request.Method))
         {
             await _next(context);
             return;
