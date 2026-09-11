@@ -1,6 +1,9 @@
 using ClosedXML.Excel;
 using GisAPI.Application.Common;
+using GisAPI.Application.Features.DataPort;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Vehicles;
+using GisAPI.Attributes;
 using GisAPI.Domain.Entities;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -11,7 +14,9 @@ namespace GisAPI.Controllers;
 
 /// <summary>
 /// Import / export des données de la société au format Excel (recette client du
-/// 25/08/2026). Trois feuilles : Véhicules, Entretiens, Carburant.
+/// 25/08/2026). Quatre feuilles : Véhicules, Entretiens, Réparations, Carburant
+/// (la feuille Réparations date de la recette du 11/09/2026 : les réparations
+/// n'étaient ni exportées ni importables).
 ///
 /// <para>Pensé d'abord pour l'offre « gestion de parc sans GPS » : démarrer un
 /// parc en masse (import des véhicules) et récupérer ses données (export). Le
@@ -20,17 +25,24 @@ namespace GisAPI.Controllers;
 ///
 /// <para>L'import ne fait que CRÉER : il n'écrase ni ne supprime rien. Un
 /// véhicule dont le matricule existe déjà est ignoré (compté à part) ; un
-/// entretien / plein dont le matricule est inconnu est ignoré et signalé. Le
-/// résultat détaille ce qui a été créé et ce qui a été écarté, avec la raison.</para>
+/// entretien / une réparation / un plein dont le matricule est inconnu est ignoré
+/// et signalé. Une réparation déjà présente (même référence, ou même véhicule,
+/// jour, montant et description) est ignorée. Le résultat détaille ce qui a été
+/// créé et ce qui a été écarté, avec la raison.</para>
 /// </summary>
 [ApiController]
 [Route("api/dataport")]
 [Authorize]
+[RequireCompanyAdmin]
 public class DataPortController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly ILogger<DataPortController> _logger;
 
+    // Import et export portent sur TOUT le parc (création de véhicules, dépenses, pleins,
+    // réparations) : réservés à l'administrateur de la société. Avant le 11/09/2026, un
+    // employé limité à deux véhicules pouvait exporter les montants de tout le parc et
+    // importer sur des véhicules hors de sa portée — l'écran Données s'affichait pour tous.
     public DataPortController(GisDbContext context, ILogger<DataPortController> logger)
     {
         _context = context;
@@ -47,6 +59,12 @@ public class DataPortController : ControllerBase
         { "Matricule", "Date (JJ/MM/AAAA)", "Intitulé", "Coût" };
     private static readonly string[] FuelCols =
         { "Matricule", "Date (JJ/MM/AAAA)", "Volume (L)", "Prix/L", "Montant total", "Kilométrage" };
+    // « N° facture » = champ « Référence » de l'écran Dépenses (invoice_number).
+    // « Référence » = référence interne REP-… : remplie par l'export, à laisser
+    // vide dans le modèle ; elle sert à ignorer une réparation déjà présente.
+    private static readonly string[] RepairCols =
+        { "Matricule", "Date (JJ/MM/AAAA)", "Description", "Type", "Kilométrage", "Main d'œuvre", "Pièces",
+          "Total", "Statut", "Fournisseur", "N° facture", "Référence" };
 
     // ─────────────────────────────── EXPORT ───────────────────────────────
     [HttpGet("export")]
@@ -75,6 +93,21 @@ public class DataPortController : ControllerBase
             .OrderByDescending(f => f.InvoiceDate)
             .Select(f => new { f.VehicleId, f.InvoiceDate, f.Volume, f.PricePerLiter, f.TotalAmount, f.OdometerKm })
             .ToListAsync();
+
+        // Réparations : filtre société EXPLICITE, l'entité Repair n'a pas de filtre
+        // de requête multi-tenant dans GisDbContext.
+        var repairs = await _context.Repairs.AsNoTracking()
+            .Where(x => x.SocieteId == companyId && vehicleIds.Contains(x.VehicleId))
+            .OrderByDescending(x => x.RepairDate)
+            .Select(x => new
+            {
+                x.VehicleId, x.RepairDate, x.Description, x.RepairType, x.MileageAtRepair,
+                x.LaborCost, x.PartsCost, x.TotalCost, x.Status, x.SupplierId, x.InvoiceNumber, x.Reference
+            })
+            .ToListAsync();
+        var supplierNames = await _context.Suppliers.AsNoTracking()
+            .Where(s => s.CompanyId == companyId)
+            .ToDictionaryAsync(s => s.Id, s => s.Name);
 
         using var wb = new XLWorkbook();
 
@@ -108,6 +141,27 @@ public class DataPortController : ControllerBase
             r++;
         }
         ms.Columns().AdjustToContents();
+
+        var rps = wb.Worksheets.Add("Réparations");
+        WriteHeader(rps, RepairCols);
+        r = 2;
+        foreach (var x in repairs)
+        {
+            rps.Cell(r, 1).Value = plateById.GetValueOrDefault(x.VehicleId, "");
+            rps.Cell(r, 2).Value = x.RepairDate.ToString("dd/MM/yyyy");
+            rps.Cell(r, 3).Value = x.Description ?? "";
+            rps.Cell(r, 4).Value = string.IsNullOrWhiteSpace(x.RepairType) ? "" : RepairTypeClassifier.Label(x.RepairType);
+            rps.Cell(r, 5).Value = x.MileageAtRepair;
+            rps.Cell(r, 6).Value = x.LaborCost;
+            rps.Cell(r, 7).Value = x.PartsCost;
+            rps.Cell(r, 8).Value = x.TotalCost;
+            rps.Cell(r, 9).Value = RepairImportRow.StatusLabel(x.Status);
+            rps.Cell(r, 10).Value = x.SupplierId is int sid ? supplierNames.GetValueOrDefault(sid, "") : "";
+            rps.Cell(r, 11).Value = x.InvoiceNumber ?? "";
+            rps.Cell(r, 12).Value = x.Reference ?? "";
+            r++;
+        }
+        rps.Columns().AdjustToContents();
 
         var fs = wb.Worksheets.Add("Carburant");
         WriteHeader(fs, FuelCols);
@@ -149,6 +203,17 @@ public class DataPortController : ControllerBase
         ms.Row(2).Style.Font.Italic = true;
         ms.Columns().AdjustToContents();
 
+        // Fournisseur, N° facture et Référence laissés vides : la référence REP-…
+        // est attribuée à l'import.
+        var rps = wb.Worksheets.Add("Réparations");
+        WriteHeader(rps, RepairCols);
+        rps.Cell(2, 1).Value = "123 TU 4567"; rps.Cell(2, 2).Value = "18/08/2026";
+        rps.Cell(2, 3).Value = "Plaquettes de frein AV"; rps.Cell(2, 4).Value = "Freinage";
+        rps.Cell(2, 5).Value = 145100; rps.Cell(2, 6).Value = 80; rps.Cell(2, 7).Value = 120;
+        rps.Cell(2, 8).Value = 200; rps.Cell(2, 9).Value = "Terminée";
+        rps.Row(2).Style.Font.Italic = true;
+        rps.Columns().AdjustToContents();
+
         var fs = wb.Worksheets.Add("Carburant");
         WriteHeader(fs, FuelCols);
         fs.Cell(2, 1).Value = "123 TU 4567"; fs.Cell(2, 2).Value = "20/08/2026";
@@ -175,7 +240,7 @@ public class DataPortController : ControllerBase
 
         var result = new ImportSummary();
 
-        // Matricules déjà connus (dédup + résolution pour entretiens/pleins).
+        // Matricules déjà connus (dédup + résolution pour entretiens/réparations/pleins).
         var byPlate = await _context.Vehicles
             .Where(v => v.CompanyId == companyId && v.Plate != null)
             .ToDictionaryAsync(v => Normalize(v.Plate!), v => v);
@@ -232,7 +297,7 @@ public class DataPortController : ControllerBase
                 result.VehiclesCreated++;
             }
             // On enregistre pour que les véhicules aient un Id avant de rattacher
-            // les entretiens et pleins par matricule.
+            // les entretiens, réparations et pleins par matricule.
             await _context.SaveChangesAsync();
         }
 
@@ -263,7 +328,137 @@ public class DataPortController : ControllerBase
             }
         }
 
-        // 3) Carburant
+        // 3) Réparations (recette du 11/09/2026 : la table repairs n'était branchée
+        // ni à l'export ni à l'import). Insertion directe et non par MediatR :
+        // CreateRepairCommand ferait deux SaveChanges et publierait UNE notification
+        // admin par ligne importée.
+        var rs = FindSheet(wb, "Réparations");
+        if (rs != null)
+        {
+            var existingRepairs = await _context.Repairs.AsNoTracking()
+                .Where(x => x.SocieteId == companyId)
+                .Select(x => new { x.Reference, x.VehicleId, x.RepairDate, x.TotalCost, x.Description })
+                .ToListAsync();
+
+            // Dédoublonnage : par référence REP-… (boucle exporter → compléter →
+            // réimporter), sinon par clé naturelle pour les lignes sans référence.
+            // Les deux ensembles s'enrichissent au fil du fichier : une ligne
+            // répétée dans le même fichier n'est créée qu'une fois.
+            var existingRefs = new HashSet<string>(
+                existingRepairs.Select(x => (x.Reference ?? "").Trim()).Where(s => s.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+            var existingKeys = new HashSet<string>(existingRepairs.Select(x =>
+                RepairImportRow.NaturalKey(x.VehicleId, x.RepairDate, x.TotalCost, x.Description)));
+
+            // Même numérotation que la saisie à l'écran (nombre de réparations + 1),
+            // en sautant une référence déjà prise (possible après des suppressions).
+            var refSequence = existingRepairs.Count;
+
+            // Fournisseur retrouvé par son nom, casse et accents ignorés ; jamais créé.
+            var supplierByName = new Dictionary<string, int>();
+            var suppliers = await _context.Suppliers.AsNoTracking()
+                .Where(s => s.CompanyId == companyId)
+                .OrderByDescending(s => s.IsActive).ThenBy(s => s.Id)
+                .Select(s => new { s.Id, s.Name })
+                .ToListAsync();
+            foreach (var s in suppliers)
+                supplierByName.TryAdd(RepairImportRow.NormalizeKey(s.Name), s.Id);
+
+            var now = DateTime.UtcNow;
+            foreach (var row in DataRows(rs))
+            {
+                var plate = Str(row.Cell(1));
+                if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
+                { result.RepairsIgnored++; result.AddNote($"Réparation ignorée : matricule « {plate} » introuvable."); continue; }
+
+                var date = Date(row.Cell(2));
+                if (date == null) { result.RepairsIgnored++; result.AddNote($"Réparation « {plate} » ignorée : date invalide."); continue; }
+                var label = $"Réparation « {plate} » du {date.Value:dd/MM/yyyy}";
+
+                // Un montant saisi mais illisible (« 1 200,50 » en texte, « 200 DT ») écarte la ligne :
+                // l'importer à 0 puis réimporter le fichier corrigé créait un doublon (clé naturelle
+                // différente). Une cellule VIDE reste permise (aucun montant = 0).
+                var unreadable = new[] { (6, "main d'œuvre"), (7, "pièces"), (8, "total") }.FirstOrDefault(c => Unreadable(row.Cell(c.Item1)));
+                if (unreadable.Item2 != null)
+                { result.RepairsIgnored++; result.AddNote($"{label} ignorée : montant {unreadable.Item2} « {Str(row.Cell(unreadable.Item1))} » illisible."); continue; }
+
+                var analysis = RepairImportRow.Analyze(
+                    Dec(row.Cell(6)), Dec(row.Cell(7)), Dec(row.Cell(8)), Str(row.Cell(9)), Str(row.Cell(4)));
+                if (!analysis.IsValid)
+                { result.RepairsIgnored++; result.AddNote($"{label} ignorée : {analysis.Error}"); continue; }
+
+                var description = RepairImportRow.Truncate(Str(row.Cell(3), "Réparation"), RepairImportRow.DescriptionMaxLength)!;
+                var reference = RepairImportRow.Truncate(Str(row.Cell(12)), RepairImportRow.ReferenceMaxLength)!;
+                if (reference.Length > 0 && existingRefs.Contains(reference))
+                { result.RepairsIgnored++; result.AddNote($"{label} ignorée : référence « {reference} » déjà présente."); continue; }
+                if (!existingKeys.Add(RepairImportRow.NaturalKey(vehicle.Id, date.Value, analysis.TotalCost, description)))
+                {
+                    result.RepairsIgnored++;
+                    result.AddNote($"{label} ignorée : déjà présente (même véhicule, date, montant et description).");
+                    continue;
+                }
+
+                if (reference.Length == 0)
+                {
+                    do { reference = RepairImportRow.GeneratedReference(now, ++refSequence); }
+                    while (existingRefs.Contains(reference));
+                }
+                existingRefs.Add(reference);
+
+                // Un fournisseur inconnu n'écarte pas la ligne : la réparation est
+                // importée sans fournisseur et le client est prévenu.
+                int? supplierId = null;
+                var supplierName = Str(row.Cell(10));
+                if (supplierName.Length > 0)
+                {
+                    if (supplierByName.TryGetValue(RepairImportRow.NormalizeKey(supplierName), out var sid)) supplierId = sid;
+                    else result.AddNote($"{label} : fournisseur « {supplierName} » introuvable, importée sans fournisseur.");
+                }
+
+
+                var mileage = Int(row.Cell(5)) is int km && km > 0 ? km : (int?)null;
+                var invoiceNumber = Str(row.Cell(11));
+
+                var repair = new Repair
+                {
+                    SocieteId = companyId,
+                    VehicleId = vehicle.Id,
+                    SupplierId = supplierId,
+                    Reference = reference,
+                    Description = description,
+                    RepairDate = DateTime.SpecifyKind(date.Value, DateTimeKind.Utc),
+                    MileageAtRepair = mileage,
+                    LaborCost = analysis.LaborCost,
+                    PartsCost = analysis.PartsCost,
+                    TotalCost = analysis.TotalCost,
+                    Status = analysis.Status,
+                    RepairType = analysis.RepairType,
+                    InvoiceNumber = invoiceNumber.Length > 0
+                        ? RepairImportRow.Truncate(invoiceNumber, RepairImportRow.InvoiceNumberMaxLength)
+                        : null,
+                    CreatedAt = now
+                };
+                // Une ligne de pièce technique porte le montant « Pièces » : sans elle,
+                // la première modification à l'écran le remettrait à zéro.
+                if (RepairImportRow.PartLine(analysis) is { } part)
+                    repair.Parts.Add(part);
+                _context.Repairs.Add(repair);
+                result.RepairsCreated++;
+                foreach (var note in analysis.Notes)
+                    result.AddNote($"{label} : {note}");
+
+                // Même règle que la saisie à l'écran : le relevé fait avancer la fiche
+                // véhicule, sauf pour une réparation annulée (aucun passage à l'atelier).
+                if (mileage != null && analysis.AdvancesMileage)
+                {
+                    VehicleMileage.Advance(vehicle, mileage);
+                    touchedVehicleIds.Add(vehicle.Id);
+                }
+            }
+        }
+
+        // 4) Carburant
         var fs = FindSheet(wb, "Carburant");
         if (fs != null)
         {
@@ -317,27 +512,32 @@ public class DataPortController : ControllerBase
         // Les relevés importés ne sont pas contrôlés à la saisie : on signale après coup
         // ceux que la série rend invalides (même règle d'aberration que l'écran Carburant),
         // pour que le client sache quoi corriger plutôt que de découvrir un compteur faux.
-        foreach (var vehicleId in touchedVehicleIds)
+        // La série est celle de TOUS les relevés saisis (pleins, entretiens, réparations,
+        // dépenses — un par jour), la source unique des rapports : depuis la feuille
+        // Réparations, un relevé importé peut aussi venir d'une réparation.
+        if (touchedVehicleIds.Count > 0)
         {
-            var readings = await _context.FuelEntries.AsNoTracking()
-                .Where(f => f.VehicleId == vehicleId && f.OdometerKm > 0)
-                .Select(f => new { f.OdometerKm, f.InvoiceDate })
-                .ToListAsync();
+            var readingsByVehicle = await OdometerReadings.LoadAsync(
+                _context, companyId, touchedVehicleIds.ToList(),
+                new DateTime(2000, 1, 1, 0, 0, 0, DateTimeKind.Utc), DateTime.UtcNow.AddDays(1),
+                HttpContext.RequestAborted);
 
-            var distance = OdometerDistance.Compute(
-                readings.Select(r => (r.OdometerKm!.Value, r.InvoiceDate)));
-
-            if (distance.IgnoredReadings > 0)
+            foreach (var vehicleId in touchedVehicleIds)
             {
-                var plate = byPlate.Values.FirstOrDefault(v => v.Id == vehicleId)?.Plate ?? $"#{vehicleId}";
-                result.AddNote($"Véhicule « {plate} » : {distance.IgnoredReadings} relevé(s) compteur " +
-                               "incohérent(s) avec la série — à vérifier dans Carburant > Historique.");
+                var distance = OdometerDistance.Compute(readingsByVehicle[vehicleId]);
+
+                if (distance.IgnoredReadings > 0)
+                {
+                    var plate = byPlate.Values.FirstOrDefault(v => v.Id == vehicleId)?.Plate ?? $"#{vehicleId}";
+                    result.AddNote($"Véhicule « {plate} » : {distance.IgnoredReadings} relevé(s) compteur " +
+                                   "incohérent(s) avec la série — à vérifier dans Carburant > Historique ou Réparations.");
+                }
             }
         }
 
         _logger.LogInformation(
-            "DataPort import société {CompanyId} : {V} véhicules, {M} entretiens, {F} pleins créés",
-            companyId, result.VehiclesCreated, result.MaintenanceCreated, result.FuelCreated);
+            "DataPort import société {CompanyId} : {V} véhicules, {M} entretiens, {R} réparations, {F} pleins créés",
+            companyId, result.VehiclesCreated, result.MaintenanceCreated, result.RepairsCreated, result.FuelCreated);
 
         return Ok(result);
     }
@@ -363,9 +563,14 @@ public class DataPortController : ControllerBase
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", name);
     }
 
-    private static IXLWorksheet? FindSheet(XLWorkbook wb, string name) =>
-        wb.Worksheets.FirstOrDefault(w =>
-            string.Equals(w.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+    // Casse ET accents ignorés : une feuille nommée « Reparations » ou « Vehicules »
+    // (clavier sans accents, fichier retapé dans un autre tableur) était ignorée en
+    // silence par la comparaison stricte.
+    private static IXLWorksheet? FindSheet(XLWorkbook wb, string name)
+    {
+        var key = RepairImportRow.NormalizeKey(name);
+        return wb.Worksheets.FirstOrDefault(w => RepairImportRow.NormalizeKey(w.Name) == key);
+    }
 
     // Lignes de données non vides (on saute l'en-tête et les lignes exemples en
     // italique du modèle sont, elles, réécrites par le client — on ne filtre que
@@ -386,11 +591,16 @@ public class DataPortController : ControllerBase
         => c.IsEmpty() ? null : (c.TryGetValue<double>(out var d) ? (int)Math.Round(d)
             : (int.TryParse(c.GetString().Trim(), out var i) ? i : null));
 
+    // Une valeur hors de la plage du decimal (1E+30 tapé par erreur) faisait lever
+    // une OverflowException et échouer tout l'import : elle est lue comme illisible.
     private static decimal? Dec(IXLCell c)
-        => c.IsEmpty() ? null : (c.TryGetValue<double>(out var d) ? (decimal)d
+        => c.IsEmpty() ? null : (c.TryGetValue<double>(out var d) ? (Math.Abs(d) < 7.9e27 ? (decimal)d : (decimal?)null)
             : (decimal.TryParse(c.GetString().Trim().Replace(',', '.'),
                 System.Globalization.NumberStyles.Any,
                 System.Globalization.CultureInfo.InvariantCulture, out var m) ? m : null));
+
+    /// <summary>Cellule remplie dont on ne sait pas lire le montant.</summary>
+    private static bool Unreadable(IXLCell c) => !c.IsEmpty() && Dec(c) == null;
 
     private static DateTime? Date(IXLCell c)
     {
@@ -413,13 +623,16 @@ public class DataPortController : ControllerBase
         public int VehiclesIgnored { get; set; }
         public int MaintenanceCreated { get; set; }
         public int MaintenanceIgnored { get; set; }
+        public int RepairsCreated { get; set; }
+        public int RepairsIgnored { get; set; }
         public int FuelCreated { get; set; }
         public int FuelIgnored { get; set; }
         public List<string> Notes { get; } = new();
         // On borne les notes pour ne pas renvoyer 10 000 lignes d'erreur.
         public void AddNote(string n) { if (Notes.Count < 50) Notes.Add(n); }
         public string Message =>
-            $"{VehiclesCreated} véhicule(s), {MaintenanceCreated} entretien(s) et {FuelCreated} plein(s) importés"
+            $"{VehiclesCreated} véhicule(s), {MaintenanceCreated} entretien(s), {RepairsCreated} réparation(s) " +
+            $"et {FuelCreated} plein(s) importés"
             + (VehiclesUpdated > 0 ? $", {VehiclesUpdated} kilométrage(s) mis à jour." : ".");
     }
 }

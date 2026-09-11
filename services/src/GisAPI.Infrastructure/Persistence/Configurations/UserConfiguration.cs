@@ -90,6 +90,17 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("daily_report_email_enabled")
             .HasDefaultValue(false);
 
+        // Heures silencieuses (migration 045) : interval PostgreSQL ↔ TimeSpan?.
+        builder.Property(e => e.QuietHoursEnabled)
+            .HasColumnName("quiet_hours_enabled")
+            .HasDefaultValue(false);
+
+        builder.Property(e => e.QuietHoursStart)
+            .HasColumnName("quiet_hours_start");
+
+        builder.Property(e => e.QuietHoursEnd)
+            .HasColumnName("quiet_hours_end");
+
         // Ignore computed and legacy compatibility properties (not stored in DB)
         builder.Ignore(e => e.FullName);
         builder.Ignore(e => e.IsCompanyAdmin);

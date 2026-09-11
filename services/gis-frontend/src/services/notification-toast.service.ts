@@ -55,6 +55,10 @@ export class NotificationToastService {
   }
 
   private showNotificationToast(notification: SignalRNotification): void {
+    // Heures silencieuses (recette client du 11/09/2026) : le serveur marque la
+    // notification « silent » ; elle reste dans la cloche (NotificationService),
+    // on ne l'affiche simplement pas en toast.
+    if (notification.silent) return;
     const type = this.mapNotificationType(notification.type, notification.priority);
     this.toast[type](notification.title, notification.message, this.getDuration(notification.priority));
   }

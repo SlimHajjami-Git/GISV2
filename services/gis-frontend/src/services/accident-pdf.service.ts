@@ -23,8 +23,14 @@ export class AccidentPdfService {
    * Build the accident report PDF as a Blob, ready to be uploaded.
    * Never throws — falls back to a minimal "context unavailable" page
    * if any data is missing so the auto-attach never blocks the modal.
+   *
+   * `opts.withLocation` (vrai par défaut) : faux pour une société sans boîtier
+   * (offre GPA). Recette du 11/09/2026 : sans GPS, aucune coordonnée n'est ni
+   * mesurée ni saisie — le PDF affichait 0,000000 / 0,000000 et un IMEI vide.
+   * On retire alors Latitude, Longitude, Localisation et « Boîtier GPS (IMEI) ».
    */
-  generate(report: AccidentReportDto): Blob {
+  generate(report: AccidentReportDto, opts?: { withLocation?: boolean }): Blob {
+    const withLocation = opts?.withLocation !== false;
     const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
@@ -52,8 +58,8 @@ export class AccidentPdfService {
     const idRows: [string, string][] = [
       ['Véhicule', report.vehicleLabel ?? '—'],
       ['Identifiant interne', report.vehicleId != null ? `#${report.vehicleId}` : '—'],
-      ['Boîtier GPS (IMEI)', report.deviceUid || '—'],
     ];
+    if (withLocation) idRows.push(['Boîtier GPS (IMEI)', report.deviceUid || '—']);
     autoTable(doc, {
       startY: cursorY,
       head: [],
@@ -79,13 +85,18 @@ export class AccidentPdfService {
       .filter(Boolean)
       .join(', ');
 
-    const ctxRows: [string, string][] = [
-      ['Date / heure', dateLabel],
-      ['Latitude', report.latitude?.toFixed(6) ?? '—'],
-      ['Longitude', report.longitude?.toFixed(6) ?? '—'],
-      ['Localisation', locationParts || '—'],
-      ['Score de confiance', `${report.confidence ?? 0}/100`],
-    ];
+    const ctxRows: [string, string][] = [['Date / heure', dateLabel]];
+    // Sans boîtier : le lieu DÉCLARÉ par le client (commune, gouvernorat) reste — c'est
+    // souvent le seul lieu du rapport remis à l'assureur ; seuls les champs GPS partent.
+    if (!withLocation && locationParts) ctxRows.push(['Lieu déclaré', locationParts]);
+    if (withLocation) {
+      ctxRows.push(
+        ['Latitude', report.latitude?.toFixed(6) ?? '—'],
+        ['Longitude', report.longitude?.toFixed(6) ?? '—'],
+        ['Localisation', locationParts || '—'],
+      );
+    }
+    ctxRows.push(['Score de confiance', `${report.confidence ?? 0}/100`]);
     autoTable(doc, {
       startY: cursorY,
       body: ctxRows,

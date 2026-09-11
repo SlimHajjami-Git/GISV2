@@ -51,6 +51,14 @@ interface UserPermissions {
   canReportSpeedInfraction: boolean;
   canReportDrivingBehavior: boolean;
   canReportMonthlyCosts: boolean;
+  canReportOperatingCost: boolean;
+  canReportCostEvolution: boolean;
+  canReportCostRanking: boolean;
+  canReportRepairFrequency: boolean;
+  canReportMonthlyFuel: boolean;
+  canReportAiFleet: boolean;
+  canReportFuelEstimation: boolean;
+  canReportFuelComparison: boolean;
   alertAssurance: boolean;
   alertTaxeCirculation: boolean;
   alertVisiteTechnique: boolean;
@@ -363,6 +371,11 @@ interface VehicleOption {
                           <button type="button" class="btn-mini" (click)="deselectAllReports()">Aucun</button>
                         </div>
                       </div>
+                      <!-- Recette du 11/09/2026 : une case par rapport, chacune sous le même
+                           filtre canReport() que l'écran Rapports (sinon « Kilométrique »
+                           restait proposé en GPA). Les huit dernières viennent de la migration
+                           046 : avant, cinq rapports héritaient d'une case partagée et trois
+                           n'en avaient aucune. Même ordre que l'écran Rapports. -->
                       <div class="sub-perm-grid">
                         <label class="sub-perm-item" *ngIf="canReport('trips')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportTrips">
@@ -372,7 +385,7 @@ interface VehicleOption {
                           <input type="checkbox" [(ngModel)]="userForm.canReportStops">
                           <span>🅿️ Arrêts</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('mileage')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMileage">
                           <span>📏 Kilométrique</span>
                         </label>
@@ -400,21 +413,53 @@ interface VehicleOption {
                           <input type="checkbox" [(ngModel)]="userForm.canReportFuel">
                           <span>⛽ Carburant</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('costs')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportCosts">
-                          <span>🔩 Réparations</span>
+                          <span>🔩 Réparations véhicules</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('maintenance')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMaintenance">
-                          <span>🔧 Maintenance</span>
+                          <span>🔧 Coûts maintenance</span>
                         </label>
-                        <label class="sub-perm-item">
+                        <label class="sub-perm-item" *ngIf="canReport('fuel_estimation')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportFuelEstimation">
+                          <span>💰 Estimation coûts carburant</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('fuel_comparison')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportFuelComparison">
+                          <span>🔍 Carburant réel vs GPS</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('monthly_costs')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyCosts">
+                          <span>📋 Coûts mensuel par véhicule</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('monthly_fuel')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyFuel">
+                          <span>🛢️ Consommation carburant mensuel</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('operating_cost')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportOperatingCost">
+                          <span>🧮 Coût d'exploitation réel</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('cost_evolution')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportCostEvolution">
+                          <span>📉 Évolution des coûts</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('cost_ranking')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportCostRanking">
+                          <span>🏆 Véhicules les plus coûteux</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('repair_frequency')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportRepairFrequency">
+                          <span>🔁 Fréquence des réparations</span>
+                        </label>
+                        <label class="sub-perm-item" *ngIf="canReport('monthly')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthly">
                           <span>📊 Mensuel flotte</span>
                         </label>
-                        <label class="sub-perm-item">
-                          <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyCosts">
-                          <span>💰 Coûts mensuel</span>
+                        <label class="sub-perm-item" *ngIf="canReport('ai_fleet')">
+                          <input type="checkbox" [(ngModel)]="userForm.canReportAiFleet">
+                          <span>🤖 Rapport IA Flotte</span>
                         </label>
                       </div>
                     </div>
@@ -1825,6 +1870,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     canReportSpeedInfraction: true,
     canReportDrivingBehavior: true,
     canReportMonthlyCosts: true,
+    canReportOperatingCost: true,
+    canReportCostEvolution: true,
+    canReportCostRanking: true,
+    canReportRepairFrequency: true,
+    canReportMonthlyFuel: true,
+    canReportAiFleet: true,
+    canReportFuelEstimation: true,
+    canReportFuelComparison: true,
     alertAssurance: false,
     alertTaxeCirculation: false,
     alertVisiteTechnique: false,
@@ -2139,6 +2192,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportSpeedInfraction: up?.canReportSpeedInfraction ?? true,
         canReportDrivingBehavior: up?.canReportDrivingBehavior ?? true,
         canReportMonthlyCosts: up?.canReportMonthlyCosts ?? true,
+        canReportOperatingCost: up?.canReportOperatingCost ?? true,
+        canReportCostEvolution: up?.canReportCostEvolution ?? true,
+        canReportCostRanking: up?.canReportCostRanking ?? true,
+        canReportRepairFrequency: up?.canReportRepairFrequency ?? true,
+        canReportMonthlyFuel: up?.canReportMonthlyFuel ?? true,
+        canReportAiFleet: up?.canReportAiFleet ?? true,
+        canReportFuelEstimation: up?.canReportFuelEstimation ?? true,
+        canReportFuelComparison: up?.canReportFuelComparison ?? true,
         alertAssurance: (user as any).alertAssurance ?? false,
         alertTaxeCirculation: (user as any).alertTaxeCirculation ?? false,
         alertVisiteTechnique: (user as any).alertVisiteTechnique ?? false,
@@ -2185,6 +2246,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         canReportSpeedInfraction: true,
         canReportDrivingBehavior: true,
         canReportMonthlyCosts: true,
+        canReportOperatingCost: true,
+        canReportCostEvolution: true,
+        canReportCostRanking: true,
+        canReportRepairFrequency: true,
+        canReportMonthlyFuel: true,
+        canReportAiFleet: true,
+        canReportFuelEstimation: true,
+        canReportFuelComparison: true,
         alertAssurance: false,
         alertTaxeCirculation: false,
         alertVisiteTechnique: false,
@@ -2281,6 +2350,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canReportSpeedInfraction = true;
     this.userForm.canReportDrivingBehavior = true;
     this.userForm.canReportMonthlyCosts = true;
+    this.userForm.canReportOperatingCost = true;
+    this.userForm.canReportCostEvolution = true;
+    this.userForm.canReportCostRanking = true;
+    this.userForm.canReportRepairFrequency = true;
+    this.userForm.canReportMonthlyFuel = true;
+    this.userForm.canReportAiFleet = true;
+    this.userForm.canReportFuelEstimation = true;
+    this.userForm.canReportFuelComparison = true;
   }
 
   deselectAllReports() {
@@ -2297,6 +2374,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userForm.canReportSpeedInfraction = false;
     this.userForm.canReportDrivingBehavior = false;
     this.userForm.canReportMonthlyCosts = false;
+    this.userForm.canReportOperatingCost = false;
+    this.userForm.canReportCostEvolution = false;
+    this.userForm.canReportCostRanking = false;
+    this.userForm.canReportRepairFrequency = false;
+    this.userForm.canReportMonthlyFuel = false;
+    this.userForm.canReportAiFleet = false;
+    this.userForm.canReportFuelEstimation = false;
+    this.userForm.canReportFuelComparison = false;
   }
 
   saveUser() {
@@ -2339,6 +2424,14 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       canReportSpeedInfraction: this.userForm.canReportSpeedInfraction,
       canReportDrivingBehavior: this.userForm.canReportDrivingBehavior,
       canReportMonthlyCosts: this.userForm.canReportMonthlyCosts,
+      canReportOperatingCost: this.userForm.canReportOperatingCost,
+      canReportCostEvolution: this.userForm.canReportCostEvolution,
+      canReportCostRanking: this.userForm.canReportCostRanking,
+      canReportRepairFrequency: this.userForm.canReportRepairFrequency,
+      canReportMonthlyFuel: this.userForm.canReportMonthlyFuel,
+      canReportAiFleet: this.userForm.canReportAiFleet,
+      canReportFuelEstimation: this.userForm.canReportFuelEstimation,
+      canReportFuelComparison: this.userForm.canReportFuelComparison,
       alertAssurance: this.userForm.alertAssurance,
       alertTaxeCirculation: this.userForm.alertTaxeCirculation,
       alertVisiteTechnique: this.userForm.alertVisiteTechnique,

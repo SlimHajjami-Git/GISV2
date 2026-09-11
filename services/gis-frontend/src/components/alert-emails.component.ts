@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService } from '../services/api.service';
+import { PermissionService } from '../services/permission.service';
 
 interface AlertEmail {
   id: number;
@@ -22,6 +23,12 @@ const ALERT_TYPES: Record<string, string> = {
   // routes its email fan-out through this alert_type.
   'accident': 'Accident'
 };
+
+// Recette du 11/09/2026 : 'accident' n'est émis que par AccidentDetectionService
+// (accéléromètre du boîtier). Sans boîtier (offre GPA), ce choix est sans objet.
+// Deux listes figées pour que le *ngFor reçoive toujours le même tableau.
+const ALL_ALERT_TYPE_KEYS = Object.keys(ALERT_TYPES);
+const ALERT_TYPE_KEYS_WITHOUT_GPS = ALL_ALERT_TYPE_KEYS.filter(k => k !== 'accident');
 
 @Component({
   selector: 'app-alert-emails',
@@ -170,7 +177,7 @@ const ALERT_TYPES: Record<string, string> = {
                     </td>
                     <td>
                       <select class="ae-inline-input" [(ngModel)]="editEmail.alertType">
-                        <option *ngFor="let type of alertTypeKeys" [value]="type">{{ alertTypeLabels[type] }}</option>
+                        <option *ngFor="let type of editTypeKeys" [value]="type">{{ alertTypeLabels[type] || type }}</option>
                       </select>
                     </td>
                     <td class="ae-actions">
@@ -606,11 +613,29 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   private toastTimer: any;
 
   alertTypeLabels = ALERT_TYPES;
-  alertTypeKeys = Object.keys(ALERT_TYPES);
+  // Choix proposés à l'édition en ligne : alertTypeKeys, plus le type actuel de
+  // la ligne s'il n'y figure pas (rempli par startEdit).
+  editTypeKeys: string[] = ALL_ALERT_TYPE_KEYS;
 
   private destroy$ = new Subject<void>();
 
-  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private api: ApiService,
+    private cdr: ChangeDetectorRef,
+    private permissions: PermissionService
+  ) {}
+
+  // Détection au niveau de l'ABONNEMENT de la société, pas des permissions de
+  // l'utilisateur : cette liste règle les envois pour toute la société, et un
+  // non-admin sans canMonitoring d'une société équipée doit garder 'accident'.
+  // Ouvert par défaut quand la société n'a pas de type d'abonnement (features null).
+  get hasGpsSubscription(): boolean {
+    return this.permissions.getSubscriptionFeatures()?.moduleMonitoring !== false;
+  }
+
+  get alertTypeKeys(): string[] {
+    return this.hasGpsSubscription ? ALL_ALERT_TYPE_KEYS : ALERT_TYPE_KEYS_WITHOUT_GPS;
+  }
 
   ngOnInit(): void {
     this.loadAlertEmails();
@@ -670,6 +695,10 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   startEdit(item: AlertEmail): void {
     this.editingId = item.id;
     this.editEmail = { email: item.email, alertType: item.alertType };
+    // Ne jamais vider une valeur existante : une ligne 'accident' créée avant le
+    // masquage GPA garde son option, sinon le <select> s'afficherait vide.
+    const keys = this.alertTypeKeys;
+    this.editTypeKeys = keys.includes(item.alertType) ? keys : [...keys, item.alertType];
     this.cdr.detectChanges();
   }
 

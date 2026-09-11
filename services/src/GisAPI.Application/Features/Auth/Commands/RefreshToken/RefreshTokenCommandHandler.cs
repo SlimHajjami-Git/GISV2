@@ -220,7 +220,15 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
             CanReportMileagePeriod: user.CanReportMileagePeriod,
             CanReportSpeedInfraction: user.CanReportSpeedInfraction,
             CanReportDrivingBehavior: user.CanReportDrivingBehavior,
-            CanReportMonthlyCosts: user.CanReportMonthlyCosts
+            CanReportMonthlyCosts: user.CanReportMonthlyCosts,
+            CanReportOperatingCost: user.CanReportOperatingCost,
+            CanReportCostEvolution: user.CanReportCostEvolution,
+            CanReportCostRanking: user.CanReportCostRanking,
+            CanReportRepairFrequency: user.CanReportRepairFrequency,
+            CanReportMonthlyFuel: user.CanReportMonthlyFuel,
+            CanReportAiFleet: user.CanReportAiFleet,
+            CanReportFuelEstimation: user.CanReportFuelEstimation,
+            CanReportFuelComparison: user.CanReportFuelComparison
         );
 
         // Même constructeur que la connexion : ce DTO était reconstruit à la main

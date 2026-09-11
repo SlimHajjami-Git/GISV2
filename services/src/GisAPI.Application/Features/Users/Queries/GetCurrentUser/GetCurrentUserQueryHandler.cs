@@ -62,14 +62,27 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
                     u.CanReportMileagePeriod,
                     u.CanReportSpeedInfraction,
                     u.CanReportDrivingBehavior,
-                    u.CanReportMonthlyCosts
+                    u.CanReportMonthlyCosts,
+                    u.CanReportOperatingCost,
+                    u.CanReportCostEvolution,
+                    u.CanReportCostRanking,
+                    u.CanReportRepairFrequency,
+                    u.CanReportMonthlyFuel,
+                    u.CanReportAiFleet,
+                    u.CanReportFuelEstimation,
+                    u.CanReportFuelComparison
                 ),
                 u.AlertAssurance,
                 u.AlertTaxeCirculation,
                 u.AlertVisiteTechnique,
                 u.AlertEntretien,
                 u.DailyReportEmailEnabled
-            ))
+            )
+            {
+                QuietHoursEnabled = u.QuietHoursEnabled,
+                QuietHoursStart = u.QuietHoursStart,
+                QuietHoursEnd = u.QuietHoursEnd
+            })
             .FirstOrDefaultAsync(ct);
 
         if (user == null)

@@ -1386,6 +1386,15 @@ export class ApiService {
     return this.http.put<any>(`${this.API_URL}/users/me`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Heures silencieuses de l'utilisateur connecté, persistées côté serveur (recette
+   * client du 11/09/2026 : elles ne vivaient que dans le localStorage). start/end en
+   * « HH:mm », heure locale de la société. Relues via /users/me (quietHours*).
+   */
+  setQuietHours(body: { enabled: boolean; start: string; end: string }): Observable<void> {
+    return this.http.put<void>(`${this.API_URL}/users/me/quiet-hours`, body, { headers: this.getHeaders() });
+  }
+
   // ── Import / export des données (Excel) — DataPortController ──
   exportDataset(): Observable<Blob> {
     return this.http.get(`${this.API_URL}/dataport/export`, { headers: this.getHeaders(), responseType: 'blob' });
@@ -1570,12 +1579,15 @@ export class ApiService {
 
   // ==================== MONTHLY COST REPORT ====================
 
-  getMonthlyCostReport(year?: number, month?: number, departmentId?: number): Observable<MonthlyCostReport> {
+  // `kind` choisit la route : mêmes données, mais « Consommation carburant mensuel »
+  // (monthly-fuel) porte sa propre permission par utilisateur (recette du 11/09/2026).
+  getMonthlyCostReport(year?: number, month?: number, departmentId?: number, kind: 'costs' | 'fuel' = 'costs'): Observable<MonthlyCostReport> {
     let params = new HttpParams();
     if (year) params = params.set('year', year.toString());
     if (month) params = params.set('month', month.toString());
     if (departmentId) params = params.set('departmentId', departmentId.toString());
-    return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/monthly-costs`, { headers: this.getHeaders(), params });
+    const route = kind === 'fuel' ? 'monthly-fuel' : 'monthly-costs';
+    return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/${route}`, { headers: this.getHeaders(), params });
   }
 
   // ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================

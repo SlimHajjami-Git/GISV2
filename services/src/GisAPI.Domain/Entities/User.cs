@@ -92,6 +92,26 @@ public class User : TenantEntity
     public bool CanReportDrivingBehavior { get; set; } = true;
     [Column("can_report_monthly_costs")]
     public bool CanReportMonthlyCosts { get; set; } = true;
+    // Recette client du 11/09/2026 : une case par rapport (migration 046). Les quatre
+    // rapports de coûts du 04/09 et « Consommation carburant mensuel » héritaient de
+    // CanReportCosts / CanReportMonthlyCosts ; le Rapport IA Flotte n'avait aucun droit
+    // par utilisateur. Défaut true : rien n'est retiré à personne.
+    [Column("can_report_operating_cost")]
+    public bool CanReportOperatingCost { get; set; } = true;
+    [Column("can_report_cost_evolution")]
+    public bool CanReportCostEvolution { get; set; } = true;
+    [Column("can_report_cost_ranking")]
+    public bool CanReportCostRanking { get; set; } = true;
+    [Column("can_report_repair_frequency")]
+    public bool CanReportRepairFrequency { get; set; } = true;
+    [Column("can_report_monthly_fuel")]
+    public bool CanReportMonthlyFuel { get; set; } = true;
+    [Column("can_report_ai_fleet")]
+    public bool CanReportAiFleet { get; set; } = true;
+    [Column("can_report_fuel_estimation")]
+    public bool CanReportFuelEstimation { get; set; } = true;
+    [Column("can_report_fuel_comparison")]
+    public bool CanReportFuelComparison { get; set; } = true;
 
     // Alert email preferences
     [Column("alert_assurance")]
@@ -113,6 +133,20 @@ public class User : TenantEntity
     public bool AlertPrefsConfigured { get; set; } = false;
     [Column("daily_report_email_enabled")]
     public bool DailyReportEmailEnabled { get; set; } = false;
+
+    // ── Heures silencieuses (migration 045, recette client du 11/09/2026) ──
+    //
+    // L'interrupteur de Paramètres > Notifications n'écrivait que dans le
+    // localStorage et aucun envoi ne le lisait. Persisté ici, il est lu par
+    // NotificationService : pendant la plage, pas de push FCM ni de toast pour
+    // les notifications non « critical » (elles restent dans la cloche).
+    // Heures locales de la SOCIÉTÉ ; la plage peut passer minuit (22:00 → 07:00).
+    [Column("quiet_hours_enabled")]
+    public bool QuietHoursEnabled { get; set; } = false;
+    [Column("quiet_hours_start")]
+    public TimeSpan? QuietHoursStart { get; set; }
+    [Column("quiet_hours_end")]
+    public TimeSpan? QuietHoursEnd { get; set; }
 
     // Navigation
     public Role Role { get; set; } = null!;

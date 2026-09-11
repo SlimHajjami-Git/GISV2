@@ -1283,8 +1283,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get stoppedPct():number{return this.totalMotion?Math.round((this.motionData.stationary/this.totalMotion)*100):0;}
   get activeDrivers():number{return this.drivers.filter(d=>d.active).length;}
   /** Coût compact : au-delà du million, "1,17 M" — la tuile absorbe les gros montants sans casse. */
-  get costValue():string{
-    const v=this.dCost;
+  get costValue():string{ return this.compact(this.dCost); }
+  compact(v:number):string{
     if(v>=1_000_000) return (v/1_000_000).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' M';
     return Math.round(v).toLocaleString('fr-FR');
   }

@@ -8,6 +8,7 @@ using GisAPI.Application.Features.Users.Commands.CreateUser;
 using GisAPI.Application.Features.Users.Commands.UpdateUser;
 using GisAPI.Application.Features.Users.Commands.UpdateProfile;
 using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
+using GisAPI.Application.Features.Users.Commands.UpdateQuietHours;
 using GisAPI.Application.Features.Users.Commands.DeleteUser;
 using GisAPI.Application.Features.Users.Queries.GetUsers;
 using GisAPI.Application.Features.Users.Queries.GetUserById;
@@ -94,6 +95,14 @@ public class UsersController : ControllerBase
             CanReportSpeedInfraction: request.CanReportSpeedInfraction,
             CanReportDrivingBehavior: request.CanReportDrivingBehavior,
             CanReportMonthlyCosts: request.CanReportMonthlyCosts,
+            CanReportOperatingCost: request.CanReportOperatingCost,
+            CanReportCostEvolution: request.CanReportCostEvolution,
+            CanReportCostRanking: request.CanReportCostRanking,
+            CanReportRepairFrequency: request.CanReportRepairFrequency,
+            CanReportMonthlyFuel: request.CanReportMonthlyFuel,
+            CanReportAiFleet: request.CanReportAiFleet,
+            CanReportFuelEstimation: request.CanReportFuelEstimation,
+            CanReportFuelComparison: request.CanReportFuelComparison,
             AlertAssurance: request.AlertAssurance,
             AlertTaxeCirculation: request.AlertTaxeCirculation,
             AlertVisiteTechnique: request.AlertVisiteTechnique,
@@ -146,6 +155,14 @@ public class UsersController : ControllerBase
             CanReportSpeedInfraction: request.CanReportSpeedInfraction,
             CanReportDrivingBehavior: request.CanReportDrivingBehavior,
             CanReportMonthlyCosts: request.CanReportMonthlyCosts,
+            CanReportOperatingCost: request.CanReportOperatingCost,
+            CanReportCostEvolution: request.CanReportCostEvolution,
+            CanReportCostRanking: request.CanReportCostRanking,
+            CanReportRepairFrequency: request.CanReportRepairFrequency,
+            CanReportMonthlyFuel: request.CanReportMonthlyFuel,
+            CanReportAiFleet: request.CanReportAiFleet,
+            CanReportFuelEstimation: request.CanReportFuelEstimation,
+            CanReportFuelComparison: request.CanReportFuelComparison,
             AlertAssurance: request.AlertAssurance,
             AlertTaxeCirculation: request.AlertTaxeCirculation,
             AlertVisiteTechnique: request.AlertVisiteTechnique,
@@ -192,7 +209,24 @@ public class UsersController : ControllerBase
             request.NewPassword ?? string.Empty));
         return NoContent();
     }
+
+    /// <summary>
+    /// Heures silencieuses de l'utilisateur connecté (recette client du 11/09/2026) :
+    /// jusque-là l'écran Paramètres ne les gardait que dans le localStorage.
+    /// </summary>
+    [HttpPut("me/quiet-hours")]
+    public async Task<IActionResult> UpdateMyQuietHours([FromBody] UpdateQuietHoursRequest request)
+    {
+        await _mediator.Send(new UpdateQuietHoursCommand(request.Enabled, request.Start, request.End));
+        return NoContent();
+    }
 }
+
+public record UpdateQuietHoursRequest(
+    bool Enabled,
+    string? Start,
+    string? End
+);
 
 public record UpdateProfileRequest(
     string FirstName,

@@ -1,6 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.AccidentEvents.Commands;
 using GisAPI.Application.Features.AccidentEvents.Queries;
+using GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -261,23 +262,51 @@ public class AccidentReportsController : ControllerBase
     [RequestSizeLimit(50_000_000)]
     public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile file, [FromForm] string? documentType, CancellationToken ct)
     {
-        var (_, error) = await ValidateUploadAsync(id, file, allowedExt: null, maxSize: 50_000_000, ct);
+        var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: null, maxSize: 50_000_000, ct);
         if (error != null) return error;
+
+        // Recette du 11/09/2026 (photos des dégâts) : le statut était vérifié par le
+        // handler APRÈS l'écriture du fichier — un envoi refusé laissait un fichier
+        // orphelin sur le disque (partagé avec la racine du nœud TN). On refuse avant.
+        if (ev!.Status is not "confirmed")
+            return BadRequest(new { message = $"Impossible d'ajouter un document : l'accident est en statut '{ev.Status}'. Confirmez-le d'abord." });
+
+        // Liste blanche : le type range le document dans une phase de l'écran.
+        var type = string.IsNullOrWhiteSpace(documentType) ? "other" : documentType.Trim().ToLowerInvariant();
+        if (!AllowedDocumentTypes.Contains(type))
+            return BadRequest(new { message = $"Type de document inconnu ({type})." });
 
         var ext = Path.GetExtension(file!.FileName).ToLowerInvariant();
         var allowed = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".doc", ".docx" };
         if (!allowed.Contains(ext))
             return BadRequest(new { message = $"Format non supporté ({ext}). Accepté: PDF, images, Word." });
+        if (type == "photo" && !ImageExtensions.Contains(ext))
+            return BadRequest(new { message = $"Format non supporté pour une photo ({ext}). Accepté : JPG, PNG, WebP, GIF." });
 
-        var (publicUrl, _) = await SaveFileAsync(id, file, ext, ct);
-        var docId = await _mediator.Send(new AddAccidentDocumentCommand(
-            AccidentEventId: id,
-            DocumentType: documentType ?? "other",
-            FileName: file.FileName,
-            FileUrl: publicUrl,
-            FileSize: (int)file.Length,
-            MimeType: file.ContentType
-        ), ct);
+        // Colonnes bornées (file_name 300, mime_type 100) : un nom trop long faisait
+        // échouer l'insertion après l'écriture du fichier.
+        var fileName = string.IsNullOrWhiteSpace(file.FileName) ? $"document{ext}" : file.FileName.Trim();
+        if (fileName.Length > 300) fileName = fileName[..300];
+        var mimeType = file.ContentType;
+        if (mimeType is { Length: > 100 }) mimeType = mimeType[..100];
+
+        var (publicUrl, diskPath) = await SaveFileAsync(id, file, ext, ct);
+        int docId;
+        try
+        {
+            docId = await _mediator.Send(new AddAccidentDocumentCommand(
+                AccidentEventId: id,
+                DocumentType: type,
+                FileName: fileName,
+                FileUrl: publicUrl,
+                FileSize: (int)file.Length,
+                MimeType: mimeType
+            ), ct);
+        }
+        // Pas de ligne en base → le fichier ne serait jamais référencé : on le retire.
+        catch (NotFoundException) { TryDeleteFile(diskPath); return NotFound(); }
+        catch (DomainException ex) { TryDeleteFile(diskPath); return BadRequest(new { message = ex.Message }); }
+        catch { TryDeleteFile(diskPath); throw; }
 
         return Ok(new { documentId = docId, fileUrl = publicUrl });
     }
@@ -285,10 +314,45 @@ public class AccidentReportsController : ControllerBase
     [HttpDelete("{id:int}/documents/{docId:int}")]
     public async Task<IActionResult> DeleteDocument(int id, int docId, CancellationToken ct)
     {
-        try { await _mediator.Send(new DeleteAccidentDocumentCommand(id, docId), ct); return NoContent(); }
+        // Recette du 11/09/2026 : la suppression retirait la ligne mais laissait le
+        // fichier sur le disque. On relève l'URL AVANT la commande (qui porte les
+        // contrôles société + statut confirmé) et on n'efface le fichier qu'une fois
+        // la ligne supprimée.
+        var companyId = _tenantService.CompanyId;
+        string? fileUrl = null;
+        if (companyId != null)
+        {
+            fileUrl = await _context.AccidentEventDocuments
+                .Where(d => d.Id == docId && d.AccidentEventId == id && d.AccidentEvent!.CompanyId == companyId.Value)
+                .Select(d => d.FileUrl)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        try { await _mediator.Send(new DeleteAccidentDocumentCommand(id, docId), ct); }
         catch (NotFoundException) { return NotFound(); }
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+
+        // Uniquement les fichiers de CET accident, jamais hors de la racine des uploads.
+        if (fileUrl != null && fileUrl.StartsWith($"/uploads/accident-reports/{id}/", StringComparison.OrdinalIgnoreCase))
+        {
+            var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+            var deleted = ResetCompanyDataCommandHandler.DeleteFiles(uploadsRoot, new[] { fileUrl });
+            if (deleted == 0)
+                _logger.LogWarning("DeleteDocument: fichier {FileUrl} introuvable ou non supprimé (accident {AccidentId})", fileUrl, id);
+        }
+        return NoContent();
     }
+
+    /// <summary>Types acceptés pour <c>documentType</c> (un par phase de la chronologie).</summary>
+    private static readonly HashSet<string> AllowedDocumentTypes = new(StringComparer.Ordinal)
+    {
+        "photo", "expert_report", "mechanic_quote", "repair_invoice", "insurance_response", "police_report", "other",
+    };
+
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.Ordinal)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    };
 
     // ── Simulate (debug-only) ─────────────────────────────────────────────
 
@@ -395,6 +459,13 @@ public class AccidentReportsController : ControllerBase
             await file.CopyToAsync(stream, ct);
         }
         return ($"/uploads/accident-reports/{accidentId}/{uniqueName}", filePath);
+    }
+
+    /// <summary>Retire un fichier que l'on vient d'écrire (chemin produit par SaveFileAsync).</summary>
+    private void TryDeleteFile(string diskPath)
+    {
+        try { if (System.IO.File.Exists(diskPath)) System.IO.File.Delete(diskPath); }
+        catch (Exception ex) { _logger.LogWarning(ex, "AccidentReportsController: fichier orphelin non supprimé {Path}", diskPath); }
     }
 }
 

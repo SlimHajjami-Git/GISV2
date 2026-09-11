@@ -298,11 +298,17 @@ export class PermissionService {
         'speed_infraction': 'canReportSpeedInfraction',
         'driving_behavior': 'canReportDrivingBehavior',
         'monthly_costs': 'canReportMonthlyCosts',
-        'monthly_fuel': 'canReportMonthlyCosts',
-        'operating_cost': 'canReportCosts',
-        'cost_evolution': 'canReportCosts',
-        'cost_ranking': 'canReportCosts',
-        'repair_frequency': 'canReportCosts'
+        // Recette du 11/09/2026 : une case par rapport (colonnes users.can_report_* de la
+        // migration 046). Avant, ces cinq rapports héritaient de canReportCosts /
+        // canReportMonthlyCosts et le Rapport IA Flotte n'avait aucun droit par utilisateur.
+        'monthly_fuel': 'canReportMonthlyFuel',
+        'operating_cost': 'canReportOperatingCost',
+        'cost_evolution': 'canReportCostEvolution',
+        'cost_ranking': 'canReportCostRanking',
+        'repair_frequency': 'canReportRepairFrequency',
+        'ai_fleet': 'canReportAiFleet',
+        'fuel_estimation': 'canReportFuelEstimation',
+        'fuel_comparison': 'canReportFuelComparison'
       };
 
       const userPermKey = userReportMapping[reportKey];

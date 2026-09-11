@@ -72,7 +72,17 @@ public record UserPermissionsDto(
     bool CanReportMileagePeriod = true,
     bool CanReportSpeedInfraction = true,
     bool CanReportDrivingBehavior = true,
-    bool CanReportMonthlyCosts = true
+    bool CanReportMonthlyCosts = true,
+    // Recette du 11/09/2026 : une case par rapport (migration 046). Paramètres en
+    // FIN de liste avec défaut : chaque constructeur positionnel les passe quand même.
+    bool CanReportOperatingCost = true,
+    bool CanReportCostEvolution = true,
+    bool CanReportCostRanking = true,
+    bool CanReportRepairFrequency = true,
+    bool CanReportMonthlyFuel = true,
+    bool CanReportAiFleet = true,
+    bool CanReportFuelEstimation = true,
+    bool CanReportFuelComparison = true
 );
 
 public record SubscriptionFeaturesDto(

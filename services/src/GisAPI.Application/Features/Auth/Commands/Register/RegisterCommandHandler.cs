@@ -223,7 +223,10 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
             CanReportStops = true, CanReportMileage = true, CanReportCosts = true,
             CanReportMaintenance = true, CanReportDaily = true, CanReportMonthly = true,
             CanReportMileagePeriod = true, CanReportSpeedInfraction = true,
-            CanReportDrivingBehavior = true, CanReportMonthlyCosts = true
+            CanReportDrivingBehavior = true, CanReportMonthlyCosts = true,
+            CanReportOperatingCost = true, CanReportCostEvolution = true, CanReportCostRanking = true,
+            CanReportRepairFrequency = true, CanReportMonthlyFuel = true, CanReportAiFleet = true,
+            CanReportFuelEstimation = true, CanReportFuelComparison = true
         };
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);

@@ -223,7 +223,15 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             CanReportMileagePeriod: user.CanReportMileagePeriod,
             CanReportSpeedInfraction: user.CanReportSpeedInfraction,
             CanReportDrivingBehavior: user.CanReportDrivingBehavior,
-            CanReportMonthlyCosts: user.CanReportMonthlyCosts
+            CanReportMonthlyCosts: user.CanReportMonthlyCosts,
+            CanReportOperatingCost: user.CanReportOperatingCost,
+            CanReportCostEvolution: user.CanReportCostEvolution,
+            CanReportCostRanking: user.CanReportCostRanking,
+            CanReportRepairFrequency: user.CanReportRepairFrequency,
+            CanReportMonthlyFuel: user.CanReportMonthlyFuel,
+            CanReportAiFleet: user.CanReportAiFleet,
+            CanReportFuelEstimation: user.CanReportFuelEstimation,
+            CanReportFuelComparison: user.CanReportFuelComparison
         );
     }
 

@@ -2,19 +2,21 @@ import { Component, OnInit, OnDestroy, AfterViewInit, ElementRef, ViewChild, Cha
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import {
   ApiService,
   PositionDto,
   AccidentReportDto,
+  AccidentReportDocumentDto,
   AccidentReportThirdPartyDto,
   AddThirdPartyRequest,
 } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { AccidentPdfService } from '../services/accident-pdf.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { PermissionService } from '../services/permission.service';
 
 interface NarrativeEvent {
   time: string;
@@ -238,8 +240,8 @@ interface ImpactProfile {
               <summary class="phase-head">
                 <span class="phase-num">2</span>
                 <span class="phase-title">Dégâts visibles (jour de l'accident)</span>
-                <span class="phase-status" [class.done]="!!phase2.description || !!phase2.severity">
-                  {{ phase2.description || phase2.severity ? 'Renseigné' : 'À compléter' }}
+                <span class="phase-status" [class.done]="!!phase2.description || !!phase2.severity || photos.length > 0">
+                  {{ phase2.description || phase2.severity || photos.length > 0 ? 'Renseigné' : 'À compléter' }}
                 </span>
               </summary>
               <div class="phase-body">
@@ -278,6 +280,27 @@ interface ImpactProfile {
                     <span>État de la route</span>
                     <input type="text" [(ngModel)]="phase2.roadConditions" placeholder="Mouillée, verglas...">
                   </label>
+                </div>
+                <!-- Photos des dégâts (recette du 11/09/2026) : l'API les acceptait
+                     déjà (documentType 'photo') mais aucun champ ne permettait de les
+                     joindre. Envoi immédiat, sans passer par « Enregistrer ». -->
+                <div class="photo-block">
+                  <div class="photo-block-head">
+                    <span class="photo-block-title">Photos des dégâts</span>
+                    <button type="button" class="phase-btn photo-add" (click)="photoInput.click()" [disabled]="photoBusy">
+                      {{ photoBusy ? 'Envoi…' : 'Ajouter des photos' }}
+                    </button>
+                    <input #photoInput type="file" accept="image/*" multiple hidden (change)="onPhotoFiles($event)">
+                  </div>
+                  <div class="photo-grid" *ngIf="photos.length > 0">
+                    <div class="photo-thumb" *ngFor="let p of photos">
+                      <a [href]="p.fileUrl" target="_blank" rel="noopener">
+                        <img [src]="p.fileUrl" [alt]="p.fileName" loading="lazy">
+                      </a>
+                      <button type="button" class="photo-del" (click)="removePhoto(p)" [disabled]="photoBusy" title="Supprimer cette photo">×</button>
+                    </div>
+                  </div>
+                  <p class="photo-help">JPG, PNG ou WebP, envoi immédiat.</p>
                 </div>
                 <div class="phase-actions">
                   <button class="phase-btn save" (click)="savePhase2()" [disabled]="phaseBusy === 'phase2'">
@@ -564,6 +587,12 @@ interface ImpactProfile {
             </ng-template>
           </section>
 
+          <!-- Lieu + carte : réservés aux sociétés équipées de boîtiers. Recette du
+               11/09/2026 : sur un compte GPA (sans boîtier) aucune coordonnée n'est
+               ni saisie ni mesurée — la carte pointait sur 0,0 et les champs restaient
+               vides. Le trait de séparation est inclus pour éviter un double trait avant le pied de
+               page ; les sections suivantes sont renumérotées par secNum(). -->
+          <ng-container *ngIf="hasGpsSubscription">
           <hr class="rule"/>
 
           <!-- Localisation + map -->
@@ -599,13 +628,14 @@ interface ImpactProfile {
               </div>
             </div>
           </section>
+          </ng-container>
 
           <ng-container *ngIf="origin !== 'manual'">
           <hr class="rule"/>
 
           <!-- Ce qui s'est passé -->
           <section class="sec sec-story">
-            <div class="sec-num">03</div>
+            <div class="sec-num">{{ secNum(3) }}</div>
             <h2 class="sec-h">Déroulement des faits</h2>
             <p class="sec-intro">
               La chronologie suivante a été reconstituée à partir des données envoyées par le
@@ -631,7 +661,7 @@ interface ImpactProfile {
 
           <!-- Visualisation profil vitesse -->
           <section class="sec sec-chart">
-            <div class="sec-num">04</div>
+            <div class="sec-num">{{ secNum(4) }}</div>
             <h2 class="sec-h">Évolution de la vitesse autour de l'impact</h2>
 
             <ng-container *ngIf="chartHasData; else noChart">
@@ -703,7 +733,7 @@ interface ImpactProfile {
 
           <!-- Indicateurs clés -->
           <section class="sec sec-indicators">
-            <div class="sec-num">05</div>
+            <div class="sec-num">{{ secNum(5) }}</div>
             <h2 class="sec-h">Indicateurs clés</h2>
             <p class="sec-intro">
               Les valeurs suivantes résument les principaux éléments mesurés au moment des
@@ -727,7 +757,7 @@ interface ImpactProfile {
 
           <!-- Certitude -->
           <section class="sec sec-confidence">
-            <div class="sec-num">06</div>
+            <div class="sec-num">{{ secNum(6) }}</div>
             <h2 class="sec-h">Niveau de certitude de l'analyse</h2>
             <p class="sec-intro" *ngIf="status === 'dismissed'; else activeIntro">
               Le boîtier a initialement fait remonter un impact grave sur la base de
@@ -999,6 +1029,32 @@ interface ImpactProfile {
     .phase-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .phase-feedback { margin: 12px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #dcfce7; color: #166534; }
     .phase-feedback.is-error { background: #fee2e2; color: #991b1b; }
+    /* Photos des dégâts (phase 2) */
+    .photo-block { margin: 4px 0 14px; }
+    .photo-block-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+    .photo-block-title {
+      font-size: 11px; font-weight: 600; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .phase-btn.photo-add { background: #e2e8f0; color: #0f172a; }
+    .phase-btn.photo-add:hover { background: #cbd5e1; }
+    .photo-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+    .photo-thumb {
+      position: relative; width: 96px; height: 96px;
+      border-radius: 8px; overflow: hidden;
+      border: 1px solid #e2e8f0; background: #f8fafc;
+    }
+    .photo-thumb a { display: block; width: 100%; height: 100%; }
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-del {
+      position: absolute; top: 4px; right: 4px;
+      width: 22px; height: 22px; border: none; border-radius: 50%;
+      background: rgba(15, 23, 42, 0.7); color: white;
+      font-size: 14px; line-height: 1; cursor: pointer;
+    }
+    .photo-del:hover { background: #dc2626; }
+    .photo-del:disabled { opacity: .5; cursor: default; }
+    .photo-help { margin: 0; font-size: 11px; color: #64748b; }
     /* Third parties */
     .tp-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
     .tp-item { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
@@ -1871,6 +1927,12 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   thirdPartyBusy = false;
   newThirdParty: AddThirdPartyRequest = this.emptyThirdParty();
 
+  /** Photos des dégâts (documents de type 'photo'), envoyées une par une dès la sélection. */
+  photos: AccidentReportDocumentDto[] = [];
+  photoBusy = false;
+  /** Coupe la boucle d'envoi des photos si l'utilisateur quitte la page en cours de route. */
+  private destroyed = false;
+
   private map?: L.Map;
   private impactMarker?: L.Marker;
   private trajectoryLayer?: L.Polyline;
@@ -1884,10 +1946,30 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     private authService: AuthService,
     private accidentPdf: AccidentPdfService,
     private userPrefs: UserPreferencesService,
+    private permissions: PermissionService,
   ) {}
 
   /** Active currency ISO code (e.g. "DZD"), used for amount-field labels. */
   get currencyCode(): string { return this.userPrefs.current.currency; }
+
+  /**
+   * Vrai quand l'abonnement de la SOCIÉTÉ comprend le suivi GPS (moduleMonitoring).
+   * Faux pour l'offre GPA (sans boîtier) : la section « Lieu de l'incident » et
+   * la localisation du PDF n'ont alors aucune donnée (recette du 11/09/2026).
+   * Ouvert par défaut quand les fonctionnalités sont inconnues. Ne jamais tester
+   * le code d'abonnement 'gpa' : c'est l'offre GPS « CALYPSO ».
+   */
+  get hasGpsSubscription(): boolean {
+    return this.permissions.getSubscriptionFeatures()?.moduleMonitoring !== false;
+  }
+
+  /**
+   * Numéro affiché d'une section du rapport : sans la section 02 (compte sans
+   * boîtier), les suivantes remontent d'un cran pour éviter un trou 01 → 03.
+   */
+  secNum(n: number): string {
+    return String(!this.hasGpsSubscription && n > 2 ? n - 1 : n).padStart(2, '0');
+  }
 
   get statusLabel(): string {
     switch (this.status) {
@@ -2059,6 +2141,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     }
 
     this.thirdParties = dto.thirdParties ?? [];
+    this.photos = (dto.documents ?? []).filter((d) => d.documentType === 'photo');
 
     // The backend narrative is authoritative ONLY when it actually contains a
     // story — i.e. an auto-detected accident (StoryJson populated). A manually
@@ -2108,6 +2191,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   }
 
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.subs.forEach((s) => s.unsubscribe());
     if (this.map) {
       this.map.remove();
@@ -2694,7 +2778,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     const sub = this.apiService.getAccidentReport(id).subscribe({
       next: (dto) => {
         try {
-          const blob = this.accidentPdf.generate(dto);
+          // Sans boîtier (offre GPA) : ni coordonnées ni IMEI dans le PDF.
+          const blob = this.accidentPdf.generate(dto, { withLocation: this.hasGpsSubscription });
           const up = this.apiService
             .uploadAccidentReportPdf(id, blob, `rapport-accident-${id}.pdf`)
             .subscribe({
@@ -2791,6 +2876,126 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       },
     });
     this.subs.push(sub);
+  }
+
+  // ── Photos des dégâts (phase 2) ──────────────────────────────────────────
+  // Recette du 11/09/2026 : l'API acceptait déjà des documents 'photo' mais
+  // l'écran n'offrait aucun moyen d'en joindre. Envoi immédiat, un fichier à
+  // la fois (moins de mémoire, une erreur n'annule pas les autres), après
+  // compression : le volume des fichiers partage le disque racine du nœud TN.
+
+  async onPhotoFiles(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement | null;
+    // Copier la liste AVANT de vider l'input (vider value vide aussi files).
+    const files = input?.files ? Array.from(input.files) : [];
+    if (input) input.value = '';   // permet de re-sélectionner le même fichier
+    if (!files.length || !this.accidentEventId || this.photoBusy) return;
+
+    const id = this.accidentEventId;
+    this.photoBusy = true;
+    this.phaseMessage = null;
+    this.cdr.detectChanges();
+
+    let failed = 0;
+    let lastError = '';
+    for (const file of files) {
+      if (this.destroyed) return;
+      if (!file.type.startsWith('image/')) {
+        failed++;
+        lastError = `« ${file.name} » n'est pas une image.`;
+        continue;
+      }
+      try {
+        const prepared = await this.prepareImage(file);
+        const res = await firstValueFrom(this.apiService.uploadAccidentDocument(id, prepared, 'photo'));
+        if (this.destroyed) return;
+        this.photos = [...this.photos, {
+          id: res.documentId,
+          documentType: 'photo',
+          fileName: prepared.name,
+          fileUrl: res.fileUrl,
+          fileSize: prepared.size,
+          mimeType: prepared.type || null,
+          uploadedAt: new Date().toISOString(),
+        }];
+      } catch (err: any) {
+        failed++;
+        lastError = err?.error?.message || "Échec de l'envoi de la photo.";
+      }
+      if (this.destroyed) return;
+      this.cdr.detectChanges();
+    }
+
+    this.photoBusy = false;
+    if (failed > 0) {
+      this.phaseMessage = {
+        type: 'error',
+        text: files.length > 1
+          ? `${failed} photo(s) sur ${files.length} non envoyée(s) — ${lastError}`
+          : lastError,
+      };
+    }
+    this.cdr.detectChanges();
+  }
+
+  removePhoto(p: AccidentReportDocumentDto): void {
+    if (!this.accidentEventId || this.photoBusy) return;
+    if (!confirm('Supprimer cette photo ?')) return;
+    this.photoBusy = true;
+    this.phaseMessage = null;
+    const id = this.accidentEventId;
+    const sub = this.apiService.deleteAccidentDocument(id, p.id).subscribe({
+      next: () => {
+        this.photos = this.photos.filter((x) => x.id !== p.id);
+        this.photoBusy = false;
+        this.cdr.detectChanges();
+      },
+      error: (err: any) => {
+        this.photoBusy = false;
+        this.phaseMessage = {
+          type: 'error',
+          text: err?.error?.message || 'Impossible de supprimer la photo. Veuillez réessayer.',
+        };
+        this.cdr.detectChanges();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  /** Prépare la photo avant upload (copie de expenses.component.ts prepareInvoiceImage) :
+   *  rotation EXIF appliquée, côté max 2000 px, ré-encodage JPEG qualité 0,85.
+   *  Une photo de téléphone (4000×3000, ~6 Mo) devient ~500 Ko. Les petites images
+   *  passent telles quelles ; en cas d'échec de décodage on renvoie l'original. */
+  private async prepareImage(file: File): Promise<File> {
+    if (!file.type.startsWith('image/') || file.type === 'image/gif') return this.withImageExtension(file);
+    const MAX_SIDE = 2000;
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+      const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+      if (scale === 1 && file.size < 1_500_000) { bmp.close(); return this.withImageExtension(file); }
+      const w = Math.max(1, Math.round(bmp.width * scale));
+      const h = Math.max(1, Math.round(bmp.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { bmp.close(); return this.withImageExtension(file); }
+      ctx.drawImage(bmp, 0, 0, w, h);
+      bmp.close();
+      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.85));
+      if (!blob || blob.size >= file.size) return this.withImageExtension(file);   // pas de gain → original
+      return new File([blob], (file.name.replace(/\.[^.]+$/, '') || 'photo') + '.jpg', { type: 'image/jpeg' });
+    } catch {
+      return this.withImageExtension(file);
+    }
+  }
+
+  /** Certains sélecteurs Android livrent un nom sans extension : l'API trie par
+   *  extension, on la déduit donc du type MIME quand elle manque. */
+  private withImageExtension(file: File): File {
+    if (/\.(jpe?g|png|gif|webp)$/i.test(file.name)) return file;
+    const ext = ({ 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif' } as Record<string, string>)[file.type];
+    if (!ext) return file;
+    return new File([file], (file.name.replace(/\.[^.]+$/, '') || 'photo') + ext, { type: file.type });
   }
 
   // Calypso 7 — phase save methods. Each posts only its own phase
