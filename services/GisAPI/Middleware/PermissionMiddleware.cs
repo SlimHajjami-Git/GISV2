@@ -1,6 +1,6 @@
 using System.Security.Claims;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
-using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Middleware;
@@ -43,10 +43,17 @@ public class PermissionMiddleware
         // Rapport IA Flotte : vit dans l'écran Rapports, n'avait aucune case par utilisateur.
         { "/api/ai-chat/fleet-report", "CanReportAiFleet" },
         { "/api/geofences", "CanGeofences" },
+        // Les clés doivent reprendre le [Route] EXACT du contrôleur (le chemin n'est que mis en
+        // minuscules). « /api/vehiclemaintenance » (sans tiret) ne correspondait à aucune route :
+        // tout VehicleMaintenanceController, dont mark-done qui crée une dépense et relève le
+        // kilométrage, échappait à ce contrôle et à celui d'abonnement. MaintenanceSchedulerController
+        // est routé sous /api/maintenance, déjà couvert.
         { "/api/maintenance", "CanMaintenance" },
-        { "/api/maintenancetemplates", "CanMaintenance" },
-        { "/api/maintenancescheduler", "CanMaintenance" },
-        { "/api/vehiclemaintenance", "CanMaintenance" },
+        { "/api/maintenance-templates", "CanMaintenance" },
+        { "/api/vehicle-maintenance", "CanMaintenance" },
+        // Journaux d'entretien de toute la flotte : seule source du rapport « Maintenance »
+        // (reports.component), que le front ouvre sur canReportMaintenance et non canMaintenance.
+        { "/api/vehicle-maintenance/logs", "CanReportMaintenance" },
         { "/api/costs", "CanCosts" },
         // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, mêmes droits que /api/costs.
         { "/api/acquisition-payments", "CanCosts" },
@@ -110,10 +117,11 @@ public class PermissionMiddleware
         { "/api/reports", sub => sub.ModuleReports },
         // Rapport IA Flotte : même drapeau d'abonnement que l'écran (advancedReports).
         { "/api/ai-chat/fleet-report", sub => sub.ModuleReports && sub.AdvancedReports },
+        // Mêmes clés que _modulePermissions ci-dessus (tirets compris), pour la même raison.
         { "/api/maintenance", sub => sub.ModuleMaintenance },
-        { "/api/maintenancetemplates", sub => sub.ModuleMaintenance },
-        { "/api/maintenancescheduler", sub => sub.ModuleMaintenance },
-        { "/api/vehiclemaintenance", sub => sub.ModuleMaintenance },
+        { "/api/maintenance-templates", sub => sub.ModuleMaintenance },
+        { "/api/vehicle-maintenance", sub => sub.ModuleMaintenance },
+        { "/api/vehicle-maintenance/logs", sub => sub.ModuleReports && sub.ReportMaintenance },
         { "/api/costs", sub => sub.ModuleCosts },
         // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, même module que /api/costs.
         { "/api/acquisition-payments", sub => sub.ModuleCosts },
@@ -245,7 +253,9 @@ public class PermissionMiddleware
         _next = next;
     }
 
-    public async Task InvokeAsync(HttpContext context, GisDbContext dbContext)
+    // IGisDbContext plutôt que GisDbContext : la DI rend la même instance scopée
+    // (DependencyInjection.cs), et le middleware devient testable sur TestGisDbContext.
+    public async Task InvokeAsync(HttpContext context, IGisDbContext dbContext)
     {
         // Skip for non-authenticated requests
         if (!context.User.Identity?.IsAuthenticated ?? true)
