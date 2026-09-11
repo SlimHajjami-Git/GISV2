@@ -128,6 +128,12 @@
 .filter-bar {
   display: flex;
   align-items: center;
+  /* Retour à la ligne : neuf éléments sur une ligne, dont trois boutons d'action.
+     Sans lui, la barre débordait dès ~1 100 px de large (portable 1 366 px avec le
+     zoom Windows à 125 %) : « Nouvelle dépense » sortait de l'écran, la recherche
+     tombait à 44 px, et le bouton de scan était le suivant sur la liste. */
+  flex-wrap: wrap;
+  row-gap: 8px;
   gap: 12px;
   padding: 10px 14px;
   background: white;
@@ -135,6 +141,7 @@
 }
 
 .search-wrapper {
+  min-width: 160px;
   position: relative;
   flex: 1;
   max-width: 280px;
