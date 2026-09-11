@@ -174,6 +174,33 @@ public class InvoiceExtractionParseTests
     }
 
     [Fact]
+    public void Des_lignes_hors_taxe_qui_retombent_sur_le_HT_ne_sont_pas_une_incoherence()
+    {
+        // Facture du test de production du 11/09/2026 : colonne « Total HT » par ligne,
+        // TVA 19 % et timbre fiscal en pied. 95 + 18,5 + 32 + 120 + 70 = 335,5 = HT.
+        var items = new List<InvoiceLineItem>
+        {
+            new("Vidange moteur huile 5W30 (5 L)", 95m, "maintenance"),
+            new("Filtre a huile", 18.5m, "maintenance"),
+            new("Filtre a air", 32m, "maintenance"),
+            new("Plaquettes de frein AV", 120m, "repair"),
+            new("Main d'oeuvre", 70m, "maintenance"),
+        };
+        var x = new InvoiceExtraction("GARAGE EL AMEN", "F-2026-0917", "2026-09-03", 335.5m, 63.745m, 400.245m, "TND", "maintenance", "171 TU 629", null, "high", items);
+
+        InvoiceExtractionService.CoherenceIssues(x).Should().BeEmpty("des lignes HT qui font le HT sont exactes, aucune seconde analyse à payer");
+    }
+
+    [Fact]
+    public void Des_lignes_qui_ne_font_ni_le_HT_ni_le_TTC_restent_signalees()
+    {
+        var items = new List<InvoiceLineItem> { new("Vidange", 95m, "maintenance"), new("Filtre", 18.5m, "maintenance") };
+        var x = new InvoiceExtraction(null, null, null, 335.5m, 63.745m, 400.245m, "TND", "maintenance", null, null, "high", items);
+
+        InvoiceExtractionService.CoherenceIssues(x).Should().ContainSingle(i => i.Contains("somme des lignes"));
+    }
+
+    [Fact]
     public void No_ttc_means_nothing_to_check()
     {
         var x = new InvoiceExtraction(null, null, null, 100m, 19m, null, "TND", "repair", null, null, "low");
