@@ -39,6 +39,11 @@ public class GetRealFuelConsumptionQueryHandler
         var companyId = _tenant.CompanyId ?? throw new InvalidOperationException("Company ID not set");
         var start = request.StartDate ?? DateTime.UtcNow.AddMonths(-12);
         var end = request.EndDate ?? DateTime.UtcNow;
+        // Une date sans heure (« 2026-08-31 », ce que l'ecran envoie) arrive a minuit et
+        // excluait tout le dernier jour de la periode : sur la societe de recette, aout
+        // rendait 1 175 km ici contre 1 725 km dans « Couts mensuel par vehicule », pour
+        // les memes releves. On etend au jour entier, comme le fait tout rapport mensuel.
+        if (end.TimeOfDay == TimeSpan.Zero) end = end.Date.AddDays(1).AddTicks(-1);
 
         // Portee vehicules : ce rapport agrege litres, couts et L/100km par vehicule puis
         // pour le parc. Le filtre est applique AVANT l'agregation, sinon les totaux
@@ -67,6 +72,13 @@ public class GetRealFuelConsumptionQueryHandler
             .Where(v => v.CompanyId == companyId && vehicleIds.Contains(v.Id))
             .Select(v => new { v.Id, v.Name, v.Plate, v.FuelType })
             .ToDictionaryAsync(v => v.Id, ct);
+
+        // Relevés compteur de TOUTES les saisies (pleins, entretiens, réparations,
+        // dépenses), comme les rapports de coûts depuis le 10/09/2026 : un véhicule
+        // ne doit pas rendre deux kilométrages différents selon l'écran ouvert.
+        // Même borne haute inclusive que les pleins ci-dessus.
+        var odometerReadings = await OdometerReadings.LoadAsync(
+            _context, companyId, vehicleIds, start, end.AddTicks(1), ct);
 
         var vehicleDtos = new List<VehicleFuelConsumptionDto>();
         var monthLiters = new Dictionary<(int, int), decimal>();
@@ -115,11 +127,10 @@ public class GetRealFuelConsumptionQueryHandler
             // rupture de série (changement de compteur, deux imports incompatibles) :
             // on ne l'additionne pas, sans rien rejeter d'autre.
             //
-            // Le calcul vit dans OdometerDistance (partagé avec les rapports de
-            // coûts : même kilométrage sur les deux écrans). `list` est déjà trié
-            // par date ; le helper refiltre > 0 et retrie (tri stable) — séquence
-            // identique à l'ancienne boucle locale.
-            var odoResult = OdometerDistance.Compute(list.Select(e => (e.OdometerKm ?? 0L, e.InvoiceDate)));
+            // Le calcul vit dans OdometerDistance et les relevés dans OdometerReadings
+            // (partagés avec les rapports de coûts : même kilométrage sur tous les
+            // écrans). Les pleins sans compteur restent comptés dans `noOdo`.
+            var odoResult = OdometerDistance.Compute(odometerReadings[grp.Key]);
             var segKm = odoResult.DistanceKm;
             var ignored = odoResult.IgnoredReadings;
             foreach (var (k, km) in odoResult.MonthlyKm)

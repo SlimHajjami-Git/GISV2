@@ -355,6 +355,17 @@ export interface SubscriptionOrderAdmin {
   processedAt?: string;
 }
 
+export interface CompanyResetResult {
+  companyId: number;
+  companyName: string;
+  deleted: { table: string; rows: number }[];
+  totalRows: number;
+  filesDeleted: number;
+  kept: string[];
+  durationMs: number;
+  dryRun: boolean;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -531,6 +542,11 @@ export class AdminService {
 
   suspendClient(id: number): Observable<void> {
     return this.http.post<void>(`${this.apiUrl}/admin/company/${id}/suspend`, {}, { headers: this.getHeaders() });
+  }
+
+  /** Remise à zéro d'une société : tout son contenu sauf la société, ses utilisateurs, rôles et boîtiers. dryRun = aperçu chiffré. */
+  resetCompanyData(id: number, confirmName: string, dryRun = false): Observable<CompanyResetResult> {
+    return this.http.post<CompanyResetResult>(`${this.apiUrl}/admin/company/${id}/reset-data`, { confirmName, dryRun }, { headers: this.getHeaders() });
   }
 
   /** Sociétés à surveiller (expirent ≤30 j, en grâce = impayées, bloquées, suspendues). */

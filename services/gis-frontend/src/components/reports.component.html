@@ -2096,7 +2096,8 @@
                           }
                         } @else if (selectedTemplate?.type === 'trips') {
                           @if (!selectedVehicleId) {
-                            <td class="vehicle-cell">{{ row.vehicleName }}</td>
+                            <!-- En-tête « Immatriculation » : la plaque d'abord, le nom interne à défaut. -->
+                            <td class="vehicle-cell">{{ row.vehiclePlate || row.vehicleName }}</td>
                           }
                           @if (row.isTrip) {
                             <td class="type-badge-cell"><span class="badge badge-trip">🚗 T{{ row.tripNumber }}</span></td>

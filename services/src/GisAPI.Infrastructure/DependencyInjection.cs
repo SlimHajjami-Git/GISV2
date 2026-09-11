@@ -41,6 +41,7 @@ public static class DependencyInjection
         });
 
         services.AddScoped<IGisDbContext>(provider => provider.GetRequiredService<GisDbContext>());
+        services.AddScoped<GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData.ICompanyDataStore, Persistence.CompanyDataStore>();
 
         // Services
         services.AddScoped<IPasswordHasher, PasswordHasher>();

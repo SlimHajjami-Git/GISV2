@@ -20,6 +20,7 @@ using GisAPI.Application.Features.Admin.Companies.Commands.CreateCompany;
 using GisAPI.Application.Features.Admin.Companies.Commands.UpdateCompany;
 using GisAPI.Application.Features.Admin.Companies.Commands.ChangeCompanyStatus;
 using GisAPI.Application.Features.Admin.Companies.Commands.DeleteCompany;
+using GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
 using GisAPI.Application.Features.Admin.Subscriptions;
 using GisAPI.Application.Features.Admin.Subscriptions.Queries.GetSubscriptions;
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.CreateSubscription;
@@ -43,10 +44,12 @@ public class AdminController : ControllerBase
     private readonly IPermissionService _permissionService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly Application.Common.Interfaces.IGpsHubService _gpsHub;
+    private readonly IWebHostEnvironment _env;
     private static MaintenanceModeDto _maintenanceMode = new() { Enabled = false, Pages = new List<string>(), Message = "" };
 
-    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService, IHttpClientFactory httpClientFactory, Application.Common.Interfaces.IGpsHubService gpsHub)
+    public AdminController(GisDbContext context, IConfiguration configuration, IMediator mediator, IPermissionService permissionService, IHttpClientFactory httpClientFactory, Application.Common.Interfaces.IGpsHubService gpsHub, IWebHostEnvironment env)
     {
+        _env = env;
         _context = context;
         _configuration = configuration;
         _mediator = mediator;
@@ -191,6 +194,23 @@ public class AdminController : ControllerBase
         var found = await _mediator.Send(new DeleteCompanyCommand(id));
         return found ? Ok(new { message = "Société supprimée" }) : NotFound();
     }
+
+    /// <summary>
+    /// Remise à zéro d'une société : supprime tout son contenu (véhicules, dépenses, carburant,
+    /// entretien, réparations, accidents, conducteurs, fournisseurs, géofences, trajets,
+    /// notifications, journal d'audit, fichiers) en gardant la société, son abonnement, ses
+    /// utilisateurs et rôles, ses boîtiers et leur télémétrie. Le nom exact de la société doit
+    /// être ressaisi, sauf en aperçu (DryRun = true : exécute puis annule, renvoie les comptes).
+    /// Découverte des tables par le catalogue : voir CompanyDataResetPlanner.
+    /// </summary>
+    [HttpPost("company/{id}/reset-data")]
+    public async Task<ActionResult<ResetCompanyDataResult>> ResetCompanyData(int id, [FromBody] ResetCompanyDataRequest request)
+    {
+        var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+        var result = await _mediator.Send(new ResetCompanyDataCommand(id, request.ConfirmName ?? string.Empty, uploadsRoot, request.DryRun));
+        return Ok(result);
+    }
+
 
     /// <summary>
     /// Modifie directement la DATE D'ÉCHÉANCE de l'abonnement d'une société
@@ -1551,4 +1571,10 @@ public class SendTestNotificationRequest
     public string Message { get; set; } = string.Empty;
     public string Type { get; set; } = "info";
     public string Priority { get; set; } = "normal";
+}
+
+public class ResetCompanyDataRequest
+{
+    public string ConfirmName { get; set; } = string.Empty;
+    public bool DryRun { get; set; }
 }

@@ -165,6 +165,23 @@ Toutes les cases doivent être cochées, sinon STOP.
 
    Noter le TAG affiché : c'est la clé du rollback.
 
+   **Puis nettoyer le disque de build — obligatoire à chaque déploiement TN.**
+   Le 09/09/2026, le disque de TN (97 Go) est passé sous le seuil d'éviction du
+   kubelet : 39 Go de cache de build et de vieilles images Docker (155 tags jamais
+   supprimés) + 26 Go de base. K3s a expulsé TOUS les pods (postgres, API, ingest,
+   registre) pendant 13 minutes de production. Docker n'est ici qu'un outil de
+   build : les images que k3s exécute viennent du registre (`/opt/registry`,
+   dédupliqué, 3 Go), pas du store Docker. Garder le tag déployé et le précédent
+   (rollback), supprimer le reste, vider le cache :
+
+   ```bash
+   ssh belive-tn 'docker builder prune -af >/dev/null; KEEP=$(kubectl get deploy -n gisv2 -o jsonpath="{range .items[*]}{.spec.template.spec.containers[*].image}{\"\n\"}{end}" | sed "s#.*/##" | paste -sd"|"); docker images --format "{{.CreatedAt}}	{{.Repository}}:{{.Tag}}" | grep gisv2 | sort | grep -v -E "$KEEP" | head -n -2 | cut -f2 | xargs -r docker rmi -f >/dev/null; docker image prune -f >/dev/null; docker system df; df -h / | tail -1'
+   ```
+
+   Contrôle : `df -h /` doit rester **sous 80 %** (le kubelet déclenche
+   `DiskPressure` à 85 % d'occupation du système de fichiers des images et
+   expulse tout à ~90 %). Au-dessus, STOP : ne pas builder, prévenir Slim.
+
 7. **Vérification live** :
 
    ```bash

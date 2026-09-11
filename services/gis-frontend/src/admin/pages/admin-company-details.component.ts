@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
+import { CompanyResetResult } from '../services/admin.service';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
@@ -84,6 +85,13 @@ type CompanyRole = Role & { userCount?: number };
             <button *ngIf="company.status === 'suspended'" class="btn-reactivate" (click)="toggleSuspension(true)" [disabled]="togglingStatus">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 11V7a4 4 0 0 1 8 0"/><rect x="4" y="11" width="16" height="9" rx="2"/></svg>
               {{ togglingStatus ? '…' : 'Réactiver l\\'abonnement' }}
+            </button>
+            <!-- Remise à zéro : vide TOUT le contenu de la société (véhicules, dépenses, entretien,
+                 accidents, notifications, journal…) mais garde la société, son abonnement, ses
+                 utilisateurs, ses rôles et ses boîtiers. Aperçu chiffré, puis nom à ressaisir. -->
+            <button class="btn-reset-data" (click)="openResetModal()" [disabled]="resetLoading">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              Réinitialiser les données
             </button>
           </div>
         </div>
@@ -743,6 +751,74 @@ type CompanyRole = Role & { userCount?: number };
         </div>
       </div>
 
+      <!-- Reset Modal -->
+      <div class="popup-overlay" *ngIf="showResetModal" (click)="closeResetModal()">
+        <div class="popup-container reset-popup" (click)="$event.stopPropagation()">
+          <div class="popup-header">
+            <div class="header-title">
+              <div class="header-icon danger">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              </div>
+              <h2>Réinitialiser {{ company?.name }}</h2>
+            </div>
+            <button class="close-btn" (click)="closeResetModal()" title="Fermer">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <div class="popup-body reset-body">
+            <ng-container *ngIf="!resetDone">
+              <p class="reset-scope">
+                <strong>Supprimé :</strong> véhicules et tout ce qui s'y rattache (dépenses, échéances d'acquisition,
+                carburant, entretien, réparations, documents, accidents, trajets), conducteurs, fournisseurs,
+                géofences, notifications, journal d'audit, fichiers joints.<br>
+                <strong>Conservé :</strong> la société et son abonnement, ses utilisateurs et leurs rôles,
+                ses boîtiers GPS et leurs positions brutes.
+              </p>
+
+              <div class="reset-preview" *ngIf="resetLoading && !resetPreview"><span class="spinner-inline"></span> Calcul de l'aperçu (simples comptages, rien n'est modifié)…</div>
+              <div class="reset-error" *ngIf="resetError">{{ resetError }}</div>
+
+              <ng-container *ngIf="resetPreview">
+                <div class="reset-total">
+                  <span class="reset-total-value">{{ resetPreview.totalRows }}</span>
+                  <span class="reset-total-label">lignes dans {{ resetPreview.deleted.length }} tables<span *ngIf="resetPreview.filesDeleted"> · {{ resetPreview.filesDeleted }} fichier(s) joint(s)</span></span>
+                  </div>
+                  <p class="reset-kept" *ngIf="resetPreview.kept?.length">Tables conservées : {{ resetPreview.kept.join(', ') }}</p>
+                <p class="reset-empty" *ngIf="resetPreview.totalRows === 0">Cette société ne contient aucune donnée à supprimer.</p>
+                <table class="reset-table" *ngIf="resetPreview.totalRows > 0">
+                  <tbody>
+                    <tr *ngFor="let d of resetPreview.deleted"><td>{{ d.table }}</td><td class="num">{{ d.rows }}</td></tr>
+                  </tbody>
+                </table>
+
+                <label class="reset-confirm" *ngIf="resetPreview.totalRows > 0">
+                  Pour confirmer, tapez le nom exact de la société : <code>{{ company?.name }}</code>
+                  <input type="text" [(ngModel)]="resetConfirmName" [placeholder]="company?.name || ''" autocomplete="off">
+                </label>
+              </ng-container>
+            </ng-container>
+
+            <div class="reset-result" *ngIf="resetDone && resetPreview">
+              <p class="reset-success">Terminé : {{ resetPreview.totalRows }} lignes supprimées dans {{ resetPreview.deleted.length }} tables<span *ngIf="resetPreview.filesDeleted">, {{ resetPreview.filesDeleted }} fichier(s) supprimé(s)</span> ({{ resetPreview.durationMs }} ms).</p>
+              <table class="reset-table">
+                <tbody>
+                  <tr *ngFor="let d of resetPreview.deleted"><td>{{ d.table }}</td><td class="num">{{ d.rows }}</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="popup-footer">
+            <button type="button" class="btn-secondary" (click)="closeResetModal()">{{ resetDone ? 'Fermer' : 'Annuler' }}</button>
+            <button type="button" class="btn-danger" *ngIf="!resetDone" (click)="confirmReset()"
+                    [disabled]="resetLoading || !resetPreview || resetPreview.totalRows === 0 || resetConfirmName.trim() !== (company?.name || '').trim()">
+              {{ resetDeleting ? 'Suppression…' : 'Supprimer définitivement' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- Loading State -->
       <div class="loading-state" *ngIf="loading">
         <div class="spinner"></div>
@@ -1114,6 +1190,39 @@ type CompanyRole = Role & { userCount?: number };
     .btn-reactivate { background: #ecfdf5; border: 1px solid #6ee7b7; color: #047857; }
     .btn-reactivate:hover:not(:disabled) { background: #d1fae5; }
     .btn-suspend:disabled, .btn-reactivate:disabled { opacity: .6; cursor: default; }
+    .btn-reset-data {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s;
+      background: #fff1f2; border: 1px solid #fda4af; color: #be123c;
+    }
+    .btn-reset-data:hover:not(:disabled) { background: #ffe4e6; }
+    .btn-reset-data:disabled { opacity: .6; cursor: default; }
+    .reset-popup { max-width: 560px; }
+    .header-icon.danger { background: #fff1f2; color: #be123c; }
+    .reset-body { display: flex; flex-direction: column; gap: 14px; }
+    .reset-scope { margin: 0; font-size: 13px; line-height: 1.5; color: #475569; }
+    .reset-preview { font-size: 13px; color: #64748b; display: flex; align-items: center; gap: 8px; }
+    .spinner-inline { width: 14px; height: 14px; border: 2px solid #e2e8f0; border-top-color: #be123c; border-radius: 50%; animation: reset-spin .8s linear infinite; flex: none; }
+    @keyframes reset-spin { to { transform: rotate(360deg); } }
+    .reset-kept { margin: 0; font-size: 12px; color: #64748b; }
+    .reset-error { font-size: 13px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 10px 12px; }
+    .reset-total { display: flex; align-items: baseline; gap: 10px; }
+    .reset-total-value { font-size: 28px; font-weight: 700; color: #be123c; font-variant-numeric: tabular-nums; }
+    .reset-total-label { font-size: 13px; color: #64748b; }
+    .reset-empty { margin: 0; font-size: 13px; color: #047857; }
+    .reset-table { width: 100%; border-collapse: collapse; font-size: 13px; max-height: 240px; display: block; overflow-y: auto; }
+    .reset-table td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; }
+    .reset-table td.num { text-align: right; font-variant-numeric: tabular-nums; width: 80px; }
+    .reset-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #334155; }
+    .reset-confirm code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
+    .reset-confirm input { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
+    .reset-success { margin: 0; font-size: 14px; color: #047857; font-weight: 600; }
+    .btn-danger {
+      display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; border: none;
+      background: #be123c; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    .btn-danger:hover:not(:disabled) { background: #9f1239; }
+    .btn-danger:disabled { opacity: .5; cursor: default; }
 
     /* Vehicles Table */
     .vehicles-table {
@@ -2635,6 +2744,53 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   }
 
   /** Suspension/réactivation de l'abonnement depuis la fiche (confirmation avant coupure). */
+  // ── Remise à zéro des données de la société ──────────────────────────────
+  showResetModal = false;
+  resetLoading = false;
+  resetDeleting = false;
+  resetDone = false;
+  resetError = '';
+  resetConfirmName = '';
+  resetPreview: CompanyResetResult | null = null;
+
+  openResetModal() {
+    this.showResetModal = true;
+    this.resetDone = false;
+    this.resetError = '';
+    this.resetConfirmName = '';
+    this.resetPreview = null;
+    this.resetLoading = true;
+    // Aperçu : de simples comptages côté serveur, aucune transaction ni verrou.
+    this.adminService.resetCompanyData(this.companyId, '', true).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => { this.resetPreview = r; this.resetLoading = false; this.cdr.detectChanges(); },
+      error: (e) => { this.resetLoading = false; this.resetError = e?.error?.message || "L'aperçu a échoué."; this.cdr.detectChanges(); },
+    });
+  }
+
+  closeResetModal() {
+    if (this.resetDeleting) return;   // pendant la suppression réelle seulement
+    this.showResetModal = false;
+    if (this.resetDone) this.loadCompanyDetails();
+  }
+
+  confirmReset() {
+    if (!this.resetPreview || this.resetLoading) return;
+    if (this.resetConfirmName.trim() !== (this.company?.name || '').trim()) return;
+    this.resetLoading = true;
+    this.resetDeleting = true;
+    this.resetError = '';
+    this.adminService.resetCompanyData(this.companyId, this.resetConfirmName.trim(), false).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => { this.resetPreview = r; this.resetDone = true; this.resetLoading = false; this.resetDeleting = false; this.cdr.detectChanges(); },
+      error: (e) => {
+        this.resetLoading = false; this.resetDeleting = false;
+        // Le serveur annule tout sur erreur ; mais une coupure réseau après validation reste possible :
+        // on invite à rouvrir l'aperçu plutôt que d'affirmer que rien n'a bougé.
+        this.resetError = (e?.error?.message || 'La remise à zéro a échoué.') + ' Rouvrez l\'aperçu pour vérifier l\'état actuel.';
+        this.cdr.detectChanges();
+      },
+    });
+  }
+
   togglingStatus = false;
   toggleSuspension(reactivate: boolean) {
     const name = this.company?.name || 'cette société';

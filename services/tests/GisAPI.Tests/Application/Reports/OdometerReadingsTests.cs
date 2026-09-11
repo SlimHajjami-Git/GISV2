@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GisAPI.Application.Common;
+using GisAPI.Application.Features.FuelExpenses.Queries;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Reports.Queries.GetOperatingCostReport;
 using GisAPI.Domain.Entities;
@@ -136,6 +137,29 @@ public class OdometerReadingsTests
     }
 
     [Fact]
+    public async Task Un_entretien_dont_la_colonne_societe_vaut_zero_compte_quand_meme()
+    {
+        using var ctx = TestDbContextFactory.Create();
+
+        // Production TN, 10/09/2026 : maintenance_logs.company_id vaut 0 sur les 47
+        // lignes. Le rattachement se fait par le véhicule, jamais par cette colonne.
+        ctx.Vehicles.AddRange(
+            new Vehicle { Id = 1, Name = "Suivi", CompanyId = CompanyId },
+            new Vehicle { Id = 2, Name = "Autre société", CompanyId = 2 });
+        ctx.FuelEntries.Add(new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(5, 5), Volume = 40, TotalAmount = 60, OdometerKm = 10_000 });
+        ctx.MaintenanceLogs.AddRange(
+            new MaintenanceLog { Id = 1, VehicleId = 1, CompanyId = 0, TemplateId = 1, DoneDate = Utc(6, 3), DoneKm = 10_900, ActualCost = 200 },
+            new MaintenanceLog { Id = 2, VehicleId = 2, CompanyId = 0, TemplateId = 1, DoneDate = Utc(6, 4), DoneKm = 50_000, ActualCost = 200 });
+        await ctx.SaveChangesAsync();
+
+        var releves = await OdometerReadings.LoadAsync(ctx, CompanyId, new[] { 1 }, Debut, FinExclue, CancellationToken.None);
+
+        releves[1].Should().HaveCount(2, "l'entretien à company_id = 0 est rattaché par son véhicule");
+        releves[2].Should().BeEmpty("le véhicule d'une autre société n'a pas été demandé");
+        OdometerDistance.Compute(releves[1]).DistanceKm.Should().Be(900m);
+    }
+
+    [Fact]
     public async Task La_borne_de_fin_est_exclue_et_ne_perd_pas_le_dernier_jour()
     {
         using var ctx = TestDbContextFactory.Create();
@@ -212,5 +236,49 @@ public class OdometerReadingsTests
         var utilitaire = rapport.Vehicles.Single(v => v.VehicleId == 1);
         utilitaire.DistanceSource.Should().Be(OperatingCostAggregator.SourceOdometer);
         utilitaire.DistanceKm.Should().Be(1_600m, "le relevé de l'entretien compte autant que celui du plein");
+    }
+
+    [Fact]
+    public async Task Carburant_reel_et_cout_d_exploitation_donnent_le_meme_kilometrage()
+    {
+        using var ctx = TestDbContextFactory.Create();
+
+        // Un plein et un entretien : « Carburant réel » ne lisait que les pleins et
+        // affichait « — » (un seul relevé) là où « Coût d'exploitation » affichait
+        // 1 600 km. Le client comparait les deux écrans et en déduisait qu'un des deux mentait.
+        ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Utilitaire GPA", CompanyId = CompanyId });
+        ctx.FuelEntries.Add(new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(5, 3), Volume = 50, TotalAmount = 75, OdometerKm = 30_000 });
+        ctx.MaintenanceLogs.Add(new MaintenanceLog { Id = 1, VehicleId = 1, CompanyId = 0, TemplateId = 1, DoneDate = Utc(6, 3), DoneKm = 31_600, ActualCost = 250 });
+        await ctx.SaveChangesAsync();
+
+        var tenant = TestDbContextFactory.CreateMockTenantService().Object;
+        var couts = await new GetOperatingCostReportQueryHandler(ctx, tenant)
+            .Handle(new GetOperatingCostReportQuery(new DateTime(2026, 5, 1), new DateTime(2026, 6, 30)), CancellationToken.None);
+        var carburant = await new GetRealFuelConsumptionQueryHandler(ctx, tenant)
+            .Handle(new GetRealFuelConsumptionQuery(new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 30, 23, 59, 59, DateTimeKind.Utc), null), CancellationToken.None);
+
+        couts.Vehicles.Single().DistanceKm.Should().Be(1_600m);
+        carburant.Vehicles.Single().DistanceKm.Should().Be(1_600m, "même source de relevés, même chiffre sur les deux écrans");
+        carburant.Vehicles.Single().ConsumptionPer100Km.Should().Be(Math.Round(50m / 1_600m * 100m, 2));
+    }
+
+    [Fact]
+    public async Task Carburant_reel_ne_perd_plus_les_saisies_du_dernier_jour_de_la_periode()
+    {
+        using var ctx = TestDbContextFactory.Create();
+
+        // L'ecran envoie « 2026-06-30 » sans heure : le dernier jour tombait entierement.
+        ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Utilitaire", CompanyId = CompanyId });
+        ctx.FuelEntries.AddRange(
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(5, 3), Volume = 50, TotalAmount = 75, OdometerKm = 30_000 },
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = new DateTime(2026, 6, 30, 14, 0, 0, DateTimeKind.Utc), Volume = 40, TotalAmount = 60, OdometerKm = 31_200 });
+        await ctx.SaveChangesAsync();
+
+        var rapport = await new GetRealFuelConsumptionQueryHandler(ctx, TestDbContextFactory.CreateMockTenantService().Object)
+            .Handle(new GetRealFuelConsumptionQuery(new DateTime(2026, 5, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 6, 30, 0, 0, 0, DateTimeKind.Utc), null), CancellationToken.None);
+
+        var vehicule = rapport.Vehicles.Single();
+        vehicule.EntryCount.Should().Be(2, "le plein du 30/06 a 14 h appartient a la periode");
+        vehicule.DistanceKm.Should().Be(1_200m);
     }
 }
