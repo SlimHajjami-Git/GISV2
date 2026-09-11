@@ -154,7 +154,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 <div class="setting-item">
                   <div class="setting-info">
                     <span class="setting-label">Activer les heures silencieuses</span>
-                    <span class="setting-desc">Pas de notification push ni d'alerte à l'écran pendant cette période — elles restent dans la cloche.</span>
+                    <span class="setting-desc">Pas de notification push ni d'alerte à l'écran pendant cette période — elles restent dans la cloche. Accidents, remorquages et pannes de démarrage sont toujours signalés.</span>
                   </div>
                   <label class="toggle">
                     <input type="checkbox" [(ngModel)]="settings.notifications.quietHours">

@@ -64,8 +64,9 @@ public class NotificationService : INotificationService
         // l'utilisateur, une notification non « critical » est quand même enregistrée et
         // arrive dans la cloche (ligne + SignalR + compteur non lu), mais SANS push FCM
         // ni toast à l'écran (Silent = true, ignoré par notification-toast.service).
-        // Les accidents restent « critical » et passent toujours.
-        var quiet = await IsInQuietHoursAsync(userId, priority, ct);
+        // Les accidents (« critical »), remorquages et pannes de démarrage passent toujours
+        // (QuietHoursPolicy.AlwaysDeliveredTypes).
+        var quiet = await IsInQuietHoursAsync(userId, type, priority, ct);
 
         // Push via SignalR to user's personal group
         var payload = new
@@ -169,14 +170,15 @@ public class NotificationService : INotificationService
 
     /// <summary>
     /// Le destinataire est-il dans ses heures silencieuses ? Jamais pour une notification
-    /// « critical ». Heures lues dans le fuseau de SA société (Societe.Settings.Timezone,
+    /// « critical » ni pour un remorquage / une panne de démarrage (QuietHoursPolicy).
+    /// Heures lues dans le fuseau de SA société (Societe.Settings.Timezone,
     /// repli Africa/Tunis), pas celui du navigateur. Une erreur de lecture ne doit jamais
     /// empêcher une notification de partir : on retombe alors sur l'envoi normal.
     /// IgnoreQueryFilters : appelé aussi depuis les services d'arrière-plan (sans tenant).
     /// </summary>
-    private async Task<bool> IsInQuietHoursAsync(int userId, string priority, CancellationToken ct)
+    private async Task<bool> IsInQuietHoursAsync(int userId, string type, string priority, CancellationToken ct)
     {
-        if (string.Equals(priority, "critical", StringComparison.OrdinalIgnoreCase)) return false;
+        if (QuietHoursPolicy.BypassesQuietHours(type, priority)) return false;
 
         try
         {

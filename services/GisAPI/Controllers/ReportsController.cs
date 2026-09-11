@@ -708,6 +708,22 @@ public class ReportsController : ControllerBase
         [FromQuery] int? year = null,
         [FromQuery] int? month = null,
         [FromQuery] int? departmentId = null)
+        => Ok(await LoadMonthlyCostReportAsync(year, month, departmentId));
+
+    /// <summary>
+    /// « Consommation carburant mensuel » : même requête, mais SA propre route pour que
+    /// PermissionMiddleware lui applique sa propre case (recette client du 11/09/2026), et
+    /// une réponse limitée au carburant — sinon la case « Coûts mensuel par véhicule »
+    /// décochée laissait quand même passer entretien, réparations et total dans le JSON.
+    /// </summary>
+    [HttpGet("monthly-fuel")]
+    public async Task<ActionResult<MonthlyCostReportDto>> GetMonthlyFuelReport(
+        [FromQuery] int? year = null,
+        [FromQuery] int? month = null,
+        [FromQuery] int? departmentId = null)
+        => Ok((await LoadMonthlyCostReportAsync(year, month, departmentId)).ToFuelOnly());
+
+    private async Task<MonthlyCostReportDto> LoadMonthlyCostReportAsync(int? year, int? month, int? departmentId)
     {
         var reportYear = year ?? DateTime.UtcNow.Year;
         var reportMonth = month ?? DateTime.UtcNow.Month;
@@ -720,12 +736,7 @@ public class ReportsController : ControllerBase
             reportMonth = lastMonth.Month;
         }
 
-        var result = await _mediator.Send(new GetMonthlyCostReportQuery(
-            reportYear,
-            reportMonth,
-            departmentId));
-
-        return Ok(result);
+        return await _mediator.Send(new GetMonthlyCostReportQuery(reportYear, reportMonth, departmentId));
     }
 
     // ==================== RAPPORTS DE COÛTS (04/09/2026) ====================

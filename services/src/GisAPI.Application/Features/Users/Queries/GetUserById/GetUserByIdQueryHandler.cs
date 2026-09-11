@@ -68,7 +68,15 @@ public class GetUserByIdQueryHandler : IRequestHandler<GetUserByIdQuery, UserLis
                     u.CanReportMileagePeriod,
                     u.CanReportSpeedInfraction,
                     u.CanReportDrivingBehavior,
-                    u.CanReportMonthlyCosts
+                    u.CanReportMonthlyCosts,
+                    u.CanReportOperatingCost,
+                    u.CanReportCostEvolution,
+                    u.CanReportCostRanking,
+                    u.CanReportRepairFrequency,
+                    u.CanReportMonthlyFuel,
+                    u.CanReportAiFleet,
+                    u.CanReportFuelEstimation,
+                    u.CanReportFuelComparison
                 ),
                 u.AlertAssurance,
                 u.AlertTaxeCirculation,

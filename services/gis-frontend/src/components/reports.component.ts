@@ -3496,7 +3496,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeMonthlyCostReport() {
     const deptId = this.selectedDepartmentId ? parseInt(this.selectedDepartmentId) : undefined;
-    this.apiService.getMonthlyCostReport(this.selectedMonthlyYear, this.selectedMonthlyMonth, deptId)
+    this.apiService.getMonthlyCostReport(this.selectedMonthlyYear, this.selectedMonthlyMonth, deptId, this.monthlyCostReportType)
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (report) => {

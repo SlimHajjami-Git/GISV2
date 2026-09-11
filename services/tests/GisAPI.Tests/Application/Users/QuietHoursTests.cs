@@ -68,6 +68,19 @@ public class QuietHoursTests
 
     // ── Cas neutres ──
 
+    [Theory]
+    [InlineData("accident", "critical", true)]
+    [InlineData("tow_detected", "high", true)]
+    [InlineData("accident_tow_detected", "high", true)]
+    [InlineData("start_failure", "high", true)]
+    [InlineData("START_FAILURE", "normal", true)]     // insensible à la casse
+    [InlineData("document_expiry", "high", false)]    // la priorité seule ne suffit pas
+    [InlineData("maintenance_due", "high", false)]
+    [InlineData("geofence", "normal", false)]
+    [InlineData(null, null, false)]
+    public void BypassesQuietHours_OnlyCriticalOrAlwaysDeliveredTypes(string? type, string? priority, bool expected)
+        => QuietHoursPolicy.BypassesQuietHours(type, priority).Should().Be(expected);
+
     [Fact]
     public void Disabled_IsNeverQuiet()
     {

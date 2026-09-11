@@ -103,6 +103,14 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (request.CanReportSpeedInfraction.HasValue) user.CanReportSpeedInfraction = request.CanReportSpeedInfraction.Value;
         if (request.CanReportDrivingBehavior.HasValue) user.CanReportDrivingBehavior = request.CanReportDrivingBehavior.Value;
         if (request.CanReportMonthlyCosts.HasValue) user.CanReportMonthlyCosts = request.CanReportMonthlyCosts.Value;
+        if (request.CanReportOperatingCost.HasValue) user.CanReportOperatingCost = request.CanReportOperatingCost.Value;
+        if (request.CanReportCostEvolution.HasValue) user.CanReportCostEvolution = request.CanReportCostEvolution.Value;
+        if (request.CanReportCostRanking.HasValue) user.CanReportCostRanking = request.CanReportCostRanking.Value;
+        if (request.CanReportRepairFrequency.HasValue) user.CanReportRepairFrequency = request.CanReportRepairFrequency.Value;
+        if (request.CanReportMonthlyFuel.HasValue) user.CanReportMonthlyFuel = request.CanReportMonthlyFuel.Value;
+        if (request.CanReportAiFleet.HasValue) user.CanReportAiFleet = request.CanReportAiFleet.Value;
+        if (request.CanReportFuelEstimation.HasValue) user.CanReportFuelEstimation = request.CanReportFuelEstimation.Value;
+        if (request.CanReportFuelComparison.HasValue) user.CanReportFuelComparison = request.CanReportFuelComparison.Value;
         if (request.AlertAssurance.HasValue) user.AlertAssurance = request.AlertAssurance.Value;
         if (request.AlertTaxeCirculation.HasValue) user.AlertTaxeCirculation = request.AlertTaxeCirculation.Value;
         if (request.AlertVisiteTechnique.HasValue) user.AlertVisiteTechnique = request.AlertVisiteTechnique.Value;

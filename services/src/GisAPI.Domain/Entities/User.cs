@@ -92,6 +92,26 @@ public class User : TenantEntity
     public bool CanReportDrivingBehavior { get; set; } = true;
     [Column("can_report_monthly_costs")]
     public bool CanReportMonthlyCosts { get; set; } = true;
+    // Recette client du 11/09/2026 : une case par rapport (migration 046). Les quatre
+    // rapports de coûts du 04/09 et « Consommation carburant mensuel » héritaient de
+    // CanReportCosts / CanReportMonthlyCosts ; le Rapport IA Flotte n'avait aucun droit
+    // par utilisateur. Défaut true : rien n'est retiré à personne.
+    [Column("can_report_operating_cost")]
+    public bool CanReportOperatingCost { get; set; } = true;
+    [Column("can_report_cost_evolution")]
+    public bool CanReportCostEvolution { get; set; } = true;
+    [Column("can_report_cost_ranking")]
+    public bool CanReportCostRanking { get; set; } = true;
+    [Column("can_report_repair_frequency")]
+    public bool CanReportRepairFrequency { get; set; } = true;
+    [Column("can_report_monthly_fuel")]
+    public bool CanReportMonthlyFuel { get; set; } = true;
+    [Column("can_report_ai_fleet")]
+    public bool CanReportAiFleet { get; set; } = true;
+    [Column("can_report_fuel_estimation")]
+    public bool CanReportFuelEstimation { get; set; } = true;
+    [Column("can_report_fuel_comparison")]
+    public bool CanReportFuelComparison { get; set; } = true;
 
     // Alert email preferences
     [Column("alert_assurance")]

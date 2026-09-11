@@ -25,18 +25,23 @@ public class PermissionMiddleware
         { "/api/reports/mileage-period", "CanReportMileagePeriod" },
         { "/api/reports/mileage", "CanReportMileage" },
         { "/api/reports/costs", "CanReportCosts" },
-        // Rapports de coûts (04/09/2026) — déjà couverts par le préfixe ci-dessus, déclarés pour la lisibilité.
-        { "/api/reports/costs/operating", "CanReportCosts" },
-        { "/api/reports/costs/evolution", "CanReportCosts" },
-        { "/api/reports/costs/ranking", "CanReportCosts" },
-        { "/api/reports/costs/repair-frequency", "CanReportCosts" },
+        // Rapports de coûts (04/09/2026) : une case par rapport depuis la recette du
+        // 11/09/2026 (migration 046) — ils n'héritent plus de « Réparations véhicules ».
+        { "/api/reports/costs/operating", "CanReportOperatingCost" },
+        { "/api/reports/costs/evolution", "CanReportCostEvolution" },
+        { "/api/reports/costs/ranking", "CanReportCostRanking" },
+        { "/api/reports/costs/repair-frequency", "CanReportRepairFrequency" },
         { "/api/reports/maintenance", "CanReportMaintenance" },
         { "/api/reports/daily", "CanReportDaily" },
         { "/api/reports/monthly", "CanReportMonthly" },
         { "/api/reports/driving-behavior", "CanReportDrivingBehavior" },
         { "/api/reports/monthly-costs", "CanReportMonthlyCosts" },
+        // Même action que monthly-costs, route dédiée pour porter sa propre case (11/09/2026).
+        { "/api/reports/monthly-fuel", "CanReportMonthlyFuel" },
         // Generic reports fallback (list, create, schedules)
         { "/api/reports", "CanReports" },
+        // Rapport IA Flotte : vit dans l'écran Rapports, n'avait aucune case par utilisateur.
+        { "/api/ai-chat/fleet-report", "CanReportAiFleet" },
         { "/api/geofences", "CanGeofences" },
         { "/api/maintenance", "CanMaintenance" },
         { "/api/maintenancetemplates", "CanMaintenance" },
@@ -46,6 +51,11 @@ public class PermissionMiddleware
         // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, mêmes droits que /api/costs.
         { "/api/acquisition-payments", "CanCosts" },
         { "/api/fuelentries", "CanFuel" },
+        // « Estimation coûts carburant » et « Carburant réel vs GPS » : rapports de l'écran
+        // Rapports (seuls appelants de ces trois routes), une case chacun depuis le 11/09/2026.
+        { "/api/fuelexpenses/statistics", "CanReportFuelEstimation" },
+        { "/api/fuelexpenses/comparison", "CanReportFuelComparison" },
+        { "/api/fuelexpenses/vehicle-audit", "CanReportFuelComparison" },
         { "/api/fuelexpenses", "CanFuel" },
         { "/api/fuelrecords", "CanFuel" },
         { "/api/documents", "CanDocuments" },
@@ -95,8 +105,11 @@ public class PermissionMiddleware
         { "/api/reports/speed-infraction", sub => sub.ModuleReports && sub.ReportSpeedInfraction },
         { "/api/reports/driving-behavior", sub => sub.ModuleReports && sub.ReportDrivingBehavior },
         { "/api/reports/monthly-costs", sub => sub.ModuleReports && sub.ReportMonthlyCosts },
+        { "/api/reports/monthly-fuel", sub => sub.ModuleReports && sub.ReportMonthlyCosts },
         // Generic /api/reports fallback (list reports, create, schedules, etc.)
         { "/api/reports", sub => sub.ModuleReports },
+        // Rapport IA Flotte : même drapeau d'abonnement que l'écran (advancedReports).
+        { "/api/ai-chat/fleet-report", sub => sub.ModuleReports && sub.AdvancedReports },
         { "/api/maintenance", sub => sub.ModuleMaintenance },
         { "/api/maintenancetemplates", sub => sub.ModuleMaintenance },
         { "/api/maintenancescheduler", sub => sub.ModuleMaintenance },
@@ -150,6 +163,60 @@ public class PermissionMiddleware
         "/api/poi",
         "/api/routing",
         "/api/statistics",
+    };
+
+    /// <summary>Permission utilisateur exigée par un chemin (préfixe le plus long) ; null si aucune.</summary>
+    internal static string? RequiredUserPermission(string path) =>
+        _modulePermissions
+            .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(kv => kv.Key.Length)
+            .Select(kv => kv.Value)
+            .FirstOrDefault();
+
+    /// <summary>
+    /// L'utilisateur détient-il la permission nommée ? Un rapport exige le module Rapports
+    /// ET sa propre case. Nom inconnu → accordé (la table ci-dessus fait foi).
+    /// </summary>
+    internal static bool IsGranted(GisAPI.Domain.Entities.User currentUser, string permission) => permission switch
+    {
+        "CanMonitoring" => currentUser.CanMonitoring,
+        "CanVehicles" => currentUser.CanVehicles,
+        "CanUsers" => currentUser.CanUsers,
+        "CanDrivers" => currentUser.CanDrivers,
+        "CanReports" => currentUser.CanReports,
+        "CanGeofences" => currentUser.CanGeofences,
+        "CanMaintenance" => currentUser.CanMaintenance,
+        "CanCosts" => currentUser.CanCosts,
+        "CanFuel" => currentUser.CanFuel,
+        "CanDocuments" => currentUser.CanDocuments,
+        "CanAccidents" => currentUser.CanAccidents,
+        "CanSuppliers" => currentUser.CanSuppliers,
+        "CanFleetManagement" => currentUser.CanFleetManagement,
+        "CanTours" => currentUser.CanTours,
+        // Per-report permissions (require CanReports + specific report permission)
+        "CanReportTrips" => currentUser.CanReports && currentUser.CanReportTrips,
+        "CanReportFuel" => currentUser.CanReports && currentUser.CanReportFuel,
+        "CanReportSpeed" => currentUser.CanReports && currentUser.CanReportSpeed,
+        "CanReportStops" => currentUser.CanReports && currentUser.CanReportStops,
+        "CanReportMileage" => currentUser.CanReports && currentUser.CanReportMileage,
+        "CanReportCosts" => currentUser.CanReports && currentUser.CanReportCosts,
+        "CanReportMaintenance" => currentUser.CanReports && currentUser.CanReportMaintenance,
+        "CanReportDaily" => currentUser.CanReports && currentUser.CanReportDaily,
+        "CanReportMonthly" => currentUser.CanReports && currentUser.CanReportMonthly,
+        "CanReportMileagePeriod" => currentUser.CanReports && currentUser.CanReportMileagePeriod,
+        "CanReportSpeedInfraction" => currentUser.CanReports && currentUser.CanReportSpeedInfraction,
+        "CanReportDrivingBehavior" => currentUser.CanReports && currentUser.CanReportDrivingBehavior,
+        "CanReportMonthlyCosts" => currentUser.CanReports && currentUser.CanReportMonthlyCosts,
+        // Une case par rapport (recette du 11/09/2026, migration 046)
+        "CanReportOperatingCost" => currentUser.CanReports && currentUser.CanReportOperatingCost,
+        "CanReportCostEvolution" => currentUser.CanReports && currentUser.CanReportCostEvolution,
+        "CanReportCostRanking" => currentUser.CanReports && currentUser.CanReportCostRanking,
+        "CanReportRepairFrequency" => currentUser.CanReports && currentUser.CanReportRepairFrequency,
+        "CanReportMonthlyFuel" => currentUser.CanReports && currentUser.CanReportMonthlyFuel,
+        "CanReportAiFleet" => currentUser.CanReports && currentUser.CanReportAiFleet,
+        "CanReportFuelEstimation" => currentUser.CanReports && currentUser.CanReportFuelEstimation,
+        "CanReportFuelComparison" => currentUser.CanReports && currentUser.CanReportFuelComparison,
+        _ => true
     };
 
     /// <summary>
@@ -294,7 +361,8 @@ public class PermissionMiddleware
                 if (!moduleEnabled)
                 {
                     // Distinguish between a blocked report type vs a blocked module
-                    var isReportTypeBlock = matchedSub.Key.StartsWith("/api/reports/", StringComparison.OrdinalIgnoreCase);
+                    var isReportTypeBlock = matchedSub.Key.StartsWith("/api/reports/", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(matchedSub.Key, "/api/ai-chat/fleet-report", StringComparison.OrdinalIgnoreCase);
                     context.Response.StatusCode = 403;
                     await context.Response.WriteAsJsonAsync(new
                     {
@@ -317,45 +385,10 @@ public class PermissionMiddleware
         var isAdmin = currentUser.Role?.IsCompanyAdmin == true || currentUser.AccessLevel == "admin";
         if (!isAdmin)
         {
-            var matchedPermission = _modulePermissions
-                .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(kv => kv.Key.Length)
-                .FirstOrDefault();
-
-            if (matchedPermission.Key != null)
+            var requiredPermission = RequiredUserPermission(path);
+            if (requiredPermission != null)
             {
-                var allowed = matchedPermission.Value switch
-                {
-                    "CanMonitoring" => currentUser.CanMonitoring,
-                    "CanVehicles" => currentUser.CanVehicles,
-                    "CanUsers" => currentUser.CanUsers,
-                    "CanDrivers" => currentUser.CanDrivers,
-                    "CanReports" => currentUser.CanReports,
-                    "CanGeofences" => currentUser.CanGeofences,
-                    "CanMaintenance" => currentUser.CanMaintenance,
-                    "CanCosts" => currentUser.CanCosts,
-                    "CanFuel" => currentUser.CanFuel,
-                    "CanDocuments" => currentUser.CanDocuments,
-                    "CanAccidents" => currentUser.CanAccidents,
-                    "CanSuppliers" => currentUser.CanSuppliers,
-                    "CanFleetManagement" => currentUser.CanFleetManagement,
-                    "CanTours" => currentUser.CanTours,
-                    // Per-report permissions (require CanReports + specific report permission)
-                    "CanReportTrips" => currentUser.CanReports && currentUser.CanReportTrips,
-                    "CanReportFuel" => currentUser.CanReports && currentUser.CanReportFuel,
-                    "CanReportSpeed" => currentUser.CanReports && currentUser.CanReportSpeed,
-                    "CanReportStops" => currentUser.CanReports && currentUser.CanReportStops,
-                    "CanReportMileage" => currentUser.CanReports && currentUser.CanReportMileage,
-                    "CanReportCosts" => currentUser.CanReports && currentUser.CanReportCosts,
-                    "CanReportMaintenance" => currentUser.CanReports && currentUser.CanReportMaintenance,
-                    "CanReportDaily" => currentUser.CanReports && currentUser.CanReportDaily,
-                    "CanReportMonthly" => currentUser.CanReports && currentUser.CanReportMonthly,
-                    "CanReportMileagePeriod" => currentUser.CanReports && currentUser.CanReportMileagePeriod,
-                    "CanReportSpeedInfraction" => currentUser.CanReports && currentUser.CanReportSpeedInfraction,
-                    "CanReportDrivingBehavior" => currentUser.CanReports && currentUser.CanReportDrivingBehavior,
-                    "CanReportMonthlyCosts" => currentUser.CanReports && currentUser.CanReportMonthlyCosts,
-                    _ => true
-                };
+                var allowed = IsGranted(currentUser, requiredPermission);
 
                 if (!allowed)
                 {

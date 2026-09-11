@@ -18,6 +18,20 @@ namespace GisAPI.Application.Common;
 public static class QuietHoursPolicy
 {
     /// <summary>
+    /// Types livrés MÊME pendant la plage (réponse du client, recette du 11/09/2026) :
+    /// un véhicule remorqué ou qui refuse de démarrer n'attend pas le matin. Les accidents
+    /// passent déjà par leur priorité « critical ». Une échéance de document ou un entretien
+    /// dû, même en priorité « high », attendent : ce n'est pas la priorité qui décide.
+    /// </summary>
+    public static readonly IReadOnlySet<string> AlwaysDeliveredTypes =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tow_detected", "accident_tow_detected", "start_failure" };
+
+    /// <summary>La notification ignore-t-elle les heures silencieuses ?</summary>
+    public static bool BypassesQuietHours(string? type, string? priority) =>
+        string.Equals(priority, "critical", StringComparison.OrdinalIgnoreCase)
+        || (type != null && AlwaysDeliveredTypes.Contains(type));
+
+    /// <summary>
     /// L'utilisateur est-il dans sa plage silencieuse à cet instant ?
     /// Désactivé, plage incomplète ou début == fin → jamais silencieux.
     /// </summary>

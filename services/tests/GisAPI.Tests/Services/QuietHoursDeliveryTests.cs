@@ -118,6 +118,32 @@ public class QuietHoursDeliveryTests
         VerifyFcm(h.Fcm, Times.Once());
     }
 
+    // Réponse du client (11/09/2026) : remorquage et panne de démarrage passent la nuit.
+    [Theory]
+    [InlineData("tow_detected")]
+    [InlineData("accident_tow_detected")]
+    [InlineData("start_failure")]
+    public async Task Remorquage_et_panne_de_demarrage_passent_malgre_la_plage(string type)
+    {
+        var h = await BuildAsync(enabled: true, windowContainsNow: true);
+
+        await h.Service.CreateAndSendAsync(CompanyId, UserId, type, "Alerte", "Véhicule concerné", priority: "high");
+
+        SilentFlag(h.SignalR.Single()).Should().BeFalse();
+        VerifyFcm(h.Fcm, Times.Once());
+    }
+
+    [Fact]
+    public async Task Une_echeance_de_document_meme_en_priorite_haute_reste_silencieuse()
+    {
+        var h = await BuildAsync(enabled: true, windowContainsNow: true);
+
+        await h.Service.CreateAndSendAsync(CompanyId, UserId, "document_expiry", "Assurance", "Échéance demain", priority: "high");
+
+        SilentFlag(h.SignalR.Single()).Should().BeTrue("ce n'est pas la priorité qui décide, mais le type");
+        VerifyFcm(h.Fcm, Times.Never());
+    }
+
     // ── Routes « moi-même » ouvertes sans le droit Utilisateurs ─────────────────
 
     [Theory]

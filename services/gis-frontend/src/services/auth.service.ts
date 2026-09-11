@@ -22,6 +22,30 @@ export interface UserPermissions {
   canFleetManagement: boolean;
   canTours: boolean;
   canPlayback: boolean;
+  // Permissions par rapport (users.can_report_*), lues par PermissionService.hasReportAccess
+  // via userReportMapping. Optionnelles : un jeton émis avant la migration 046 ne porte pas
+  // les six dernières ; absente = accordée.
+  canReportTrips?: boolean;
+  canReportFuel?: boolean;
+  canReportSpeed?: boolean;
+  canReportStops?: boolean;
+  canReportMileage?: boolean;
+  canReportCosts?: boolean;
+  canReportMaintenance?: boolean;
+  canReportDaily?: boolean;
+  canReportMonthly?: boolean;
+  canReportMileagePeriod?: boolean;
+  canReportSpeedInfraction?: boolean;
+  canReportDrivingBehavior?: boolean;
+  canReportMonthlyCosts?: boolean;
+  canReportOperatingCost?: boolean;
+  canReportCostEvolution?: boolean;
+  canReportCostRanking?: boolean;
+  canReportRepairFrequency?: boolean;
+  canReportMonthlyFuel?: boolean;
+  canReportAiFleet?: boolean;
+  canReportFuelEstimation?: boolean;
+  canReportFuelComparison?: boolean;
 }
 
 export interface AuthUser {

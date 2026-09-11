@@ -1562,12 +1562,15 @@ export class ApiService {
 
   // ==================== MONTHLY COST REPORT ====================
 
-  getMonthlyCostReport(year?: number, month?: number, departmentId?: number): Observable<MonthlyCostReport> {
+  // `kind` choisit la route : mêmes données, mais « Consommation carburant mensuel »
+  // (monthly-fuel) porte sa propre permission par utilisateur (recette du 11/09/2026).
+  getMonthlyCostReport(year?: number, month?: number, departmentId?: number, kind: 'costs' | 'fuel' = 'costs'): Observable<MonthlyCostReport> {
     let params = new HttpParams();
     if (year) params = params.set('year', year.toString());
     if (month) params = params.set('month', month.toString());
     if (departmentId) params = params.set('departmentId', departmentId.toString());
-    return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/monthly-costs`, { headers: this.getHeaders(), params });
+    const route = kind === 'fuel' ? 'monthly-fuel' : 'monthly-costs';
+    return this.http.get<MonthlyCostReport>(`${this.API_URL}/reports/${route}`, { headers: this.getHeaders(), params });
   }
 
   // ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================

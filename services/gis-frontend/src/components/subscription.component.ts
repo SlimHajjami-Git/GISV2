@@ -79,15 +79,21 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
               </div>
               <div class="fact">
                 <span class="fact-label">{{ isTrial ? "Règlement à la souscription" : 'Prochain règlement' }}</span>
-                @if (nextPaymentAmount != null) {
-                  <span class="fact-value">{{ nextPaymentAmount | appCurrency }}</span>
-                  <span class="fact-note">{{ billingCycleLabel }}</span>
+                <!-- Le montant SUIT le cycle coché dans le panneau d'achat (recette client
+                     du 11/09/2026 : « 96 € choisi en bas, 144 € affiché en haut ») ; panneau
+                     fermé, c'est le prochain règlement connu du serveur. -->
+                @if (headerAmount != null) {
+                  <span class="fact-value">{{ headerAmount | appCurrency }}</span>
+                  <span class="fact-note">{{ headerCycleLabel }}</span>
+                  @if (headerFollowsChoice) {
+                    <span class="fact-note">{{ headerChoiceNote }}</span>
+                  }
                   <!-- Plan tarifé par véhicule : montrer le détail du calcul pour
                        que le montant ne tombe pas du ciel (3 € × N véhicules × 12). -->
-                  @if (pricePerVehicle && perVehicleUnitMonthly != null) {
+                  @if (headerPerVehicle && perVehicleUnitMonthly != null) {
                     <span class="fact-note">
                       {{ perVehicleUnitMonthly | appCurrency }} / véhicule / mois
-                      × {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}@if (cycleMonths > 1) { × {{ cycleMonths }} mois}
+                      × {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}@if (headerCycleMonths > 1) { × {{ headerCycleMonths }} mois}
                     </span>
                   }
                 } @else {
@@ -768,13 +774,62 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   }
 
   get billingCycleLabel(): string {
-    switch (this.billingCycle) {
+    return this.billingLabelOf(this.billingCycle);
+  }
+
+  /** « facturation semestrielle » pour un cycle donné. */
+  billingLabelOf(cycle: string | null): string {
+    switch ((cycle || '').toLowerCase()) {
       case 'monthly': return 'facturation mensuelle';
       case 'quarterly': return 'facturation trimestrielle';
       case 'semiannual': return 'facturation semestrielle';
       case 'yearly': return 'facturation annuelle';
       default: return '';
     }
+  }
+
+  // ── Montant en tête de page ──
+  // Il suit le cycle coché dans le panneau d'achat : le client qui cochait
+  // « Semestriel — 96 € » lisait toujours « 144 € » en haut et croyait à une
+  // erreur de prix (recette client du 11/09/2026). Panneau fermé : prochain
+  // règlement tel que le serveur le connaît. L'échéance, elle, ne bouge pas :
+  // rien n'est commandé tant que le client n'a pas confirmé.
+
+  /** Le panneau d'achat est ouvert sur un cycle chiffré. */
+  private get headerFollowsPurchase(): boolean {
+    return !!this.purchasePlan && this.selectedCyclePrice != null;
+  }
+
+  get headerAmount(): number | null {
+    return this.headerFollowsPurchase ? this.selectedCyclePrice : this.nextPaymentAmount;
+  }
+
+  get headerCycleLabel(): string {
+    return this.headerFollowsPurchase ? this.billingLabelOf(this.selectedCycle) : this.billingCycleLabel;
+  }
+
+  get headerCycleMonths(): number {
+    return this.headerFollowsPurchase ? this.monthsOf(this.selectedCycle) : this.cycleMonths;
+  }
+
+  /** Tarif par véhicule du plan affiché en tête (plan commandé, sinon plan en cours). */
+  get headerPerVehicle(): boolean {
+    return this.headerFollowsPurchase ? !!this.purchasePlan.pricePerVehicle : this.pricePerVehicle;
+  }
+
+  /** Ce que le montant en tête reflète : le cycle coché, ou l'offre ET le cycle si le plan commandé n'est pas le plan en cours. */
+  get headerChoiceNote(): string {
+    const autrePlan = !!this.purchasePlan && !!this.currentPlan && this.purchasePlan.id !== this.currentPlan.id;
+    return (autrePlan
+      ? `selon l'offre « ${this.purchasePlan?.name} » et le cycle choisis ci-dessous`
+      : 'selon le cycle choisi ci-dessous') + ' — appliqué après validation de votre règlement';
+  }
+
+  /** Le montant affiché diffère du prochain règlement connu : on le dit sous le montant. */
+  get headerFollowsChoice(): boolean {
+    return this.headerFollowsPurchase
+      && (this.selectedCyclePrice !== this.nextPaymentAmount
+        || this.selectedCycle !== (this.billingCycle || '').toLowerCase());
   }
 
   /** Véhicules facturés : le parc réel, au moins 1 (miroir du calcul serveur). */
@@ -807,8 +862,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
    * toujours au montant serveur, quel que soit le tarif du plan.
    */
   get perVehicleUnitMonthly(): number | null {
-    if (!this.pricePerVehicle || this.nextPaymentAmount == null) return null;
-    const unit = this.nextPaymentAmount / this.vehiclesBilled / this.cycleMonths;
+    if (!this.headerPerVehicle || this.headerAmount == null) return null;
+    const unit = this.headerAmount / this.vehiclesBilled / this.headerCycleMonths;
     return Math.round(unit * 100) / 100;
   }
 
