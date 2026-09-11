@@ -199,8 +199,16 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
         if (items is { Count: > 0 } && items.All(i => i.Amount.HasValue))
         {
             var sum = items.Sum(i => i.Amount!.Value);
-            if (Math.Abs(sum - ttc) > tol)
-                issues.Add($"la somme des lignes items ({sum}) ne correspond pas à amountTTC ({ttc})");
+            // Lignes HORS TAXE : la plupart des factures tunisiennes n'impriment qu'une
+            // colonne « Total HT » par ligne, et le modèle recopie ce qui est imprimé,
+            // comme on le lui demande. La somme retombe alors sur le HT, pas sur le TTC —
+            // ce n'est pas une erreur de lecture. Avant (11/09/2026), ce cas déclenchait
+            // une seconde analyse complète qui épuisait le plafond Groq (7 000 jetons
+            // d'entrée par minute) et faisait échouer le scan suivant du client.
+            var matchesHt = x.AmountHT is decimal htTotal && htTotal > 0
+                            && Math.Abs(sum - htTotal) <= Math.Max(1.5m, Math.Abs(htTotal) * 0.01m);
+            if (Math.Abs(sum - ttc) > tol && !matchesHt)
+                issues.Add($"la somme des lignes items ({sum}) ne correspond ni à amountTTC ({ttc}) ni à amountHT ({x.AmountHT?.ToString() ?? "absent"})");
         }
         return issues;
     }
