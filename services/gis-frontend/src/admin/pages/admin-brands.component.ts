@@ -2,9 +2,9 @@ import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject } from 'rxjs';
+import { Observable, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService } from '../services/admin.service';
 import { trigger, transition, style, animate } from '@angular/animations';
@@ -29,6 +29,21 @@ interface BrandDetail {
   isActive: boolean;
   models: VehicleModel[];
 }
+
+/** Réponse des mutations /api/admin/brands (AdminBrandsController). */
+interface CatalogResponse {
+  id?: number | null;
+  reactivated: boolean;
+  message: string;
+}
+
+/**
+ * Lectures sur /api/brands (référentiel ouvert à tous), mutations sur /api/admin/brands :
+ * l'intercepteur n'attache admin_token qu'aux URL /api/admin — une mutation sur
+ * /api/brands partait sans jeton en session admin (401), et ces routes laissaient
+ * n'importe quel client modifier le référentiel de toute la plateforme.
+ */
+const ADMIN_BRANDS_API = '/api/admin/brands';
 
 @Component({
   selector: 'admin-brands',
@@ -89,7 +104,7 @@ interface BrandDetail {
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
-              <button class="action-btn delete" (click)="deleteBrand(brand); $event.stopPropagation()" title="Supprimer">
+              <button class="action-btn delete" (click)="deleteBrand(brand); $event.stopPropagation()" [disabled]="saving" title="Désactiver">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3,6 5,6 21,6"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -132,16 +147,12 @@ interface BrandDetail {
               <div class="add-model-section">
                 <h3>Ajouter un modèle</h3>
                 <div class="add-model-form">
-                  <input type="text" [(ngModel)]="newModelName" placeholder="Nom du modèle" />
+                  <input type="text" [(ngModel)]="newModelName" (keyup.enter)="addModel()" placeholder="Nom du modèle" />
                   <select [(ngModel)]="newModelType">
                     <option value="">Type</option>
-                    <option value="citadine">Citadine</option>
-                    <option value="suv">SUV</option>
-                    <option value="utilitaire">Utilitaire</option>
-                    <option value="camion">Camion</option>
-                    <option value="other">Autre</option>
+                    <option *ngFor="let t of vehicleTypeOptions" [value]="t.value">{{ t.label }}</option>
                   </select>
-                  <button class="btn-add-model" (click)="addModel()" [disabled]="!newModelName">
+                  <button class="btn-add-model" (click)="addModel()" [disabled]="!newModelName.trim() || saving" title="Ajouter">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
@@ -156,7 +167,7 @@ interface BrandDetail {
                   <div class="model-item" *ngFor="let model of selectedBrand.models">
                     <div class="model-info">
                       <span class="model-name">{{ model.name }}</span>
-                      <span class="model-type" *ngIf="model.vehicleType">{{ model.vehicleType | titlecase }}</span>
+                      <span class="model-type" *ngIf="model.vehicleType">{{ vehicleTypeLabel(model.vehicleType) }}</span>
                     </div>
                     <div class="model-actions">
                       <button class="action-btn small edit" (click)="editModel(model)" title="Modifier">
@@ -165,7 +176,7 @@ interface BrandDetail {
                           <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                         </svg>
                       </button>
-                      <button class="action-btn small delete" (click)="deleteModel(model)" title="Supprimer">
+                      <button class="action-btn small delete" (click)="deleteModel(model)" [disabled]="saving" title="Désactiver">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <polyline points="3,6 5,6 21,6"/>
                           <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -217,8 +228,8 @@ interface BrandDetail {
 
             <div class="form-footer">
               <button class="btn-secondary" (click)="closeBrandForm()">Annuler</button>
-              <button class="btn-primary" (click)="saveBrand()" [disabled]="!brandForm.name">
-                {{ editingBrand ? 'Enregistrer' : 'Créer' }}
+              <button class="btn-primary" (click)="saveBrand()" [disabled]="!brandForm.name.trim() || saving">
+                {{ saving ? 'Envoi…' : (editingBrand ? 'Enregistrer' : 'Créer') }}
               </button>
             </div>
           </div>
@@ -244,17 +255,15 @@ interface BrandDetail {
                 <label>Type de véhicule</label>
                 <select [(ngModel)]="modelForm.vehicleType">
                   <option value="">Sélectionner</option>
-                  <option value="citadine">Citadine</option>
-                  <option value="suv">SUV</option>
-                  <option value="utilitaire">Utilitaire</option>
-                  <option value="camion">Camion</option>
-                  <option value="other">Autre</option>
+                  <option *ngFor="let t of vehicleTypeOptions" [value]="t.value">{{ t.label }}</option>
+                  <!-- Valeur héritée du jeu initial (van, sedan…) : affichée pour ne pas la perdre à l'enregistrement. -->
+                  <option *ngIf="isLegacyVehicleType(editingModel.vehicleType)" [value]="editingModel.vehicleType">{{ vehicleTypeLabel(editingModel.vehicleType) }}</option>
                 </select>
               </div>
             </div>
             <div class="modal-footer">
               <button class="btn-secondary" (click)="closeModelEdit()">Annuler</button>
-              <button class="btn-primary" (click)="saveModel()" [disabled]="!modelForm.name">Enregistrer</button>
+              <button class="btn-primary" (click)="saveModel()" [disabled]="!modelForm.name.trim() || saving">{{ saving ? 'Envoi…' : 'Enregistrer' }}</button>
             </div>
           </div>
         </div>
@@ -404,6 +413,11 @@ interface BrandDetail {
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
+    }
+
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
     }
 
     .action-btn.small {
@@ -835,6 +849,26 @@ export class AdminBrandsComponent implements OnInit, OnDestroy {
   modelForm = { name: '', vehicleType: '' };
   newModelName = '';
   newModelType = '';
+  /** Une mutation est en vol : boutons désactivés pour éviter le double envoi (doublons). */
+  saving = false;
+
+  /** Valeurs stockées en base (vehicle_models."VehicleType") et proposées au formulaire véhicule. */
+  readonly vehicleTypeOptions = [
+    { value: 'citadine', label: 'Citadine' },
+    { value: 'suv', label: 'SUV' },
+    { value: 'utilitaire', label: 'Utilitaire' },
+    { value: 'camion', label: 'Camion' },
+    { value: 'other', label: 'Autre' },
+  ];
+
+  /** Types anglais du jeu de données initial, encore portés par la majorité des modèles. */
+  private readonly legacyVehicleTypeLabels: Record<string, string> = {
+    van: 'Fourgon',
+    hatchback: 'Compacte',
+    sedan: 'Berline',
+    truck: 'Camion (truck)',
+    pickup: 'Pick-up',
+  };
 
   constructor(
     private router: Router,
@@ -883,8 +917,15 @@ export class AdminBrandsComponent implements OnInit, OnDestroy {
       next: (detail) => {
         this.selectedBrand = detail;
         this.cdr.detectChanges();
-      }
+      },
+      error: (err: HttpErrorResponse) => alert(this.errorMessage(err, 'Impossible de charger la marque.'))
     });
+  }
+
+  private refreshSelectedBrand() {
+    if (this.selectedBrand) {
+      this.selectBrand({ id: this.selectedBrand.id, name: this.selectedBrand.name, modelCount: 0 });
+    }
   }
 
   closeBrandDetail() {
@@ -911,52 +952,39 @@ export class AdminBrandsComponent implements OnInit, OnDestroy {
   }
 
   saveBrand() {
-    if (!this.brandForm.name) return;
+    if (!this.brandForm.name.trim() || this.saving) return;
 
-    if (this.editingBrand) {
-      this.http.put(`/api/brands/${this.editingBrand.id}`, {
-        name: this.brandForm.name,
-        logoUrl: this.brandForm.logoUrl || null,
-        isActive: true
-      }).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          this.closeBrandForm();
-          this.loadBrands();
-        }
-      });
-    } else {
-      this.http.post('/api/brands', {
-        name: this.brandForm.name,
-        logoUrl: this.brandForm.logoUrl || null
-      }).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          this.closeBrandForm();
-          this.loadBrands();
-        }
-      });
-    }
+    const body = { name: this.brandForm.name, logoUrl: this.brandForm.logoUrl || null };
+    const editing = this.editingBrand;
+    const request$ = editing
+      ? this.http.put<CatalogResponse>(`${ADMIN_BRANDS_API}/${editing.id}`, body)
+      : this.http.post<CatalogResponse>(ADMIN_BRANDS_API, body);
+
+    this.mutate(request$, editing ? 'Impossible d\'enregistrer la marque.' : 'Impossible de créer la marque.', () => {
+      this.closeBrandForm();
+      this.loadBrands();
+    });
   }
 
   deleteBrand(brand: Brand) {
-    if (confirm(`Supprimer la marque "${brand.name}" et tous ses modèles ?`)) {
-      this.http.delete(`/api/brands/${brand.id}`).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => this.loadBrands()
-      });
-    }
+    if (this.saving) return;
+    if (!confirm(`Désactiver la marque « ${brand.name} » ? Elle et ses modèles ne seront plus proposés dans les formulaires véhicule.`)) return;
+
+    this.mutate(this.http.delete<CatalogResponse>(`${ADMIN_BRANDS_API}/${brand.id}`), 'Impossible de désactiver la marque.', () => {
+      this.loadBrands();
+    });
   }
 
   addModel() {
-    if (!this.selectedBrand || !this.newModelName) return;
+    if (!this.selectedBrand || !this.newModelName.trim() || this.saving) return;
 
-    this.http.post(`/api/brands/${this.selectedBrand.id}/models`, {
-      name: this.newModelName,
-      vehicleType: this.newModelType || null
-    }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: () => {
-        this.newModelName = '';
-        this.newModelType = '';
-        this.selectBrand({ id: this.selectedBrand!.id, name: this.selectedBrand!.name, modelCount: 0 });
-      }
+    const body = { name: this.newModelName, vehicleType: this.newModelType || null };
+    this.mutate(this.http.post<CatalogResponse>(`${ADMIN_BRANDS_API}/${this.selectedBrand.id}/models`, body), 'Impossible d\'ajouter le modèle.', () => {
+      // Champs vidés uniquement en cas de succès : après un refus (doublon…), la saisie reste corrigeable.
+      this.newModelName = '';
+      this.newModelType = '';
+      this.refreshSelectedBrand();
+      this.loadBrands();
     });
   }
 
@@ -970,32 +998,70 @@ export class AdminBrandsComponent implements OnInit, OnDestroy {
   }
 
   saveModel() {
-    if (!this.editingModel || !this.modelForm.name) return;
+    if (!this.editingModel || !this.modelForm.name.trim() || this.saving) return;
 
-    this.http.put(`/api/brands/models/${this.editingModel.id}`, {
-      name: this.modelForm.name,
-      vehicleType: this.modelForm.vehicleType || null,
-      isActive: true
-    }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: () => {
-        this.closeModelEdit();
-        if (this.selectedBrand) {
-          this.selectBrand({ id: this.selectedBrand.id, name: this.selectedBrand.name, modelCount: 0 });
-        }
-      }
+    const body = { name: this.modelForm.name, vehicleType: this.modelForm.vehicleType || null };
+    this.mutate(this.http.put<CatalogResponse>(`${ADMIN_BRANDS_API}/models/${this.editingModel.id}`, body), 'Impossible d\'enregistrer le modèle.', () => {
+      this.closeModelEdit();
+      this.refreshSelectedBrand();
     });
   }
 
   deleteModel(model: VehicleModel) {
-    if (confirm(`Supprimer le modèle "${model.name}" ?`)) {
-      this.http.delete(`/api/brands/models/${model.id}`).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          if (this.selectedBrand) {
-            this.selectBrand({ id: this.selectedBrand.id, name: this.selectedBrand.name, modelCount: 0 });
-          }
-        }
-      });
-    }
+    if (this.saving) return;
+    if (!confirm(`Désactiver le modèle « ${model.name} » ? Il ne sera plus proposé dans les formulaires véhicule.`)) return;
+
+    this.mutate(this.http.delete<CatalogResponse>(`${ADMIN_BRANDS_API}/models/${model.id}`), 'Impossible de désactiver le modèle.', () => {
+      this.refreshSelectedBrand();
+      this.loadBrands();
+    });
+  }
+
+  vehicleTypeLabel(type?: string | null): string {
+    if (!type) return '';
+    return this.vehicleTypeOptions.find(t => t.value === type)?.label
+      ?? (this.isLegacyVehicleType(type) ? this.legacyVehicleTypeLabels[type] : type);
+  }
+
+  isLegacyVehicleType(type?: string | null): type is string {
+    return !!type && Object.prototype.hasOwnProperty.call(this.legacyVehicleTypeLabels, type);
+  }
+
+  /**
+   * Envoie une mutation du référentiel. Avant, aucune n'avait de gestion d'erreur ni de
+   * rendu forcé : un refus (401, doublon…) ne produisait RIEN à l'écran. Ici le bouton est
+   * désactivé pendant l'envoi, le message du serveur est affiché en cas d'échec, et
+   * detectChanges() suit chaque retour (Angular 21 sans zone : pas de rendu automatique
+   * après une réponse HTTP). onSuccess n'est appelé qu'en cas de succès.
+   */
+  private mutate(request$: Observable<CatalogResponse | null>, failureMessage: string, onSuccess: () => void) {
+    if (this.saving) return;
+    this.saving = true;
+    this.cdr.detectChanges();
+
+    request$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
+        this.saving = false;
+        onSuccess();
+        this.cdr.detectChanges();
+        // Homonyme désactivé réutilisé au lieu d'un doublon : l'administrateur doit le savoir.
+        if (res?.reactivated && res.message) alert(res.message);
+      },
+      error: (err: HttpErrorResponse) => {
+        this.saving = false;
+        this.cdr.detectChanges();
+        alert(this.errorMessage(err, failureMessage));
+      }
+    });
+  }
+
+  private errorMessage(err: HttpErrorResponse, fallback: string): string {
+    const message = err?.error?.message;
+    if (typeof message === 'string' && message.trim()) return message;
+    if (err?.status === 0) return `${fallback} Serveur injoignable.`;
+    if (err?.status === 401) return `${fallback} Session administrateur expirée : reconnectez-vous.`;
+    if (err?.status === 403) return `${fallback} Accès réservé aux administrateurs système.`;
+    return `${fallback} (erreur ${err?.status ?? 'inconnue'})`;
   }
 
   ngOnDestroy() {
