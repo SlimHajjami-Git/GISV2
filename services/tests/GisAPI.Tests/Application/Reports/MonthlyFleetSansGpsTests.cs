@@ -17,9 +17,9 @@ public class MonthlyFleetSansGpsTests
     private const int CompanyId = 1;
     private static DateTime Utc(int month, int day) => new(2026, month, day, 10, 0, 0, DateTimeKind.Utc);
 
-    private static Task<MonthlyFleetReportDto> RunAsync(TestGisDbContext ctx) =>
+    private static Task<MonthlyFleetReportDto> RunAsync(TestGisDbContext ctx, int month = 8) =>
         new GetMonthlyFleetReportQueryHandler(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object)
-            .Handle(new GetMonthlyFleetReportQuery(2026, 8), CancellationToken.None);
+            .Handle(new GetMonthlyFleetReportQuery(2026, month), CancellationToken.None);
 
     /// <summary>
     /// Août 2026, trois véhicules SANS boîtier :
@@ -118,6 +118,70 @@ public class MonthlyFleetSansGpsTests
         categories.Should().ContainSingle(c => c.Category == "Assurance").Which.Amount.Should().Be(650m);
         categories.Single(c => c.Category == "Remboursement assurance").Amount.Should().Be(-250m);
         rapport.Totals.TotalCost.Should().Be(rapport.CostAnalysis.TotalOperationalCost);
+    }
+
+    [Fact]
+    public async Task La_repartition_de_la_maintenance_retombe_sur_son_total_avec_une_depense_reparation()
+    {
+        using var ctx = await SeedGpaAsync();
+        ctx.VehicleCosts.AddRange(
+            new VehicleCost { VehicleId = 1, CompanyId = CompanyId, Type = "maintenance", Amount = 120, Date = Utc(8, 6) },
+            // Facture de sinistre saisie en « Réparation » : Réparations pour l'agrégateur.
+            new VehicleCost { VehicleId = 2, CompanyId = CompanyId, Type = "repair", Amount = 300, Date = Utc(8, 12), Description = "Sinistre pare-choc" });
+        await ctx.SaveChangesAsync();
+
+        var rapport = await RunAsync(ctx);
+        var m = rapport.Maintenance;
+
+        // Constat du 14/09/2026 (société 1, avril 2026) : 1 143 400 de dépense
+        // « repair » sur un total de 1 146 366 n'apparaissaient sur aucune ligne.
+        m.TotalMaintenanceCost.Should().Be(120m + 468m + 300m);
+        m.ByType.Sum(t => t.TotalCost).Should().Be(m.TotalMaintenanceCost, "la répartition retombe sur le total");
+        m.ByType.Sum(t => t.Percentage).Should().BeApproximately(100, 0.2);
+        m.ByType.Should().ContainSingle(t => t.Type == "Réparation (dépense)")
+            .Which.Should().Match<MaintenanceTypeBreakdownDto>(
+                t => t.Count == 1 && t.TotalCost == 300m);
+        m.TotalMaintenanceEvents.Should().Be(m.ByType.Sum(t => t.Count));
+
+        var logistique = m.ByVehicle.Single(v => v.VehicleId == 2);
+        logistique.TotalCost.Should().Be(768m);
+        logistique.MaintenanceCount.Should().Be(2, "la réparation à l'atelier et la facture de sinistre");
+        logistique.LastMaintenanceDate.Should().Be(Utc(8, 12));
+        m.ByVehicle.Sum(v => v.TotalCost).Should().Be(m.TotalMaintenanceCost);
+        rapport.CostAnalysis.MaintenanceCost.Should().Be(m.TotalMaintenanceCost, "même total que l'analyse des coûts");
+    }
+
+    [Fact]
+    public async Task La_variation_de_distance_compare_le_kilometrage_affiche_des_deux_mois()
+    {
+        using var ctx = await SeedGpaAsync();
+        // Juillet : Service 01 relevé 60 000 → 61 000 (1 000 km).
+        ctx.FuelEntries.AddRange(
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(7, 1), Volume = 40, TotalAmount = 70, OdometerKm = 60_000 },
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(7, 25), Volume = 40, TotalAmount = 70, OdometerKm = 61_000 });
+        // Un véhicule équipé : ses trajets terminés, 400 km en juillet et 500 en août.
+        ctx.GpsDevices.Add(new GpsDevice { Id = 7, DeviceUid = "DEV-7", CompanyId = CompanyId });
+        ctx.Vehicles.Add(new Vehicle { Id = 9, Name = "Camion", Plate = "GJ-473-KS", CompanyId = CompanyId, Status = "available", GpsDeviceId = 7 });
+        ctx.Trips.AddRange(
+            new Trip { CompanyId = CompanyId, VehicleId = 9, StartTime = Utc(7, 8), DistanceKm = 150, DurationMinutes = 120, Status = "completed" },
+            new Trip { CompanyId = CompanyId, VehicleId = 9, StartTime = Utc(7, 18), DistanceKm = 250, DurationMinutes = 180, Status = "completed" },
+            new Trip { CompanyId = CompanyId, VehicleId = 9, StartTime = Utc(7, 19), DistanceKm = 999, DurationMinutes = 60, Status = "in_progress" },
+            new Trip { CompanyId = CompanyId, VehicleId = 9, StartTime = Utc(8, 22), DistanceKm = 500, DurationMinutes = 300, Status = "completed" });
+        await ctx.SaveChangesAsync();
+
+        var aout = await RunAsync(ctx, 8);
+        var juillet = await RunAsync(ctx, 7);
+
+        // Constat du 14/09/2026 : le total venait des trajets et des relevés, mais
+        // « vs mois précédent » comparait deux distances de positions échantillonnées
+        // (0 → 0 ici, faute de trame).
+        aout.Totals.DistanceKm.Should().Be(2_200 + 500);
+        juillet.Totals.DistanceKm.Should().Be(1_000 + 400, "le trajet en cours n'est pas compté");
+        aout.MonthOverMonth.Distance.CurrentValue.Should().Be(aout.Totals.DistanceKm);
+        aout.MonthOverMonth.Distance.PreviousValue.Should().Be(juillet.Totals.DistanceKm);
+        aout.MonthOverMonth.Distance.ChangePercent.Should().Be(Math.Round((2_700 - 1_400) / 1_400.0 * 100, 1));
+        aout.ExecutiveSummary.TotalDistanceKm.Should().Be(aout.MonthOverMonth.Distance.CurrentValue);
+        aout.ExecutiveSummary.KeyInsights.Should().Contain(i => i.Contains("Distance parcourue en hausse"));
     }
 
     [Fact]

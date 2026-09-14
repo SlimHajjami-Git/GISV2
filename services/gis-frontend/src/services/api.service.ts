@@ -1191,7 +1191,7 @@ export class ApiService {
       return of({
         from, to,
         costs: { fuel: 0, maintenance: 0, repair: 0, other: 0, total: 0 },
-        acquisition: { total: 0, purchasedVehicles: 0, financedVehicles: 0 },
+        acquisition: { total: 0, purchasedVehicles: 0, financedVehicles: 0, periodCost: 0 },
         leasingRemaining: { amount: 0, contracts: 0, installments: 0 },
         interventions: { maintenance: 0, repairs: 0, total: 0 },
         upcomingMaintenance: { next30Days: 0, overdue: 0 },
@@ -2747,20 +2747,26 @@ export interface GpaDashboardIntervention {
   date: string; plate: string | null; vehicleName: string | null; kind: 'entretien' | 'reparation'; typeLabel: string | null;
   description: string | null; supplier: string | null; mileageKm: number | null; cost: number;
 }
+/**
+ * Un bloc à null = l'utilisateur n'a pas le droit de le voir (le serveur applique
+ * les cases Dépenses / Entretien / Documents / rapports de coûts, cf. GpaSectionAccess) :
+ * la tuile affiche « — », la carte est masquée.
+ */
 export interface GpaDashboard {
   from: string; to: string;
-  costs: GpaDashboardCosts;
-  /** Coût complet du parc (achats, apports, toutes les mensualités), indépendant de la période. */
-  acquisition: { total: number; purchasedVehicles: number; financedVehicles: number };
-  leasingRemaining: { amount: number; contracts: number; installments: number };
-  interventions: { maintenance: number; repairs: number; total: number };
-  upcomingMaintenance: { next30Days: number; overdue: number };
-  alerts: GpaDashboardAlert[];
+  costs: GpaDashboardCosts | null;
+  /** Coût complet du parc (achats, apports, toutes les mensualités), indépendant de la période ;
+   *  periodCost = la part de la période affichée. */
+  acquisition: { total: number; purchasedVehicles: number; financedVehicles: number; periodCost: number } | null;
+  leasingRemaining: { amount: number; contracts: number; installments: number } | null;
+  interventions: { maintenance: number; repairs: number; total: number } | null;
+  upcomingMaintenance: { next30Days: number; overdue: number } | null;
+  alerts: GpaDashboardAlert[] | null;
   /** Comptes pris avant la coupe de la liste (20 alertes au plus). */
-  alertCounts: { total: number; critical: number };
-  monthly: GpaDashboardMonth[];
-  top5: GpaDashboardTopVehicle[];
-  recentInterventions: GpaDashboardIntervention[];
+  alertCounts: { total: number; critical: number } | null;
+  monthly: GpaDashboardMonth[] | null;
+  top5: GpaDashboardTopVehicle[] | null;
+  recentInterventions: GpaDashboardIntervention[] | null;
 }
 
 // ==================== MONTHLY COST REPORT ====================
@@ -2907,7 +2913,7 @@ export interface MonthlyVehicleCostDto {
   distanceKm: number | null;
   /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si le mois est incomplet. */
   variationPct: number | null;
-  /** La période s’arrête avant la fin du mois (mois en cours, période personnalisée). */
+  /** La période ne couvre pas le mois en entier : elle commence après le 1er ou s’arrête avant la fin. */
   isPartial?: boolean;
 }
 

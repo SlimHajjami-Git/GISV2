@@ -64,6 +64,36 @@ public class CostEvolutionRecetteTests
         rapport.LowestMonth!.Month.Should().Be(9, "septembre complet redevient un candidat comme les autres");
     }
 
+    [Fact]
+    public async Task Un_premier_mois_tronque_par_une_periode_personnalisee_est_incomplet_et_ne_sert_pas_de_base()
+    {
+        using var ctx = await SeedAsync();
+        // Juin : 200 le 20 (dans la période) et 5 000 le 5 (avant son début).
+        ctx.FuelEntries.AddRange(
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(6, 5), Volume = 300, TotalAmount = 5_000 },
+            new FuelEntry { VehicleId = 1, CompanyId = CompanyId, InvoiceDate = Utc(6, 20), Volume = 12, TotalAmount = 200 });
+        await ctx.SaveChangesAsync();
+
+        // Constat du 14/09/2026 : du 15/06 au 31/08, juin ne couvre que 16 jours
+        // mais n'était pas signalé — « mois le moins élevé » et hausse de juillet
+        // calculée contre un demi-mois (+350 %).
+        var rapport = await new GetVehicleCostEvolutionQueryHandler(ctx, TestDbContextFactory.CreateMockTenantService().Object)
+            .Handle(new GetVehicleCostEvolutionQuery(1, new DateTime(2026, 6, 15), new DateTime(2026, 8, 31)), CancellationToken.None);
+
+        var juin = rapport.Months.Single(m => m.Month == 6);
+        juin.IsPartial.Should().BeTrue("la période commence le 15 juin");
+        juin.TotalCost.Should().Be(200m);
+        juin.VariationPct.Should().BeNull();
+
+        var juillet = rapport.Months.Single(m => m.Month == 7);
+        juillet.IsPartial.Should().BeFalse();
+        juillet.VariationPct.Should().BeNull("juillet ne se compare pas à un demi-mois de juin");
+
+        rapport.Months.Single(m => m.Month == 8).VariationPct.Should().Be(Math.Round((800m - 900m) / 900m * 100m, 1));
+        rapport.LowestMonth!.Month.Should().Be(8, "juin (200) est tronqué : août (800) est le moins élevé des mois complets");
+        rapport.HighestMonth!.Month.Should().Be(7);
+    }
+
     // ══════════════ La ventilation des dépenses ══════════════
 
     [Fact]

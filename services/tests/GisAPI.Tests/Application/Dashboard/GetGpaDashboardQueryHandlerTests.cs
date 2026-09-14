@@ -24,8 +24,11 @@ public class GetGpaDashboardQueryHandlerTests
 {
     private const int CompanyId = 1;
     private const int OtherCompanyId = 2;
+    private const int AdminUserId = 1;
     private const int RestrictedUserId = 42;
     private const int OrphanUserId = 43;
+    /// <summary>Comme l'utilisateur de recette 51 : non admin, affecté à V2, aucune case.</summary>
+    private const int NoRightsUserId = 44;
 
     // « Aujourd'hui » = 11/09/2026 ; période par défaut du 01/01 au 11/09/2026.
     private static readonly DateTime Now = new(2026, 9, 11, 10, 0, 0, DateTimeKind.Utc);
@@ -53,6 +56,37 @@ public class GetGpaDashboardQueryHandlerTests
         m.Setup(x => x.UserRoles).Returns(new[] { "user" });
         m.Setup(x => x.IsAuthenticated).Returns(true);
         return m.Object;
+    }
+
+    /// <summary>
+    /// Utilisateur en base, relu par le handler (jamais les claims) : un rôle
+    /// admin de société voit tout ; un non-admin suit ses cases.
+    /// </summary>
+    private static void SeedUser(TestGisDbContext ctx, int id, bool isCompanyAdmin, Action<User>? rights = null)
+    {
+        var role = new Role { Id = 1000 + id, Name = isCompanyAdmin ? "Administrateur" : "Opérateur",
+                              IsCompanyAdmin = isCompanyAdmin, SocieteId = CompanyId };
+        ctx.Roles.Add(role);
+        var user = new User { Id = id, FirstName = $"U{id}", LastName = "Test", Email = $"u{id}@test.com",
+                              PasswordHash = "x", RoleId = role.Id, CompanyId = CompanyId, Status = "active" };
+        rights?.Invoke(user);
+        ctx.Users.Add(user);
+    }
+
+    /// <summary>Droits d'un employé qui voit tous les blocs sans être admin (Dépenses, Entretien, Documents).</summary>
+    private static void AllRights(User u)
+    {
+        u.CanCosts = true;
+        u.CanMaintenance = true;
+        u.CanDocuments = true;
+    }
+
+    /// <summary>Aucune case : toutes les cases de rapport à false aussi (User les met à true par défaut).</summary>
+    private static void NoRights(User u)
+    {
+        u.CanCosts = false; u.CanMaintenance = false; u.CanDocuments = false; u.CanFuel = false;
+        u.CanReports = true;   // module Rapports ouvert, mais aucune case de rapport de coûts
+        u.CanReportOperatingCost = false; u.CanReportCostEvolution = false; u.CanReportCostRanking = false;
     }
 
     private static Task<GpaDashboardDto> RunAsync(TestGisDbContext ctx, ICurrentTenantService tenant,
@@ -172,6 +206,12 @@ public class GetGpaDashboardQueryHandlerTests
                                          Message = "Excès de vitesse", Timestamp = Utc(2026, 9, 10) });
 
         ctx.UserVehicles.Add(new UserVehicle { UserId = RestrictedUserId, VehicleId = 2 });
+        ctx.UserVehicles.Add(new UserVehicle { UserId = NoRightsUserId, VehicleId = 2 });
+
+        SeedUser(ctx, AdminUserId, isCompanyAdmin: true);
+        SeedUser(ctx, RestrictedUserId, isCompanyAdmin: false, AllRights);
+        SeedUser(ctx, OrphanUserId, isCompanyAdmin: false, AllRights);
+        SeedUser(ctx, NoRightsUserId, isCompanyAdmin: false, NoRights);
 
         // Échéancier PERSISTÉ de V3, avec des faits saisis par l'exploitant.
         foreach (var e in AcquisitionScheduleSync.ExpectedLines(Leasing3()))
@@ -213,14 +253,14 @@ public class GetGpaDashboardQueryHandlerTests
             var dashboard = await RunAsync(ctx, Admin(), from, to);
             var report = await OperatingReportAsync(ctx, Admin(), from, to);
 
-            dashboard.Costs.Total.Should().Be(expectedTotal);
-            dashboard.Costs.Total.Should().Be(report.TotalCost, "même définition que le rapport « Coût d'exploitation »");
-            dashboard.Costs.Fuel.Should().Be(report.TotalFuelCost);
-            dashboard.Costs.Maintenance.Should().Be(report.TotalMaintenanceCost);
-            dashboard.Costs.Repair.Should().Be(report.TotalRepairCost);
-            dashboard.Costs.Other.Should().Be(report.TotalOtherCost);
-            (dashboard.Costs.Fuel + dashboard.Costs.Maintenance + dashboard.Costs.Repair + dashboard.Costs.Other)
-                .Should().Be(dashboard.Costs.Total);
+            dashboard.Costs!.Total.Should().Be(expectedTotal);
+            dashboard.Costs!.Total.Should().Be(report.TotalCost, "même définition que le rapport « Coût d'exploitation »");
+            dashboard.Costs!.Fuel.Should().Be(report.TotalFuelCost);
+            dashboard.Costs!.Maintenance.Should().Be(report.TotalMaintenanceCost);
+            dashboard.Costs!.Repair.Should().Be(report.TotalRepairCost);
+            dashboard.Costs!.Other.Should().Be(report.TotalOtherCost);
+            (dashboard.Costs!.Fuel + dashboard.Costs!.Maintenance + dashboard.Costs!.Repair + dashboard.Costs!.Other)
+                .Should().Be(dashboard.Costs!.Total);
             dashboard.From.Should().Be(DateTime.SpecifyKind(from, DateTimeKind.Utc));
             dashboard.To.Should().Be(DateTime.SpecifyKind(to, DateTimeKind.Utc), "le jour de fin est inclus");
         }
@@ -246,14 +286,18 @@ public class GetGpaDashboardQueryHandlerTests
         // Les mensualités à venir comptent aussi : c'est le coût du contrat.
         // V4 (aucune ligne) : repli à la volée, 12 × 300 = 3 600, sans apport daté.
         // V1 et V2 n'ont ni prix ni contrat.
-        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(Total: 15_980m + 3_600m, PurchasedVehicles: 0, FinancedVehicles: 2));
+        // Part de la PÉRIODE (01/01 → 11/09) : V3 apport 5 000 + mensualités de
+        // janvier à septembre sauf mars ignorée, avril réglée 480 (7 × 500 + 480) ;
+        // V4 en repli : juin à septembre, 4 × 300.
+        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(Total: 15_980m + 3_600m, PurchasedVehicles: 0, FinancedVehicles: 2,
+            PeriodCost: 5_000m + 3_980m + 1_200m));
 
-        // Indépendant de la période choisie.
+        // Coût complet indépendant de la période choisie ; la part de la période la suit.
         var otherPeriod = await RunAsync(ctx, Admin(), new DateTime(2025, 1, 1), new DateTime(2025, 3, 31));
-        otherPeriod.Acquisition.Should().Be(dashboard.Acquisition);
+        otherPeriod.Acquisition.Should().Be(dashboard.Acquisition! with { PeriodCost = 0m });
 
         var report = await OperatingReportAsync(ctx, Admin(), From, To);
-        dashboard.Costs.Total.Should().Be(report.TotalCost).And.Be(1_958m,
+        dashboard.Costs!.Total.Should().Be(report.TotalCost).And.Be(1_958m,
             "les achats véhicule ne sont pas des dépenses d'exploitation : acquisition est à part");
 
         ctx.AcquisitionPayments.Count().Should().Be(linesBefore, "le tableau de bord ne génère jamais d'échéancier");
@@ -278,8 +322,34 @@ public class GetGpaDashboardQueryHandlerTests
         var dashboard = await RunAsync(ctx, Admin());
 
         dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(
-            Total: 16_500m + 26_700m + 15_980m + 3_600m, PurchasedVehicles: 2, FinancedVehicles: 2),
-            "un achat de 2019 compte : le coût du parc ne dépend pas de la période");
+            Total: 16_500m + 26_700m + 15_980m + 3_600m, PurchasedVehicles: 2, FinancedVehicles: 2,
+            PeriodCost: 10_180m),
+            "un achat de 2019 compte dans le coût du parc, pas dans la part de la période");
+    }
+
+    [Fact]
+    public async Task La_part_de_la_periode_des_achats_est_celle_du_tableau_de_bord_GPS()
+    {
+        using var ctx = await SeedAsync();
+        var vehicles = ctx.Vehicles.Where(v => v.CompanyId == CompanyId).ToList();
+
+        foreach (var (from, to) in new[]
+                 {
+                     (From, To),
+                     (new DateTime(2026, 4, 1), new DateTime(2026, 4, 30)),
+                     (new DateTime(2026, 9, 1), new DateTime(2026, 12, 31))   // échéances futures non atteintes
+                 })
+        {
+            var dashboard = await RunAsync(ctx, Admin(), from, to);
+            var gps = await GisAPI.Application.Features.AcquisitionPayments.AcquisitionCostCalculator.PeriodCostAsync(
+                ctx, CompanyId, null, vehicles, from, to, Now, CancellationToken.None);
+
+            dashboard.Acquisition!.PeriodCost.Should().Be(Math.Round(gps, 2),
+                "même définition que « Achats véhicule » du tableau de bord GPS (livraison du 11/09/2026)");
+        }
+
+        (await RunAsync(ctx, Admin(), new DateTime(2026, 4, 1), new DateTime(2026, 4, 30)))
+            .Acquisition!.PeriodCost.Should().Be(480m, "la mensualité d'avril réglée 480 ; V4 ne commence qu'en juin");
     }
 
     [Fact]
@@ -323,9 +393,9 @@ public class GetGpaDashboardQueryHandlerTests
         var dashboard = await RunAsync(ctx, Admin());
 
         dashboard.Monthly.Should().HaveCount(12);
-        dashboard.Monthly.Select(m => (m.Year, m.Month)).First().Should().Be((2025, 10));
-        dashboard.Monthly.Select(m => (m.Year, m.Month)).Last().Should().Be((2026, 9));
-        dashboard.Monthly.Select(m => m.Label).Should().Equal(
+        dashboard.Monthly!.Select(m => (m.Year, m.Month)).First().Should().Be((2025, 10));
+        dashboard.Monthly!.Select(m => (m.Year, m.Month)).Last().Should().Be((2026, 9));
+        dashboard.Monthly!.Select(m => m.Label).Should().Equal(
             "Oct. 2025", "Nov. 2025", "Déc. 2025", "Janv. 2026", "Févr. 2026", "Mars 2026",
             "Avr. 2026", "Mai 2026", "Juin 2026", "Juil. 2026", "Août 2026", "Sept. 2026");
 
@@ -334,12 +404,12 @@ public class GetGpaDashboardQueryHandlerTests
             null, null, CancellationToken.None);
         var expected = rolling.Vehicles.Sum(v => v.Total.Total);
 
-        dashboard.Monthly.Sum(m => m.Total).Should().Be(expected).And.Be(2_008m,
+        dashboard.Monthly!.Sum(m => m.Total).Should().Be(expected).And.Be(2_008m,
             "la période (1 958) + le plein de décembre 2025 (50) ; celui de septembre 2025 est hors fenêtre");
-        dashboard.Monthly.Single(m => m.Month == 12).Fuel.Should().Be(50m);
-        dashboard.Monthly.Single(m => m is { Year: 2026, Month: 2 }).Other.Should().Be(500m, "assurance 600 − remboursement 100");
+        dashboard.Monthly!.Single(m => m.Month == 12).Fuel.Should().Be(50m);
+        dashboard.Monthly!.Single(m => m is { Year: 2026, Month: 2 }).Other.Should().Be(500m, "assurance 600 − remboursement 100");
 
-        dashboard.Monthly.Where(m => m.IsPartial).Should().ContainSingle()
+        dashboard.Monthly!.Where(m => m.IsPartial).Should().ContainSingle()
             .Which.Should().Match<GpaMonthDto>(m => m.Year == 2026 && m.Month == 9);
 
         // Indépendant de la période choisie.
@@ -386,20 +456,21 @@ public class GetGpaDashboardQueryHandlerTests
                 RepairDate = Utc(2026, 6, id), TotalCost = cost, Status = "completed"
             });
         }
+        SeedUser(ctx, AdminUserId, isCompanyAdmin: true);
         await ctx.SaveChangesAsync();
 
         var dashboard = await RunAsync(ctx, Admin());
 
-        dashboard.Top5.Select(t => t.VehicleId).Should().Equal(new[] { 2, 6, 5, 4, 3 },
+        dashboard.Top5!.Select(t => t.VehicleId).Should().Equal(new[] { 2, 6, 5, 4, 3 },
             "total décroissant, puis plaque à égalité (BB-4 avant ZZ-3) ; 5 au plus");
 
         dashboard.Alerts.Should().HaveCount(GetGpaDashboardQueryHandler.MaxAlerts, "21 échéances, 20 au plus");
         dashboard.AlertCounts.Should().Be(new GpaAlertCountsDto(Total: 21, Critical: 14), "les comptes sont pris avant la coupe");
-        dashboard.Alerts.Take(14).Should().OnlyContain(a => a.Severity == "critical");
-        dashboard.Alerts.Skip(14).Should().OnlyContain(a => a.Severity == "warning");
-        dashboard.Alerts.Take(14).Select(a => a.Date).Should().BeInAscendingOrder();
-        dashboard.Alerts.Skip(14).Select(a => a.Date).Should().BeInAscendingOrder();
-        dashboard.Alerts.Last().Date.Should().Be(new DateTime(2026, 9, 26), "la 21e (27/09) est coupée");
+        dashboard.Alerts!.Take(14).Should().OnlyContain(a => a.Severity == "critical");
+        dashboard.Alerts!.Skip(14).Should().OnlyContain(a => a.Severity == "warning");
+        dashboard.Alerts!.Take(14).Select(a => a.Date).Should().BeInAscendingOrder();
+        dashboard.Alerts!.Skip(14).Select(a => a.Date).Should().BeInAscendingOrder();
+        dashboard.Alerts!.Last().Date.Should().Be(new DateTime(2026, 9, 26), "la 21e (27/09) est coupée");
     }
 
     // ── Interventions récentes ──────────────────────────────────────────────
@@ -436,7 +507,7 @@ public class GetGpaDashboardQueryHandlerTests
 
         var dashboard = await RunAsync(ctx, Admin());
 
-        var latest = dashboard.RecentInterventions.First();
+        var latest = dashboard.RecentInterventions!.First();
         latest.Date.Should().Be(Utc(2026, 9, 5));
         latest.Description.Should().Be("Freins", "« Entretien » seul n'apprend rien : nom du gabarit du log");
         latest.MileageKm.Should().Be(208_390, "done_km = 0 est inconnu : relevé saisi sur la dépense");
@@ -456,7 +527,7 @@ public class GetGpaDashboardQueryHandlerTests
         dashboard.UpcomingMaintenance.Should().Be(new GpaUpcomingMaintenanceDto(Next30Days: 1, Overdue: 2),
             "Freins le 25/09 ; Vidange au km et Courroie par date en retard ; pause et gabarit inactif ignorés");
 
-        dashboard.Alerts.Select(a => (a.Severity, a.Title, a.Plate)).Should().Equal(
+        dashboard.Alerts!.Select(a => (a.Severity, a.Title, a.Plate)).Should().Equal(
             ("critical", "Vignette expirée", "GH-619-XC"),
             ("critical", "Courroie en retard", "GH-619-XC"),
             ("critical", "Vidange en retard", "GA-214-RK"),
@@ -465,32 +536,32 @@ public class GetGpaDashboardQueryHandlerTests
             ("warning", "Carte grise à renouveler", "GJ-473-KS"),
             ("warning", "Visite technique à renouveler", "GJ-473-KS"));
 
-        dashboard.Alerts.Select(a => a.Kind).Should().OnlyContain(k => k == "maintenance" || k == "document",
+        dashboard.Alerts!.Select(a => a.Kind).Should().OnlyContain(k => k == "maintenance" || k == "document",
             "aucune alerte GPS (l'excès de vitesse en base ne remonte pas)");
         dashboard.AlertCounts.Should().Be(new GpaAlertCountsDto(Total: 7, Critical: 3));
 
-        var vignette = dashboard.Alerts[0];
+        var vignette = dashboard.Alerts![0];
         vignette.Kind.Should().Be("document");
         vignette.Detail.Should().Be("expirée le 01/08/2026 (il y a 41 j)");
         vignette.Date.Should().Be(new DateTime(2026, 8, 1));
         vignette.DaysLeft.Should().Be(-41);
         vignette.VehicleName.Should().Be("Logistique 01");
 
-        var courroie = dashboard.Alerts[1];
+        var courroie = dashboard.Alerts![1];
         courroie.Kind.Should().Be("maintenance");
         courroie.Detail.Should().Be("échéance du 01/09/2026 dépassée");
         courroie.DaysLeft.Should().Be(-10);
 
-        var vidange = dashboard.Alerts[2];
+        var vidange = dashboard.Alerts![2];
         vidange.Detail.Should().Be("en retard de 1\u00A0200 km");
         vidange.Date.Should().BeNull("échéance au kilomètre seulement");
         vidange.DaysLeft.Should().BeNull();
 
-        dashboard.Alerts[3].Detail.Should().Be("expire le 25/09/2026 (14 j)");
-        dashboard.Alerts[3].DaysLeft.Should().Be(14);
-        dashboard.Alerts[4].Detail.Should().Be("échéance le 25/09/2026 (14 j)");
-        dashboard.Alerts[5].Detail.Should().Be("expire le 11/10/2026 (30 j)");
-        dashboard.Alerts[6].Detail.Should().Be("expire le 10/11/2026 (60 j)", "J+60 est inclus pour les documents, comme l'ancienne carte Échéances");
+        dashboard.Alerts![3].Detail.Should().Be("expire le 25/09/2026 (14 j)");
+        dashboard.Alerts![3].DaysLeft.Should().Be(14);
+        dashboard.Alerts![4].Detail.Should().Be("échéance le 25/09/2026 (14 j)");
+        dashboard.Alerts![5].Detail.Should().Be("expire le 11/10/2026 (30 j)");
+        dashboard.Alerts![6].Detail.Should().Be("expire le 10/11/2026 (60 j)", "J+60 est inclus pour les documents, comme l'ancienne carte Échéances");
         dashboard.Alerts.Should().NotContain(a => a.Plate == "GA-214-RK" && a.Title == "Carte grise à renouveler",
             "J+61 est hors fenêtre");
     }
@@ -507,17 +578,17 @@ public class GetGpaDashboardQueryHandlerTests
         var report = await OperatingReportAsync(ctx, tenant, From, To);
 
         dashboard.Costs.Should().Be(new GpaCostsDto(Fuel: 240m, Maintenance: 80m, Repair: 768m, Other: 0m, Total: 1_088m));
-        dashboard.Costs.Total.Should().Be(report.TotalCost);
-        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(0m, 0, 0), "les leasings V3/V4 ne lui sont pas affectés");
+        dashboard.Costs!.Total.Should().Be(report.TotalCost);
+        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(0m, 0, 0, 0m), "les leasings V3/V4 ne lui sont pas affectés");
         dashboard.LeasingRemaining.Should().Be(new GpaLeasingRemainingDto(0m, 0, 0));
         dashboard.Interventions.Should().Be(new GpaInterventionsDto(1, 1, 2));
         dashboard.UpcomingMaintenance.Should().Be(new GpaUpcomingMaintenanceDto(Next30Days: 1, Overdue: 1));
 
-        dashboard.Alerts.Select(a => a.Title).Should().Equal("Vignette expirée", "Courroie en retard", "Freins à prévoir");
+        dashboard.Alerts!.Select(a => a.Title).Should().Equal("Vignette expirée", "Courroie en retard", "Freins à prévoir");
         dashboard.Alerts.Should().OnlyContain(a => a.Plate == "GH-619-XC");
-        dashboard.Top5.Select(t => t.VehicleId).Should().Equal(2);
+        dashboard.Top5!.Select(t => t.VehicleId).Should().Equal(2);
         dashboard.RecentInterventions.Should().OnlyContain(i => i.Plate == "GH-619-XC").And.HaveCount(2);
-        dashboard.Monthly.Sum(m => m.Total).Should().Be(1_088m);
+        dashboard.Monthly!.Sum(m => m.Total).Should().Be(1_088m);
     }
 
     [Fact]
@@ -527,15 +598,134 @@ public class GetGpaDashboardQueryHandlerTests
 
         var dashboard = await RunAsync(ctx, Restricted(OrphanUserId));
 
-        dashboard.Costs.Total.Should().Be(0m);
-        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(0m, 0, 0));
+        dashboard.Costs!.Total.Should().Be(0m);
+        dashboard.Acquisition.Should().Be(new GpaAcquisitionDto(0m, 0, 0, 0m));
         dashboard.LeasingRemaining.Should().Be(new GpaLeasingRemainingDto(0m, 0, 0));
-        dashboard.Interventions.Total.Should().Be(0);
+        dashboard.Interventions!.Total.Should().Be(0);
         dashboard.UpcomingMaintenance.Should().Be(new GpaUpcomingMaintenanceDto(0, 0));
         dashboard.Alerts.Should().BeEmpty();
         dashboard.Top5.Should().BeEmpty();
         dashboard.RecentInterventions.Should().BeEmpty();
         dashboard.Monthly.Should().HaveCount(12).And.OnlyContain(m => m.Total == 0m);
+    }
+
+    // ── Droits par bloc (/api/dashboard est exempté de PermissionMiddleware) ──
+
+    [Fact]
+    public async Task Un_non_admin_sans_les_cases_ne_recoit_aucun_montant_ni_alerte()
+    {
+        using var ctx = await SeedAsync();
+
+        // Recette du 14/09/2026 : l'utilisateur 51 (Opérateur, can_costs, can_maintenance,
+        // can_documents et cases de rapports de coûts à false, affecté à un véhicule)
+        // recevait 403 sur /api/costs, /api/acquisition-payments, /api/documents et
+        // /api/reports/costs/*, mais tous ces montants par /api/dashboard/gpa.
+        var dashboard = await RunAsync(ctx, Restricted(NoRightsUserId));
+
+        dashboard.Costs.Should().BeNull();
+        dashboard.Top5.Should().BeNull();
+        dashboard.Monthly.Should().BeNull();
+        dashboard.Acquisition.Should().BeNull();
+        dashboard.LeasingRemaining.Should().BeNull();
+        dashboard.Interventions.Should().BeNull();
+        dashboard.RecentInterventions.Should().BeNull();
+        dashboard.UpcomingMaintenance.Should().BeNull();
+        dashboard.Alerts.Should().BeNull();
+        dashboard.AlertCounts.Should().BeNull();
+        dashboard.From.Should().Be(DateTime.SpecifyKind(From, DateTimeKind.Utc));
+    }
+
+    [Fact]
+    public async Task Chaque_bloc_suit_la_case_qui_ouvre_la_meme_donnee_ailleurs()
+    {
+        using var ctx = await SeedAsync();
+        // Entretien seul, plus le rapport « Coût d'exploitation ».
+        SeedUser(ctx, 45, isCompanyAdmin: false, u =>
+        {
+            NoRights(u);
+            u.CanMaintenance = true;
+            u.CanReportOperatingCost = true;
+        });
+        ctx.UserVehicles.Add(new UserVehicle { UserId = 45, VehicleId = 2 });
+        await ctx.SaveChangesAsync();
+
+        var dashboard = await RunAsync(ctx, Restricted(45));
+
+        dashboard.Costs.Should().Be(new GpaCostsDto(Fuel: 240m, Maintenance: 80m, Repair: 768m, Other: 0m, Total: 1_088m),
+            "le rapport « Coût d'exploitation » lui montre ces montants");
+        dashboard.Top5.Should().BeNull("pas de case « Classement des coûts » ni « Dépenses »");
+        dashboard.Monthly.Should().BeNull("pas de case « Évolution des coûts » ni « Dépenses »");
+        dashboard.Acquisition.Should().BeNull("achats et leasing relèvent de l'écran Dépenses");
+        dashboard.LeasingRemaining.Should().BeNull();
+        dashboard.Interventions.Should().Be(new GpaInterventionsDto(1, 1, 2), "Entretien ouvre les interventions");
+        dashboard.RecentInterventions.Should().HaveCount(2);
+        dashboard.UpcomingMaintenance.Should().Be(new GpaUpcomingMaintenanceDto(Next30Days: 1, Overdue: 1));
+        dashboard.Alerts!.Select(a => a.Title).Should().Equal(new[] { "Courroie en retard", "Freins à prévoir" },
+            "alertes d'entretien seulement : la vignette expirée relève de Documents");
+        dashboard.AlertCounts.Should().Be(new GpaAlertCountsDto(Total: 2, Critical: 1));
+    }
+
+    [Theory]
+    [InlineData(true, "user", false)]    // rôle admin de société
+    [InlineData(false, "admin", false)]  // niveau d'accès « admin »
+    [InlineData(false, "user", true)]    // administrateur système
+    public void Un_administrateur_voit_tous_les_blocs_comme_dans_le_middleware(bool companyAdminRole, string accessLevel, bool systemAdmin)
+    {
+        var user = new User { AccessLevel = accessLevel, Role = new Role { IsCompanyAdmin = companyAdminRole } };
+        NoRights(user);
+
+        GpaSectionAccess.For(user, systemAdmin).Should().Be(GpaSectionAccess.All);
+    }
+
+    [Fact]
+    public void Un_utilisateur_introuvable_ne_voit_rien()
+    {
+        GpaSectionAccess.For(null, isSystemAdmin: false).Should().Be(GpaSectionAccess.None);
+    }
+
+    [Fact]
+    public async Task Une_societe_avec_suivi_GPS_est_refusee()
+    {
+        using var ctx = await SeedAsync();
+        ctx.SubscriptionTypes.AddRange(
+            new SubscriptionType { Id = 1, Name = "Calypso GPS", Code = "gpa", ModuleMonitoring = true },
+            new SubscriptionType { Id = 2, Name = "Plan Basique GPA", Code = "plan-basique", ModuleMonitoring = false });
+        ctx.Societes.Add(new Societe { Id = CompanyId, Name = "Flotte équipée", SubscriptionTypeId = 1 });
+        await ctx.SaveChangesAsync();
+
+        var act = () => RunAsync(ctx, Admin());
+        await act.Should().ThrowAsync<GisAPI.Domain.Exceptions.ForbiddenAccessException>(
+            "règle SOCIÉTÉ (moduleMonitoring), jamais le code d'abonnement : « gpa » est une offre GPS");
+
+        var societe = await ctx.Societes.FindAsync(CompanyId);
+        societe!.SubscriptionTypeId = 2;
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        (await RunAsync(ctx, Admin())).Costs.Should().NotBeNull("société sans suivi GPS");
+    }
+
+    [Fact]
+    public async Task Sans_distance_affichee_l_agregateur_ne_lit_ni_trajets_ni_releves()
+    {
+        using var ctx = await SeedAsync();
+        ctx.GpsDevices.Add(new GpsDevice { Id = 7, DeviceUid = "DEV-7", CompanyId = CompanyId });
+        var v1 = await ctx.Vehicles.FindAsync(1);
+        v1!.GpsDeviceId = 7;
+        ctx.Trips.Add(new Trip { CompanyId = CompanyId, VehicleId = 1, StartTime = Utc(2026, 3, 8), DistanceKm = 300, Status = "completed" });
+        await ctx.SaveChangesAsync();
+
+        var avec = await OperatingCostAggregator.LoadAsync(ctx, Admin(),
+            OperatingCostAggregator.StartUtc(From), OperatingCostAggregator.EndExclusiveUtc(To), null, null, CancellationToken.None);
+        var sans = await OperatingCostAggregator.LoadAsync(ctx, Admin(),
+            OperatingCostAggregator.StartUtc(From), OperatingCostAggregator.EndExclusiveUtc(To), null, null, CancellationToken.None,
+            includeDistance: false);
+
+        avec.Vehicles.Single(v => v.VehicleId == 1).DistanceKm.Should().Be(300m);
+        avec.Vehicles.Single(v => v.VehicleId == 2).DistanceSource.Should().Be(OperatingCostAggregator.SourceOdometer,
+            "deux relevés de V2 (plein et réparation)");
+        sans.Vehicles.Should().OnlyContain(v => v.DistanceKm == null && v.DistanceSource == OperatingCostAggregator.SourceNone);
+        sans.Vehicles.Select(v => v.Total).Should().Equal(avec.Vehicles.Select(v => v.Total), "les coûts ne dépendent pas de la distance");
     }
 
     // ── Action du contrôleur ────────────────────────────────────────────────
@@ -570,6 +760,19 @@ public class GetGpaDashboardQueryHandlerTests
         (await controller.GetGpaDashboard(new DateTime(2026, 5, 1), new DateTime(2026, 4, 1)))
             .Result.Should().BeOfType<Microsoft.AspNetCore.Mvc.BadRequestObjectResult>();
         sent.Should().BeNull("une plage inversée n'est pas calculée");
+
+        // Bornes : to=9999-12-31 débordait en 500 (AddDays(1) sur DateTime.MaxValue),
+        // from=0001-01-01 relisait tout l'historique à chaque appel.
+        (await controller.GetGpaDashboard(new DateTime(2026, 1, 1), new DateTime(9999, 12, 31)))
+            .Result.Should().BeOfType<Microsoft.AspNetCore.Mvc.BadRequestObjectResult>();
+        (await controller.GetGpaDashboard(new DateTime(1, 1, 1), today))
+            .Result.Should().BeOfType<Microsoft.AspNetCore.Mvc.BadRequestObjectResult>();
+        sent.Should().BeNull("une plage hors bornes n'est pas calculée");
+
+        // Une plage « Personnalisé » de plusieurs années, ou qui finit dans quelques mois, reste acceptée.
+        (await controller.GetGpaDashboard(new DateTime(2019, 1, 1), today.AddMonths(3)))
+            .Result.Should().BeOfType<Microsoft.AspNetCore.Mvc.OkObjectResult>();
+        sent.Should().Be(new GetGpaDashboardQuery(new DateTime(2019, 1, 1), today.AddMonths(3)));
     }
 
     // ── Contrat JSON ────────────────────────────────────────────────────────
@@ -580,7 +783,7 @@ public class GetGpaDashboardQueryHandlerTests
         var dto = new GpaDashboardDto(
             From: Now, To: Now,
             Costs: new GpaCostsDto(1, 2, 3, 4, 10),
-            Acquisition: new GpaAcquisitionDto(5, 1, 1),
+            Acquisition: new GpaAcquisitionDto(5, 1, 1, 2),
             LeasingRemaining: new GpaLeasingRemainingDto(6, 1, 2),
             Interventions: new GpaInterventionsDto(1, 2, 3),
             UpcomingMaintenance: new GpaUpcomingMaintenanceDto(1, 2),
@@ -603,7 +806,7 @@ public class GetGpaDashboardQueryHandlerTests
             "upcomingMaintenance", "alerts", "alertCounts", "monthly", "top5", "recentInterventions");
         Names(root.GetProperty("alertCounts")).Should().BeEquivalentTo("total", "critical");
         Names(root.GetProperty("costs")).Should().BeEquivalentTo("fuel", "maintenance", "repair", "other", "total");
-        Names(root.GetProperty("acquisition")).Should().BeEquivalentTo("total", "purchasedVehicles", "financedVehicles");
+        Names(root.GetProperty("acquisition")).Should().BeEquivalentTo("total", "purchasedVehicles", "financedVehicles", "periodCost");
         Names(root.GetProperty("leasingRemaining")).Should().BeEquivalentTo("amount", "contracts", "installments");
         Names(root.GetProperty("interventions")).Should().BeEquivalentTo("maintenance", "repairs", "total");
         Names(root.GetProperty("upcomingMaintenance")).Should().BeEquivalentTo("next30Days", "overdue");

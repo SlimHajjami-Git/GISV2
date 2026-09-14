@@ -14,6 +14,7 @@ import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { libelleMoisIncomplet, libellePerimetreParc } from './dashboard-gpa.helpers';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
@@ -3614,6 +3615,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return n.charAt(0).toUpperCase() + n.slice(1);
   }
 
+  /** « Tout le parc » pour un administrateur, « Mes véhicules (N) » sinon : le
+   *  serveur borne le rapport aux véhicules affectés (VehicleScope), N est le même
+   *  compteur que le KPI Véhicules. */
+  mfPerimetre(): string {
+    return libellePerimetreParc(this.permissionService.isAnyAdmin(), this.monthlyReport?.fleetOverview.totalVehicles ?? 0);
+  }
+
   private mfMoisPrecedent(): string {
     const r = this.monthlyReport;
     if (!r) return 'le mois précédent';
@@ -6130,7 +6138,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     return {
       title: this.selectedTemplate?.name || 'Rapport mensuel flotte',
-      vehicleName: pourPdf ? undefined : 'Tout le parc',
+      vehicleName: pourPdf ? undefined : this.mfPerimetre(),
       dateRange: this.mfMoisLibelle(),
       statistics,
       columns,
@@ -8229,6 +8237,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return !!this.costEvolution?.months?.some(m => m.isPartial);
   }
 
+  /** « en cours » pour le mois calendaire actuel, « incomplet » pour un mois
+   *  tronqué par la période (premier mois d'une période qui commence le 15). */
+  evolutionMoisIncomplet(m: { year: number; month: number }): string {
+    return libelleMoisIncomplet(m.year, m.month);
+  }
+
   /** Lignes du bloc de détail : le mois sélectionné, sinon toute la période. */
   evolutionDetailRows(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     return this.selectedEvolutionMonth ? this.evolutionMonthDetail() : this.evolutionCategoryTotals();
@@ -8241,7 +8255,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
   evolutionDetailLabel(): string {
     const sel = this.selectedEvolutionMonth;
-    if (sel) return sel.monthName + (sel.isPartial ? ' (en cours)' : '');
+    if (sel) return sel.monthName + (sel.isPartial ? ` (${this.evolutionMoisIncomplet(sel)})` : '');
     const mois = this.costEvolution?.months ?? [];
     if (!mois.length) return '';
     const premier = mois[0].monthName, dernier = mois[mois.length - 1].monthName;
@@ -8332,7 +8346,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.evolutionChart = new Chart(ctx, {
       type: 'bar',
       // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (en cours) ».
-      data: { labels: months.map(m => m.isPartial ? [m.monthName, '(en cours)'] : m.monthName), datasets },
+      data: { labels: months.map(m => m.isPartial ? [m.monthName, `(${this.evolutionMoisIncomplet(m)})`] : m.monthName), datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -8544,14 +8558,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!r) return '';
     if (this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return this.rfTitre();
     const n = `${r.fleetSize} véhicule${r.fleetSize > 1 ? 's' : ''}`;
-    return `${this.rfPerimetreExecute.departement || 'Tout le parc'} (${n})`;
+    return `${this.rfPerimetreExecute.departement || this.rfParc()} (${n})`;
   }
 
   /** Dernier maillon du fil d'Ariane R4. */
   rfPerimetre(): string {
     const r = this.repairFrequency;
     if (r && this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return r.vehicles[0].vehicleName;
-    return this.rfPerimetreExecute.departement || 'Tout le parc';
+    return this.rfPerimetreExecute.departement || this.rfParc();
+  }
+
+  /** « Tout le parc » pour un administrateur, « Mes véhicules » sinon (portée VehicleScope du serveur). */
+  private rfParc(): string {
+    return this.permissionService.isAnyAdmin() ? 'Tout le parc' : 'Mes véhicules';
   }
 
   rfInterventions(n: number): string {
@@ -8976,7 +8995,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     ];
     const data: any[] = (r.months || []).map(m => ({
       // Le mois en cours est dit tel dans le PDF ; le tableur garde le mois brut.
-      monthName: m.monthName + (pourPdf && m.isPartial ? ' (en cours)' : ''),
+      monthName: m.monthName + (pourPdf && m.isPartial ? ` (${this.evolutionMoisIncomplet(m)})` : ''),
       fuelCost: mt(m.fuelCost),
       maintenanceCost: mt(m.maintenanceCost),
       repairCost: mt(m.repairCost),
@@ -9007,7 +9026,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (r.lowestMonth) statistics[`Moins élevé : ${r.lowestMonth.monthName}`] = String(mt(r.lowestMonth.totalCost));
     else statistics['Mois le moins élevé'] = '—';
 
-    const enCours = (r.months || []).find(m => m.isPartial);
+    const incomplets = (r.months || []).filter(m => m.isPartial);
     const label = r.plate ? `${r.vehicleName} (${r.plate})` : (r.vehicleName || vehicleName);
     return {
       title: `${this.selectedTemplate?.name || 'Évolution des coûts'} — ${label}`,
@@ -9021,8 +9040,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       highlightLastRow: true,
       // Dit pourquoi le mois en cours n’a pas de variation et n’entre pas
       // dans les mois le plus et le moins élevés.
-      footnote: enCours
-        ? `* ${enCours.monthName} est en cours : la période s’arrête avant la fin du mois. Il n’est comparé à aucun autre mois et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+      // Premier mois tronqué (période qui commence le 15) comme mois en cours.
+      footnote: incomplets.length
+        ? `* ${incomplets.map(m => `${m.monthName} (${this.evolutionMoisIncomplet(m)})`).join(' et ')} : la période ne couvre pas ${incomplets.length > 1 ? 'ces mois' : 'ce mois'} en entier. ${incomplets.length > 1 ? 'Ils ne sont comparés' : 'Il n’est comparé'} à aucun autre mois et n’${incomplets.length > 1 ? 'entrent' : 'entre'} pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
         : undefined,
     };
   }

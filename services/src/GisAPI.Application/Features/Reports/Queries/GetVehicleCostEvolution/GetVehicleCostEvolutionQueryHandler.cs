@@ -49,8 +49,13 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
             // 100 % sur les 12 véhicules du jeu de recette (10 jours sur 30), et
             // la carte « Mois le moins élevé » le désignait presque toujours :
             // un fait faux, affiché en gros (recette du 11/09/2026).
-            var finDuMois = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
-            var incomplet = endExclusiveUtc < finDuMois;
+            // Idem pour un PREMIER mois tronqué : une période personnalisée qui
+            // commence le 15 ne couvre que la moitié de son premier mois (constat
+            // du 14/09/2026 : il restait candidat au « mois le moins élevé » et le
+            // mois suivant affichait une hausse calculée contre un demi-mois).
+            var debutDuMois = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var finDuMois = debutDuMois.AddMonths(1);
+            var incomplet = startUtc > debutDuMois || endExclusiveUtc < finDuMois;
             if (incomplet)
                 variation = null;   // comparer 10 jours à un mois entier n’a pas de sens
 
@@ -67,7 +72,9 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
                 VariationPct: variation.HasValue ? Math.Round(variation.Value, 1) : null,
                 IsPartial: incomplet));
 
-            previousTotal = total;
+            // Un mois incomplet ne sert pas de base au suivant : sa variation
+            // serait calculée contre une fraction de mois.
+            previousTotal = incomplet ? null : total;
         }
 
         var totalCost = vehicle.Total.Total;

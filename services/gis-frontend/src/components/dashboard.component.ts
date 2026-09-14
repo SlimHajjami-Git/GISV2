@@ -11,6 +11,7 @@ import { Company } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard-gpa.helpers';
 
 @Component({
   selector: 'app-dashboard',
@@ -64,7 +65,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </div>
 
       <!-- ════ 2 · KPIs en filets (dans le masthead) ════ -->
-      <div class="kpis" *ngIf="hasGps">
+      <div class="kpis" *ngIf="!isGpaCompany">
         <div class="kpi">
           <span class="kpi-l">Véhicules</span>
           <span class="kpi-v">{{ dVehicles }}</span>
@@ -104,48 +105,55 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </div>
 
       <!-- Offre GPA (sans GPS) : cinq indicateurs de gestion, une icône chacun -->
-      <div class="kpis k5" *ngIf="!hasGps">
+      <div class="kpis k5" *ngIf="isGpaCompany">
         <div class="kpi kpi-ic" title="Coût total sur la période : carburant, entretiens, réparations et autres dépenses, remboursements d'assurance déduits. Les achats de véhicules sont à part.">
           <span class="kic" style="--kc:#a5b4fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 6.2A7 7 0 1 0 17.5 17.8"/><path d="M4 10.2h9M4 13.8h9"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Coût total</span>
-            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.costs.total) }}<span class="kpi-dec">{{ decimales(gpa.costs.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
-            <span class="kpi-s">sur la période · hors achats</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa?.costs as c; else kDash"><span class="kpi-num">{{ entier(c.total) }}<span class="kpi-dec">{{ decimales(c.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <span class="kpi-s" *ngIf="!gpa || gpa.costs">sur la période · hors achats</span>
+            <span class="kpi-s" *ngIf="gpa && !gpa.costs">accès non autorisé</span>
           </div>
         </div>
-        <div class="kpi kpi-ic" title="Coût complet du parc, quelle que soit la période : prix d'achat des véhicules achetés comptant, apports et toutes les mensualités des contrats de crédit ou de leasing (échues et à venir).">
+        <div class="kpi kpi-ic" [title]="achatsInfoBulle">
           <span class="kic" style="--kc:#7dd3fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16l-1.4 11a2 2 0 0 1-2 1.7H7.4a2 2 0 0 1-2-1.7z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Coût d'achats</span>
-            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.acquisition.total) }}<span class="kpi-dec">{{ decimales(gpa.acquisition.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
-            <span class="kpi-s" *ngIf="gpa">{{ achatsSousTitre }}</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa?.acquisition as a; else kDash"><span class="kpi-num">{{ entier(a.total) }}<span class="kpi-dec">{{ decimales(a.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <span class="kpi-s" *ngIf="gpa?.acquisition">{{ achatsSousTitre }}</span>
+            <span class="kpi-s" *ngIf="gpa && !gpa.acquisition">accès non autorisé</span>
           </div>
         </div>
         <div class="kpi kpi-ic" title="Somme des mensualités de leasing et de crédit encore à venir, tous contrats confondus.">
           <span class="kic" style="--kc:#c4b5fd"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14.5h3"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Reste à payer leasing</span>
-            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash"><span class="kpi-num">{{ entier(gpa.leasingRemaining.amount) }}<span class="kpi-dec">{{ decimales(gpa.leasingRemaining.amount) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
-            <span class="kpi-s" *ngIf="gpa && gpa.leasingRemaining.installments>0">{{ gpa.leasingRemaining.installments }}&nbsp;échéance{{ gpa.leasingRemaining.installments>1?'s':'' }} · {{ gpa.leasingRemaining.contracts }}&nbsp;contrat{{ gpa.leasingRemaining.contracts>1?'s':'' }}</span>
-            <span class="kpi-s" *ngIf="gpa && gpa.leasingRemaining.installments===0">aucune échéance à venir</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa?.leasingRemaining as l; else kDash"><span class="kpi-num">{{ entier(l.amount) }}<span class="kpi-dec">{{ decimales(l.amount) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
+            <ng-container *ngIf="gpa?.leasingRemaining as l">
+              <span class="kpi-s" *ngIf="l.installments>0">{{ l.installments }}&nbsp;échéance{{ l.installments>1?'s':'' }} · {{ l.contracts }}&nbsp;contrat{{ l.contracts>1?'s':'' }}</span>
+              <span class="kpi-s" *ngIf="l.installments===0">aucune échéance à venir</span>
+            </ng-container>
+            <span class="kpi-s" *ngIf="gpa && !gpa.leasingRemaining">accès non autorisé</span>
           </div>
         </div>
         <div class="kpi kpi-ic" title="Nombre d'interventions sur la période : entretiens et réparations enregistrés (réparations annulées exclues).">
           <span class="kic" style="--kc:#fcd34d"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Interventions</span>
-            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash">{{ nombre(gpa.interventions.total) }}</ng-container></span>
-            <span class="kpi-s" *ngIf="gpa">{{ gpa.interventions.maintenance }}&nbsp;entretien{{ gpa.interventions.maintenance>1?'s':'' }} · {{ gpa.interventions.repairs }}&nbsp;réparation{{ gpa.interventions.repairs>1?'s':'' }}</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa?.interventions as n; else kDash">{{ nombre(n.total) }}</ng-container></span>
+            <span class="kpi-s" *ngIf="gpa?.interventions as n">{{ n.maintenance }}&nbsp;entretien{{ n.maintenance>1?'s':'' }} · {{ n.repairs }}&nbsp;réparation{{ n.repairs>1?'s':'' }}</span>
+            <span class="kpi-s" *ngIf="gpa && !gpa.interventions">accès non autorisé</span>
           </div>
         </div>
         <div class="kpi kpi-ic" title="Entretiens planifiés qui arrivent à échéance dans les 30 prochains jours ; les entretiens déjà dépassés sont comptés à part.">
-          <span class="kic" [style.--kc]="gpa && gpa.upcomingMaintenance.overdue>0 ? '#fca5a5' : '#6ee7b7'"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.8M9.5 2.8h5"/></svg></span>
+          <span class="kic" [style.--kc]="(gpa?.upcomingMaintenance?.overdue ?? 0)>0 ? '#fca5a5' : '#6ee7b7'"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.8M9.5 2.8h5"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Entretiens à venir</span>
-            <span class="kpi-v"><ng-container *ngIf="gpa; else kDash">{{ gpa.upcomingMaintenance.next30Days }}</ng-container></span>
-            <span class="kpi-s" *ngIf="gpa">sous 30&nbsp;jours
-              <span class="kchip kchip-danger" *ngIf="gpa.upcomingMaintenance.overdue>0">{{ gpa.upcomingMaintenance.overdue }}&nbsp;en retard</span>
+            <span class="kpi-v"><ng-container *ngIf="gpa?.upcomingMaintenance as u; else kDash">{{ u.next30Days }}</ng-container></span>
+            <span class="kpi-s" *ngIf="gpa?.upcomingMaintenance as u">sous 30&nbsp;jours
+              <span class="kchip kchip-danger" *ngIf="u.overdue>0">{{ u.overdue }}&nbsp;en retard</span>
             </span>
+            <span class="kpi-s" *ngIf="gpa && !gpa.upcomingMaintenance">accès non autorisé</span>
           </div>
         </div>
         <ng-template #kDash><span class="kpi-na">—</span></ng-template>
@@ -155,9 +163,11 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     <!-- ════ BENTO ════ -->
     <div class="bento">
 
-      <ng-container *ngIf="hasGps">
+      <!-- Disposition choisie par la SOCIÉTÉ (isGpaCompany) ; le droit Monitoring de
+           l'utilisateur ne masque que la carte en direct (elle lit /vehicles/with-positions). -->
+      <ng-container *ngIf="!isGpaCompany">
       <!-- ── Flotte en direct (Leaflet) ── -->
-      <section class="card span-8 acc-indigo anim" style="--i:1">
+      <section class="card span-8 acc-indigo anim" style="--i:1" *ngIf="hasGps">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6.5v13L9 17l6 2.5 6-2.5v-13L15 6.5 9 4z"/><path d="M9 4v13M15 6.5v13"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Temps réel</div><h2>Flotte en direct</h2></div>
@@ -270,7 +280,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </ng-container>
 
       <!-- ── Dépenses ── -->
-      <section class="card acc-indigo spend anim" *ngIf="hasGps" style="--i:5">
+      <section class="card acc-indigo spend anim" *ngIf="!isGpaCompany" style="--i:5">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 6.5H9.8a2.8 2.8 0 0 0 0 5.6h4.4a2.8 2.8 0 0 1 0 5.6H6.5"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Finances</div><h2>Dépenses</h2></div>
@@ -286,7 +296,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── Échéances à venir ── -->
-      <section class="card acc-amber anim" *ngIf="hasGps" style="--i:6">
+      <section class="card acc-amber anim" *ngIf="!isGpaCompany" style="--i:6">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M8 3v4M16 3v4M3.5 10.5h17"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Conformité</div><h2>Échéances à venir</h2></div>
@@ -306,44 +316,48 @@ import { AppLayoutComponent } from './shared/app-layout.component';
            Aucune donnée GPS : coûts saisis, entretiens, réparations, pleins et
            échéances. Source : /dashboard/gpa, et /fuel-expenses/real-consumption
            pour la consommation par véhicule (même calcul que l'écran Carburant). ════ -->
-      <ng-container *ngIf="!hasGps">
+      <ng-container *ngIf="isGpaCompany">
+
+      <!-- Chaque carte n'apparaît que si le serveur a rendu son bloc : null = la
+           personne n'a pas le droit de le voir (cases Dépenses, Entretien, Documents,
+           rapports de coûts). Avant la réponse, « Chargement… ». -->
 
       <!-- ── 3a · Répartition des coûts d'exploitation ── -->
-      <section class="card acc-indigo spend gpa-split anim" style="--i:1">
+      <section class="card acc-indigo spend gpa-split anim" style="--i:1" *ngIf="!gpa || gpa.costs">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h16M4 18h7"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Finances</div><h2 title="Répartition des coûts d'exploitation">Répartition des coûts d'exploitation</h2></div>
         </div>
-        <div class="rows" *ngIf="gpa">
+        <div class="rows" *ngIf="gpa?.costs as costs">
           <div *ngFor="let c of gpaSplit" class="row">
             <div class="lblc"><i [style.background]="c.color"></i><span>{{ c.name }}</span></div>
             <div class="bar"><i [style.width.%]="c.pct" [style.background]="c.color"></i></div>
             <div class="val num">{{ c.value | appCurrency:2 }}</div>
-            <div class="pct num">{{ gpa.costs.total > 0 ? pctLabel(c.pct) : '—' }}</div>
+            <div class="pct num">{{ costs.total > 0 ? pctLabel(c.pct) : '—' }}</div>
           </div>
           <div class="row tot">
             <div class="lblc"><span>Total</span></div>
             <div class="grow"></div>
-            <div class="val num">{{ gpa.costs.total | appCurrency:2 }}</div>
-            <div class="pct num">{{ gpa.costs.total > 0 ? '100 %' : '—' }}</div>
+            <div class="val num">{{ costs.total | appCurrency:2 }}</div>
+            <div class="pct num">{{ costs.total > 0 ? '100 %' : '—' }}</div>
           </div>
         </div>
         <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
       </section>
 
       <!-- ── 3b · Dernières alertes (entretiens et documents — aucune alerte GPS) ── -->
-      <section class="card acc-red gpa-list anim" style="--i:2">
+      <section class="card acc-red gpa-list anim" style="--i:2" *ngIf="!gpa || gpa.alerts">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 4.2 2.8 17.5A2 2 0 0 0 4.5 20.5h15a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4M12 16.8v.2"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Suivi</div><h2>Dernières alertes</h2></div>
-          <div class="head-right" *ngIf="gpa && gpa.alerts.length">
-            <span class="chip down" *ngIf="gpa.alertCounts.critical>0">{{ gpa.alertCounts.critical }}&nbsp;critique{{ gpa.alertCounts.critical>1?'s':'' }}</span>
-            <span class="chip" [title]="gpa.alerts.length < gpa.alertCounts.total ? gpa.alerts.length + ' alertes affichées sur ' + gpa.alertCounts.total + ' (les plus urgentes)' : ''">{{ gpa.alertCounts.total }}&nbsp;au total</span>
+          <div class="head-right" *ngIf="gpa?.alerts?.length && gpa?.alertCounts">
+            <span class="chip down" *ngIf="(gpa?.alertCounts?.critical ?? 0)>0">{{ gpa?.alertCounts?.critical }}&nbsp;critique{{ (gpa?.alertCounts?.critical ?? 0)>1?'s':'' }}</span>
+            <span class="chip" [title]="alertesChipInfoBulle">{{ gpa?.alertCounts?.total }}&nbsp;au total</span>
           </div>
         </div>
-        <div class="scroll" *ngIf="gpa && gpa.alerts.length">
+        <div class="scroll" *ngIf="gpa?.alerts?.length">
           <div class="rows">
-            <div *ngFor="let a of gpa.alerts" class="row" [title]="alerteInfoBulle(a)">
+            <div *ngFor="let a of gpa?.alerts" class="row" [title]="alerteInfoBulle(a)">
               <span class="al-ic" [class.dang]="a.severity==='critical'" [class.warn]="a.severity!=='critical'">
                 <svg *ngIf="a.kind!=='document'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z"/></svg>
                 <svg *ngIf="a.kind==='document'" viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>
@@ -356,7 +370,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </div>
           </div>
         </div>
-        <div class="empty" *ngIf="gpa && !gpa.alerts.length">
+        <div class="empty" *ngIf="gpa?.alerts && !gpa?.alerts?.length">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg>
           <span>Aucune alerte</span>
         </div>
@@ -364,7 +378,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── 3c · Consommation par véhicule (pleins saisis, L/100 km) ── -->
-      <section class="card acc-cyan gpa-list anim" style="--i:3">
+      <section class="card acc-cyan gpa-list anim" style="--i:3" *ngIf="fuelAllowed">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14M3.5 20h11"/><path d="M15 9h2.2a1.8 1.8 0 0 1 1.8 1.8V17a1.5 1.5 0 0 0 3 0v-6.4L19.5 8"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Conduite</div><h2>Consommation par véhicule</h2></div>
@@ -382,12 +396,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </div>
           </div>
         </div>
-        <div class="empty" *ngIf="realFuel && !consoRows.length"><span>Aucun plein saisi sur la période</span></div>
+        <div class="empty" *ngIf="realFuel && !consoRows.length && !realFuelDenied"><span>Aucun plein saisi sur la période</span></div>
+        <div class="empty" *ngIf="realFuelDenied"><span>Accès au module Carburant non autorisé</span></div>
         <div class="empty" *ngIf="!realFuel"><span>Chargement…</span></div>
       </section>
 
       <!-- ── 4a · Évolution mensuelle des coûts (12 mois, barres empilées + total) ── -->
-      <section class="card span-8 acc-indigo gpa-evo anim" style="--i:4">
+      <section class="card span-8 acc-indigo gpa-evo anim" style="--i:4" *ngIf="!gpa || gpa.monthly">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Tendance · 12 derniers mois</div><h2>Évolution mensuelle des coûts</h2></div>
@@ -424,33 +439,33 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </section>
 
       <!-- ── 4b · Top 5 des véhicules par coût d'entretien et réparation ── -->
-      <section class="card acc-amber gpa-top anim" style="--i:5">
+      <section class="card acc-amber gpa-top anim" style="--i:5" *ngIf="!gpa || gpa.top5">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Entretien + réparation</div><h2 title="Top 5 des véhicules par coût d'entretien et réparation">Top 5 des véhicules par coût</h2></div>
-          <div class="head-right mlegend" *ngIf="gpa && gpa.top5.length">
+          <div class="head-right mlegend" *ngIf="gpa?.top5?.length">
             <span><i style="background:#059669"></i>Entretien</span><span><i style="background:#d97706"></i>Réparation</span>
           </div>
         </div>
-        <div class="rows" *ngIf="gpa && gpa.top5.length">
-          <div *ngFor="let v of gpa.top5; let i=index" class="row" [title]="top5InfoBulle(v)">
+        <div class="rows" *ngIf="gpa?.top5?.length">
+          <div *ngFor="let v of gpa?.top5; let i=index" class="row" [title]="top5InfoBulle(v)">
             <span class="rank" [class.r1]="i===0" [class.r2]="i===1" [class.r3]="i===2" [class.rx]="i>2">{{ i+1 }}</span>
             <span class="plate">{{ v.plate || v.vehicleName }}</span>
             <div class="grow"><div class="bar stack"><i style="background:#059669" [style.width.%]="pctTop(v.maintenance)"></i><i style="background:#d97706" [style.left.%]="pctTop(v.maintenance)" [style.width.%]="pctTop(v.repair)"></i></div></div>
             <span class="val num">{{ v.total | appCurrency:2 }}</span>
           </div>
         </div>
-        <div class="empty" *ngIf="gpa && !gpa.top5.length"><span>Aucun entretien ni réparation sur la période</span></div>
+        <div class="empty" *ngIf="gpa?.top5 && !gpa?.top5?.length"><span>Aucun entretien ni réparation sur la période</span></div>
         <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
       </section>
 
       <!-- ── 5 · Dernières interventions (tableau compact, pleine largeur) ── -->
-      <section class="card span-12 acc-slate gpa-int anim" style="--i:6">
+      <section class="card span-12 acc-slate gpa-int anim" style="--i:6" *ngIf="!gpa || gpa.recentInterventions">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1.2"/><path d="M9 12h6M9 16h4"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Maintenance</div><h2>Dernières interventions</h2></div>
         </div>
-        <div class="tbl-wrap" *ngIf="gpa && gpa.recentInterventions.length">
+        <div class="tbl-wrap" *ngIf="gpa?.recentInterventions?.length">
           <table class="itbl">
             <thead><tr>
               <th class="c-date">Date</th><th class="c-veh" title="Immatriculation du véhicule">Véhicule</th><th class="c-type">Type</th>
@@ -458,10 +473,10 @@ import { AppLayoutComponent } from './shared/app-layout.component';
               <th class="c-km r" title="Kilométrage relevé lors de l'intervention">Kilométrage</th><th class="c-cost r">Coût</th>
             </tr></thead>
             <tbody>
-              <tr *ngFor="let r of gpa.recentInterventions">
+              <tr *ngFor="let r of gpa?.recentInterventions">
                 <td class="num">{{ r.date | date:'dd/MM/yyyy' }}</td>
                 <td><span class="plate" [title]="r.vehicleName || ''">{{ r.plate || r.vehicleName }}</span></td>
-                <td><span class="kind" [class.rep]="r.kind==='reparation'">{{ r.kind==='reparation' ? 'Réparation' : 'Entretien' }}</span></td>
+                <td class="c-type"><span class="kind" [class.rep]="r.kind==='reparation'">{{ r.kind==='reparation' ? 'Réparation' : 'Entretien' }}</span></td>
                 <td [title]="interventionLibelle(r)">{{ interventionLibelle(r) }}</td>
                 <td class="c-sup" [title]="r.supplier || ''">{{ r.supplier || '—' }}</td>
                 <td class="c-km r num">{{ r.mileageKm != null ? nombre(r.mileageKm) + ' km' : '—' }}</td>
@@ -470,7 +485,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             </tbody>
           </table>
         </div>
-        <div class="empty" *ngIf="gpa && !gpa.recentInterventions.length"><span>Aucune intervention enregistrée</span></div>
+        <div class="empty" *ngIf="gpa?.recentInterventions && !gpa?.recentInterventions?.length"><span>Aucune intervention sur la période</span></div>
         <div class="empty" *ngIf="!gpa"><span>{{ gpaErreur ? 'Données indisponibles' : 'Chargement…' }}</span></div>
       </section>
 
@@ -491,7 +506,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 
       </ng-container>
 
-      <ng-container *ngIf="hasGps">
+      <ng-container *ngIf="!isGpaCompany">
       <!-- ── Répartition par type ── -->
       <section class="card acc-slate spend types anim" style="--i:7">
         <div class="card-head">
@@ -651,7 +666,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       </ng-container>
 
       <!-- ── Conducteurs ── -->
-      <section class="card span-12 acc-indigo anim" *ngIf="hasGps" style="--i:14">
+      <section class="card span-12 acc-indigo anim" *ngIf="!isGpaCompany" style="--i:14">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M2.8 20c.6-3.6 3.1-5.6 6.2-5.6s5.6 2 6.2 5.6"/><circle cx="17.5" cy="9.5" r="2.6"/><path d="M16 14.7c3-.3 5 1.6 5.4 4.3"/></svg></span>
           <div class="head-txt"><div class="eyebrow">Équipe</div><h2>Conducteurs</h2></div>
@@ -1137,7 +1152,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
     .gpa-top .head-right{gap:10px}
     .bar.stack i{border-radius:0}
 
-    /* Dernières interventions : tableau compact, largeur fixe, jamais d'ascenseur horizontal */
+    /* Dernières interventions : tableau compact, largeur fixe, jamais d'ascenseur horizontal
+       au-dessus de 760 px (en dessous, voir RESPONSIVE : colonnes resserrées + défilement) */
     .tbl-wrap{max-height:344px;overflow-y:auto;overflow-x:hidden;scrollbar-width:thin}
     .itbl{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12px}
     .itbl th.c-date{width:96px}.itbl th.c-veh{width:116px}.itbl th.c-type{width:112px}
@@ -1204,6 +1220,13 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       .kpis,.kpis.k5{grid-template-columns:repeat(2,minmax(0,1fr))}
       .quick{grid-template-columns:repeat(2,minmax(0,1fr))}
       .itbl .c-sup,.itbl .c-km{display:none}
+      /* Téléphone (390 px → ~318 px utiles) : les 436 px de colonnes fixes rognaient
+         la colonne Coût, inaccessible faute d'ascenseur. Colonnes resserrées et
+         défilement horizontal en dernier recours. */
+      .tbl-wrap{overflow-x:auto}
+      .itbl th.c-date{width:78px}.itbl th.c-veh{width:88px}.itbl th.c-type{width:86px}.itbl th.c-cost{width:92px}
+      .itbl{min-width:420px}
+      .itbl thead th,.itbl tbody td{padding-left:6px;padding-right:6px}
       .gpa-evo .mlegend{display:none}
       .kpi{padding:13px 16px}
       .kpi:nth-child(3n+1){border-left:1px solid var(--mast-hair);padding-left:16px}
@@ -1214,6 +1237,11 @@ import { AppLayoutComponent } from './shared/app-layout.component';
       .donut-flex,.gauge-flex{flex-direction:column;align-items:stretch}
       .donut,.gauge{align-self:center}
       .fleet-map{height:300px}
+    }
+    @media (max-width:480px){
+      /* La pastille Entretien/Réparation cède sa place : le sous-type reste dans la description. */
+      .itbl .c-type{display:none}
+      .itbl{min-width:0}
     }
   `]
 })
@@ -1321,8 +1349,14 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
 
   get currencyCode():string{return this.userPrefs.current.currency;}
   get currencySym():string{return UserPreferencesService.currencySymbol(this.currencyCode);}
-  /** GPS modules available? false for the "Gestion sans GPS" tier (moduleMonitoring off) → hide GPS-only widgets. */
+  /** Droit « Monitoring » de l'UTILISATEUR : masque la carte en direct dans la disposition GPS. */
   get hasGps():boolean{return this.permissionService.hasModuleAccess('monitoring');}
+  /** Disposition du tableau de bord, décidée par la SOCIÉTÉ (abonnement sans suivi GPS),
+   *  jamais par le droit de l'utilisateur ni par le code d'abonnement. */
+  get isGpaCompany():boolean{return estSocieteSansGps(this.permissionService.getSubscriptionFeatures());}
+  /** Carte « Consommation par véhicule » : /fuelexpenses/real-consumption exige le module Carburant. */
+  get fuelAllowed():boolean{return this.permissionService.hasModuleAccess('carburant');}
+  realFuelDenied=false;
 
   // Échéances à venir (assurance / vignette / visite technique) — réutilise /documents/alerts.
   deadlines: VehicleExpiryDto[] = [];
@@ -1345,7 +1379,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     this.todayLabel=today.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     this.setRangeFor(this.selectedPeriod);
     this.loadAll();
-    if(this.hasGps) this.loadDeadlines();
+    if(!this.isGpaCompany) this.loadDeadlines();
     else this.construireAccesRapides();
     this.wire();
   }
@@ -1514,7 +1548,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   loadAll(){
     // Offre sans GPS : tableau de bord de gestion (/dashboard/gpa) et carburant
     // réel des pleins saisis ; les deux suivent la période affichée (Du/Au).
-    if(!this.hasGps){ this.loadGpa(); this.loadFuelReal(); }
+    // Choix par la SOCIÉTÉ : un employé d'une société équipée sans le droit
+    // Monitoring garde le tableau de bord GPS (et n'appelle jamais /dashboard/gpa).
+    if(this.isGpaCompany){ this.loadGpa(); if(this.fuelAllowed) this.loadFuelReal(); }
     const custom=this.selectedPeriod==='custom'&&!!this.fromDate&&!!this.toDate;
     this.apiService.getDashboardAll(custom?'custom':this.selectedPeriod,custom?this.fromDate:undefined,custom?this.toDate:undefined)
       .pipe(takeUntil(this.destroy$)).subscribe({
@@ -1590,6 +1626,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       .pipe(takeUntil(this.destroy$)).subscribe({
       next:(r:any)=>{
         if(seq!==this.fuelSeq) return;
+        this.realFuelDenied=false;
         this.realFuel=r||{totalLiters:0,vehicles:[]};
         // Consommation par véhicule : litres achetés ÷ km mesurés (même calcul
         // que l'écran Carburant). La plus forte en tête ; sans relevé compteur
@@ -1604,7 +1641,8 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
         }).sort((a,b)=>(b.c??-1)-(a.c??-1));
         this.cdr.detectChanges();
       },
-      error:()=>{ if(seq!==this.fuelSeq) return; this.realFuel={totalLiters:0,vehicles:[]}; this.consoRows=[]; this.cdr.detectChanges(); }
+      // Un 403 n'est pas « aucun plein saisi » : l'écran le dit tel quel.
+      error:(err:unknown)=>{ if(seq!==this.fuelSeq) return; this.realFuelDenied=estRefusDeDroit(err); this.realFuel={totalLiters:0,vehicles:[]}; this.consoRows=[]; this.cdr.detectChanges(); }
     });
   }
 
@@ -1615,11 +1653,12 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   private construireGpa(){
     const d=this.gpa; if(!d) return;
     const val=(o:any,k:string)=>Number(o?.[k])||0;
-    const tot=d.costs.total;
-    this.gpaSplit=this.gpaSeries.map(s=>{
+    // Blocs à null : l'utilisateur n'a pas le droit de les voir (cartes masquées).
+    const tot=d.costs?.total??0;
+    this.gpaSplit=d.costs?this.gpaSeries.map(s=>{
       const v=val(d.costs,s.key);
       return {name:s.name,color:s.color,value:v,pct:tot>0?Math.max(0,Math.min(100,(v/tot)*100)):0};
-    });
+    }):[];
 
     const ms=d.monthly||[];
     // Hauteur des barres : somme des parts positives (un remboursement d'assurance
@@ -1665,13 +1704,23 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   pctLabel(p:number):string{ return p.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %'; }
   joursLabel(n:number):string{ return n<0?`${-n} j retard`:n===0?"aujourd'hui":`${n} j`; }
 
-  /** « 11 achetés · 1 financé » — le coût du parc ne dépend pas de la période. */
+  /** « dont 50 400 TND sur la période » : le coût complet du parc ne suit pas la
+   *  période, sa part de la période (tuile « Achats véhicule » du 11/09/2026) si. */
   get achatsSousTitre():string{
-    const a=this.gpa?.acquisition; if(!a) return '';
+    return sousTitreAchats(this.gpa?.acquisition, v=>this.userPrefs.formatCurrency(v,0));
+  }
+  /** Info-bulle : définition du coût complet + « 11 achetés · 1 financé · tout le parc ». */
+  get achatsInfoBulle():string{
+    const base="Coût complet du parc, quelle que soit la période : prix d'achat des véhicules achetés comptant, apports et toutes les mensualités des contrats de crédit ou de leasing (échues et à venir). Sous le montant : la part de la période affichée.";
+    const a=this.gpa?.acquisition; if(!a) return base;
     const parts:string[]=[];
     if(a.purchasedVehicles>0) parts.push(`${a.purchasedVehicles} acheté${a.purchasedVehicles>1?'s':''}`);
     if(a.financedVehicles>0) parts.push(`${a.financedVehicles} financé${a.financedVehicles>1?'s':''}`);
-    return parts.length?parts.join(' · ')+' · tout le parc':'aucun achat renseigné';
+    return `${base}\n${parts.length?parts.join(' · ')+' · tout le parc':'aucun achat renseigné'}`;
+  }
+  get alertesChipInfoBulle():string{
+    const shown=this.gpa?.alerts?.length??0, total=this.gpa?.alertCounts?.total??0;
+    return shown<total?`${shown} alertes affichées sur ${total} (les plus urgentes)`:'';
   }
   private get gpaTopMax():number{ return Math.max(0,...(this.gpa?.top5||[]).map(v=>Number(v.total)||0)); }
   pctTop(v:number):number{ const m=this.gpaTopMax; return m>0?Math.max(0,(Number(v)||0)/m*100):0; }

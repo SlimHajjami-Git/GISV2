@@ -553,7 +553,7 @@
                   <span>Rapports</span><span class="sep" aria-hidden="true">›</span>
                   <span>Statistiques</span><span class="sep" aria-hidden="true">›</span>
                   <span>{{ selectedTemplate?.name }}</span><span class="sep" aria-hidden="true">›</span>
-                  <span class="current">Tout le parc</span>
+                  <span class="current">{{ mfPerimetre() }}</span>
                   <span class="rf-periode">{{ mfMoisLibelle() }}</span>
                 </nav>
               </div>
@@ -1339,7 +1339,7 @@
                     <tbody>
                       @for (m of costEvolution.months; track (m.year + '-' + m.month)) {
                         <tr class="clickable" [class.highlighted]="isSelectedEvolutionMonth(m)" [class.muted]="m.totalCost === 0" [class.partial]="m.isPartial" (click)="selectEvolutionMonth(m)">
-                          <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" title="La période s’arrête avant la fin de ce mois">en cours</span></td>
+                          <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" title="La période ne couvre pas ce mois en entier">{{ evolutionMoisIncomplet(m) }}</span></td>
                           <td class="num">{{ formatCurrency(m.fuelCost) }}</td>
                           <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
                           <td class="num">{{ formatCurrency(m.repairCost) }}</td>

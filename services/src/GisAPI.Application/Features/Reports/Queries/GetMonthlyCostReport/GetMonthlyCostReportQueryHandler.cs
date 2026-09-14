@@ -1,6 +1,7 @@
 using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -102,36 +103,52 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .Select(c => new { c.VehicleId, c.Type, c.Amount })
             .ToListAsync(ct);
 
-        static string Bucket(string? type) => (type ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "fuel" => "fuel",
-            "maintenance" or "entretien" => "maintenance",
-            _ => "other"
-        };
+        //    Ventilation partagée (VehicleCostCategory) avec le tableau de bord et
+        //    les rapports de coûts : une dépense « repair » va en Réparations et
+        //    un remboursement d'assurance est un CRÉDIT. Constat du 14/09/2026 :
+        //    ce rapport les comptait en « Autres », en positif, quand les rapports
+        //    de coûts les rangeaient en Réparations et en déduction.
+        var classified = costRows
+            .Select(c => new
+            {
+                c.VehicleId,
+                Category = VehicleCostCategory.Classify(c.Type).Category,
+                Amount = VehicleCostCategory.SignedAmount(c.Type, c.Amount)
+            })
+            .ToList();
 
-        var maintenanceLogs = costRows
-            .Where(c => Bucket(c.Type) == "maintenance")
+        var maintenanceLogs = classified
+            .Where(c => c.Category == CostCategory.Maintenance)
             .Select(c => new { c.VehicleId, ActualCost = c.Amount })
             .ToList();
 
-        var fuelCosts = costRows
-            .Where(c => Bucket(c.Type) == "fuel")
+        var fuelCosts = classified
+            .Where(c => c.Category == CostCategory.Fuel)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        var otherByVehicle = costRows
-            .Where(c => Bucket(c.Type) == "other")
+        var otherByVehicle = classified
+            .Where(c => c.Category == CostCategory.Other)
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+
+        var repairExpensesByVehicle = classified
+            .Where(c => c.Category == CostCategory.Repair)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
         // 4. Fetch repairs from /reparation page's table (repairs)
-        var repairs = await _context.Repairs.AsNoTracking()
+        //    Réparations annulées EXCLUES, comme le tableau de bord et
+        //    OperatingCostAggregator (statut comparé sans la casse, en mémoire).
+        var repairs = (await _context.Repairs.AsNoTracking()
             .Where(r => r.SocieteId == companyId
                      && vehicleIds.Contains(r.VehicleId)
                      && r.RepairDate >= startDate
                      && r.RepairDate < endDate)
-            .Select(r => new { r.VehicleId, r.TotalCost })
-            .ToListAsync(ct);
+            .Select(r => new { r.VehicleId, r.TotalCost, r.Status })
+            .ToListAsync(ct))
+            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         // 5. Kilometrage du mois affiche, puis du mois PRECEDENT.
         //
@@ -279,7 +296,8 @@ ORDER BY device_id, recorded_at DESC;
             var fuelCost = (hasFuel ? fuel!.TotalCost : 0) + fuelCosts.GetValueOrDefault(vehicle.Id, 0);
             var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
             var maintCost = maintByVehicle.GetValueOrDefault(vehicle.Id, 0);
-            var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0);
+            var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0)
+                           + repairExpensesByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var otherCost = otherByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var totalCost = fuelCost + maintCost + repairCost + otherCost;
 
