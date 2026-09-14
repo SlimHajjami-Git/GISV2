@@ -42,4 +42,5 @@ public record MonthlyVehicleCostDto(
     decimal OtherCost,
     decimal TotalCost,
     decimal? DistanceKm,                   // km attribués au mois (relevé aval / trajets du mois)
-    decimal? VariationPct);                // vs mois précédent ; null le 1er mois ou si précédent = 0
+    decimal? VariationPct,                 // vs mois précédent ; null le 1er mois, si précédent = 0, ou si mois INCOMPLET
+    bool IsPartial = false);               // la période s’arrête avant la fin du mois (mois en cours, période personnalisée)

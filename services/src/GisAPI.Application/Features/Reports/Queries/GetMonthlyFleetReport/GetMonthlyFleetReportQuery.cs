@@ -56,6 +56,89 @@ public class MonthlyFleetReportDto
     
     // Chart Data
     public ChartDataCollectionDto Charts { get; set; } = new();
+
+    // ─── Parc SANS GPS (recette du 11/09/2026) ───
+
+    /// <summary>
+    /// Au moins un véhicule du périmètre a un boîtier GPS. Sans boîtier,
+    /// l'utilisation, les trajets, les heures de conduite et le score des
+    /// conducteurs ne sont pas MESURÉS — ce n'est pas qu'ils valent 0 : l'écran
+    /// les masque au lieu d'afficher « taux d'utilisation 0 % ».
+    /// </summary>
+    public bool FleetHasGps { get; set; }
+    public int VehiclesWithGps { get; set; }
+
+    /// <summary>
+    /// Une ligne par véhicule du périmètre, AVEC OU SANS boîtier : kilométrage,
+    /// carburant et coûts du mois. Le tableau par véhicule reposait sur
+    /// <see cref="VehicleUtilizationDto.ByVehicle"/>, qui ne liste que les
+    /// véhicules équipés : il était vide pour un compte GPA.
+    /// </summary>
+    public List<MonthlyVehicleRowDto> Vehicles { get; set; } = new();
+
+    /// <summary>Totaux de <see cref="Vehicles"/> (ligne TOTAL du tableau).</summary>
+    public MonthlyFleetTotalsDto Totals { get; set; } = new();
+}
+
+/// <summary>Une ligne du tableau par véhicule du rapport mensuel flotte.</summary>
+public class MonthlyVehicleRowDto
+{
+    public int VehicleId { get; set; }
+    public string VehicleName { get; set; } = string.Empty;
+    public string? Plate { get; set; }
+    public bool HasGps { get; set; }
+
+    /// <summary>Kilométrage du mois ; null quand il n'est pas mesurable.</summary>
+    public double? DistanceKm { get; set; }
+
+    /// <summary>
+    /// "gps" : boîtier (trajets terminés, à défaut positions) ; "odometer" :
+    /// reconstitué des relevés compteur saisis (pleins, entretiens, réparations,
+    /// dépenses) ; "none" : non mesurable ce mois.
+    /// </summary>
+    public string DistanceSource { get; set; } = "none";
+    public bool ReliableDistance { get; set; }
+
+    /// <summary>Litres ACHETÉS (pleins + dépenses carburant), jamais estimés.</summary>
+    public double Liters { get; set; }
+    /// <summary>null sans kilométrage ou sans litres : 0 L/100 km serait faux.</summary>
+    public double? ConsumptionPer100Km { get; set; }
+
+    public decimal FuelCost { get; set; }
+    public decimal MaintenanceCost { get; set; }
+    public decimal RepairCost { get; set; }
+    public decimal OtherCost { get; set; }
+    public decimal TotalCost { get; set; }
+    /// <summary>null sans kilométrage.</summary>
+    public decimal? CostPerKm { get; set; }
+
+    /// <summary>null sans boîtier : non mesuré.</summary>
+    public double? UtilizationRate { get; set; }
+    /// <summary>null sans boîtier : non mesuré.</summary>
+    public int? Trips { get; set; }
+}
+
+/// <summary>Totaux du tableau par véhicule.</summary>
+public class MonthlyFleetTotalsDto
+{
+    public double DistanceKm { get; set; }
+    /// <summary>Véhicules dont le kilométrage du mois est connu.</summary>
+    public int MeasuredVehicles { get; set; }
+    public double Liters { get; set; }
+    /// <summary>
+    /// Litres des véhicules au kilométrage connu, rapportés à ce kilométrage.
+    /// Les litres d'un véhicule sans kilométrage n'entrent pas au numérateur :
+    /// ils gonflaient la moyenne sans rien ajouter au dénominateur.
+    /// </summary>
+    public double? ConsumptionPer100Km { get; set; }
+    public decimal FuelCost { get; set; }
+    public decimal MaintenanceCost { get; set; }
+    public decimal RepairCost { get; set; }
+    public decimal OtherCost { get; set; }
+    public decimal TotalCost { get; set; }
+    /// <summary>Coût des véhicules MESURÉS rapporté à leur kilométrage (celui d'un
+    /// véhicule sans kilométrage n'y entre pas) ; null sans kilométrage.</summary>
+    public decimal? CostPerKm { get; set; }
 }
 
 // ==================== EXECUTIVE SUMMARY ====================

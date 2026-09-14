@@ -1185,6 +1185,23 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/dashboard/all`, { headers: this.getHeaders(), params });
   }
 
+  // Tableau de bord de l'offre GPA (sans GPS) : coûts, alertes métier, top 5, interventions.
+  getGpaDashboard(from: string, to: string): Observable<GpaDashboard> {
+    if (this.isMockUser()) {
+      return of({
+        from, to,
+        costs: { fuel: 0, maintenance: 0, repair: 0, other: 0, total: 0 },
+        acquisition: { total: 0, purchasedVehicles: 0, financedVehicles: 0 },
+        leasingRemaining: { amount: 0, contracts: 0, installments: 0 },
+        interventions: { maintenance: 0, repairs: 0, total: 0 },
+        upcomingMaintenance: { next30Days: 0, overdue: 0 },
+        alerts: [], alertCounts: { total: 0, critical: 0 }, monthly: [], top5: [], recentInterventions: []
+      } as GpaDashboard);
+    }
+    const params = new HttpParams().set('from', from).set('to', to);
+    return this.http.get<GpaDashboard>(`${this.API_URL}/dashboard/gpa`, { headers: this.getHeaders(), params });
+  }
+
   getDashboardCostSummary(period: string = 'month'): Observable<any> {
     if (this.isMockUser()) {
       return of({ fuelCost: 0, maintenanceCost: 0, repairCost: 0, otherCost: 0, totalCost: 0 });
@@ -2668,6 +2685,82 @@ export interface MonthlyFleetReport {
   alerts: FleetAlert[];
   keyPerformanceIndicators: Kpi[];
   charts: ChartDataCollection;
+  /** Au moins un véhicule du périmètre a un boîtier GPS (sinon utilisation et trajets ne sont pas mesurés). */
+  fleetHasGps: boolean;
+  vehiclesWithGps: number;
+  /** Une ligne par véhicule, avec ou sans boîtier (recette du 11/09/2026). */
+  vehicles: MonthlyFleetVehicleRow[];
+  totals: MonthlyFleetTotals;
+}
+
+export interface MonthlyFleetVehicleRow {
+  vehicleId: number;
+  vehicleName: string;
+  plate?: string | null;
+  hasGps: boolean;
+  /** null : kilométrage non mesurable sur le mois. */
+  distanceKm: number | null;
+  /** 'gps' | 'odometer' (relevés saisis) | 'none' */
+  distanceSource: string;
+  reliableDistance: boolean;
+  /** Litres achetés (pleins + dépenses carburant), jamais estimés. */
+  liters: number;
+  consumptionPer100Km: number | null;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+  utilizationRate: number | null;
+  trips: number | null;
+}
+
+export interface MonthlyFleetTotals {
+  distanceKm: number;
+  measuredVehicles: number;
+  liters: number;
+  consumptionPer100Km: number | null;
+  fuelCost: number;
+  maintenanceCost: number;
+  repairCost: number;
+  otherCost: number;
+  totalCost: number;
+  costPerKm: number | null;
+}
+
+// ==================== TABLEAU DE BORD GPA ====================
+
+export interface GpaDashboardCosts { fuel: number; maintenance: number; repair: number; other: number; total: number; }
+export interface GpaDashboardAlert {
+  kind: 'maintenance' | 'document'; severity: 'critical' | 'warning'; title: string; detail: string | null;
+  plate: string | null; vehicleName: string | null; date: string | null; daysLeft: number | null;
+}
+export interface GpaDashboardMonth {
+  year: number; month: number; label: string;
+  fuel: number; maintenance: number; repair: number; other: number; total: number; isPartial: boolean;
+}
+export interface GpaDashboardTopVehicle {
+  vehicleId: number; plate: string | null; vehicleName: string | null; maintenance: number; repair: number; total: number;
+}
+export interface GpaDashboardIntervention {
+  date: string; plate: string | null; vehicleName: string | null; kind: 'entretien' | 'reparation'; typeLabel: string | null;
+  description: string | null; supplier: string | null; mileageKm: number | null; cost: number;
+}
+export interface GpaDashboard {
+  from: string; to: string;
+  costs: GpaDashboardCosts;
+  /** Coût complet du parc (achats, apports, toutes les mensualités), indépendant de la période. */
+  acquisition: { total: number; purchasedVehicles: number; financedVehicles: number };
+  leasingRemaining: { amount: number; contracts: number; installments: number };
+  interventions: { maintenance: number; repairs: number; total: number };
+  upcomingMaintenance: { next30Days: number; overdue: number };
+  alerts: GpaDashboardAlert[];
+  /** Comptes pris avant la coupe de la liste (20 alertes au plus). */
+  alertCounts: { total: number; critical: number };
+  monthly: GpaDashboardMonth[];
+  top5: GpaDashboardTopVehicle[];
+  recentInterventions: GpaDashboardIntervention[];
 }
 
 // ==================== MONTHLY COST REPORT ====================
@@ -2812,8 +2905,10 @@ export interface MonthlyVehicleCostDto {
   otherCost: number;
   totalCost: number;
   distanceKm: number | null;
-  /** Variation vs mois précédent (%) ; null pour le 1er mois ou si le précédent est à 0. */
+  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si le mois est incomplet. */
   variationPct: number | null;
+  /** La période s’arrête avant la fin du mois (mois en cours, période personnalisée). */
+  isPartial?: boolean;
 }
 
 /** R4 — fréquence des réparations (réparations non annulées). */

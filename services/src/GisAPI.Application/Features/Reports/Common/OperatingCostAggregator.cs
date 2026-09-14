@@ -273,6 +273,20 @@ public static class OperatingCostAggregator
                 var acc = Bucket(c.Date);
                 if (type == "fuel") acc.Fuel += c.Amount;
                 else if (type == "maintenance" || type == "entretien") acc.Maintenance += c.Amount;
+                // « Réparation » est une catégorie proposée par l’écran Dépenses (et
+                // par le scan de facture). Elle tombait en « Autres », si bien que
+                // la colonne Réparations sous-estimait ce que coûtent les
+                // réparations. En production le 11/09/2026 : 2 lignes « repair ».
+                // Montant seul, sans compter une intervention : RepairCount mesure
+                // les passages à l’atelier de la table repairs, et une dépense
+                // « repair » peut être la facture de l’une d’elles.
+                else if (type == "repair" || type == "reparation" || type == "réparation") acc.Repair += c.Amount;
+                // Remboursement d’assurance : enregistré en montant POSITIF par le
+                // module Sinistres, et affiché en crédit par l’écran Dépenses.
+                // L’additionner gonflait le coût du mois du montant remboursé au
+                // lieu de l’alléger, et le total ne recoupait plus celui de l’écran
+                // Dépenses. On le soustrait : c’est un crédit.
+                else if (type == "insurance_refund") acc.Other -= c.Amount;
                 else acc.Other += c.Amount;
             }
 

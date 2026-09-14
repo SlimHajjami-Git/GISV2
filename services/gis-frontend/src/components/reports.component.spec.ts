@@ -86,8 +86,8 @@ describe('ReportsComponent', () => {
     apiService = TestBed.inject(ApiService);
 
     // Mock authentication
-    spyOn(apiService, 'isAuthenticated').and.returnValue(true);
-    spyOn(apiService, 'getVehicles').and.returnValue(of([]));
+    jest.spyOn(apiService, 'isAuthenticated').mockReturnValue(true);
+    jest.spyOn(apiService, 'getVehicles').mockReturnValue(of([]));
   });
 
   describe('Component initialization', () => {
@@ -165,7 +165,7 @@ describe('ReportsComponent', () => {
     });
 
     it('should call API when executing fuel report', () => {
-      spyOn(apiService, 'getFuelRecords').and.returnValue(of(mockFuelRecordsResult));
+      jest.spyOn(apiService, 'getFuelRecords').mockReturnValue(of(mockFuelRecordsResult));
 
       component.executeReport();
 
@@ -196,8 +196,8 @@ describe('ReportsComponent', () => {
     });
 
     it('should handle API error with fallback to mock data', () => {
-      spyOn(apiService, 'getFuelRecords').and.returnValue(throwError(() => new Error('API Error')));
-      spyOn(component, 'generateFuelData');
+      jest.spyOn(apiService, 'getFuelRecords').mockReturnValue(throwError(() => new Error('API Error')));
+      jest.spyOn(component, 'generateFuelData').mockImplementation(() => {});
 
       component.executeReport();
 

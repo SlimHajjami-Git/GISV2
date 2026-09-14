@@ -38,13 +38,13 @@ public class GetExpiryAlertsQueryHandler : IRequestHandler<GetExpiryAlertsQuery,
         var threshold = today.AddDays(request.DaysThreshold);
         var alerts = new List<VehicleExpiryDto>();
 
+        // Les cinq échéances viennent de la liste partagée avec le tableau de
+        // bord GPA (même ordre qu'avant : le tri final par jours restants est
+        // stable, la réponse est inchangée).
         foreach (var vehicle in vehicles)
         {
-            CheckAndAddAlert(alerts, vehicle, "insurance", vehicle.InsuranceExpiry, today, threshold);
-            CheckAndAddAlert(alerts, vehicle, "technical_inspection", vehicle.TechnicalInspectionExpiry, today, threshold);
-            CheckAndAddAlert(alerts, vehicle, "tax", vehicle.TaxExpiry, today, threshold);
-            CheckAndAddAlert(alerts, vehicle, "registration", vehicle.RegistrationExpiry, today, threshold);
-            CheckAndAddAlert(alerts, vehicle, "transport_permit", vehicle.TransportPermitExpiry, today, threshold);
+            foreach (var (type, expiry) in VehicleDocumentExpiries.Of(vehicle))
+                CheckAndAddAlert(alerts, vehicle, type, expiry, today, threshold);
         }
 
         return alerts

@@ -102,6 +102,18 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         report.Efficiency = BuildEfficiency(positions, daysInMonth);
         report.CostAnalysis = BuildCostAnalysis(vehicles, positions, realCosts);
 
+        // Parc sans GPS (recette du 11/09/2026) : une ligne par véhicule, avec
+        // ou sans boîtier, et les indicateurs GPS marqués « non mesurés ».
+        report.VehiclesWithGps = vehicles.Count(v => v.GpsDeviceId.HasValue);
+        report.FleetHasGps = report.VehiclesWithGps > 0;
+        (report.Vehicles, report.Totals) = BuildVehicleRows(vehicles, report.Utilization, realCosts);
+        if (!report.FleetHasGps)
+        {
+            // « Temps d'inactivité 0 %, cible 20, dans l'objectif » s'affichait
+            // en vert sans la moindre trame : ce n'est pas mesuré.
+            report.Efficiency.Metrics.Clear();
+        }
+
         // Comparisons — le coût comparé est lui aussi le coût réel des deux périodes.
         var prevMonthCost = await LoadPeriodCostTotalAsync(vehicleIds, prevMonthStart, prevMonthEnd, ct);
         report.MonthOverMonth = BuildComparison("Mois précédent", positions, prevMonthPositions,
@@ -222,6 +234,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     private static bool IsFuelType(string? type) => NormalizeType(type) == "fuel";
     private static bool IsMaintenanceType(string? type) => NormalizeType(type) is "maintenance" or "entretien";
     private static bool IsInsuranceType(string? type) => NormalizeType(type) is "insurance" or "assurance";
+    private static bool IsRepairType(string? type) => NormalizeType(type) is "repair" or "reparation" or "réparation";
 
     private Task<OperatingCostData> LoadAggregateAsync(
         GetMonthlyFleetReportQuery request, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)
@@ -314,13 +327,18 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             .Select(f => (decimal?)f.TotalAmount)
             .SumAsync(ct) ?? 0m;
 
-        var expenses = await _context.VehicleCosts.AsNoTracking()
+        // Remboursement d'assurance soustrait, comme l'agrégateur depuis le
+        // 11/09/2026 : sinon le mois courant (agrégateur) et le mois comparé
+        // (cette somme) n'avaient plus la même définition, et la variation
+        // « vs mois précédent » était faussée du double du remboursement.
+        var expenses = (await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId
                      && vehicleIds.Contains(c.VehicleId)
                      && c.Date >= startUtc
                      && c.Date < endExclusiveUtc)
-            .Select(c => (decimal?)c.Amount)
-            .SumAsync(ct) ?? 0m;
+            .Select(c => new { c.Type, c.Amount })
+            .ToListAsync(ct))
+            .Sum(c => NormalizeType(c.Type) == "insurance_refund" ? -c.Amount : c.Amount);
 
         // Le statut est comparé sans tenir compte de la casse, comme l'agrégateur :
         // la comparaison ne se traduit pas en SQL, d'où la projection minimale.
@@ -399,6 +417,12 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     {
         var utilization = new VehicleUtilizationDto();
         var vehicleUtilizations = new List<double>();
+        // Utilisation rapportée aux véhicules ÉQUIPÉS : un véhicule sans boîtier
+        // n'est pas « inutilisé », il n'est pas mesuré. Divisé par tout le parc,
+        // un client qui équipait 1 véhicule sur 12 lisait « 8 % d'utilisation,
+        // réduire la flotte » alors que ce véhicule roulait tous les jours.
+        // Inchangé pour un parc entièrement équipé.
+        var equipped = vehicles.Count(v => v.GpsDeviceId.HasValue);
 
         // Daily trend
         for (int day = 0; day < daysInMonth; day++)
@@ -406,17 +430,17 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             var date = startDate.AddDays(day);
             var dayStart = date.AddHours(1);
             var dayEnd = dayStart.AddDays(1);
-            
+
             var dayPositions = positions.Where(p => p.RecordedAt >= dayStart && p.RecordedAt < dayEnd).ToList();
             var activeVehicleIds = dayPositions.Select(p => p.DeviceId).Distinct().Count();
-            
+
             utilization.DailyTrend.Add(new DailyUtilizationDto
             {
                 Date = date,
-                UtilizationRate = vehicles.Count > 0 ? Math.Round((double)activeVehicleIds / vehicles.Count * 100, 1) : 0,
+                UtilizationRate = equipped > 0 ? Math.Round((double)activeVehicleIds / equipped * 100, 1) : 0,
                 ActiveVehicles = activeVehicleIds,
-                TotalDistanceKm = Math.Round(CalculateDistance(dayPositions), 2),
-                TotalTrips = CountTrips(dayPositions)
+                TotalDistanceKm = Math.Round(DistanceParBoitier(dayPositions), 2),
+                TotalTrips = TrajetsParBoitier(dayPositions)
             });
         }
 
@@ -934,10 +958,16 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             ("Réparations", real.Total.Repair)
         };
 
+        // Mêmes règles que l'agrégateur (11/09/2026), sinon la répartition ne
+        // retombe plus sur le total : une dépense « Réparation » est déjà dans la
+        // ligne Réparations (elle apparaissait une 2e fois en « Réparation
+        // (dépense) »), et un remboursement d'assurance est un CRÉDIT (il
+        // s'ajoutait en positif). Groupement par libellé : « insurance » et
+        // « assurance » donnaient deux lignes « Assurance ».
         lines.AddRange(real.Expenses
-            .Where(e => !IsFuelType(e.Type) && !IsMaintenanceType(e.Type))
-            .GroupBy(e => NormalizeType(e.Type))
-            .Select(g => (Label: CategoryLabel(g.Key), Amount: g.Sum(e => e.Amount)))
+            .Where(e => !IsFuelType(e.Type) && !IsMaintenanceType(e.Type) && !IsRepairType(e.Type))
+            .GroupBy(e => CategoryLabel(NormalizeType(e.Type)))
+            .Select(g => (Label: g.Key, Amount: g.Sum(e => NormalizeType(e.Type) == "insurance_refund" ? -e.Amount : e.Amount)))
             .OrderByDescending(l => l.Amount));
 
         var total = real.Total.Total;
@@ -969,6 +999,120 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     };
 
     /// <summary>
+    /// Tableau par véhicule du rapport (recette du 11/09/2026) : une ligne par
+    /// véhicule du périmètre, avec ou sans boîtier.
+    /// <list type="bullet">
+    ///   <item>Kilométrage : la distance mesurée de l'agrégateur — trajets
+    ///     terminés d'un véhicule équipé, sinon relevés saisis (pleins,
+    ///     entretiens, réparations, dépenses) —, celle des rapports de coûts ;
+    ///     repli sur les positions GPS d'un véhicule équipé sans trajet.</item>
+    ///   <item>Litres : achetés (pleins + dépenses carburant), jamais estimés.</item>
+    ///   <item>Coûts : l'agrégateur, par catégorie. Utilisation et trajets : le
+    ///     boîtier, null sans boîtier.</item>
+    /// </list>
+    /// </summary>
+    private static (List<MonthlyVehicleRowDto> Rows, MonthlyFleetTotalsDto Totals) BuildVehicleRows(
+        List<Vehicle> vehicles, VehicleUtilizationDto utilization, RealCostData real)
+    {
+        var gpsRows = utilization.ByVehicle.ToDictionary(u => u.VehicleId);
+        var rows = new List<MonthlyVehicleRowDto>(vehicles.Count);
+
+        foreach (var vehicle in vehicles)
+        {
+            real.ByVehicle.TryGetValue(vehicle.Id, out var data);
+            gpsRows.TryGetValue(vehicle.Id, out var gpsRow);
+            var hasGps = vehicle.GpsDeviceId.HasValue;
+
+            // Kilométrage : la distance MESURÉE de l'agrégateur — trajets terminés
+            // pour un véhicule équipé, sinon relevés compteur saisis —, celle des
+            // rapports de coûts et du coût au km de ce rapport (CostDistanceByVehicle).
+            // Repli sur les positions échantillonnées d'un véhicule équipé sans
+            // trajet. Un véhicule équipé sans trame ni relevé n'affiche plus
+            // « 0 km » mais « — » : il n'est pas mesuré.
+            double? km;
+            string source;
+            bool reliable;
+            if (data?.DistanceKm is > 0)
+            {
+                km = (double)data.DistanceKm.Value;
+                source = data.DistanceSource == "gps" ? "gps" : "odometer";
+                reliable = data.ReliableDistance;
+            }
+            else if (hasGps && gpsRow is { TotalDistanceKm: > 0 })
+            {
+                km = gpsRow.TotalDistanceKm;
+                source = "gps";
+                reliable = true;
+            }
+            else
+            {
+                km = null;
+                source = "none";
+                reliable = false;
+            }
+
+            // Litres ACHETÉS seulement (pleins + dépenses carburant renseignées) :
+            // l'estimation au taux du type de véhicule (7,5 L/100 km pour une
+            // berline…) entrait dans le tableau et dans ses totaux comme une mesure.
+            var liters = (double)real.LitersByVehicle.GetValueOrDefault(vehicle.Id);
+            var total = data?.Total ?? CostBucket.Zero;
+
+            rows.Add(new MonthlyVehicleRowDto
+            {
+                VehicleId = vehicle.Id,
+                VehicleName = vehicle.Name,
+                Plate = vehicle.Plate,
+                HasGps = hasGps,
+                DistanceKm = km.HasValue ? Math.Round(km.Value, 2) : null,
+                DistanceSource = source,
+                ReliableDistance = reliable,
+                Liters = Math.Round(liters, 2),
+                ConsumptionPer100Km = km is > 0 && liters > 0 ? Math.Round(liters / km.Value * 100, 2) : null,
+                FuelCost = Round2(total.Fuel),
+                MaintenanceCost = Round2(total.Maintenance),
+                RepairCost = Round2(total.Repair),
+                OtherCost = Round2(total.Other),
+                TotalCost = Round2(total.Total),
+                CostPerKm = km is > 0 ? Math.Round(total.Total / (decimal)km.Value, 3) : null,
+                UtilizationRate = hasGps ? gpsRow?.UtilizationRate : null,
+                Trips = hasGps ? gpsRow?.TotalTrips : null
+            });
+        }
+
+        // Le plus coûteux d'abord ; à coût égal, par plaque.
+        rows = rows
+            .OrderByDescending(r => r.TotalCost)
+            .ThenBy(r => r.Plate ?? r.VehicleName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var measured = rows.Where(r => r.DistanceKm is > 0).ToList();
+        var kmTotal = rows.Sum(r => r.DistanceKm ?? 0);
+        var kmMeasured = measured.Sum(r => r.DistanceKm!.Value);
+        var litersMeasured = measured.Sum(r => r.Liters);
+        var totals = new MonthlyFleetTotalsDto
+        {
+            DistanceKm = Math.Round(kmTotal, 2),
+            MeasuredVehicles = measured.Count,
+            Liters = Math.Round(rows.Sum(r => r.Liters), 2),
+            ConsumptionPer100Km = kmMeasured > 0 && litersMeasured > 0
+                ? Math.Round(litersMeasured / kmMeasured * 100, 2) : null,
+            FuelCost = rows.Sum(r => r.FuelCost),
+            MaintenanceCost = rows.Sum(r => r.MaintenanceCost),
+            RepairCost = rows.Sum(r => r.RepairCost),
+            OtherCost = rows.Sum(r => r.OtherCost),
+            TotalCost = rows.Sum(r => r.TotalCost)
+        };
+        // Coût au km sur les véhicules MESURÉS seulement, comme la consommation et
+        // comme « Coût d'exploitation » : le coût d'un véhicule sans kilométrage
+        // gonflait le numérateur sans rien ajouter au dénominateur (septembre en
+        // local : 1,795 €/km au lieu de 0,177).
+        var coutMesure = measured.Sum(r => r.TotalCost);
+        totals.CostPerKm = kmMeasured > 0 ? Math.Round(coutMesure / (decimal)kmMeasured, 3) : null;
+
+        return (rows, totals);
+    }
+
+    /// <summary>
     /// Kilométrage retenu pour les ratios de coût : la distance MESURÉE de
     /// l'agrégateur (trajets terminés, ou relevés compteur des pleins pour un
     /// véhicule sans boîtier) — la même que les rapports de coûts, pour que le
@@ -998,11 +1142,11 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     private PeriodComparisonDto BuildComparison(string period, List<GpsPosition> current, List<GpsPosition> previous,
         decimal currentCost, decimal previousCost)
     {
-        var currentDistance = CalculateDistance(current);
-        var previousDistance = CalculateDistance(previous);
-        
-        var currentTrips = CountTrips(current);
-        var previousTrips = CountTrips(previous);
+        var currentDistance = DistanceParBoitier(current);
+        var previousDistance = DistanceParBoitier(previous);
+
+        var currentTrips = TrajetsParBoitier(current);
+        var previousTrips = TrajetsParBoitier(previous);
 
         return new PeriodComparisonDto
         {
@@ -1043,7 +1187,10 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         {
             TotalVehicles = report.FleetOverview.TotalVehicles,
             ActiveVehicles = report.FleetOverview.ActiveVehicles,
-            TotalDistanceKm = report.Utilization.ByVehicle.Sum(v => v.TotalDistanceKm),
+            // Total du tableau par véhicule : distance GPS des véhicules équipés
+            // (inchangée) + kilométrage reconstitué des autres. La somme de
+            // Utilization.ByVehicle valait 0 pour un parc sans boîtier.
+            TotalDistanceKm = report.Totals.DistanceKm,
             TotalFuelConsumedLiters = report.FuelAnalytics.TotalFuelConsumedLiters,
             TotalOperationalCost = report.CostAnalysis.TotalOperationalCost,
             FleetUtilizationRate = report.Utilization.OverallUtilizationRate,
@@ -1055,8 +1202,12 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
 
         // Generate insights
         summary.KeyInsights = new List<string>();
-        
-        if (report.Utilization.OverallUtilizationRate < 70)
+
+        // Sans boîtier, l'utilisation n'est pas mesurée : « taux d'utilisation
+        // faible (0 %) — réduire la flotte » était faux pour tout compte GPA.
+        if (!report.FleetHasGps && report.FleetOverview.TotalVehicles > 0)
+            summary.KeyInsights.Add($"ℹ️ Aucun boîtier GPS : kilométrage reconstitué des relevés saisis ({report.Totals.MeasuredVehicles}/{report.FleetOverview.TotalVehicles} véhicules mesurés)");
+        else if (report.Utilization.OverallUtilizationRate < 70)
             summary.KeyInsights.Add($"⚠️ Taux d'utilisation faible ({report.Utilization.OverallUtilizationRate}%) - Optimisation de la flotte recommandée");
         else
             summary.KeyInsights.Add($"✅ Bon taux d'utilisation de la flotte ({report.Utilization.OverallUtilizationRate}%)");
@@ -1066,12 +1217,13 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         else if (report.MonthOverMonth.Distance.ChangePercent < -10)
             summary.KeyInsights.Add($"📉 Distance parcourue en baisse de {Math.Abs(report.MonthOverMonth.Distance.ChangePercent)}% vs mois précédent");
 
-        summary.KeyInsights.Add($"⛽ Consommation moyenne: {report.FuelAnalytics.AverageConsumptionPer100Km} L/100km");
+        if (report.FuelAnalytics.AverageConsumptionPer100Km > 0)
+            summary.KeyInsights.Add($"⛽ Consommation moyenne: {report.FuelAnalytics.AverageConsumptionPer100Km} L/100km");
 
         // Generate recommendations
         summary.Recommendations = new List<string>();
-        
-        if (report.Utilization.OverallUtilizationRate < 70)
+
+        if (report.FleetHasGps && report.Utilization.OverallUtilizationRate < 70)
             summary.Recommendations.Add("Envisager la réduction de la taille de la flotte ou l'augmentation des missions");
         
         if (report.FuelAnalytics.AverageConsumptionPer100Km > 10)
@@ -1143,6 +1295,17 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     }
 
     private List<KpiDto> BuildKpis(MonthlyFleetReportDto report)
+    {
+        var kpis = BuildAllKpis(report);
+        // Parc sans boîtier : l'utilisation et le score des conducteurs ne sont
+        // pas mesurés. Les laisser donnait « 0 / 80, en dessous de l'objectif »
+        // et « 0 / 75 » — des constats faux, affichés en rouge.
+        if (!report.FleetHasGps && report.FleetOverview.TotalVehicles > 0)
+            kpis.RemoveAll(k => k.Category is "Utilisation" or "Conducteurs");
+        return kpis;
+    }
+
+    private static List<KpiDto> BuildAllKpis(MonthlyFleetReportDto report)
     {
         return new List<KpiDto>
         {
@@ -1398,8 +1561,23 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     {
         var deviceIds = vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.GpsDeviceId!.Value).ToList();
         var positions = allPositions.Where(p => deviceIds.Contains(p.DeviceId)).ToList();
-        return CalculateDistance(positions);
+        return DistanceParBoitier(positions);
     }
+
+    /// <summary>
+    /// Distance de positions venant de PLUSIEURS boîtiers : calculée boîtier par
+    /// boîtier, puis additionnée. <see cref="CalculateDistance"/> seul trie les
+    /// trames par heure, tous boîtiers confondus, et additionnait donc la
+    /// distance entre deux VÉHICULES différents dès que l'un roulait : tendance
+    /// journalière, comparaison au mois précédent et répartition par type
+    /// étaient gonflées pour tout parc d'au moins deux boîtiers.
+    /// </summary>
+    private double DistanceParBoitier(IEnumerable<GpsPosition> positions) =>
+        positions.GroupBy(p => p.DeviceId).Sum(g => CalculateDistance(g.ToList()));
+
+    /// <summary>Trajets comptés boîtier par boîtier (même défaut que la distance).</summary>
+    private int TrajetsParBoitier(IEnumerable<GpsPosition> positions) =>
+        positions.GroupBy(p => p.DeviceId).Sum(g => CountTrips(g.ToList()));
 
     private int CountTrips(List<GpsPosition> positions)
     {

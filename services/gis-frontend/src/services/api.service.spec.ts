@@ -61,12 +61,14 @@ describe('ApiService - Fuel Records', () => {
     service = TestBed.inject(ApiService);
     httpMock = TestBed.inject(HttpTestingController);
 
-    // Mock localStorage for token
-    spyOn(localStorage, 'getItem').and.returnValue('mock-token');
+    // Mock localStorage for token. Spy sur Storage.prototype : sous jsdom, affecter localStorage.getItem
+    // passe par le setter nomme de Storage (equivalent a setItem) et ne remplace pas la methode.
+    jest.spyOn(Storage.prototype, 'getItem').mockReturnValue('mock-token');
   });
 
   afterEach(() => {
     httpMock.verify();
+    jest.restoreAllMocks();
   });
 
   describe('getFuelRecords', () => {
@@ -258,13 +260,17 @@ describe('ApiService - Authentication', () => {
     service = TestBed.inject(ApiService);
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   it('should return true when token exists', () => {
-    spyOn(localStorage, 'getItem').and.returnValue('valid-token');
+    jest.spyOn(Storage.prototype, 'getItem').mockReturnValue('valid-token');
     expect(service.isAuthenticated()).toBe(true);
   });
 
   it('should return false when token does not exist', () => {
-    spyOn(localStorage, 'getItem').and.returnValue(null);
+    jest.spyOn(Storage.prototype, 'getItem').mockReturnValue(null);
     expect(service.isAuthenticated()).toBe(false);
   });
 });
