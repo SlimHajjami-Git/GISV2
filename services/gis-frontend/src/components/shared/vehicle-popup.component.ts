@@ -8,6 +8,7 @@ import { UserPreferencesService } from '../../services/user-preferences.service'
 import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { environment } from '../../environments/environment';
+import { fuelSensorModeForChosenDevice } from '../../admin/pages/vehicle-gps-save.helpers';
 
 interface Brand {
   id: number;
@@ -1848,7 +1849,9 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       if (selectedDevice) {
         this.formData.gpsImei = selectedDevice.deviceUid || '';
         this.formData.gpsMat = selectedDevice.mat || '';
-        this.formData.gpsFuelSensorMode = selectedDevice.fuelSensorMode || 'raw_255';
+        // Réglage du véhicule gardé si l'appareil n'a que la valeur par défaut (14/09/2026).
+        this.formData.gpsFuelSensorMode = fuelSensorModeForChosenDevice(
+          selectedDevice.fuelSensorMode, (this.vehicle as any)?.gpsFuelSensorMode);
         this.formData.gpsSimNumber = selectedDevice.simNumber || '';
         this.formData.gpsSimOperator = selectedDevice.simOperator || '';
       }

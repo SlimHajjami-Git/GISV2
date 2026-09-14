@@ -10,6 +10,7 @@ import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../service
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
+import { gpsDeviceIdToSend, trimIdentifier } from './vehicle-gps-save.helpers';
 import { PermissionEditorComponent } from '../components/permission-editor.component';
 
 type CompanyRole = Role & { userCount?: number };
@@ -2873,6 +2874,10 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   }
 
   onVehicleSaved(formData: any) {
+    // Identifiants sans espaces de bord, et appareil existant choisi désigné par son id :
+    // mêmes règles que l'écran Véhicules (vehicle-gps-save.helpers.ts, 14/09/2026).
+    const gpsDeviceId = gpsDeviceIdToSend(formData);
+
     const vehicleData = {
       name: formData.name,
       type: formData.type,
@@ -2887,14 +2892,14 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
       fuelTankCapacity: formData.fuelTankCapacity || undefined,
       companyId: this.companyId,
       hasGps: formData.hasGPS || false,
-      gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
-      gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
-      gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
+      gpsDeviceId,
+      gpsImei: formData.hasGPS ? trimIdentifier(formData.gpsImei) : undefined,
+      gpsMat: formData.hasGPS ? trimIdentifier(formData.gpsMat) : undefined,
       gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
       gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
       gpsFirmwareVersion: formData.hasGPS ? formData.gpsFirmwareVersion || undefined : undefined,
       gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined,
-      gpsSimNumber: formData.hasGPS ? formData.gpsSimNumber || undefined : undefined,
+      gpsSimNumber: formData.hasGPS ? trimIdentifier(formData.gpsSimNumber) : undefined,
       gpsSimOperator: formData.hasGPS ? formData.gpsSimOperator || undefined : undefined,
       gpsInstallationDate: formData.hasGPS ? formData.gpsInstallationDate || undefined : undefined
     };
@@ -2907,7 +2912,15 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error updating vehicle:', err);
-          alert('Erreur lors de la modification du véhicule');
+          // Le serveur explique le refus (doublon IMEI/MAT/SIM, société…) : le montrer.
+          const msg: string = err?.error?.message || 'Erreur lors de la modification du véhicule';
+          // Cet écran ne sait pas enchaîner le remplacement de boîtier que le message
+          // propose : indiquer où le faire plutôt qu'une consigne impossible à suivre.
+          alert(err?.error?.replaceSuggested
+            ? `${msg}\n\nLe remplacement de boîtier se confirme depuis le menu « Vehicules » de l'administration : ` +
+              `rééditez-y ce véhicule avec les mêmes valeurs.`
+            : msg);
+          this.cdr.detectChanges();
         }
       });
     } else {
@@ -2918,7 +2931,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         },
         error: (err) => {
           console.error('Error creating vehicle:', err);
-          alert('Erreur lors de la création du véhicule');
+          alert(err?.error?.message || 'Erreur lors de la création du véhicule');
         }
       });
     }

@@ -28,7 +28,13 @@ public static class GpsDeviceResolver
             if (device != null)
             {
                 if (device.CompanyId != companyId) device.CompanyId = companyId;
-                if (!string.IsNullOrWhiteSpace(gpsMat)) device.Mat = gpsMat.Trim();
+                // Fiche existante retrouvée par son IMEI : le MAT saisi n'a pas été lu sur
+                // elle. Si le boîtier a déjà communiqué, l'orthographe stockée (celle que
+                // l'ingestion compare à l'identique) est gardée quand la saisie n'en diffère
+                // que par la casse ou des espaces.
+                if (!string.IsNullOrWhiteSpace(gpsMat))
+                    device.Mat = GpsDeviceUniquenessGuard.StoredValueFor(
+                        device.Mat, gpsMat, keepDeviceSpelling: device.LastCommunication != null);
                 if (device.Vehicle != null)
                 {
                     device.Vehicle.GpsDeviceId = null;

@@ -7,6 +7,9 @@ import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, AdminVehicle, Client } from '../services/admin.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
+import {
+  gpsDeviceIdToSend, replayAfterReplacement, shouldProposeReplacement, trimIdentifier
+} from './vehicle-gps-save.helpers';
 
 @Component({
   selector: 'admin-vehicles',
@@ -716,6 +719,10 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       ? parseInt(formData.companyId, 10) 
       : (this.companies.length > 0 ? this.companies[0].id : 1);
 
+    // Identifiants sans espaces de bord, et appareil existant choisi désigné par son id
+    // (règles et raisons dans vehicle-gps-save.helpers.ts, constat du 14/09/2026).
+    const gpsDeviceId = gpsDeviceIdToSend(formData);
+
     const vehicleData: Partial<AdminVehicle> = {
       name: formData.name,
       type: formData.type,
@@ -730,14 +737,14 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       fuelTankCapacity: formData.fuelTankCapacity || undefined,
       companyId: selectedCompanyId,
       hasGps: formData.hasGPS || false,
-      gpsDeviceId: formData.hasGPS ? formData.gpsDeviceId : undefined,
-      gpsImei: formData.hasGPS ? formData.gpsImei || undefined : undefined,
-      gpsMat: formData.hasGPS ? formData.gpsMat || undefined : undefined,
+      gpsDeviceId,
+      gpsImei: formData.hasGPS ? trimIdentifier(formData.gpsImei) : undefined,
+      gpsMat: formData.hasGPS ? trimIdentifier(formData.gpsMat) : undefined,
       gpsBrand: formData.hasGPS ? formData.gpsBrand || undefined : undefined,
       gpsModel: formData.hasGPS ? formData.gpsModel || undefined : undefined,
       gpsFirmwareVersion: formData.hasGPS ? formData.gpsFirmwareVersion || undefined : undefined,
       gpsFuelSensorMode: formData.hasGPS ? formData.gpsFuelSensorMode || undefined : undefined,
-      gpsSimNumber: formData.hasGPS ? formData.gpsSimNumber || undefined : undefined,
+      gpsSimNumber: formData.hasGPS ? trimIdentifier(formData.gpsSimNumber) : undefined,
       gpsSimOperator: formData.hasGPS ? formData.gpsSimOperator || undefined : undefined,
       gpsInstallationDate: formData.hasGPS ? formData.gpsInstallationDate || undefined : undefined
     };
@@ -752,27 +759,33 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
           console.error('Error updating vehicle:', err);
           const msg: string = err?.error?.message || 'Erreur lors de la mise à jour du véhicule';
 
-          // Cas courant d'exploitation : le boîtier a été remplacé sur le terrain
-          // et le nouvel IMEI possède déjà une fiche (créée à la réception du
-          // matériel). Le garde-fou anti-doublons bloque à juste titre, mais
-          // laissait l'opérateur sans issue — il fallait une intervention en base.
-          // On lui propose ici le remplacement, qui libère la fiche vide et
-          // renomme le boîtier en conservant tout l'historique du véhicule.
-          const isDuplicate = msg.includes('Doublon refusé');
-          const newImei = (formData.gpsImei || '').trim();
-
-          if (isDuplicate && newImei && this.selectedVehicle) {
+          // Deux cas d'exploitation passent par ici :
+          //  - le boîtier a été remplacé sur le terrain et le nouvel IMEI possède
+          //    déjà une fiche (créée à la réception du matériel), ou une fiche vide
+          //    occupe la SIM ou le MAT saisis ;
+          //  - l'IMEI du véhicule avait été mal saisi et le vrai boîtier émet sous
+          //    une autre fiche (constat du 14/09/2026, HTZ 278 / 255 / 292).
+          // Le garde-fou anti-doublons bloque à juste titre. Le serveur calcule si un
+          // remplacement aboutirait avec ces valeurs (replaceSuggested) et son message
+          // dit ce qu'il fera : on ne propose la confirmation que dans ce cas. Proposer
+          // un remplacement voué à l'échec, c'était la boucle du 14/09.
+          const newImei = trimIdentifier(formData.gpsImei) || '';
+          if (this.selectedVehicle && shouldProposeReplacement(err?.error, newImei, this.selectedVehicle.gpsImei)) {
             const ok = confirm(
               `${msg}\n\n` +
-              `S'agit-il d'un REMPLACEMENT de boîtier sur ce véhicule ?\n\n` +
-              `Si oui, l'IMEI ${newImei} sera affecté à « ${this.selectedVehicle.name} ». ` +
-              `La fiche qui l'occupait sera libérée UNIQUEMENT si elle est vide, et ` +
-              `l'historique du véhicule sera conservé.`
+              `Confirmer le remplacement de boîtier sur « ${this.selectedVehicle.name} » ?\n\n` +
+              `- la fiche boîtier qui a un historique (positions, alertes…) est conservée ;\n` +
+              `- seule une fiche strictement vide est supprimée ;\n` +
+              `- si les deux fiches contiennent des données, rien n'est modifié.`
             );
             if (ok) { this.replaceDevice(newImei, formData, vehicleData); return; }
+            // Annulé : pas de seconde boîte répétant le même message.
+            this.cdr.detectChanges();
+            return;
           }
 
           alert(msg);
+          this.cdr.detectChanges();
         }
       });
     } else {
@@ -791,9 +804,11 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
   /**
    * Remplacement de boîtier : appelé quand la mise à jour a été refusée pour
-   * doublon et que l'opérateur confirme qu'il s'agit d'un changement de matériel.
-   * Le backend renomme le boîtier en place (l'historique du véhicule suit) et
-   * refuse si la fiche à libérer contient la moindre donnée.
+   * doublon et que l'opérateur confirme l'affectation du nouvel IMEI.
+   * Le backend choisit le sens : renommage en place si l'historique est sur la
+   * fiche du véhicule, rattachement à la fiche qui émet si c'est la fiche du
+   * véhicule qui est vide (IMEI mal saisi). Il refuse dès qu'une fiche à
+   * supprimer contient la moindre donnée.
    */
   private replaceDevice(newImei: string, formData: any, vehicleData: Partial<AdminVehicle>) {
     const vehicleId = this.selectedVehicle?.id;
@@ -801,23 +816,29 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
     this.adminService.replaceVehicleDevice(vehicleId, {
       newImei,
-      newMat: formData.gpsMat || undefined,
-      newSimNumber: formData.gpsSimNumber || undefined,
-      newSimOperator: formData.gpsSimOperator || undefined
+      newMat: vehicleData.gpsMat,
+      newSimNumber: vehicleData.gpsSimNumber,
+      newSimOperator: formData.gpsSimOperator || undefined,
+      newFuelSensorMode: formData.gpsFuelSensorMode || undefined
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
-        if (!res.success) { alert(res.message); return; }
+        if (!res.success) { alert(res.message); this.cdr.detectChanges(); return; }
 
         // Le remplacement n'a traité que l'identité du boîtier. Les autres champs
         // saisis dans le même formulaire (nom, plaque, kilométrage…) n'ont jamais
         // été enregistrés puisque la mise à jour avait été refusée : on la rejoue
         // maintenant que le doublon est levé, sinon l'opérateur les perdrait sans
-        // le savoir.
-        this.adminService.updateVehicle(vehicleId, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
+        // le savoir. On la rejoue avec la fiche que le serveur vient de retenir
+        // (res.deviceId) : en mode rattachement, l'ancienne fiche du véhicule a été
+        // supprimée, et un gpsDeviceId resté sur elle dans le formulaire ferait
+        // échouer le rejeu (« Appareil GPS introuvable »).
+        const replay = replayAfterReplacement(vehicleData, res.deviceId);
+        this.adminService.updateVehicle(vehicleId, replay).pipe(takeUntil(this.destroy$)).subscribe({
           next: () => {
             alert(res.message);
             this.loadData();
             this.closeModals();
+            this.cdr.detectChanges();
           },
           error: (err) => {
             console.error('Error updating vehicle after device replacement:', err);
@@ -825,12 +846,14 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
               + (err?.error?.message || 'erreur inconnue') + '\nRééditez la fiche pour les ressaisir.');
             this.loadData();
             this.closeModals();
+            this.cdr.detectChanges();
           }
         });
       },
       error: (err) => {
         console.error('Error replacing device:', err);
         alert(err?.error?.message || 'Erreur lors du remplacement du boîtier');
+        this.cdr.detectChanges();
       }
     });
   }

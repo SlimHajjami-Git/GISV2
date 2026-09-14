@@ -127,6 +127,8 @@ export interface ReplaceDeviceRequest {
   newSimNumber?: string;
   newMat?: string;
   newSimOperator?: string;
+  /** Mode capteur carburant saisi : sinon la fiche conservée garderait la valeur par défaut de l'ingestion. */
+  newFuelSensorMode?: string;
 }
 
 export interface ReplaceDeviceResult {
@@ -135,6 +137,8 @@ export interface ReplaceDeviceResult {
   deviceId?: number;
   previousImei?: string;
   releasedDeviceId?: number;
+  /** 'rename' : fiche du véhicule renommée ; 'attach' : véhicule rattaché à la fiche qui émet. */
+  mode?: 'rename' | 'attach';
 }
 
 export interface ServiceHealth {
