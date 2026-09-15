@@ -3,7 +3,7 @@
 Offre « Topnet Pro » = **Acronis Cyber Protect Cloud**, console `https://eu-cloud.acronis.com` (tenant Topnet).
 **Réponses de Topnet (15/09/2026)** : stockage cloud hébergé **en Tunisie** (données clients sur le territoire, INPDP) ;
 quota **100 Go** — trois fois le besoin estimé (§9). L'hôte de stockage se lira dans la console après la première sauvegarde et le port 40440 ne concerne que le côté stockage (§11) ;
-reste à demander si le **stockage immuable** est activé.
+**stockage immuable activé** (Topnet, 15/09) — reste à demander son mode (*Governance* ou *Compliance*) et sa durée en jours.
 Périmètre : **TN uniquement** (alias SSH `belive-tn`, hôte `vm-belive-1`). **Le serveur DZ n'est jamais utilisé**, ni pour la sauvegarde ni pour le test de restauration (décision de Slim, 15/09/2026) : le test se fait sur le PC de Slim.
 
 > Toutes les commandes `sudo` / root de ce document sont à lancer **par Slim** (pas de sudo non interactif sur TN).
@@ -56,11 +56,15 @@ encore en cours.
 
 1. **Version de l'agent** (§3) : n'installer qu'une version **≥ 26.8.43120**. Le disque de TN est multiqueue ; 26.8.43120
    corrige un plantage noyau au déchargement du pilote d'instantané (« par exemple pendant une mise à jour de l'agent »).
-   Le 15/09, eu-cloud distribue encore 26.8.42957 : **attendre**, et désactiver la mise à jour automatique dès
-   l'enregistrement.
+   Le 15/09, eu-cloud distribue encore 26.8.42957. **Décision de Slim (15/09) : installer maintenant, SANS module noyau**
+   (point 2) — le défaut corrigé par 26.8.43120 se produit au déchargement du module `snapapi` ; sans module, il ne
+   peut pas se produire. Désactiver quand même la mise à jour automatique dès l'enregistrement.
 2. **Module noyau ou pas** (§2.2) : voie documentée = installer `gcc make dkms libelf-dev rpm` et laisser l'installeur
-   compiler `snapapi`. Voie non documentée = ne pas installer `gcc` (seulement `rpm`) : aucun module noyau chargé sur la
-   prod, sauvegarde fichiers « très probablement » fonctionnelle mais **à tester**.
+   compiler `snapapi`. **Voie retenue** = ne pas installer `gcc` (seulement `rpm`) : aucun module noyau chargé sur la
+   prod, plan en « ne pas créer d'instantané ». L'installeur affichera « Failed to build the SnapAPI kernel module —
+   disk-level backups unavailable » : c'est attendu. Sauvegarde fichiers « très probablement » fonctionnelle, non
+   documentée : la première sauvegarde manuelle (§6) tranche ; en cas d'échec, revenir à la voie documentée une fois
+   26.8.43120 distribuée.
 3. **Espace disque** (§2.1) : `/` est entre 81 et 83 % ; libérer de la place avant l'installation (2 Go requis).
 4. **Redémarrage en attente** (§2.3) : un noyau 6.8.0-139 attend ; à traiter dans sa propre fenêtre, **pas** couplé à Acronis.
 5. **Test de restauration** (§7) : sur le **PC de Slim** (Docker Desktop, conteneur jetable sans port publié), jamais sur DZ.
@@ -622,9 +626,14 @@ Infrastructure, automatique à partir de la version 4.7.1). Rien à faire sur TN
 Locations**, vide tant qu'aucune sauvegarde n'a tourné) après la première sauvegarde ; c'est là qu'on lira l'hôte à
 tester si besoin.
 
-**Stockage immuable** (à demander à Topnet) : option par tenant qui garde N jours (14 par défaut) toute sauvegarde
-supprimée, y compris par un attaquant ou une erreur de rétention — protection utile contre les rançongiciels. Si elle est
-active en *Compliance mode*, voir §5.2 (mot de passe de chiffrement réglé sur la machine).
+**Stockage immuable : ACTIVÉ** (confirmé par Topnet le 15/09/2026). Toute sauvegarde supprimée — par la rétention, par
+erreur ou par un attaquant qui aurait pris la main sur le serveur ou la console — reste récupérable pendant N jours
+(14 par défaut) : c'est la protection contre les rançongiciels. **À demander encore à Topnet** : le mode (*Governance* :
+désactivable par un administrateur ; *Compliance* : irréversible, et le mot de passe de chiffrement se règle alors **sur la
+machine**, voir §5.2) et la durée N. Conséquence sur le quota : les sauvegardes supprimées comptent tant qu'elles sont
+retenues ; avec ~2 Go par point quotidien et N = 14, prévoir jusqu'à ~28 Go de plus que le régime établi de §9, soit
+~60 Go au pire sur les 100 Go achetés. Récupération d'un point supprimé : console → *Backup storage* → emplacement →
+*Afficher les sauvegardes supprimées*.
 
 ---
 
