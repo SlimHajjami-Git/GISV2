@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -25,11 +26,14 @@ public class AdminActionNotificationHandler : INotificationHandler<AdminActionNo
     {
         try
         {
-            // Notify all active company users (exclude the actor themselves)
-            var targetUsers = await _context.Users
-                .Where(u => u.CompanyId == e.CompanyId && u.Status == "active" && u.Id != e.ActorUserId)
-                .Select(u => u.Id)
-                .ToListAsync(ct);
+            // Echo d'audit de l'activite employe : destine aux ADMINISTRATEURS,
+            // comme le disent deja le commentaire de l'evenement et le log plus
+            // bas. La requete, elle, arrosait toute la societe — un operateur
+            // restreint a 2 vehicules recevait l'activite de tout le parc
+            // (incident Hertz du 15/09/2026). On exclut toujours l'auteur.
+            var targetUsers = (await NotificationAudience.CompanyAdminsAsync(_context, e.CompanyId, ct))
+                .Where(id => id != e.ActorUserId)
+                .ToList();
 
             if (targetUsers.Count == 0) return;
 
