@@ -59,8 +59,10 @@ public class DocumentsController : ControllerBase
     [HttpPost("vehicle/{vehicleId}/renew")]
     public async Task<ActionResult<int>> RenewDocument(int vehicleId, [FromBody] RenewDocumentRequest request)
     {
+        // Même forme { message } que les refus du middleware : la fenêtre de
+        // renouvellement affiche err.error.message sur un 400.
         if (vehicleId != request.VehicleId)
-            return BadRequest("Vehicle ID mismatch");
+            return BadRequest(new { message = "Le véhicule du renouvellement ne correspond pas à l'adresse appelée." });
 
         var command = new RenewDocumentCommand(
             request.VehicleId,

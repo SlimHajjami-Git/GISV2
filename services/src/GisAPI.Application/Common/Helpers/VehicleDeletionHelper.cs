@@ -43,25 +43,32 @@ public static class VehicleDeletionHelper
           AND cl.relname <> 'vehicles';";
 
     /// <summary>
-    /// Cascade-delete the vehicle, atomically. For every table referencing
-    /// vehicles(id):
-    ///   • NOT NULL column  → the row is a true dependent (costs, maintenance,
-    ///     trips, documents…) and is DELETED with the vehicle;
-    ///   • NULLABLE column  → the row can live without a vehicle (a driver's
-    ///     assigned_vehicle_id, a manual fuel entry, a gps alert…) and is
-    ///     SET NULL so the record itself is preserved.
-    /// The GPS device (if any) must be released by the caller BEFORE this runs —
-    /// the device is unlinked, not deleted. No-op if the vehicle row is gone.
+    /// Dossiers de sinistre : accident_events.vehicle_id n'a AUCUNE clé étrangère
+    /// (migration 027), donc le catalogue ne le voit pas et la suppression du
+    /// véhicule laissait un vehicle_id orphelin (recette GPA, DEF-046). Même règle
+    /// que les colonnes nullables : le dossier est conservé, détaché du véhicule,
+    /// après avoir figé son libellé (même format qu'à la déclaration) pour qu'il
+    /// reste identifiable. Écrit pour PostgreSQL et SQLite.
     /// </summary>
-    public static async Task CascadeDeleteAsync(IGisDbContext context, int vehicleId, CancellationToken ct)
+    public static readonly IReadOnlyList<string> AccidentFilePreservationSql = new[]
     {
-        var db = context.Database;
+        @"UPDATE accident_events SET vehicle_label = (
+              SELECT substr(COALESCE(NULLIF(TRIM(v.plate_number), ''), NULLIF(TRIM(v.name), ''), 'Véhicule #' || v.id), 1, 100)
+              FROM vehicles v WHERE v.id = {0})
+          WHERE vehicle_id = {0} AND (vehicle_label IS NULL OR TRIM(vehicle_label) = '')",
+        "UPDATE accident_events SET vehicle_id = NULL WHERE vehicle_id = {0}",
+    };
 
-        var rows = await db.SqlQueryRaw<string>(ReferencingColumnsSql).ToListAsync(ct);
+    /// <summary>
+    /// Instructions ordonnées (identifiant du véhicule en {0}) : dossiers de
+    /// sinistre d'abord, car leur libellé se lit sur la ligne du véhicule, puis
+    /// chaque colonne relevée au catalogue, puis le véhicule.
+    /// </summary>
+    public static List<string> BuildStatements(IEnumerable<string> referencingColumns)
+    {
+        var statements = new List<string>(AccidentFilePreservationSql);
 
-        await using var tx = await db.BeginTransactionAsync(ct);
-
-        foreach (var row in rows)
+        foreach (var row in referencingColumns)
         {
             var bar = row.IndexOf('|');
             if (bar <= 0) continue;
@@ -73,13 +80,38 @@ public static class VehicleDeletionHelper
             var column = rest[(dot + 1)..];
             // Identifiers come from the catalog (not user input); the id is
             // parameterised. Quoted to preserve the exact catalog casing.
-            var sql = nullable
+            statements.Add(nullable
                 ? $"UPDATE \"{table}\" SET \"{column}\" = NULL WHERE \"{column}\" = {{0}}"
-                : $"DELETE FROM \"{table}\" WHERE \"{column}\" = {{0}}";
-            await db.ExecuteSqlRawAsync(sql, new object[] { vehicleId }, ct);
+                : $"DELETE FROM \"{table}\" WHERE \"{column}\" = {{0}}");
         }
 
-        await db.ExecuteSqlRawAsync("DELETE FROM \"vehicles\" WHERE id = {0}", new object[] { vehicleId }, ct);
+        statements.Add("DELETE FROM \"vehicles\" WHERE id = {0}");
+        return statements;
+    }
+
+    /// <summary>
+    /// Cascade-delete the vehicle, atomically. For every table referencing
+    /// vehicles(id):
+    ///   • NOT NULL column  → the row is a true dependent (costs, maintenance,
+    ///     trips, documents…) and is DELETED with the vehicle;
+    ///   • NULLABLE column  → the row can live without a vehicle (a driver's
+    ///     assigned_vehicle_id, a manual fuel entry, a gps alert…) and is
+    ///     SET NULL so the record itself is preserved.
+    /// Dossiers de sinistre (sans clé étrangère) : conservés de la même façon,
+    /// voir <see cref="AccidentFilePreservationSql"/>.
+    /// The GPS device (if any) must be released by the caller BEFORE this runs —
+    /// the device is unlinked, not deleted. No-op if the vehicle row is gone.
+    /// </summary>
+    public static async Task CascadeDeleteAsync(IGisDbContext context, int vehicleId, CancellationToken ct)
+    {
+        var db = context.Database;
+
+        var rows = await db.SqlQueryRaw<string>(ReferencingColumnsSql).ToListAsync(ct);
+
+        await using var tx = await db.BeginTransactionAsync(ct);
+
+        foreach (var sql in BuildStatements(rows))
+            await db.ExecuteSqlRawAsync(sql, new object[] { vehicleId }, ct);
 
         await tx.CommitAsync(ct);
     }

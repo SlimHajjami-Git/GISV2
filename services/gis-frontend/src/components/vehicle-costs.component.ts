@@ -2,7 +2,7 @@ import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject, takeUntil } from 'rxjs';
+import { Observable, Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -220,7 +220,10 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
               <div class="form-grid">
                 <div class="form-group">
                   <label for="costVehicle">Véhicule *</label>
-                  <select id="costVehicle" [(ngModel)]="costForm.vehicleId" name="vehicleId" required>
+                  <!-- La modification (PUT) ne change jamais le véhicule d'une dépense. -->
+                  <select id="costVehicle" [(ngModel)]="costForm.vehicleId" name="vehicleId" required
+                          [disabled]="!!editingCost"
+                          [title]="editingCost ? vehicleLockedTitle : ''">
                     <option value="">Sélectionner</option>
                     @for (vehicle of vehicles; track vehicle.id) {
                       <option [value]="vehicle.id">{{ vehicle.name }}</option>
@@ -250,7 +253,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
                 <div class="form-group">
                   <label for="costAmount">Montant *</label>
-                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0" placeholder="0" />
+                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0.01" step="0.01" placeholder="0" />
                 </div>
 
                 <div class="form-group full-width">
@@ -287,9 +290,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                 }
               </div>
 
+              @if (saveError) {
+                <div class="save-error" role="alert">{{ saveError }}</div>
+              }
               <div class="popup-footer">
                 <button type="button" class="btn-secondary" (click)="closePopup()">Annuler</button>
-                <button type="submit" class="btn-primary">{{ editingCost ? 'Mettre à jour' : 'Enregistrer' }}</button>
+                <button type="submit" class="btn-primary" [disabled]="saving">{{ editingCost ? 'Mettre à jour' : 'Enregistrer' }}</button>
               </div>
             </form>
           </div>
@@ -745,6 +751,15 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
       border-color: #3b82f6;
     }
 
+    .save-error {
+      padding: 8px 20px;
+      background: #fef2f2;
+      border-top: 1px solid #fecaca;
+      color: #b91c1c;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
     .popup-footer {
       padding: 14px 20px;
       border-top: 1px solid #e2e8f0;
@@ -801,6 +816,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   showPopup = false;
   editingCost: VehicleCost | null = null;
   costForm: any = {};
+  /** Refus de l'enregistrement : il n'était écrit que dans la console, la fenêtre se fermait. */
+  saveError: string | null = null;
+  saving = false;
+  readonly vehicleLockedTitle = "Le véhicule d'une dépense enregistrée ne se change pas";
 
   vehicleSummaries: any[] = [];
 
@@ -857,8 +876,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
     }
 
     this.costs = this.allCosts.filter(c => {
+      // Description facultative (colonne nullable, scan IA, import) : une seule
+      // dépense sans description faisait échouer toute la recherche.
       const matchesSearch = !this.searchQuery ||
-        c.description.toLowerCase().includes(this.searchQuery.toLowerCase());
+        (c.description || '').toLowerCase().includes(this.searchQuery.toLowerCase());
       const matchesType = !this.filterType || c.type === this.filterType;
       const matchesVehicle = !this.filterVehicle || c.vehicleId === this.filterVehicle;
       const matchesPeriod = !startDate || new Date(c.date) >= startDate;
@@ -959,6 +980,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       fuelType: '',
       liters: 0
     };
+    this.saveError = null;
     this.showPopup = true;
   }
 
@@ -968,41 +990,70 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       ...cost,
       dateStr: new Date(cost.date).toISOString().split('T')[0]
     };
+    this.saveError = null;
     this.showPopup = true;
   }
 
   closePopup() {
     this.showPopup = false;
     this.editingCost = null;
+    this.saveError = null;
   }
 
   saveCost() {
-    const costData: Partial<VehicleCost> = {
-      ...this.costForm,
-      date: new Date(this.costForm.dateStr),
-      companyId: this.company?.id
-    };
-    delete (costData as any).dateStr;
-
-    if (this.editingCost) {
-      // For editing, we don't have an update method, so we delete and recreate
-      this.apiService.deleteCost(parseInt(this.editingCost.id)).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
-            next: () => this.loadData(),
-            error: (err) => console.error('Error creating cost:', err)
-          });
-        },
-        error: (err) => console.error('Error deleting cost:', err)
-      });
-    } else {
-      this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => this.loadData(),
-        error: (err) => console.error('Error creating cost:', err)
-      });
+    if (this.saving) return;
+    const amount = Number(this.costForm.amount);
+    if (!this.costForm.vehicleId || !this.costForm.type || !this.costForm.dateStr) {
+      this.saveError = 'Renseignez le véhicule, le type et la date.';
+      return;
+    }
+    // Même règle que le serveur (montant > 0) : refusé là-bas, le message se perdait.
+    if (!(amount > 0)) {
+      this.saveError = 'Le montant doit être supérieur à zéro.';
+      return;
     }
 
-    this.closePopup();
+    // Champs que POST et PUT /api/costs lisent, et rien d'autre : le formulaire porte
+    // aussi les colonnes d'affichage de la liste. Le justificatif est renvoyé tel quel,
+    // PUT l'écraserait sinon.
+    const costData = {
+      vehicleId: Number(this.costForm.vehicleId),
+      type: this.costForm.type,
+      // Chaîne vide, jamais null : c'est ce que l'écran enregistrait avant.
+      description: this.costForm.description ?? '',
+      amount,
+      date: new Date(this.costForm.dateStr),
+      mileage: this.costForm.mileage ? Number(this.costForm.mileage) : null,
+      receiptNumber: this.costForm.receiptNumber || null,
+      receiptUrl: this.costForm.receiptUrl || null,
+      fuelType: this.costForm.fuelType || null,
+      liters: this.costForm.liters ? Number(this.costForm.liters) : null
+    };
+
+    // Modification en place (PUT). Elle supprimait puis recréait la dépense : si la
+    // recréation était refusée (montant, catégorie ancienne), la dépense d'origine
+    // était perdue, avec le journal d'entretien qui la référençait.
+    const request$: Observable<unknown> = this.editingCost
+      ? this.apiService.updateCost(Number(this.editingCost.id), costData)
+      : this.apiService.createCost(costData);
+
+    this.saving = true;
+    this.saveError = null;
+    request$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.saving = false;
+        this.closePopup();
+        this.loadData();
+      },
+      error: (err) => {
+        this.saving = false;
+        this.saveError = err?.error?.message
+          || (err?.status === 404
+            ? 'Dépense introuvable : elle a peut-être été supprimée. Rechargez la page.'
+            : "La dépense n'a pas été enregistrée. Vérifiez les valeurs saisies puis réessayez.");
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   deleteCost(cost: VehicleCost) {

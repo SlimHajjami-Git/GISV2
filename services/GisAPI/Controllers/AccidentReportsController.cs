@@ -243,7 +243,7 @@ public class AccidentReportsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/upload-pdf")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile? file, CancellationToken ct)
     {
         var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: ".pdf", maxSize: 20_000_000, ct);
         if (error != null) return error;
@@ -260,7 +260,7 @@ public class AccidentReportsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/documents")]
     [RequestSizeLimit(50_000_000)]
-    public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile file, [FromForm] string? documentType, CancellationToken ct)
+    public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile? file, [FromForm] string? documentType, CancellationToken ct)
     {
         var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: null, maxSize: 50_000_000, ct);
         if (error != null) return error;
@@ -430,8 +430,10 @@ public class AccidentReportsController : ControllerBase
     private async Task<(AccidentEvent? Ev, ActionResult? Error)> ValidateUploadAsync(
         int id, IFormFile? file, string? allowedExt, long maxSize, CancellationToken ct)
     {
+        // IFormFile? dans les actions (DEF-056) : non nullable, MVC refusait la requête
+        // avant l'action avec son message anglais et ce contrôle n'était jamais atteint.
         if (file == null || file.Length == 0)
-            return (null, BadRequest(new { message = "Fichier requis" }));
+            return (null, BadRequest(new { message = "Aucun fichier reçu." }));
         if (file.Length > maxSize)
             return (null, BadRequest(new { message = $"Fichier trop volumineux (max {maxSize / 1_000_000} Mo)" }));
         if (allowedExt != null)

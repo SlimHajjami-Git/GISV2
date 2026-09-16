@@ -35,15 +35,17 @@ public class UpdateDocumentExpiryCommandHandler
     public async Task<Unit> Handle(UpdateDocumentExpiryCommand request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId
-            ?? throw new InvalidOperationException("Company ID not set");
+            ?? throw new DomainException("Société non identifiée");
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct)
-            ?? throw new NotFoundException("Vehicle", request.VehicleId);
+            ?? throw new DocumentVehiculeIntrouvableException(request.VehicleId);
 
-        // Fin de journée UTC : une échéance « au 15/08 » reste valable le 15/08.
-        var expiry = DateTime.SpecifyKind(
-            request.ExpiryDate.Date.AddDays(1).AddSeconds(-1), DateTimeKind.Utc);
+        // Minuit UTC, comme la fiche véhicule et le renouvellement : l'ancien
+        // 23:59:59 décalait d'un jour les jours restants selon le chemin de
+        // saisie. « Valable jusqu'au 15/08 inclus » est porté par le compte en
+        // jours calendaires (ExpiryCalendar : 0 jour = bientôt, pas expiré).
+        var expiry = ExpiryCalendar.ToStored(request.ExpiryDate);
 
         switch (request.DocumentType)
         {

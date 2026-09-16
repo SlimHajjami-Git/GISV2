@@ -18,7 +18,8 @@ export interface VehicleDocument {
   lastRenewalDate?: Date;
   lastRenewalCost?: number;
   reminderDays: number;
-  status: 'expired' | 'expiring_soon' | 'ok';
+  // 'unknown' : échéance jamais renseignée, désormais transmise par l'écran Échéances.
+  status: 'expired' | 'expiring_soon' | 'ok' | 'unknown';
   daysUntilExpiry: number;
 }
 
@@ -94,6 +95,11 @@ export interface RenewalFormData {
             <svg *ngIf="document?.status === 'ok'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
               <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <svg *ngIf="document?.status === 'unknown'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
           </div>
           <div class="status-text">
@@ -411,6 +417,7 @@ export interface RenewalFormData {
     .status-banner.expired { background: #fef2f2; }
     .status-banner.expiring_soon { background: #fffbeb; }
     .status-banner.ok { background: #f0fdf4; }
+    .status-banner.unknown { background: #f8fafc; }
 
     .status-icon {
       width: 36px;
@@ -424,6 +431,7 @@ export interface RenewalFormData {
     .status-banner.expired .status-icon { background: #fee2e2; color: #dc2626; }
     .status-banner.expiring_soon .status-icon { background: #fef3c7; color: #d97706; }
     .status-banner.ok .status-icon { background: #dcfce7; color: #16a34a; }
+    .status-banner.unknown .status-icon { background: #e2e8f0; color: #64748b; }
 
     .status-text {
       display: flex;
@@ -1076,6 +1084,7 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       case 'expired': return `Expiré depuis ${Math.abs(this.document.daysUntilExpiry)} jour(s)`;
       case 'expiring_soon': return `Expire dans ${this.document.daysUntilExpiry} jour(s)`;
       case 'ok': return 'Document en règle';
+      case 'unknown': return 'Échéance non renseignée';
       default: return '';
     }
   }
@@ -1113,10 +1122,12 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
   formatDate(date: Date | undefined): string {
     if (!date) return '-';
+    // Jour UTC, comme le décompte des jours restants (DEF-035).
     return new Date(date).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     });
   }
 

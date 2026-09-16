@@ -35,27 +35,29 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
     public async Task<int> Handle(RenewDocumentCommand request, CancellationToken cancellationToken)
     {
-        // Validate document type
+        // Refus métier en DomainException / NotFoundException (400 / 404 avec le
+        // message) : ArgumentException et InvalidOperationException tombaient
+        // en 500 « An unexpected error occurred » (DEF-031).
         if (!ValidDocumentTypes.Contains(request.DocumentType))
-            throw new ArgumentException($"Invalid document type: {request.DocumentType}");
+            throw new DomainException(InvalidTypeMessage(request.DocumentType));
 
         CheckLength(request.DocumentNumber, DocumentNumberMaxLength, "Numéro de document");
         CheckLength(request.Provider, ProviderMaxLength, "Fournisseur");
         CheckLength(request.Notes, NotesMaxLength, "Notes");
         CheckLength(request.DocumentUrl, DocumentUrlMaxLength, "Lien du justificatif");
 
-        // Get vehicle
+        var companyId = _tenantService.CompanyId ?? throw new DomainException("Société non identifiée");
+
+        // Borne explicite à la société, comme la correction d'échéance : le
+        // filtre global multi-tenance est contourné pour les administrateurs système.
         var vehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken)
+            ?? throw new DocumentVehiculeIntrouvableException(request.VehicleId);
 
-        if (vehicle == null)
-            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
-
-        var companyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set");
-
-        // Convert dates to UTC
+        // Convert dates to UTC. L'échéance est enregistrée à minuit UTC, comme
+        // la fiche véhicule et la correction d'échéance (ExpiryCalendar).
         var paymentDateUtc = DateTime.SpecifyKind(request.PaymentDate, DateTimeKind.Utc);
-        var expiryDateUtc = DateTime.SpecifyKind(request.NewExpiryDate, DateTimeKind.Utc);
+        var expiryDateUtc = ExpiryCalendar.ToStored(request.NewExpiryDate);
 
         // Capture pre-update value for diagnostic
         var oldExpiry = request.DocumentType switch
@@ -100,16 +102,26 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         if (cost is not null) _context.VehicleCosts.Add(cost);
 
-        // Update vehicle expiry date based on document type
+        // Update vehicle expiry date based on document type. Le début de période
+        // est recalé avec l'échéance (DEF-032) : il restait celui de la période
+        // précédente et l'écran affichait « 30/09/2025 → 13/09/2027 ». Carte
+        // grise et autorisation de transport n'ont pas de colonne de début
+        // (registration_date est la mise en circulation du véhicule).
         switch (request.DocumentType)
         {
             case "insurance":
+                vehicle.InsuranceStartDate = RenewedPeriodStart(
+                    vehicle.InsuranceStartDate, vehicle.InsuranceExpiry, paymentDateUtc, expiryDateUtc);
                 vehicle.InsuranceExpiry = expiryDateUtc;
                 break;
             case "technical_inspection":
+                vehicle.TechnicalInspectionStartDate = RenewedPeriodStart(
+                    vehicle.TechnicalInspectionStartDate, vehicle.TechnicalInspectionExpiry, paymentDateUtc, expiryDateUtc);
                 vehicle.TechnicalInspectionExpiry = expiryDateUtc;
                 break;
             case "tax":
+                vehicle.TaxStartDate = RenewedPeriodStart(
+                    vehicle.TaxStartDate, vehicle.TaxExpiry, paymentDateUtc, expiryDateUtc);
                 vehicle.TaxExpiry = expiryDateUtc;
                 break;
             case "registration":
@@ -147,6 +159,86 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         // 0 = renouvellement sans depense (montant facultatif).
         return cost?.Id ?? 0;
+    }
+
+    /// <summary>
+    /// Début de la période ouverte par un renouvellement, cohérent avec la
+    /// nouvelle échéance.
+    ///
+    /// <para>La fenêtre de renouvellement n'envoie que la nouvelle échéance, pas
+    /// la durée choisie : la durée renouvelée est celle de la période précédente
+    /// (début → échéance, arrondie au mois), et le début vaut nouvelle échéance
+    /// moins cette durée. Ce début n'est retenu que s'il tombe entre la date de
+    /// paiement et l'ancienne échéance : renouvellement anticipé (la période
+    /// part du paiement) ou dans la continuité (elle part de l'ancienne
+    /// échéance). Hors de cet intervalle — durée différente, période précédente
+    /// inconnue ou déjà incohérente — le début est le plus tardif de l'ancienne
+    /// échéance et de la date de paiement : la nouvelle période ne recouvre pas
+    /// l'ancienne et ne commence pas avant d'avoir été payée.</para>
+    ///
+    /// <para>Une nouvelle échéance antérieure à ce début (saisie rétroactive)
+    /// garde une période de la durée précédente, ou l'ancien début si cette
+    /// durée est inconnue : aucune date n'est inventée.</para>
+    /// </summary>
+    public static DateTime? RenewedPeriodStart(
+        DateTime? oldStart, DateTime? oldExpiry, DateTime paymentDate, DateTime newExpiry)
+    {
+        var newEnd = ExpiryCalendar.Day(newExpiry);
+        var paid = ExpiryCalendar.Day(paymentDate);
+        DateTime? previousEnd = oldExpiry.HasValue ? ExpiryCalendar.Day(oldExpiry.Value) : null;
+        var months = oldStart.HasValue && previousEnd.HasValue
+            ? WholeMonths(ExpiryCalendar.Day(oldStart.Value), previousEnd.Value)
+            : null;
+
+        var latest = previousEnd.HasValue && previousEnd.Value > paid ? previousEnd.Value : paid;
+        var earliest = previousEnd.HasValue && previousEnd.Value < paid ? previousEnd.Value : paid;
+
+        var start = latest;
+        if (months.HasValue)
+        {
+            var candidate = newEnd.AddMonths(-months.Value);
+            if (candidate >= earliest && candidate <= latest)
+                start = candidate;
+        }
+
+        if (start >= newEnd)
+        {
+            if (!months.HasValue) return oldStart;
+            start = newEnd.AddMonths(-months.Value);
+        }
+
+        // Colonnes de début en timestamp sans fuseau, saisies au jour par la fiche véhicule.
+        return DateTime.SpecifyKind(start, DateTimeKind.Unspecified);
+    }
+
+    /// <summary>Durée en mois entiers (arrondie au plus proche) ; null sous un mois.</summary>
+    private static int? WholeMonths(DateTime start, DateTime end)
+    {
+        if (end <= start) return null;
+
+        var months = (end.Year - start.Year) * 12 + end.Month - start.Month;
+        var anchor = start.AddMonths(months);
+        if (anchor > end && (end - start.AddMonths(months - 1)) < (anchor - end))
+            months--;
+        else if (anchor < end && (start.AddMonths(months + 1) - end) < (end - anchor))
+            months++;
+
+        return months >= 1 ? months : null;
+    }
+
+    /// <summary>
+    /// Le renvoi vers la fiche du chauffeur n'a de sens que pour un permis : sur
+    /// une faute de frappe, il égarait l'utilisateur.
+    /// </summary>
+    private static string InvalidTypeMessage(string? documentType)
+    {
+        var type = documentType ?? "";
+        if (type == "driver_permit" || type.StartsWith("permis", StringComparison.OrdinalIgnoreCase))
+            return $"Type de document « {type} » invalide. " +
+                   "Un permis de conducteur se renouvelle depuis la fiche du chauffeur.";
+
+        return $"Type de document « {type} » invalide (assurance, visite technique, vignette, " +
+               "carte grise ou autorisation de transport).";
     }
 
     private static void CheckLength(string? value, int maxLength, string fieldLabel)

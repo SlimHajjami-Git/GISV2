@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -18,13 +19,19 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
 
     public async Task<Unit> Handle(PatchVehicleCommand request, CancellationToken cancellationToken)
     {
-        var companyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set");
+        // Véhicule absent ou d'une autre société : 404 comme GET/PUT/DELETE.
+        // InvalidOperationException tombait en 500 générique (recette GPA, DEF-031).
+        var companyId = _tenantService.CompanyId ?? 0;
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.Id && v.CompanyId == companyId, cancellationToken);
 
         if (vehicle == null)
-            throw new InvalidOperationException("Vehicle not found");
+            throw new NotFoundException("Vehicle", request.Id);
+
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay, vehicle.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(
+            _context, vehicle.CompanyId, request.Plate, vehicle.Id, vehicle.Plate, cancellationToken);
 
         if (request.SpeedLimit.HasValue)
             vehicle.SpeedLimit = request.SpeedLimit.Value;

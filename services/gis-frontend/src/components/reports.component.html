@@ -1045,6 +1045,8 @@
             <p style="margin:0;max-width:460px;display:inline-block;line-height:1.6;">
               @if (selectedTemplate?.type === 'cost-evolution' && !selectedVehicleId) {
                 Choisissez un véhicule dans la barre latérale : ce rapport suit les dépenses d'un seul véhicule mois par mois.
+              } @else if (costReportInputError) {
+                Corrigez la période dans la barre latérale, puis relancez le rapport.
               } @else {
                 Réessayez dans un instant ; si le problème persiste, contactez le support.
               }
@@ -1147,7 +1149,9 @@
                     </thead>
                     <tbody>
                       @for (v of operatingCost.vehicles; track v.vehicleId) {
-                        <tr [class.muted]="v.costPerKm == null">
+                        <!-- Grisée quand le coût au km manque, sauf dans le classement au coût total,
+                             où ce véhicule garde tout son rang. -->
+                        <tr [class.muted]="!isRanking && v.costPerKm == null">
                           @if (isRanking) {
                             <td class="rank-cell">{{ v.rank }}</td>
                             <!-- Immatriculation SEULE : le nom interne (« Logistique 01 ») ne dit rien
@@ -1211,7 +1215,7 @@
               <!-- Barres horizontales + ligne « Moyenne flotte » -->
               <div class="dept-group">
                 <div class="dept-header">
-                  <span class="dept-badge">Classement par coût d'exploitation ({{ getCurrencyCode() }}/km)</span>
+                  <span class="dept-badge">{{ isRanking ? 'Classement par coût total (' + getCurrencyCode() + ')' : 'Classement par coût d’exploitation (' + getCurrencyCode() + '/km)' }}</span>
                 </div>
                 <div class="cost-chart-box" [style.height.px]="operatingCostChartHeight()">
                   <canvas #operatingCostCanvas></canvas>

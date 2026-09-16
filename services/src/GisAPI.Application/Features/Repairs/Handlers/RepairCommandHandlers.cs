@@ -23,6 +23,35 @@ public sealed class VehiculeIntrouvableException : NotFoundException
     public override string Message => "Véhicule introuvable.";
 }
 
+/// <summary>
+/// Le fournisseur d'une réparation doit exister DANS la société (DEF-057) : aucun contrôle
+/// ni clé étrangère, un supplierId inventé était stocké et la colonne Fournisseur restait
+/// vide sans explication. Le filtre multi-tenant est contourné pour l'administrateur
+/// système, d'où le filtre société explicite.
+/// </summary>
+internal static class RepairSupplierGuard
+{
+    public const string NotFoundMessage =
+        "Fournisseur introuvable : il n'existe pas ou n'appartient pas à votre société. " +
+        "Rechargez la page et sélectionnez-le à nouveau.";
+
+    /// <param name="currentSupplierId">
+    /// Fournisseur déjà enregistré sur la réparation modifiée. Un fournisseur peut être
+    /// supprimé après coup (suppression physique, sans clé étrangère) : renvoyer la valeur
+    /// inchangée ne doit pas bloquer la modification d'une réparation ancienne.
+    /// </param>
+    public static async Task EnsureAsync(
+        IGisDbContext context, int? supplierId, int societeId, int? currentSupplierId, CancellationToken ct)
+    {
+        if (supplierId is not int id || id == currentSupplierId) return;
+
+        var exists = await context.Suppliers
+            .AnyAsync(s => s.Id == id && s.CompanyId == societeId, ct);
+
+        if (!exists) throw new DomainException(NotFoundMessage);
+    }
+}
+
 public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, int>
 {
     private readonly IGisDbContext _context;
@@ -39,6 +68,11 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
     public async Task<int> Handle(CreateRepairCommand request, CancellationToken cancellationToken)
     {
         var societeId = _tenantService.CompanyId ?? 0;
+        var parts = request.Parts ?? new List<CreateRepairPartRequest>();
+
+        // Montants refusés AVANT toute lecture : un signe moins produisait un total négatif
+        // déduit du poste « Réparations » des rapports (DEF-044).
+        RepairInputRules.EnsureAmounts(request.LaborCost, parts);
 
         // Le véhicule est cherché DANS la société avant toute écriture, comme le fait
         // POST /api/costs : sans ce contrôle, un vehicleId étranger créait une réparation
@@ -48,9 +82,11 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
             ?? throw new VehiculeIntrouvableException(request.VehicleId);
 
+        await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, null, cancellationToken);
+
         // Calculate parts cost
         decimal partsCost = 0;
-        foreach (var part in request.Parts)
+        foreach (var part in parts)
         {
             partsCost += part.Quantity * part.UnitPrice;
         }
@@ -90,7 +126,7 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         await _context.SaveChangesAsync(cancellationToken);
 
         // Add parts
-        foreach (var partReq in request.Parts)
+        foreach (var partReq in parts)
         {
             var part = new RepairPart
             {
@@ -190,6 +226,12 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
 
         if (repair == null) return false;
 
+        // Mêmes refus qu'à la création et que PATCH …/status, tous AVANT la moindre
+        // modification de l'entité suivie : en cas de refus, la réparation reste intacte.
+        var parts = request.Parts ?? new List<CreateRepairPartRequest>();
+        RepairInputRules.EnsureAmounts(request.LaborCost, parts);
+        var status = RepairInputRules.NormalizeStatus(request.Status);
+
         // Même contrôle qu'à la création, et AVANT d'écrire quoi que ce soit : la modification
         // recopiait VehicleId sans le chercher dans la société, ce qui permettait de rattacher
         // une réparation existante au véhicule d'une autre société.
@@ -197,9 +239,11 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
             ?? throw new VehiculeIntrouvableException(request.VehicleId);
 
+        await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, repair.SupplierId, cancellationToken);
+
         // Calculate parts cost
         decimal partsCost = 0;
-        foreach (var part in request.Parts)
+        foreach (var part in parts)
         {
             partsCost += part.Quantity * part.UnitPrice;
         }
@@ -216,7 +260,7 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         repair.LaborCost = request.LaborCost;
         repair.PartsCost = partsCost;
         repair.TotalCost = request.LaborCost + partsCost;
-        repair.Status = request.Status;
+        repair.Status = status;
         repair.RepairType = CreateRepairCommandHandler.NormalizeRepairType(request.RepairType);
         repair.InvoiceNumber = request.InvoiceNumber;
         repair.Notes = request.Notes;
@@ -229,7 +273,7 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         _context.RepairParts.RemoveRange(repair.Parts);
 
         // Add new parts
-        foreach (var partReq in request.Parts)
+        foreach (var partReq in parts)
         {
             var part = new RepairPart
             {
@@ -293,12 +337,17 @@ public class UpdateRepairStatusCommandHandler : IRequestHandler<UpdateRepairStat
     {
         var societeId = _tenantService.CompanyId ?? 0;
 
+        // Liste blanche avant toute lecture (DEF-043) : une chaîne libre était stockée, les
+        // compteurs de l'écran ne se recoupaient plus et une réparation annulée repassée à
+        // « nimportequoi » était recomptée dans les coûts.
+        var status = RepairInputRules.NormalizeStatus(request.Status);
+
         var repair = await _context.Repairs
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == societeId, cancellationToken);
 
         if (repair == null) return false;
 
-        repair.Status = request.Status;
+        repair.Status = status;
         repair.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);

@@ -241,12 +241,20 @@ public class GetRepairStatsQueryHandler : IRequestHandler<GetRepairStatsQuery, R
         var repairs = await query.ToListAsync(cancellationToken);
 
         var totalRepairs = repairs.Count;
-        var pendingRepairs = repairs.Count(r => r.Status == "pending" || r.Status == "in_progress");
-        var completedRepairs = repairs.Count(r => r.Status == "completed");
-        var totalCost = repairs.Sum(r => r.TotalCost);
-        var averageCost = totalRepairs > 0 ? totalCost / totalRepairs : 0;
-        var totalLaborCost = repairs.Sum(r => r.LaborCost);
-        var totalPartsCost = repairs.Sum(r => r.PartsCost);
+        var pendingRepairs = repairs.Count(r =>
+            RepairInputRules.HasStatus(r.Status, RepairInputRules.Pending)
+            || RepairInputRules.HasStatus(r.Status, RepairInputRules.InProgress));
+        var completedRepairs = repairs.Count(r => RepairInputRules.HasStatus(r.Status, RepairInputRules.Completed));
+
+        // Une réparation annulée reste une ligne de la liste mais ne coûte rien : les rapports
+        // l'excluent déjà. Depuis que l'écran Réparations propose « Annulée », elle gonflait
+        // le coût total et, sans compteur, en attente + terminées ne recoupait plus le total.
+        var cancelledRepairs = repairs.Count(r => RepairInputRules.HasStatus(r.Status, RepairInputRules.Cancelled));
+        var costed = repairs.Where(r => !RepairInputRules.HasStatus(r.Status, RepairInputRules.Cancelled)).ToList();
+        var totalCost = costed.Sum(r => r.TotalCost);
+        var averageCost = costed.Count > 0 ? totalCost / costed.Count : 0;
+        var totalLaborCost = costed.Sum(r => r.LaborCost);
+        var totalPartsCost = costed.Sum(r => r.PartsCost);
 
         return new RepairStatsDto(
             totalRepairs,
@@ -255,7 +263,8 @@ public class GetRepairStatsQueryHandler : IRequestHandler<GetRepairStatsQuery, R
             totalCost,
             averageCost,
             totalLaborCost,
-            totalPartsCost
+            totalPartsCost,
+            cancelledRepairs
         );
     }
 }

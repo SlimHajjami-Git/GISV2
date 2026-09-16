@@ -385,7 +385,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             vehiclePlate: c.vehiclePlate || '',
             vehicleName: c.vehicleName || '',
             category: c.type || 'autre',
-            label: c.description || c.type,
+            label: c.description || this.getCategoryLabel(c.type),
             quantity: 1,
             unitPrice: c.amount,
             totalAmount: c.amount,
@@ -946,8 +946,15 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   removeScanItem(i: number): void { this.scan.items.splice(i, 1); }
 
+  // Montant strictement positif : le serveur refuse zéro et négatif (un avoir lu
+  // par l'IA à -120 activait le bouton pour un enregistrement voué au refus). Le
+  // motif s'affiche sous le champ, sinon le bouton grisé reste inexpliqué.
+  scanAmountInvalid(): boolean {
+    return !(Number(this.scan.amount) > 0);
+  }
+
   canSaveScan(): boolean {
-    return !!this.scan.vehicleId && !!this.scan.amount && !this.saving;
+    return !!this.scan.vehicleId && !this.scanAmountInvalid() && !this.saving;
   }
 
   /** Libellé FR d'une catégorie de ligne (les lignes utilisent les catégories du scan). */
@@ -984,7 +991,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createCost(data).subscribe({
       next: () => { this.saving = false; this.showScanReview = false; this.loadExpenses(); },
-      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert("L'enregistrement a échoué."); }
+      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert(err?.error?.message || "L'enregistrement a échoué."); }
     });
   }
 
@@ -1292,23 +1299,26 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     const labels: Record<string, string> = {
       'carburant': 'Carburant', 'fuel': 'Carburant',
       'entretien': 'Entretien', 'maintenance': 'Entretien',
-      'reparation': 'Réparation',
+      'reparation': 'Réparation', 'réparation': 'Réparation',
       'insurance': 'Assurance', 'assurance': 'Assurance',
-      'technical_inspection': 'Visite technique',
-      'tax': 'Vignette',
+      'technical_inspection': 'Visite technique', 'visite_technique': 'Visite technique',
+      'tax': 'Vignette', 'vignette': 'Vignette', 'taxe': 'Vignette',
       'registration': 'Carte grise',
       'transport_permit': 'Autorisation transport',
       'peage': 'Péage', 'toll': 'Péage',
       'stationnement': 'Stationnement', 'parking': 'Parking',
-      'amende': 'Amende',
+      'amende': 'Amende', 'fine': 'Amende',
       'credit': 'Crédit / Leasing',
       'achat': 'Achat véhicule',
-      'autre': 'Autre',
+      'lavage': 'Lavage', 'wash': 'Lavage',
+      'autre': 'Autre', 'autres': 'Autre', 'other': 'Autre',
       // Calypso 7 — accident-driven categories.
       'repair': 'Réparation accident',
       'insurance_refund': 'Remb. assurance',
     };
-    return labels[category] || category;
+    // Un code inconnu (donnée ancienne, appel externe) s'affiche « Autre » et non
+    // brut : « xyz » apparaissait tel quel dans la liste et le PDF (DEF-040).
+    return labels[category] || 'Autre';
   }
 
   /**
@@ -1331,7 +1341,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     const exported = this.countedExpenses();
     const byCategory = new Map<string, Expense[]>();
     for (const exp of exported) {
-      const cat = exp.category || 'autre';
+      // Groupé par libellé : deux codes inconnus (tous deux « Autre ») ou synonymes
+      // (« toll » et « peage ») ne font qu'une section du PDF.
+      const cat = this.getCategoryLabel(exp.category || 'autre');
       if (!byCategory.has(cat)) byCategory.set(cat, []);
       byCategory.get(cat)!.push(exp);
     }
@@ -1340,7 +1352,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     byCategory.forEach((expenses, cat) => {
       const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
       groups.push({
-        groupLabel: this.getCategoryLabel(cat),
+        groupLabel: cat,
         groupSubtitle: `${expenses.length} entree(s)`,
         rows: expenses.map(e => {
           const status = this.isAcquisition(e) ? this.paymentStatusText(e) : '';

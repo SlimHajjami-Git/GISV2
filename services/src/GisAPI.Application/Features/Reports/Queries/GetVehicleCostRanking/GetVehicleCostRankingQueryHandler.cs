@@ -26,6 +26,6 @@ public class GetVehicleCostRankingQueryHandler : IRequestHandler<GetVehicleCostR
             _context, _tenantService, startUtc, endExclusiveUtc, vehicleId: null, request.DepartmentId, ct);
 
         var top = request.Top <= 0 ? 10 : request.Top;
-        return OperatingCostReportBuilder.Build(data, startUtc, endExclusiveUtc.AddDays(-1), top);
+        return OperatingCostReportBuilder.Build(data, startUtc, endExclusiveUtc.AddDays(-1), OperatingCostOrder.TotalCost, top);
     }
 }

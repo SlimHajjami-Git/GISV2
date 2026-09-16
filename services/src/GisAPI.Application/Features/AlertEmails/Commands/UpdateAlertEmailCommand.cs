@@ -29,6 +29,14 @@ public class UpdateAlertEmailCommandHandler : IRequestHandler<UpdateAlertEmailCo
         if (entity == null)
             throw new NotFoundException("AlertEmail", request.Id);
 
+        // Couple inchangé (casse de l'adresse mise à part) : rien de nouveau n'est créé. Sans
+        // cette exception, une ligne doublonnée avant le contrôle ne pourrait plus être
+        // enregistrée telle quelle.
+        var coupleInchange = entity.AlertType == alertType
+            && string.Equals(entity.Email.Trim(), email, StringComparison.OrdinalIgnoreCase);
+        if (!coupleInchange)
+            await AlertEmailInput.EnsureUniqueAsync(_context, entity.CompanyId, email, alertType, entity.Id, ct);
+
         entity.Email = email;
         entity.AlertType = alertType;
         entity.UpdatedAt = DateTime.UtcNow;

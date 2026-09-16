@@ -4076,6 +4076,7 @@ export interface MaintenanceItemDto {
   status: string;
   kmUntilDue?: number;
   daysUntilDue?: number;
+  isPaused?: boolean;
   // Free maintenance benefits
   freeUsesTotal?: number;
   freeUsesRemaining?: number;

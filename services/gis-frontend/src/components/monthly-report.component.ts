@@ -350,6 +350,16 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     return this.userPrefs.formatCurrency(value);
   }
 
+  /**
+   * Unité d'un KPI telle que l'écran l'affiche. L'API la libelle dans la devise de la
+   * société (« EUR/km ») ; on la rend avec le même symbole que les montants voisins
+   * (« €/km »), qui passent par formatCurrency. Les autres unités (%, L/100km) restent.
+   */
+  uniteAffichee(unit: string | null | undefined): string {
+    if (!unit) return '';
+    return unit.replace(/^([A-Z]{3})(?=\/|$)/, code => UserPreferencesService.currencySymbol(code));
+  }
+
   formatPercent(value: number | null | undefined): string {
     if (value == null) return '—';
     return value.toFixed(1) + '%';

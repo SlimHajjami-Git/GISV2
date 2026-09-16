@@ -28,22 +28,32 @@ public static class SubscriptionPolicy
         public bool IsBlocked => Level == "blocked";
     }
 
-    public static State Evaluate(Societe s, DateTime nowUtc)
+    public static State Evaluate(Societe s, DateTime nowUtc) => Evaluate(s, nowUtc, TimeZoneInfo.Local);
+
+    /// <summary>
+    /// <paramref name="readZone"/> : fuseau dans lequel sont exprimées les dates
+    /// Kind=Local (celui du serveur en production). Paramétrable pour que les tests
+    /// reproduisent un poste hors UTC sur n'importe quelle machine.
+    /// </summary>
+    public static State Evaluate(Societe s, DateTime nowUtc, TimeZoneInfo readZone)
     {
+        nowUtc = ToUtc(nowUtc, readZone);
+        var expiresAt = s.SubscriptionExpiresAt is DateTime e ? ToUtc(e, readZone) : (DateTime?)null;
+
         // Suspension/annulation manuelle par le sys_admin — prioritaire sur les dates.
         if (s.SubscriptionStatus is "suspended" or "cancelled")
-            return new State("blocked", s.SubscriptionStatus, s.SubscriptionExpiresAt, DaysRemaining(s, nowUtc), null);
+            return new State("blocked", s.SubscriptionStatus, expiresAt, DaysRemaining(expiresAt, nowUtc), null);
 
         // IsActive=false sans statut suspendu = désactivation manuelle (ceinture-bretelles).
         // Exception : les lignes historiques où l'ancien middleware posait IsActive=false
         // à l'expiration (statut "expired") suivent le circuit expiration/grâce ci-dessous.
         if (!s.IsActive && s.SubscriptionStatus != "expired")
-            return new State("blocked", "suspended", s.SubscriptionExpiresAt, DaysRemaining(s, nowUtc), null);
+            return new State("blocked", "suspended", expiresAt, DaysRemaining(expiresAt, nowUtc), null);
 
-        if (s.SubscriptionExpiresAt is not DateTime expires)
+        if (expiresAt is not DateTime expires)
             return new State("none", "active", null, null, null);
 
-        var days = DaysRemaining(s, nowUtc)!.Value;
+        var days = DaysRemaining(expires, nowUtc)!.Value;
         if (expires <= nowUtc)
         {
             var graceLeft = GraceDays + days; // days est négatif après expiration
@@ -61,6 +71,21 @@ public static class SubscriptionPolicy
         return new State("none", "active", expires, days, null);
     }
 
-    private static int? DaysRemaining(Societe s, DateTime nowUtc) =>
-        s.SubscriptionExpiresAt is DateTime e ? (int)Math.Ceiling((e - nowUtc).TotalDays) : null;
+    // Jour entamé = jour restant (arrondi supérieur), comme l'écran Abonnement.
+    private static int? DaysRemaining(DateTime? expiresUtc, DateTime nowUtc) =>
+        expiresUtc is DateTime e ? (int)Math.Ceiling((e - nowUtc).TotalDays) : null;
+
+    // Npgsql en mode « legacy timestamp » (Program.cs) lit un timestamptz en heure
+    // LOCALE du serveur. Soustraire UtcNow à cette heure locale ajoutait le décalage
+    // du fuseau : 363 jours affichés au lieu de 362 sur un poste à UTC+1 (DEF-054),
+    // et l'expiration comme la fin de grâce basculaient une heure trop tard.
+    private static DateTime ToUtc(DateTime d, TimeZoneInfo readZone)
+    {
+        if (d.Kind != DateTimeKind.Local) return d;
+        // Fuseau du serveur : ToUniversalTime garde l'indication d'heure ambiguë
+        // posée par la lecture (changement d'heure), qu'un calcul par décalage perdrait.
+        if (readZone.Equals(TimeZoneInfo.Local)) return d.ToUniversalTime();
+        var wall = DateTime.SpecifyKind(d, DateTimeKind.Unspecified);
+        return DateTime.SpecifyKind(wall - readZone.GetUtcOffset(wall), DateTimeKind.Utc);
+    }
 }

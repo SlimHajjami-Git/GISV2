@@ -52,21 +52,11 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         }
 
         // Include driver permit expiries in stats (from the standalone drivers table)
-        var driverQuery = _context.Drivers
-            .AsNoTracking()
-            .Where(d => d.CompanyId == companyId && d.PermitExpiry != null);
+        var drivers = await DriverPermitExpiries.LoadAsync(_context, companyId, accessibleIds, cancellationToken);
 
-        if (accessibleIds is not null)
-            driverQuery = driverQuery.Where(d => d.AssignedVehicleId != null
-                                              && accessibleIds.Contains(d.AssignedVehicleId.Value));
-
-        var driverPermitExpiries = await driverQuery
-            .Select(d => d.PermitExpiry)
-            .ToListAsync(cancellationToken);
-
-        foreach (var permitExpiry in driverPermitExpiries)
+        foreach (var driver in drivers)
         {
-            CountExpiry(permitExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(driver.PermitExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
         }
 
         return new ExpiryStatsDto(expiredCount, expiringSoonCount, okCount, totalCount);
@@ -78,14 +68,14 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         if (!expiryDate.HasValue) return;
 
         total++;
-        var daysUntil = (expiryDate.Value.Date - today).TotalDays;
 
-        if (daysUntil < 0)
-            expired++;
-        else if (daysUntil <= 30)
-            expiringSoon++;
-        else
-            ok++;
+        // Même statut que la liste (jours calendaires) : les compteurs et les lignes concordent.
+        switch (ExpiryCalendar.Status(expiryDate, today))
+        {
+            case ExpiryCalendar.Expired: expired++; break;
+            case ExpiryCalendar.ExpiringSoon: expiringSoon++; break;
+            default: ok++; break;
+        }
     }
 }
 

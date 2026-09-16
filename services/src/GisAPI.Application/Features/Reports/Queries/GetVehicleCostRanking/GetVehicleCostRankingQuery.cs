@@ -4,7 +4,7 @@ using GisAPI.Application.Features.Reports.Queries.GetOperatingCostReport;
 namespace GisAPI.Application.Features.Reports.Queries.GetVehicleCostRanking;
 
 /// <summary>
-/// R3 — Top N des véhicules les plus coûteux au km
+/// R3 — Top N des véhicules les plus coûteux, classés par coût total décroissant
 /// (GET /api/reports/costs/ranking). Même DTO que R1 : les KPI portent sur tout
 /// le parc, seule la liste <c>Vehicles</c> est tronquée.
 /// </summary>

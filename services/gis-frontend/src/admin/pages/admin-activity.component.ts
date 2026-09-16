@@ -30,6 +30,7 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
               <option value="all">All Actions</option>
               <option value="login">Login</option>
               <option value="logout">Logout</option>
+              <option value="login_failed">Échec de connexion</option>
               <option value="view_vehicle">View Vehicle</option>
               <option value="create_geofence">Create Geofence</option>
               <option value="generate_report">Generate Report</option>
@@ -457,6 +458,8 @@ import { AdminService, ActivityLog, Client } from '../services/admin.service';
 
     .action-badge.login { background: rgba(5, 150, 105, 0.10); color: var(--adm-green-ink); }
     .action-badge.logout { background: rgba(220, 38, 38, 0.10); color: var(--adm-red-ink); }
+    /* Refus de connexion : rouge comme la déconnexion, mais cerclé pour ne pas s'y confondre. */
+    .action-badge.login-failed { background: rgba(220, 38, 38, 0.16); color: var(--adm-red-ink); box-shadow: inset 0 0 0 1px rgba(220, 38, 38, 0.35); }
     .action-badge.view { background: rgba(8, 145, 178, 0.12); color: var(--adm-cyan-ink); }
     .action-badge.create { background: rgba(79, 70, 229, 0.12); color: var(--adm-indigo-ink); }
     .action-badge.update { background: rgba(217, 119, 6, 0.12); color: var(--adm-amber-ink); }
@@ -649,7 +652,9 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   }
 
   get uniqueUsersCount(): number {
-    return new Set(this.filteredLogs.map(l => l.userId)).size;
+    // Un refus de connexion n'est rattaché à aucun utilisateur (userId 0) : le compter
+    // ajoutait un utilisateur fantôme dès le premier mot de passe faux.
+    return new Set(this.filteredLogs.filter(l => l.userId > 0).map(l => l.userId)).size;
   }
 
   get uniqueCompaniesCount(): number {
@@ -716,6 +721,7 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
 
   getActionClass(action: string): string {
     if (action === 'login') return 'login';
+    if (action === 'login_failed') return 'login-failed';
     if (action === 'logout') return 'logout';
     if (action === 'session') return 'view';
     if (action.startsWith('view')) return 'view';
@@ -728,6 +734,8 @@ export class AdminActivityComponent implements OnInit, OnDestroy {
   formatAction(action: string): string {
     const labels: { [k: string]: string } = {
       login: 'Connexion',
+      // Sans libellé, « login_failed » devenait « Login Failed » au milieu des libellés français.
+      login_failed: 'Échec de connexion',
       logout: 'Déconnexion',
       session: 'Reprise de session'
     };

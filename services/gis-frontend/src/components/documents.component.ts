@@ -14,13 +14,14 @@ export interface VehicleDocument {
   vehicleName: string;
   vehiclePlate: string;
   type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit' | 'driver_permit';
-  expiryDate: Date;
+  /** null = échéance non renseignée (statut « unknown »). */
+  expiryDate: Date | null;
   documentNumber?: string;
   documentUrl?: string;
   lastRenewalDate?: Date;
   lastRenewalCost?: number;
   reminderDays: number;
-  status: 'expired' | 'expiring_soon' | 'ok';
+  status: 'expired' | 'expiring_soon' | 'ok' | 'unknown';
   daysUntilExpiry: number;
 }
 
@@ -64,6 +65,7 @@ export interface VehicleDocument {
             <option value="expired">Expirés</option>
             <option value="expiring_soon">Expire bientôt</option>
             <option value="ok">En règle</option>
+            <option value="unknown">Non renseignées</option>
           </select>
           <button class="btn-export" (click)="exportToExcel()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -157,7 +159,7 @@ export interface VehicleDocument {
                 <td class="date-cell">
                   <span class="expiry-date">{{ formatDate(doc.expiryDate) }}</span>
                   <span class="days-info" [class]="doc.status">
-                    {{ getDaysText(doc.daysUntilExpiry) }}
+                    {{ getDaysText(doc) }}
                   </span>
                 </td>
                 <td>
@@ -587,6 +589,7 @@ export interface VehicleDocument {
     .days-info.expired { color: #dc2626; }
     .days-info.expiring_soon { color: #d97706; }
     .days-info.ok { color: #16a34a; }
+    .days-info.unknown { color: #64748b; }
 
     /* Status Badge */
     .status-badge {
@@ -602,6 +605,7 @@ export interface VehicleDocument {
     .status-badge.expired { background: #fee2e2; color: #dc2626; }
     .status-badge.expiring_soon { background: #fef3c7; color: #d97706; }
     .status-badge.ok { background: #dcfce7; color: #16a34a; }
+    .status-badge.unknown { background: #f1f5f9; color: #64748b; }
 
     .status-dot {
       width: 6px;
@@ -1055,19 +1059,21 @@ export class DocumentsComponent implements OnInit, OnDestroy {
               const type = (typeMap[dto.documentType] || dto.documentType) as VehicleDocument['type'];
               if (!REQUIRED_TYPES.includes(type)) return; // only 3 requested types
               const expiryDate = dto.expiryDate ? new Date(dto.expiryDate) : null;
-              let daysUntilExpiry = dto.daysUntilExpiry ?? -999;
-              let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
-              // Status='unknown' (expiry null) du backend -> on le considere
-              // comme manquant (label "Expire" en UI mais sans nouvelle date).
-              if (dto.status === 'unknown' || daysUntilExpiry < 0) status = 'expired';
-              else if (daysUntilExpiry <= 30) status = 'expiring_soon';
+              // Échéance non renseignée (status « unknown », -1 jour côté API) :
+              // statut à part. Rangée avec les expirées, elle gonflait le
+              // compteur « Expirés », s'affichait « Expiré depuis 1 jour » et
+              // s'intercalait avant les échéances à jour (recette GPA, DEF-055).
+              const known = dto.status !== 'unknown' && expiryDate !== null;
+              const daysUntilExpiry = known ? (dto.daysUntilExpiry ?? 0) : 0;
+              let status: VehicleDocument['status'] = 'unknown';
+              if (known) status = daysUntilExpiry < 0 ? 'expired' : daysUntilExpiry <= 30 ? 'expiring_soon' : 'ok';
 
               docs.push({
                 vehicleId: dto.vehicleId,
                 vehicleName: dto.vehicleName || baseByVehicle.get(dto.vehicleId)?.vehicleName || '',
                 vehiclePlate: dto.vehiclePlate || baseByVehicle.get(dto.vehicleId)?.vehiclePlate || 'N/A',
                 type,
-                expiryDate: expiryDate || new Date(),
+                expiryDate,
                 documentNumber: dto.documentNumber,
                 lastRenewalDate: dto.lastRenewalDate ? new Date(dto.lastRenewalDate) : undefined,
                 lastRenewalCost: dto.lastRenewalCost,
@@ -1090,10 +1096,10 @@ export class DocumentsComponent implements OnInit, OnDestroy {
                     vehicleName: b.vehicleName,
                     vehiclePlate: b.vehiclePlate,
                     type,
-                    expiryDate: new Date(),
+                    expiryDate: null,
                     reminderDays: 30,
-                    status: 'expired',
-                    daysUntilExpiry: -999
+                    status: 'unknown',
+                    daysUntilExpiry: 0
                   } as VehicleDocument);
                 }
               });
@@ -1123,16 +1129,17 @@ export class DocumentsComponent implements OnInit, OnDestroy {
   }
 
   private createDocumentEntry(vehicle: any, type: 'insurance' | 'tax' | 'technical_inspection' | 'registration' | 'transport_permit', expiryDate: Date | null): VehicleDocument {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    let daysUntilExpiry = 999;
-    let status: 'expired' | 'expiring_soon' | 'ok' = 'ok';
+    let daysUntilExpiry = 0;
+    let status: VehicleDocument['status'] = 'unknown';
 
     if (expiryDate) {
+      // Jours calendaires en UTC, comme l'API (ExpiryCalendar) : en jour local,
+      // une échéance stockée à 23:59:59 UTC comptait un jour de plus à UTC+1.
       const expiry = new Date(expiryDate);
-      expiry.setHours(0, 0, 0, 0);
-      daysUntilExpiry = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      const now = new Date();
+      const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+      const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+      daysUntilExpiry = Math.round((expiryDay - today) / (1000 * 60 * 60 * 24));
 
       if (daysUntilExpiry < 0) {
         status = 'expired';
@@ -1141,9 +1148,6 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       } else {
         status = 'ok';
       }
-    } else {
-      status = 'expired'; // No date = expired/missing
-      daysUntilExpiry = -999;
     }
 
     return {
@@ -1151,7 +1155,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       vehicleName: vehicle.name || `${vehicle.brand} ${vehicle.model}`,
       vehiclePlate: vehicle.plate || 'N/A',
       type,
-      expiryDate: expiryDate || new Date(),
+      expiryDate,
       reminderDays: 30,
       status,
       daysUntilExpiry
@@ -1186,6 +1190,13 @@ export class DocumentsComponent implements OnInit, OnDestroy {
       if (this.sortColumn === 'vehicleName') {
         comparison = a.vehicleName.localeCompare(b.vehicleName);
       } else if (this.sortColumn === 'expiryDate') {
+        // Ordre de /documents/expiries (DEF-055) : expirés, bientôt, à jour,
+        // puis les non renseignées en fin dans les deux sens, faute de date à trier.
+        const aUnknown = a.status === 'unknown';
+        const bUnknown = b.status === 'unknown';
+        if (aUnknown || bUnknown) {
+          return aUnknown === bUnknown ? a.vehicleName.localeCompare(b.vehicleName) : (aUnknown ? 1 : -1);
+        }
         comparison = a.daysUntilExpiry - b.daysUntilExpiry;
       }
       return this.sortDirection === 'asc' ? comparison : -comparison;
@@ -1249,25 +1260,29 @@ export class DocumentsComponent implements OnInit, OnDestroy {
     const labels: { [key: string]: string } = {
       'expired': 'Expiré',
       'expiring_soon': 'Expire bientôt',
-      'ok': 'En règle'
+      'ok': 'En règle',
+      'unknown': 'Non renseignée'
     };
     return labels[status] || status;
   }
 
-  getDaysText(days: number): string {
-    if (days < -900) return 'Date non renseignée';
+  getDaysText(doc: VehicleDocument): string {
+    if (doc.status === 'unknown') return 'Date non renseignée';
+    const days = doc.daysUntilExpiry;
     if (days < 0) return `Expiré depuis ${Math.abs(days)} jour(s)`;
     if (days === 0) return 'Expire aujourd\'hui';
     if (days === 1) return 'Expire demain';
     return `Dans ${days} jours`;
   }
 
-  formatDate(date: Date): string {
+  /** Jour UTC, celui que l'API compte : l'échéance renvoyée est ce jour à minuit UTC. */
+  formatDate(date: Date | null): string {
     if (!date) return '-';
     return new Date(date).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     });
   }
 
@@ -1297,8 +1312,8 @@ export class DocumentsComponent implements OnInit, OnDestroy {
     if (doc.type === 'driver_permit') return;
     this.editDoc = doc;
     // Pré-remplit avec la date actuelle au format yyyy-MM-dd attendu par <input type=date>.
-    const d = new Date(doc.expiryDate);
-    this.editDate = isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
+    const d = doc.expiryDate ? new Date(doc.expiryDate) : null;
+    this.editDate = !d || isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10);
     this.editError = '';
     this.isEditOpen = true;
   }

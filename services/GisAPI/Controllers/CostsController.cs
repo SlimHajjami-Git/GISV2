@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Costs;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
@@ -140,7 +141,7 @@ public class CostsController : ControllerBase
     /// </summary>
     [HttpPost("scan-invoice")]
     [RequestSizeLimit(12_000_000)]
-    public async Task<IActionResult> ScanInvoice(IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> ScanInvoice(IFormFile? file, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "Aucun fichier reçu." });
@@ -354,6 +355,14 @@ public class CostsController : ControllerBase
         var companyId = GetCompanyId();
         var userId = GetUserId();
 
+        // Catégorie hors liste refusée (DEF-040) : « xyz » était enregistré et devenait
+        // une catégorie fantôme dans le résumé et les rapports. Un synonyme connu est
+        // enregistré sous son code, pour être ventilé comme lui.
+        var type = VehicleCostRules.StoredType(cost.Type);
+        if (type is null)
+            return BadRequest(new { message = VehicleCostRules.UnknownTypeMessage(cost.Type) });
+        cost.Type = type;
+
         // Portée véhicules en ÉCRITURE : le véhicule visé doit exister dans la
         // société ET être visible par l'appelant. Sans ce contrôle, un employé
         // restreint au véhicule #7 pouvait imputer une dépense au véhicule #9
@@ -377,6 +386,11 @@ public class CostsController : ControllerBase
         {
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }
+
+        // Montant nul ou négatif refusé (DEF-050) : -50 était enregistré et venait en
+        // déduction de tous les totaux sans être identifiable comme un remboursement.
+        if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
+            return BadRequest(new { message = amountError });
 
         _context.VehicleCosts.Add(cost);
         await _context.SaveChangesAsync(ct);
@@ -415,7 +429,16 @@ public class CostsController : ControllerBase
         if (cost == null)
             return NotFound();
 
-        cost.Type = updated.Type;
+        // Même liste que la création (DEF-040), sauf pour une catégorie ancienne
+        // laissée telle quelle : une ligne historique hors liste reste modifiable, et
+        // sa catégorie n'est pas réécrite sans que l'utilisateur l'ait changée.
+        var type = string.Equals(updated.Type, cost.Type, StringComparison.Ordinal)
+            ? cost.Type
+            : VehicleCostRules.StoredType(updated.Type);
+        if (type is null)
+            return BadRequest(new { message = VehicleCostRules.UnknownTypeMessage(updated.Type) });
+
+        cost.Type = type;
         cost.Description = updated.Description;
         cost.Amount = updated.Amount;
         cost.Date = updated.Date;
@@ -431,6 +454,10 @@ public class CostsController : ControllerBase
         {
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }
+
+        // Même contrôle que la création (DEF-050) ; rien n'est enregistré en cas de refus.
+        if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
+            return BadRequest(new { message = amountError });
 
         await _context.SaveChangesAsync(ct);
 

@@ -315,11 +315,12 @@ interface ImpactProfile {
               <summary class="phase-head">
                 <span class="phase-num">3</span>
                 <span class="phase-title">Expertise assurance (jour J+N)</span>
-                <span class="phase-status" [class.done]="!!phase3.visitedAt">
-                  {{ phase3.visitedAt ? 'Visite enregistrée' : 'En attente' }}
+                <span class="phase-status" [class.done]="expertStarted()">
+                  {{ phase3.visitedAt ? 'Visite enregistrée' : expertStarted() ? 'En cours' : 'En attente' }}
                 </span>
               </summary>
               <div class="phase-body">
+                <p class="phase-hint" *ngIf="!expertStarted() && phase3.estimatedAmount != null">💡 Estimation provisoire, sans expertise saisie : le montant de l'expert la remplacera.</p>
                 <div class="phase-row">
                   <label class="phase-field">
                     <span>Date de visite</span>
@@ -389,8 +390,8 @@ interface ImpactProfile {
               <summary class="phase-head">
                 <span class="phase-num">5</span>
                 <span class="phase-title">Réparation (jour J+X)</span>
-                <span class="phase-status" [class.done]="phase5.actualCost != null">
-                  {{ phase5.actualCost != null ? 'Réparé' : 'En attente' }}
+                <span class="phase-status" [class.done]="!!phase5.completedAt || phase5.actualCost != null">
+                  {{ phase5.completedAt || phase5.actualCost != null ? 'Réparé' : 'En attente' }}
                 </span>
               </summary>
               <div class="phase-body">
@@ -422,8 +423,8 @@ interface ImpactProfile {
               <summary class="phase-head">
                 <span class="phase-num">6</span>
                 <span class="phase-title">Suivi assurance (jour J+Y)</span>
-                <span class="phase-status" [class.done]="!!phase6.claimNumber || !!phase6.status">
-                  {{ phase6.claimNumber || phase6.status ? phaseClaimLabel(phase6.status) : 'Non déclaré' }}
+                <span class="phase-status" [class.done]="claimStarted()">
+                  {{ claimStarted() ? (phase6.status ? phaseClaimLabel(phase6.status) : 'Déposé') : 'Non déclaré' }}
                 </span>
               </summary>
               <div class="phase-body">
@@ -1978,6 +1979,26 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       case 'dismissed': return 'Fausse alerte';
       default:          return '';
     }
+  }
+
+  /**
+   * Suivi assurance réellement instruit : dépôt, statut ou montant approuvé. Le n° de
+   * sinistre seul ne compte pas, la déclaration le pré-remplit : la pastille passait au
+   * vert avec « Non déclaré » sur un dossier déclaré à l'instant (recette GPA, DEF-045).
+   * Même règle que la phase de la liste des sinistres.
+   */
+  claimStarted(): boolean {
+    return !!this.phase6.status || !!this.phase6.submittedAt || this.phase6.approvedAmount != null;
+  }
+
+  /**
+   * Expertise réellement instruite : visite, expert, cabinet ou évaluation. Le montant seul
+   * ne compte pas, la déclaration le range dans le même champ. Même règle que la phase de
+   * la liste : un dossier « Expertise » dans la liste restait « En attente » ici.
+   */
+  expertStarted(): boolean {
+    return !!this.phase3.visitedAt || !!this.phase3.expertName?.trim()
+      || !!this.phase3.expertCompany?.trim() || !!this.phase3.assessment?.trim();
   }
 
   phaseClaimLabel(s: string | null): string {

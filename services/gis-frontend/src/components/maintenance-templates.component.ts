@@ -58,6 +58,8 @@ interface MaintenanceItem {
   nextDueKm: number | null;
   status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue';
   kmUntilDue: number | null;
+  // Échéancier en pause : statut figé côté serveur, exclu des alertes et des statistiques.
+  isPaused: boolean;
   // Free maintenance benefit
   freeUsesTotal?: number;
   freeUsesRemaining?: number;
@@ -77,7 +79,8 @@ interface FlatRow {
   lastDoneKm: number | null;
   nextDueKm: number | null;
   // 'inactive' : échéance d'un modèle désactivé, plus recalculée par le serveur.
-  status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue' | 'inactive';
+  // 'paused' : échéancier mis en pause, statut figé lui aussi.
+  status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue' | 'inactive' | 'paused';
   kmUntilDue: number | null;
   progressPercent: number;
   // Free maintenance benefit
@@ -121,6 +124,7 @@ interface FlatRow {
             <option value="due">Imminent</option>
             <option value="upcoming">A venir</option>
             <option value="ok">OK</option>
+            <option value="paused">En pause</option>
           </select>
           <button class="btn-assign" (click)="openAssignPanel()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
@@ -659,7 +663,7 @@ interface FlatRow {
     .main-table tbody tr.due:hover { background:#fef3c7; }
     .main-table tbody tr.critical { background:#fff7ed; }
     .main-table tbody tr.critical:hover { background:#ffedd5; }
-    .main-table tbody tr.inactive td { color:#94a3b8; }
+    .main-table tbody tr.inactive td, .main-table tbody tr.paused td { color:#94a3b8; }
     .main-table tbody td { padding:10px 14px; font-size:12px; color:#475569; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
     .main-table tbody tr:last-child td { border-bottom:none; }
     .col-vehicle { min-width:180px; }
@@ -678,7 +682,7 @@ interface FlatRow {
     .vehicle-avatar.due { background:#f59e0b; }
     .vehicle-avatar.overdue { background:#dc2626; }
     .vehicle-avatar.critical { background:#ea580c; }
-    .vehicle-avatar.inactive { background:#cbd5e1; }
+    .vehicle-avatar.inactive, .vehicle-avatar.paused { background:#cbd5e1; }
     .cell-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
     .cell-plate { font-family:monospace; font-size:10px; color:#94a3b8; }
     .cell-maint-name { font-weight:500; color:#1e293b; }
@@ -704,28 +708,28 @@ interface FlatRow {
     .progress-fill.due { background:#f59e0b; }
     .progress-fill.overdue { background:#dc2626; }
     .progress-fill.critical { background:#ea580c; }
-    .progress-fill.inactive { background:#cbd5e1; }
+    .progress-fill.inactive, .progress-fill.paused { background:#cbd5e1; }
     .progress-pct { font-size:11px; font-weight:600; min-width:30px; }
     .progress-pct.ok { color:#16a34a; }
     .progress-pct.upcoming { color:#3b82f6; }
     .progress-pct.due { color:#d97706; }
     .progress-pct.overdue { color:#dc2626; }
     .progress-pct.critical { color:#ea580c; }
-    .progress-pct.inactive { color:#94a3b8; }
+    .progress-pct.inactive, .progress-pct.paused { color:#94a3b8; }
     .cell-km { font-weight:500; white-space:nowrap; }
     .cell-km.ok { color:#16a34a; }
     .cell-km.upcoming { color:#3b82f6; }
     .cell-km.due { color:#d97706; }
     .cell-km.overdue { color:#dc2626; }
     .cell-km.critical { color:#ea580c; }
-    .cell-km.inactive { color:#94a3b8; }
+    .cell-km.inactive, .cell-km.paused { color:#94a3b8; }
     .status-tag { padding:3px 8px; border-radius:3px; font-size:10px; font-weight:600; white-space:nowrap; }
     .status-tag.ok { background:#dcfce7; color:#16a34a; }
     .status-tag.upcoming { background:#dbeafe; color:#2563eb; }
     .status-tag.due { background:#fef3c7; color:#d97706; }
     .status-tag.overdue { background:#fee2e2; color:#dc2626; }
     .status-tag.critical { background:#ffedd5; color:#c2410c; }
-    .status-tag.inactive { background:#f1f5f9; color:#64748b; }
+    .status-tag.inactive, .status-tag.paused { background:#f1f5f9; color:#64748b; }
     .cell-date { font-size:11px; color:#94a3b8; }
     .btn-act { width:28px; height:28px; border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid #e2e8f0; background:white; transition:all .15s; }
     .btn-act.done { color:#16a34a; }
@@ -1092,6 +1096,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
               nextDueKm: m.nextDueKm ?? null,
               status: (m.status as any) || 'ok',
               kmUntilDue: m.kmUntilDue ?? null,
+              isPaused: !!m.isPaused,
               freeUsesTotal: m.freeUsesTotal ?? 0,
               freeUsesRemaining: m.freeUsesRemaining ?? 0,
               freeSource: m.freeSource,
@@ -1117,8 +1122,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         const pct = Math.min(100, Math.max(0, (used / intervalKm) * 100));
         // Modèle désactivé : le serveur ne recalcule plus son statut, qui reste figé.
         // La ligne est gardée (son historique reste accessible) mais ne compte plus
-        // parmi les urgences, comme dans les alertes.
-        const status = tpl && !tpl.isActive ? 'inactive' : m.status;
+        // parmi les urgences, comme dans les alertes. Même règle pour un échéancier en
+        // pause : /alerts et /stats l'excluent, « Urgents » le comptait encore (DEF-042).
+        const status = tpl && !tpl.isActive ? 'inactive' : m.isPaused ? 'paused' : m.status;
         rows.push({
           vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage,
           templateId: m.templateId, templateName: m.templateName, scheduleId: m.scheduleId, lastDoneDate: m.lastDoneDate, lastDoneKm: m.lastDoneKm, nextDueKm: m.nextDueKm,
@@ -1143,10 +1149,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.statusFilter) r = r.filter(row => row.status === this.statusFilter);
     if (this.templateFilter) r = r.filter(row => row.templateId === this.templateFilter);
     // Sort
-    const statusOrder: Record<string, number> = { overdue: 0, critical: 1, due: 2, upcoming: 3, ok: 4, inactive: 5 };
+    const statusOrder: Record<string, number> = { overdue: 0, critical: 1, due: 2, upcoming: 3, ok: 4, paused: 5, inactive: 6 };
     r.sort((a, b) => {
       let va: any, vb: any;
-      if (this.sortColumn === 'status') { va = statusOrder[a.status] ?? 6; vb = statusOrder[b.status] ?? 6; }
+      if (this.sortColumn === 'status') { va = statusOrder[a.status] ?? 7; vb = statusOrder[b.status] ?? 7; }
       else if (this.sortColumn === 'kmUntilDue') { va = a.kmUntilDue ?? 99999; vb = b.kmUntilDue ?? 99999; }
       else if (this.sortColumn === 'vehicleName') { va = a.vehicleName; vb = b.vehicleName; }
       else if (this.sortColumn === 'templateName') { va = a.templateName; vb = b.templateName; }
@@ -1183,7 +1189,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   //   due      -> echeance dans la fenetre de prevenance ("Imminent")
   //   critical -> sous le seuil critique du modele ("Critique"), plus urgent que due
   //   overdue  -> echeance depassee ("En retard")
-  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A prevoir', due:'Imminent', critical:'Critique', overdue:'En retard', inactive:'Désactivé' }[s] || s; }
+  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A prevoir', due:'Imminent', critical:'Critique', overdue:'En retard', inactive:'Désactivé', paused:'En pause' }[s] || s; }
   formatDate(d: Date) { return new Date(d).toLocaleDateString('fr-FR'); }
   getCount(v: VehicleMaintenanceStatus, s: string) { return v.maintenanceItems.filter(m => m.status === s).length; }
   toggleVehicle(id: string) { this.expanded.includes(id) ? this.expanded = this.expanded.filter(x => x !== id) : this.expanded.push(id); }
@@ -1376,10 +1382,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
                  "À utiliser si l'odomètre du tracker n'était pas câblé au moment de l'assignation.")) return;
     this.apiService.rebaseMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.loadVehicles(),
-      error: (err) => {
-        console.error('rebase failed', err);
-        alert("Erreur lors du recalcul. Voir la console pour les détails.");
-      }
+      error: (err) => this.toast.error('Échéance non recalculée', this.saveErrorMessage(err), 10000)
     });
   }
 
@@ -1521,6 +1524,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (err?.status === 0) return 'Serveur injoignable : vérifiez la connexion puis réessayez.';
     const serverMessage = err?.error?.errors?.[0]?.errorMessage || err?.error?.message;
     if (err?.status < 500 && serverMessage) return serverMessage;
+    // Un 404 sans message (NotFound() nu : échéance, modèle ou véhicule supprimé entre-temps)
+    // tombait dans « Erreur serveur » alors que rien n'a planté (recette GPA, DEF-031).
+    if (err?.status === 404) return 'Élément introuvable : il a peut-être été supprimé entre-temps. Rechargez la page.';
+    if (err?.status >= 400 && err?.status < 500) return 'Opération refusée : vérifiez les valeurs saisies puis réessayez.';
     return "Erreur serveur : l'opération n'a pas abouti. Réessayez ; si le problème persiste, contactez le support.";
   }
 

@@ -23,7 +23,13 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
     public async Task<int> Handle(CreateVehicleCommand request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId ?? 0;
-        
+
+        // Limite de la formule d'abord : si elle est atteinte, corriger la
+        // saisie ne servirait à rien.
+        await VehicleWriteRules.EnsureVehicleQuotaAsync(_context, companyId, ct);
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(_context, companyId, request.Plate, null, null, ct);
+
         var vehicle = new Vehicle
         {
             Name = request.Name,

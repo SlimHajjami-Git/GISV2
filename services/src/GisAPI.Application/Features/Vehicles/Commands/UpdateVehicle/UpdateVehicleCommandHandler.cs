@@ -40,6 +40,10 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
                     "Chauffeur invalide : un véhicule ne peut être affecté qu'à un chauffeur de sa propre société.");
         }
 
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay, vehicle.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(
+            _context, vehicle.CompanyId, request.Plate, vehicle.Id, vehicle.Plate, ct);
+
         vehicle.Name = request.Name;
         vehicle.Type = request.Type;
         vehicle.Brand = request.Brand;

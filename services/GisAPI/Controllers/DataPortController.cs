@@ -1,6 +1,7 @@
 using ClosedXML.Excel;
 using GisAPI.Application.Common;
 using GisAPI.Application.Features.DataPort;
+using GisAPI.Application.Features.FuelEntries;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Vehicles;
 using GisAPI.Attributes;
@@ -211,61 +212,126 @@ public class DataPortController : ControllerBase
     }
 
     // ───────────────────────────── MODÈLE VIDE ─────────────────────────────
+
+    /// <summary>Nom de la feuille d'aide du modèle : l'import ne la lit jamais.</summary>
+    public const string HelpSheetName = "Mode d'emploi";
+
+    // Lignes d'exemple du modèle, une par feuille (dates au format du modèle).
+    // Campagne de test GPA, DEF-029 : elles étaient écrites en ligne 2 des feuilles
+    // de données, en italique, et l'import les créait telles quelles — un client qui
+    // remplissait le modèle sans les effacer se retrouvait avec un véhicule fictif
+    // « 123 TU 4567 » (compté dans son quota), un entretien, une réparation, un plein
+    // et une assurance. Elles vivent désormais dans la feuille d'aide, et une ligne
+    // identique à l'une d'elles est ignorée à l'import : c'est aussi ce qui neutralise
+    // les modèles déjà téléchargés.
+    private static readonly object[] VehicleExample =
+        { "123 TU 4567", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 };
+    private static readonly object[] MaintenanceExample =
+        { "123 TU 4567", new DateTime(2026, 8, 15), "Vidange + filtres", 350 };
+    private static readonly object[] RepairExample =
+        { "123 TU 4567", new DateTime(2026, 8, 18), "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" };
+    private static readonly object[] FuelExample =
+        { "123 TU 4567", new DateTime(2026, 8, 20), 45, 2.2, 99, 145200 };
+    private static readonly object[] ExpenseExample =
+        { "123 TU 4567", new DateTime(2026, 8, 10), "Assurance", "Assurance flotte 2026", 625, 145000 };
+
     [HttpGet("template")]
     public IActionResult Template()
     {
         using var wb = new XLWorkbook();
 
-        var vs = wb.Worksheets.Add("Véhicules");
-        WriteHeader(vs, VehicleCols);
-        vs.Cell(2, 1).Value = "123 TU 4567"; vs.Cell(2, 2).Value = "Camion 1";
-        vs.Cell(2, 3).Value = "Renault"; vs.Cell(2, 4).Value = "Master";
-        vs.Cell(2, 5).Value = 2021; vs.Cell(2, 6).Value = "camion";
-        vs.Cell(2, 7).Value = "diesel"; vs.Cell(2, 8).Value = 145000; vs.Cell(2, 9).Value = 80;
-        vs.Row(2).Style.Font.Italic = true;
-        vs.Columns().AdjustToContents();
+        // Feuille d'aide en premier : c'est elle qui s'ouvre, avec un exemple par feuille.
+        var help = wb.Worksheets.Add(HelpSheetName);
+        help.Cell(1, 1).Value = "Modèle d'import Calypso";
+        help.Cell(1, 1).Style.Font.Bold = true;
+        help.Cell(1, 1).Style.Font.FontSize = 14;
+        help.Cell(2, 1).Value = "Remplissez les feuilles Véhicules, Entretiens, Réparations, Carburant et Dépenses " +
+                                "à partir de la ligne 2, sous les en-têtes. Cette feuille n'est pas importée.";
+        help.Cell(3, 1).Value = "Chaque ligne est rattachée au véhicule par son matricule (casse, espaces et tirets ignorés). " +
+                                "Une ligne identique à un exemple ci-dessous est ignorée.";
+        var line = 5;
+        line = WriteHelpSection(help, line, "Véhicules", VehicleCols, VehicleExample,
+            "Un matricule déjà présent n'est pas recréé : seul un kilométrage plus élevé est repris.");
+        line = WriteHelpSection(help, line, "Entretiens", MaintenanceCols, MaintenanceExample, null);
+        line = WriteHelpSection(help, line, "Réparations", RepairCols, RepairExample,
+            "Statut : En attente, En cours, Terminée ou Annulée. Fournisseur facultatif, Référence à laisser vide.");
+        line = WriteHelpSection(help, line, "Carburant", FuelCols, FuelExample,
+            "Montant total vide : calculé à partir du volume et du prix au litre.");
+        WriteHelpSection(help, line, "Dépenses", ExpenseCols, ExpenseExample,
+            "Type : Assurance, Visite technique, Vignette, Carte grise, Péage, Stationnement, Amende, Lavage, Autre…");
+        for (var c = 1; c <= RepairCols.Length; c++)
+            help.Column(c).Width = 22;
 
-        var ms = wb.Worksheets.Add("Entretiens");
-        WriteHeader(ms, MaintenanceCols);
-        ms.Cell(2, 1).Value = "123 TU 4567"; ms.Cell(2, 2).Value = "15/08/2026";
-        ms.Cell(2, 3).Value = "Vidange + filtres"; ms.Cell(2, 4).Value = 350;
-        ms.Row(2).Style.Font.Italic = true;
-        ms.Columns().AdjustToContents();
-
-        // Fournisseur, N° facture et Référence laissés vides : la référence REP-…
-        // est attribuée à l'import.
-        var rps = wb.Worksheets.Add("Réparations");
-        WriteHeader(rps, RepairCols);
-        rps.Cell(2, 1).Value = "123 TU 4567"; rps.Cell(2, 2).Value = "18/08/2026";
-        rps.Cell(2, 3).Value = "Plaquettes de frein AV"; rps.Cell(2, 4).Value = "Freinage";
-        rps.Cell(2, 5).Value = 145100; rps.Cell(2, 6).Value = 80; rps.Cell(2, 7).Value = 120;
-        rps.Cell(2, 8).Value = 200; rps.Cell(2, 9).Value = "Terminée";
-        rps.Row(2).Style.Font.Italic = true;
-        rps.Columns().AdjustToContents();
-
-        var fs = wb.Worksheets.Add("Carburant");
-        WriteHeader(fs, FuelCols);
-        fs.Cell(2, 1).Value = "123 TU 4567"; fs.Cell(2, 2).Value = "20/08/2026";
-        fs.Cell(2, 3).Value = 45; fs.Cell(2, 4).Value = 2.2; fs.Cell(2, 5).Value = 99; fs.Cell(2, 6).Value = 145200;
-        fs.Row(2).Style.Font.Italic = true;
-        fs.Columns().AdjustToContents();
-
-        // Autres dépenses : même libellé de type que l'écran Dépenses (Assurance,
-        // Amende, Vignette, Péage…) ; les entretiens restent dans leur feuille.
-        var es = wb.Worksheets.Add("Dépenses");
-        WriteHeader(es, ExpenseCols);
-        es.Cell(2, 1).Value = "123 TU 4567"; es.Cell(2, 2).Value = "10/08/2026";
-        es.Cell(2, 3).Value = "Assurance"; es.Cell(2, 4).Value = "Assurance flotte 2026";
-        es.Cell(2, 5).Value = 625; es.Cell(2, 6).Value = 145000;
-        es.Row(2).Style.Font.Italic = true;
-        es.Columns().AdjustToContents();
+        // Feuilles de données : en-têtes seuls.
+        foreach (var (name, cols) in new[]
+                 {
+                     ("Véhicules", VehicleCols), ("Entretiens", MaintenanceCols), ("Réparations", RepairCols),
+                     ("Carburant", FuelCols), ("Dépenses", ExpenseCols)
+                 })
+        {
+            var ws = wb.Worksheets.Add(name);
+            WriteHeader(ws, cols);
+            ws.Columns().AdjustToContents();
+        }
 
         return WorkbookFile(wb, "calypso-modele-import.xlsx");
     }
 
+    /// <summary>Section d'une feuille dans l'aide : nom, en-têtes, exemple, consigne. Renvoie la ligne suivante libre.</summary>
+    private static int WriteHelpSection(IXLWorksheet ws, int row, string sheet, string[] cols, object[] example, string? tip)
+    {
+        ws.Cell(row, 1).Value = $"Feuille « {sheet} »";
+        ws.Cell(row, 1).Style.Font.Bold = true;
+        WriteHeader(ws, cols, row + 1);
+        for (var i = 0; i < example.Length; i++)
+        {
+            var cell = ws.Cell(row + 2, i + 1);
+            switch (example[i])
+            {
+                case string s: cell.Value = s; break;
+                case DateTime d: cell.Value = d.ToString("dd/MM/yyyy"); break;
+                case int n: cell.Value = n; break;
+                case double x: cell.Value = x; break;
+            }
+        }
+        ws.Row(row + 2).Style.Font.Italic = true;
+        if (tip == null) return row + 4;
+        ws.Cell(row + 3, 1).Value = tip;
+        return row + 5;
+    }
+
+    /// <summary>
+    /// Ligne identique à l'exemple du modèle : cellules de l'exemple égales (texte sans
+    /// casse, nombres et dates par valeur), toutes les autres colonnes vides. Une vraie
+    /// saisie qui en reprend une partie (matricule, date…) n'est pas concernée.
+    /// </summary>
+    private static bool IsTemplateExample(IXLRangeRow row, object[] example, int columnCount)
+    {
+        for (var i = 0; i < columnCount; i++)
+        {
+            var cell = row.Cell(i + 1);
+            if (i >= example.Length)
+            {
+                if (Str(cell).Length > 0) return false;
+                continue;
+            }
+
+            var same = example[i] switch
+            {
+                string s => string.Equals(Str(cell), s, StringComparison.OrdinalIgnoreCase),
+                DateTime d => Date(cell) == d,
+                int n => Dec(cell) == n,
+                double x => Dec(cell) == (decimal)x,
+                _ => false
+            };
+            if (!same) return false;
+        }
+        return true;
+    }
+
     // ─────────────────────────────── IMPORT ───────────────────────────────
     [HttpPost("import")]
-    public async Task<IActionResult> Import(IFormFile file)
+    public async Task<IActionResult> Import(IFormFile? file)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "Aucun fichier reçu." });
@@ -280,22 +346,48 @@ public class DataPortController : ControllerBase
         var result = new ImportSummary();
 
         // Matricules déjà connus (dédup + résolution pour entretiens/réparations/pleins).
-        var byPlate = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId && v.Plate != null)
-            .ToDictionaryAsync(v => Normalize(v.Plate!), v => v);
+        // Deux véhicules dont les matricules ne diffèrent que par un séparateur
+        // (« GA-214-RK » et « GA 214 RK ») faisaient lever ToDictionary et échouer
+        // tout l'import : le plus ancien est retenu.
+        var byPlate = new Dictionary<string, Vehicle>(StringComparer.Ordinal);
+        foreach (var knownVehicle in await _context.Vehicles
+                     .Where(v => v.CompanyId == companyId && v.Plate != null)
+                     .OrderBy(v => v.Id)
+                     .ToListAsync())
+        {
+            var knownKey = Normalize(knownVehicle.Plate!);
+            if (knownKey.Length > 0) byPlate.TryAdd(knownKey, knownVehicle);
+        }
 
         // Véhicules dont on a importé au moins un relevé compteur : on contrôle
         // la cohérence de leur série une fois l'import terminé.
         var touchedVehicleIds = new HashSet<int>();
 
+        // Matricules écartés par la limite de l'abonnement : leurs lignes des feuilles
+        // suivantes étaient notées « matricule introuvable », alors que le matricule
+        // figure bien dans la feuille Véhicules.
+        var quotaRefusedPlates = new HashSet<string>(StringComparer.Ordinal);
+        string MissingVehicleNote(string ignored, string plate) =>
+            quotaRefusedPlates.Contains(Normalize(plate))
+                ? $"{ignored} : véhicule « {plate} » non créé (limite de l'abonnement)."
+                : $"{ignored} : matricule « {plate} » introuvable.";
+
         // 1) Véhicules
         var vs = FindSheet(wb, "Véhicules");
         if (vs != null)
         {
+            // Même limite que la création unitaire (DEF-036) : l'import créait le
+            // 51e véhicule d'un Plan Standard à 50. Les lignes au-delà sont écartées
+            // une à une, le reste du classeur est importé.
+            var quota = await VehicleWriteRules.GetVehicleQuotaAsync(_context, companyId, default);
+            var slotsLeft = quota?.Remaining;
+
             foreach (var row in DataRows(vs))
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (IsTemplateExample(row, VehicleExample, VehicleCols.Length))
+                { result.VehiclesIgnored++; result.NoteTemplateExample("Véhicules"); continue; }
                 var key = Normalize(plate);
                 if (byPlate.TryGetValue(key, out var known))
                 {
@@ -315,6 +407,15 @@ public class DataPortController : ControllerBase
                     }
                     continue;
                 }
+
+                if (slotsLeft == 0)
+                {
+                    result.VehiclesIgnored++;
+                    if (quotaRefusedPlates.Add(key))
+                        result.AddNote($"Véhicule « {plate} » non créé : limite de l'abonnement atteinte ({quota!.Max} au maximum).");
+                    continue;
+                }
+                slotsLeft--;
 
                 var vehicle = new Vehicle
                 {
@@ -364,13 +465,19 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (IsTemplateExample(row, MaintenanceExample, MaintenanceCols.Length))
+                { result.MaintenanceIgnored++; result.NoteTemplateExample("Entretiens"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
-                { result.MaintenanceIgnored++; result.AddNote($"Entretien ignoré : matricule « {plate} » introuvable."); continue; }
+                { result.MaintenanceIgnored++; result.AddNote(MissingVehicleNote("Entretien ignoré", plate)); continue; }
 
                 var date = Date(row.Cell(2));
                 if (date == null) { result.MaintenanceIgnored++; result.AddNote($"Entretien « {plate} » ignoré : date invalide."); continue; }
 
                 var amount = Dec(row.Cell(4)) ?? 0;
+                // Un montant négatif jouait comme un crédit silencieux dans tous les totaux
+                // (DEF-050) ; zéro reste permis, c'est l'entretien gratuit que l'export écrit.
+                if (amount < 0)
+                { result.MaintenanceIgnored++; result.AddNote($"Entretien « {plate} » du {date.Value:dd/MM/yyyy} ignoré : montant négatif."); continue; }
                 if (!existingCostKeys.Add(ExpenseImportRow.NaturalKey(vehicle.Id, date.Value, "maintenance", amount, Str(row.Cell(3)))))
                 { result.MaintenanceIgnored++; duplicates++; continue; }
 
@@ -430,8 +537,10 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (IsTemplateExample(row, RepairExample, RepairCols.Length))
+                { result.RepairsIgnored++; result.NoteTemplateExample("Réparations"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
-                { result.RepairsIgnored++; result.AddNote($"Réparation ignorée : matricule « {plate} » introuvable."); continue; }
+                { result.RepairsIgnored++; result.AddNote(MissingVehicleNote("Réparation ignorée", plate)); continue; }
 
                 var date = Date(row.Cell(2));
                 if (date == null) { result.RepairsIgnored++; result.AddNote($"Réparation « {plate} » ignorée : date invalide."); continue; }
@@ -540,8 +649,10 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (IsTemplateExample(row, FuelExample, FuelCols.Length))
+                { result.FuelIgnored++; result.NoteTemplateExample("Carburant"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
-                { result.FuelIgnored++; result.AddNote($"Plein ignoré : matricule « {plate} » introuvable."); continue; }
+                { result.FuelIgnored++; result.AddNote(MissingVehicleNote("Plein ignoré", plate)); continue; }
 
                 var date = Date(row.Cell(2));
                 if (date == null) { result.FuelIgnored++; result.AddNote($"Plein « {plate} » ignoré : date invalide."); continue; }
@@ -593,8 +704,10 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
+                if (IsTemplateExample(row, ExpenseExample, ExpenseCols.Length))
+                { result.ExpensesIgnored++; result.NoteTemplateExample("Dépenses"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
-                { result.ExpensesIgnored++; result.AddNote($"Dépense ignorée : matricule « {plate} » introuvable."); continue; }
+                { result.ExpensesIgnored++; result.AddNote(MissingVehicleNote("Dépense ignorée", plate)); continue; }
 
                 var date = Date(row.Cell(2));
                 if (date == null) { result.ExpensesIgnored++; result.AddNote($"Dépense « {plate} » ignorée : date invalide."); continue; }
@@ -605,7 +718,11 @@ public class DataPortController : ControllerBase
                 if (Unreadable(row.Cell(5)))
                 { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant « {Str(row.Cell(5))} » illisible."); continue; }
                 var amount = Math.Round(Dec(row.Cell(5)) ?? 0, 2, MidpointRounding.AwayFromZero);
-                if (Math.Abs(amount) > ExpenseImportRow.MaxAmount)
+                // Même règle que POST /api/costs (DEF-050) : un crédit se saisit en positif, sous le
+                // type « Remboursement assurance », que les totaux soustraient explicitement.
+                if (amount < 0)
+                { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant négatif (un remboursement d'assurance se saisit en positif)."); continue; }
+                if (amount > ExpenseImportRow.MaxAmount)
                 { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant trop élevé."); continue; }
 
                 var (type, typeNote) = ExpenseImportRow.ParseType(Str(row.Cell(3)));
@@ -683,11 +800,11 @@ public class DataPortController : ControllerBase
     }
 
     // ─────────────────────────────── Helpers ───────────────────────────────
-    private static void WriteHeader(IXLWorksheet ws, string[] cols)
+    private static void WriteHeader(IXLWorksheet ws, string[] cols, int row = 1)
     {
         for (var i = 0; i < cols.Length; i++)
         {
-            var c = ws.Cell(1, i + 1);
+            var c = ws.Cell(row, i + 1);
             c.Value = cols[i];
             c.Style.Font.Bold = true;
             c.Style.Fill.BackgroundColor = XLColor.FromHtml("#1e3a5f");
@@ -712,9 +829,8 @@ public class DataPortController : ControllerBase
         return wb.Worksheets.FirstOrDefault(w => RepairImportRow.NormalizeKey(w.Name) == key);
     }
 
-    // Lignes de données non vides (on saute l'en-tête et les lignes exemples en
-    // italique du modèle sont, elles, réécrites par le client — on ne filtre que
-    // le vide).
+    // Lignes de données non vides, en-tête sauté. Les lignes d'exemple du modèle
+    // sont écartées par chaque feuille (IsTemplateExample), pas ici.
     private static IEnumerable<IXLRangeRow> DataRows(IXLWorksheet ws)
     {
         var used = ws.RangeUsed();
@@ -753,8 +869,10 @@ public class DataPortController : ControllerBase
         return DateTime.TryParse(s, out var g) ? g.Date : null;
     }
 
-    private static string Normalize(string plate) =>
-        new string(plate.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+    // Même règle de rattachement que la saisie d'un plein et que le contrôle de
+    // doublon de la fiche véhicule (DEF-039) : les chemins divergeaient, un
+    // matricule accepté ici était refusé à l'écran Carburant.
+    private static string Normalize(string plate) => VehiclePlateKey.Normalize(plate);
 
     public class ImportSummary
     {
@@ -778,6 +896,13 @@ public class DataPortController : ControllerBase
         /// les notes ligne à ligne des feuilles précédentes le masqueraient.
         /// </summary>
         public void AddSheetNote(string n) => Notes.Insert(_sheetNotes++, n);
+        private readonly HashSet<string> _exampleSheets = new();
+        /// <summary>Ligne d'exemple du modèle écartée (DEF-029) : signalée une fois par feuille.</summary>
+        public void NoteTemplateExample(string sheet)
+        {
+            if (_exampleSheets.Add(sheet))
+                AddSheetNote($"{sheet} : ligne d'exemple du modèle ignorée.");
+        }
         public int IgnoredLines => VehiclesIgnored + MaintenanceIgnored + RepairsIgnored + FuelIgnored + ExpensesIgnored;
         public string Message =>
             $"{VehiclesCreated} véhicule(s), {MaintenanceCreated} entretien(s), {RepairsCreated} réparation(s), " +

@@ -1,4 +1,6 @@
+using System.Globalization;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Documents;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -191,21 +193,7 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         factors.Add(new HealthFactor { Name = "Réparations", Score = repairScore, MaxScore = 20, Detail = $"{recentRepairs} en 6 mois" });
 
         // ═══ FACTOR 3: Document Validity (15 pts) ═══
-        int docScore = 15;
-        var in30Days = now.AddDays(30);
-
-        if (vehicle.InsuranceExpiry.HasValue)
-        {
-            if (vehicle.InsuranceExpiry.Value < now) { docScore -= 5; result.Warnings.Add("Assurance expirée"); }
-            else if (vehicle.InsuranceExpiry.Value < in30Days) { docScore -= 2; result.Warnings.Add($"Assurance expire le {vehicle.InsuranceExpiry.Value:dd/MM/yyyy}"); }
-        }
-        if (vehicle.TechnicalInspectionExpiry.HasValue)
-        {
-            if (vehicle.TechnicalInspectionExpiry.Value < now) { docScore -= 5; result.Warnings.Add("Contrôle technique expiré"); }
-            else if (vehicle.TechnicalInspectionExpiry.Value < in30Days) { docScore -= 2; result.Warnings.Add($"Contrôle technique expire le {vehicle.TechnicalInspectionExpiry.Value:dd/MM/yyyy}"); }
-        }
-        if (vehicle.TaxExpiry.HasValue && vehicle.TaxExpiry.Value < now) { docScore -= 3; result.Warnings.Add("Vignette expirée"); }
-        docScore = Math.Max(0, docScore);
+        var docScore = DocumentScore(vehicle, now, result.Warnings);
         factors.Add(new HealthFactor { Name = "Documents", Score = docScore, MaxScore = 15, Detail = docScore == 15 ? "Tous à jour" : "À vérifier" });
 
         // ═══ FACTOR 4: Alerts & Driving Behavior (20 pts) ═══
@@ -245,4 +233,33 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
 
         return result;
     }
+
+    /// <summary>
+    /// Points « Documents » (sur 15) et avertissements associés. Statut en jours
+    /// calendaires UTC (<see cref="ExpiryCalendar"/>), comme l'écran Échéances : la
+    /// comparaison d'instants retirait les points d'un document « expiré » dès le
+    /// jour même de son échéance, et la date avertie pouvait tomber au lendemain.
+    /// </summary>
+    internal static int DocumentScore(Vehicle vehicle, DateTime now, List<string> warnings)
+    {
+        var today = now.Date;
+        int docScore = 15;
+
+        switch (ExpiryCalendar.Status(vehicle.InsuranceExpiry, today))
+        {
+            case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Assurance expirée"); break;
+            case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Assurance expire le {ExpiryDay(vehicle.InsuranceExpiry!.Value)}"); break;
+        }
+        switch (ExpiryCalendar.Status(vehicle.TechnicalInspectionExpiry, today))
+        {
+            case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Contrôle technique expiré"); break;
+            case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Contrôle technique expire le {ExpiryDay(vehicle.TechnicalInspectionExpiry!.Value)}"); break;
+        }
+        if (ExpiryCalendar.Status(vehicle.TaxExpiry, today) == ExpiryCalendar.Expired) { docScore -= 3; warnings.Add("Vignette expirée"); }
+
+        return Math.Max(0, docScore);
+    }
+
+    private static string ExpiryDay(DateTime expiry) =>
+        ExpiryCalendar.Day(expiry).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 }

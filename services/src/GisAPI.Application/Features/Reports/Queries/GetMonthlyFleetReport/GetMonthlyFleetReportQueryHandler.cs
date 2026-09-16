@@ -48,6 +48,13 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
 
     public async Task<MonthlyFleetReportDto> Handle(GetMonthlyFleetReportQuery request, CancellationToken ct)
     {
+        // 400 et non 500 sur un mois hors bornes : new DateTime lèverait juste après.
+        ReportRequestRules.EnsureValidMonth(request.Year, request.Month);
+
+        // Unités monétaires dans la devise de la société, comme les montants que
+        // l'écran formate : un client en euros lisait « TND/km ».
+        var currency = await ReportCurrency.LoadAsync(_context, _tenantService.CompanyId ?? 0, ct);
+
         var startDate = DateTime.SpecifyKind(new DateTime(request.Year, request.Month, 1), DateTimeKind.Utc);
         var endDate = DateTime.SpecifyKind(startDate.AddMonths(1), DateTimeKind.Utc);
         var daysInMonth = DateTime.DaysInMonth(request.Year, request.Month);
@@ -135,19 +142,19 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             // valaient « 0 → 0, stable ». On compare les litres achetés.
             var prevMonthLiters = await LoadLitresAchetesAsync(vehicleIds, prevMonthStart, prevMonthEnd, ct);
             report.MonthOverMonth = BuildComparisonSansBoitier("Mois précédent", report.Totals, prevMonthDistance,
-                prevMonthLiters, realCosts.Total.Total, prevMonthCost);
+                prevMonthLiters, realCosts.Total.Total, prevMonthCost, currency);
         }
         else
         {
             report.MonthOverMonth = BuildComparison("Mois précédent", positions, prevMonthPositions,
-                realCosts.Total.Total, prevMonthCost, report.Totals.DistanceKm, prevMonthDistance);
+                realCosts.Total.Total, prevMonthCost, report.Totals.DistanceKm, prevMonthDistance, currency);
         }
         if (prevYearPositions.Any())
         {
             var prevYearCost = await LoadPeriodCostTotalAsync(vehicleIds, prevYearStart, prevYearEnd, ct);
             var prevYearDistance = await LoadMeasuredDistanceKmAsync(vehicles, prevYearStart, prevYearEnd, prevYearPositions, ct);
             report.YearOverYear = BuildComparison("Même mois année précédente", positions, prevYearPositions,
-                realCosts.Total.Total, prevYearCost, report.Totals.DistanceKm, prevYearDistance);
+                realCosts.Total.Total, prevYearCost, report.Totals.DistanceKm, prevYearDistance, currency);
         }
 
         // Executive Summary — les heures de conduite viennent des trajets terminés.
@@ -158,10 +165,10 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         report.Alerts = BuildAlerts(report, realCosts);
         
         // KPIs
-        report.KeyPerformanceIndicators = BuildKpis(report);
-        
+        report.KeyPerformanceIndicators = BuildKpis(report, currency);
+
         // Charts
-        report.Charts = BuildChartData(report, vehicles, positions, startDate, daysInMonth);
+        report.Charts = BuildChartData(report, vehicles, positions, startDate, daysInMonth, currency);
 
         return report;
     }
@@ -1354,7 +1361,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     }
 
     private PeriodComparisonDto BuildComparisonSansBoitier(string period, MonthlyFleetTotalsDto current,
-        double previousKm, double previousLiters, decimal currentCost, decimal previousCost)
+        double previousKm, double previousLiters, decimal currentCost, decimal previousCost, string currency)
     {
         return new PeriodComparisonDto
         {
@@ -1363,7 +1370,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             // Litres ACHETÉS : l'estimation à partir des positions vaut 0 sans boîtier.
             FuelConsumption = BuildComparisonMetric("Carburant", current.Liters, previousLiters, "L", false),
             Cost = BuildComparisonMetric("Coût",
-                (double)currentCost, (double)previousCost, GisAPI.Domain.Common.AppCurrency.Default, false),
+                (double)currentCost, (double)previousCost, currency, false),
             Utilization = null,
             Trips = null
         };
@@ -1424,7 +1431,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     }
 
     private PeriodComparisonDto BuildComparison(string period, List<GpsPosition> current, List<GpsPosition> previous,
-        decimal currentCost, decimal previousCost, double currentDistance, double previousDistance)
+        decimal currentCost, decimal previousCost, double currentDistance, double previousDistance, string currency)
     {
         var currentTrips = TrajetsParBoitier(current);
         var previousTrips = TrajetsParBoitier(previous);
@@ -1437,7 +1444,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 CalculateFuelFromPositions(current), CalculateFuelFromPositions(previous), "L", false),
             // Coût = dépenses réelles des deux périodes (avant : litres estimés × 2,1).
             Cost = BuildComparisonMetric("Coût",
-                (double)currentCost, (double)previousCost, GisAPI.Domain.Common.AppCurrency.Default, false),
+                (double)currentCost, (double)previousCost, currency, false),
             Utilization = BuildComparisonMetric("Utilisation", 
                 current.Select(p => p.DeviceId).Distinct().Count(),
                 previous.Select(p => p.DeviceId).Distinct().Count(), "%", true),
@@ -1610,9 +1617,9 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             .ToList();
     }
 
-    private List<KpiDto> BuildKpis(MonthlyFleetReportDto report)
+    private List<KpiDto> BuildKpis(MonthlyFleetReportDto report, string currency)
     {
-        var kpis = BuildAllKpis(report);
+        var kpis = BuildAllKpis(report, currency);
         // Parc sans boîtier : l'utilisation et le score des conducteurs ne sont
         // pas mesurés. Les laisser donnait « 0 / 80, en dessous de l'objectif »
         // et « 0 / 75 » — des constats faux, affichés en rouge.
@@ -1621,7 +1628,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         return kpis;
     }
 
-    private static List<KpiDto> BuildAllKpis(MonthlyFleetReportDto report)
+    private static List<KpiDto> BuildAllKpis(MonthlyFleetReportDto report, string currency)
     {
         // null seulement sans boîtier, cas où BuildKpis retire ces deux KPI.
         var utilization = report.Utilization.OverallUtilizationRate ?? 0;
@@ -1657,7 +1664,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 Target = 0.25,
                 Variance = (double)report.CostAnalysis.CostPerKm - 0.25,
                 VariancePercent = (((double)report.CostAnalysis.CostPerKm - 0.25) / 0.25) * 100,
-                Unit = $"{GisAPI.Domain.Common.AppCurrency.Default}/km",
+                Unit = $"{currency}/km",
                 Status = (double)report.CostAnalysis.CostPerKm <= 0.25 ? "OnTarget" : "Above",
                 Trend = "stable"
             },
@@ -1677,8 +1684,8 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         };
     }
 
-    private ChartDataCollectionDto BuildChartData(MonthlyFleetReportDto report, List<Vehicle> vehicles, 
-        List<GpsPosition> positions, DateTime startDate, int daysInMonth)
+    private ChartDataCollectionDto BuildChartData(MonthlyFleetReportDto report, List<Vehicle> vehicles,
+        List<GpsPosition> positions, DateTime startDate, int daysInMonth, string currency)
     {
         var charts = new ChartDataCollectionDto();
 
@@ -1699,7 +1706,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             Type = "column",
             Labels = report.Maintenance.ByType.Select(t => t.Type).ToList(),
             Values = report.Maintenance.ByType.Select(t => (double)t.TotalCost).ToList(),
-            Unit = GisAPI.Domain.Common.AppCurrency.Default
+            Unit = currency
         };
 
         // Line: Daily distance trend

@@ -1,3 +1,4 @@
+using GisAPI.Application.Features.Documents;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
 using GisAPI.Infrastructure.Persistence;
@@ -92,7 +93,6 @@ public class DocumentExpiryMonitoringService : BackgroundService
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
         var today = DateTime.UtcNow.Date;
-        var graceCutoff = today.AddDays(-OverdueGraceDays);
 
         // We bypass tenant filters: the watcher must scan every company.
         // The handler still respects tenant scoping when fetching admins.
@@ -159,18 +159,13 @@ public class DocumentExpiryMonitoringService : BackgroundService
             foreach (var doc in docs)
             {
                 if (!doc.Expiry.HasValue) continue;
-                var expiryDate = doc.Expiry.Value.Date;
-                var reminderStart = expiryDate.AddDays(-Math.Max(1, doc.ReminderDays));
-
-                // Skip docs whose reminder window has not opened yet.
-                if (today < reminderStart) continue;
-
-                // Stop nagging once the overdue grace period has passed.
-                if (expiryDate < graceCutoff) continue;
+                var reminder = ReminderFor(doc.Expiry.Value, doc.ReminderDays, today);
+                if (reminder is null) continue;
+                var (expiryDate, daysRemaining) = reminder.Value;
 
                 candidates++;
 
-                var key = $"{v.Id}|{doc.DocType}|{expiryDate:yyyy-MM-dd}";
+                var key = DedupKey(v.Id, doc.DocType, expiryDate);
                 if (seen.Contains(key)) continue;
 
                 var label = !string.IsNullOrWhiteSpace(v.Plate) ? v.Plate :
@@ -186,7 +181,7 @@ public class DocumentExpiryMonitoringService : BackgroundService
                         DocumentType: doc.DocType,
                         DocumentTypeLabel: doc.Label,
                         ExpiryDate: expiryDate,
-                        DaysRemaining: (expiryDate - today).Days
+                        DaysRemaining: daysRemaining
                     ), ct);
 
                     // Add to the in-memory dedup set so a second doc on the
@@ -216,4 +211,27 @@ public class DocumentExpiryMonitoringService : BackgroundService
                 candidates);
         }
     }
+
+    /// <summary>
+    /// Jour d'échéance et jours restants si le rappel est dû aujourd'hui, sinon null
+    /// (fenêtre pas encore ouverte, ou retard au-delà de <see cref="OverdueGraceDays"/>).
+    /// Jours calendaires UTC (<see cref="ExpiryCalendar"/>), comme l'écran Échéances :
+    /// <c>.Date</c> prenait le jour LOCAL de l'instant relu par Npgsql legacy, si bien
+    /// qu'hors UTC une échéance saisie à 23:59:59 UTC ouvrait sa fenêtre, annonçait ses
+    /// jours restants et se dédupliquait sur le lendemain (recette GPA, DEF-035).
+    /// </summary>
+    internal static (DateTime ExpiryDay, int DaysRemaining)? ReminderFor(DateTime expiry, int reminderDays, DateTime todayUtc)
+    {
+        var day = ExpiryCalendar.Day(expiry);
+        var today = todayUtc.Date;
+
+        if (today < day.AddDays(-Math.Max(1, reminderDays))) return null;
+        if (day < today.AddDays(-OverdueGraceDays)) return null;
+
+        return (day, ExpiryCalendar.DaysUntil(expiry, today));
+    }
+
+    /// <summary>Clé de déduplication (véhicule, type, jour d'échéance), au format des métadonnées de la notification.</summary>
+    internal static string DedupKey(int vehicleId, string docType, DateTime expiryDay) =>
+        $"{vehicleId}|{docType}|{expiryDay:yyyy-MM-dd}";
 }

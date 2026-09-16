@@ -201,8 +201,11 @@ public class DataPortExportImportTests
     }
 
     [Fact]
-    public async Task Le_modele_d_import_a_une_feuille_Depenses_importable()
+    public async Task Le_modele_d_import_a_une_feuille_Depenses_et_importe_tel_quel_ne_cree_aucune_depense()
     {
+        // DEF-029 : ce test importait l'EXEMPLE du modèle et attendait l'assurance de
+        // 625 € qu'il créait — le défaut lui-même. Une feuille remplie par le client est
+        // couverte par DataPortTemplateExampleTests.
         using var ctx = Contexte();
         ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Camion 1", Plate = "123 TU 4567", CompanyId = CompanyId, Status = "available" });
         await ctx.SaveChangesAsync();
@@ -213,10 +216,8 @@ public class DataPortExportImportTests
 
         var bilan = await ImporterAsync(ctx, modele);
 
-        bilan.ExpensesCreated.Should().Be(1);
+        bilan.ExpensesCreated.Should().Be(0, "le modèle vierge ne porte aucune dépense à importer");
         ctx.ChangeTracker.Clear();
-        var assurance = await ctx.VehicleCosts.AsNoTracking().SingleAsync(c => c.Type == "insurance");
-        assurance.Amount.Should().Be(625m);
-        assurance.Mileage.Should().Be(145_000);
+        (await ctx.VehicleCosts.AsNoTracking().CountAsync()).Should().Be(0);
     }
 }

@@ -424,6 +424,8 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
    * actual repair cost (Phase 5) → mechanic quote (Phase 4) → expert
    * estimate (Phase 3). Falls back to em-dash when the timeline has no
    * cost yet (typical on day 0).
+   * expertEstimatedAmount porte aussi le « Coût estimé » de la déclaration (pas
+   * de colonne propre) : c'est pourquoi l'en-tête dit « Coût estimé » et non « Expertise ».
    */
   formatBestCost(row: AccidentEventListItemDto): string {
     const value = row.actualRepairCost ?? row.mechanicQuotedAmount ?? row.expertEstimatedAmount ?? null;

@@ -719,9 +719,9 @@
               </span>
             </div>
             <div class="kpi-name">{{ kpi.name }}</div>
-            <div class="kpi-value">{{ formatNumber(kpi.value, 1) }} <span class="unit">{{ kpi.unit }}</span></div>
+            <div class="kpi-value">{{ formatNumber(kpi.value, 1) }} <span class="unit">{{ uniteAffichee(kpi.unit) }}</span></div>
             <div class="kpi-target">
-              <span>Objectif: {{ formatNumber(kpi.target, 1) }} {{ kpi.unit }}</span>
+              <span>Objectif: {{ formatNumber(kpi.target, 1) }} {{ uniteAffichee(kpi.unit) }}</span>
               <span class="variance" [class.positive]="kpi.variance >= 0" [class.negative]="kpi.variance < 0">
                 {{ kpi.variance >= 0 ? '+' : '' }}{{ formatNumber(kpi.variance, 1) }}
               </span>

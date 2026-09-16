@@ -220,7 +220,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       name: 'Véhicules les plus coûteux',
       type: 'cost-ranking',
       icon: '🏆',
-      description: 'Top 10 du parc par coût au km',
+      description: 'Top 10 du parc par coût total',
       category: 'costs'
     },
     {
@@ -400,6 +400,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // Rapports de coûts (04/09/2026). R1 « Coût d'exploitation » et R3 « Véhicules
   // les plus coûteux » partagent le même DTO et le même bloc HTML (drapeau isRanking).
   operatingCost: OperatingCostReportDto | null = null;
+  /** Dernier rapport de coûts refusé en 400 (période inversée) : l'écran invite à corriger
+   *  la saisie au lieu de « réessayez dans un instant ». */
+  costReportInputError = false;
   costEvolution: VehicleCostEvolutionDto | null = null;
   /** Mois cliqué (graphe ou tableau) dont le détail par catégorie est affiché ; défaut = mois le plus élevé. */
   selectedEvolutionMonth: MonthlyVehicleCostDto | null = null;
@@ -1657,7 +1660,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading stops report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des arrêts') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1686,7 +1689,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading stops report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des arrêts') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1715,7 +1718,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading trips report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des trajets') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1744,7 +1747,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading trips report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des trajets') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -2829,7 +2832,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.mileageReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -2942,7 +2945,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading mileage reports:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3130,7 +3133,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.mileagePeriodReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique par période' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique par période') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3166,6 +3169,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const allResults: any[] = [];
     let completedRequests = 0;
     const totalVehicles = this.vehicles.length;
+    // Refus de saisie (400, période inversée) : chaque appel le reçoit. Ignoré, il
+    // laissait un tableau vide lu comme « aucun kilométrage » (recette du 16/09/2026).
+    let refusSaisie = '';
+    const terminer = () => this.ngZone.run(() => {
+      if (allResults.length === 0 && refusSaisie) {
+        this.tableData = [];
+        this.chartData = [];
+        this.statisticsData = { 'Erreur': refusSaisie };
+        this.reportGenerated = true;
+        this.loading = false;
+        this.cdr.detectChanges();
+        return;
+      }
+      this.processMileagePeriodAllVehicles(allResults, start, end);
+      this.reportGenerated = true;
+      this.loading = false;
+      this.activeTab = 'table';
+      this.currentPage = 1;
+      this.cdr.detectChanges();
+      this.appRef.tick();
+      setTimeout(() => this.createChart(), 100);
+    });
 
     if (totalVehicles === 0) {
       this.ngZone.run(() => {
@@ -3205,34 +3230,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
             });
           }
           completedRequests++;
-
-          if (completedRequests === totalVehicles) {
-            this.ngZone.run(() => {
-              this.processMileagePeriodAllVehicles(allResults, start, end);
-              this.reportGenerated = true;
-              this.loading = false;
-              this.activeTab = 'table';
-              this.currentPage = 1;
-              this.cdr.detectChanges();
-              this.appRef.tick();
-              setTimeout(() => this.createChart(), 100);
-            });
-          }
+          if (completedRequests === totalVehicles) terminer();
         },
-        error: () => {
+        error: (err) => {
+          if (!refusSaisie) refusSaisie = this.messageErreurRapport(err, '');
           completedRequests++;
-          if (completedRequests === totalVehicles) {
-            this.ngZone.run(() => {
-              this.processMileagePeriodAllVehicles(allResults, start, end);
-              this.reportGenerated = true;
-              this.loading = false;
-              this.activeTab = 'table';
-              this.currentPage = 1;
-              this.cdr.detectChanges();
-              this.appRef.tick();
-              setTimeout(() => this.createChart(), 100);
-            });
-          }
+          if (completedRequests === totalVehicles) terminer();
         }
       });
     });
@@ -3492,7 +3495,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.monthlyReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport mensuel') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3540,7 +3543,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             this.monthlyCostReport = null;
             this.tableData = [];
             this.chartData = [];
-            this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel des coûts' };
+            this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport mensuel des coûts') };
             this.reportGenerated = true;
             this.loading = false;
             this.cdr.detectChanges();
@@ -7593,6 +7596,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort by date descending
     repairs.sort((a, b) => new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime());
 
+    // Réparations annulées : listées avec leur statut, mais hors des montants et des
+    // graphes, comme dans les rapports calculés par le serveur. Elles étaient
+    // additionnées au coût total. Statut comparé sans casse partout : une valeur
+    // ancienne (« Completed ») n'entrait dans aucun compteur.
+    const statusOf = (r: any) => String(r.status ?? '').trim().toLowerCase();
+    const costed = repairs.filter(r => statusOf(r) !== 'cancelled');
+
     // Build vehicle name map
     const vehicleMap = new Map<number, string>();
     // Recette du 10/09/2026 : c’est la PLAQUE qui identifie le vehicule dans
@@ -7642,7 +7652,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // pneumatique 196,80 pour 4. La mecanique pese 70 % de la facture pour
     // 42 % des interventions : c’est exactement ce qu’un gestionnaire cherche.
     const parTypeDePanne = new Map();
-    repairs.forEach(repair => {
+    costed.forEach(repair => {
       const cle = repair.repairType || 'autre';
       const cumul = parTypeDePanne.get(cle) || { cout: 0, nombre: 0 };
       cumul.cout += repair.totalCost || 0;
@@ -7661,7 +7671,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Secondary chart - costs by vehicle
     const costsByVehicle: { [key: string]: number } = {};
-    repairs.forEach(repair => {
+    costed.forEach(repair => {
       // Plaque ici aussi : le graphe et le tableau doivent designer les
       // vehicules de la meme facon, sinon on ne peut pas les rapprocher.
       const vehicleName = repair.vehiclePlate || vehicleMap.get(repair.vehicleId) || repair.vehicleName || `Véhicule ${repair.vehicleId}`;
@@ -7678,11 +7688,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }));
 
     // Statistics
-    const totalCost = repairs.reduce((sum, r) => sum + (r.totalCost || 0), 0);
-    const totalLaborCost = repairs.reduce((sum, r) => sum + (r.laborCost || 0), 0);
-    const totalPartsCost = repairs.reduce((sum, r) => sum + (r.partsCost || 0), 0);
-    const completedCount = repairs.filter(r => r.status === 'completed' || r.status === 'done').length;
-    const pendingCount = repairs.filter(r => r.status === 'pending' || r.status === 'in_progress').length;
+    const totalCost = costed.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+    const totalLaborCost = costed.reduce((sum, r) => sum + (r.laborCost || 0), 0);
+    const totalPartsCost = costed.reduce((sum, r) => sum + (r.partsCost || 0), 0);
+    const completedCount = repairs.filter(r => statusOf(r) === 'completed' || statusOf(r) === 'done').length;
+    const pendingCount = repairs.filter(r => statusOf(r) === 'pending' || statusOf(r) === 'in_progress').length;
+    const cancelledCount = repairs.length - costed.length;
 
     this.statisticsData = {
       'Total réparations': repairs.length.toString(),
@@ -7691,6 +7702,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '📦 Pièces': this.formatCurrency(totalPartsCost),
       '✅ Complétées': completedCount.toString(),
       '⏳ En cours': pendingCount.toString(),
+      ...(cancelledCount > 0 ? { '❌ Annulées (hors coûts)': cancelledCount.toString() } : {}),
       'Véhicules': new Set(repairs.map(r => r.vehicleId)).size.toString()
     };
   }
@@ -7719,7 +7731,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'done': '✅ Complétée',
       'cancelled': '❌ Annulée'
     };
-    return statuses[status] || status || '⏳ En attente';
+    return statuses[String(status ?? '').trim().toLowerCase()] || status || '⏳ En attente';
   }
 
   // ==================== MAINTENANCE REPORT ====================
@@ -8022,6 +8034,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Message d'un refus de saisie (400) renvoyé par l'API — « La date de début doit
+   * précéder la date de fin. », « Mois invalide… » —, sinon le libellé générique.
+   * Une période inversée affichait « Impossible de charger le rapport », lu comme une
+   * panne, ou un rapport vide lu comme « aucune activité » (recette du 16/09/2026).
+   */
+  messageErreurRapport(err: any, defaut: string): string {
+    const message = err?.status === 400 ? err?.error?.message : null;
+    return typeof message === 'string' && message.trim() ? message : defaut;
+  }
+
   /** Bornes YYYY-MM-DD envoyées au backend ; repli = mois courant si les dates manquent. */
   private costReportRange(startDate?: Date, endDate?: Date): { from: string; to: string } {
     const now = new Date();
@@ -8043,6 +8066,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeOperatingCostReport(vehicleId: number | undefined, startDate: Date | undefined, endDate: Date | undefined, ranking: boolean) {
     this.loading = true;
+    this.costReportInputError = false;
     this.operatingCost = null;
     if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
 
@@ -8068,7 +8092,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.operatingCost = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': ranking ? 'Impossible de charger le classement des véhicules' : "Impossible de charger le rapport de coût d'exploitation" };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, ranking ? 'Impossible de charger le classement des véhicules' : "Impossible de charger le rapport de coût d'exploitation") };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -8077,9 +8102,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Véhicules plaçables sur le graphe : ceux qui ont un coût au km (distance mesurable). */
+  /** Véhicules plaçables sur le graphe. R1 : ceux qui ont un coût au km (distance mesurable).
+   *  R3 : tous, le classement se lisant au coût total. */
   private operatingCostChartRows(): VehicleOperatingCostDto[] {
-    return (this.operatingCost?.vehicles || []).filter(v => v.costPerKm != null);
+    const vehicles = this.operatingCost?.vehicles || [];
+    return this.isRanking ? vehicles : vehicles.filter(v => v.costPerKm != null);
   }
 
   hasOperatingCostChartData(): boolean {
@@ -8092,7 +8119,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** Barres horizontales « Classement par coût d'exploitation » : valeur au bout de chaque barre et
-   *  verticale pointillée rouge « Moyenne flotte » (plugin inline sur l'axe x, cf. drawComparisonConsoChart). */
+   *  verticale pointillée rouge « Moyenne flotte » (plugin inline sur l'axe x, cf. drawComparisonConsoChart).
+   *  R3 « Véhicules les plus coûteux » trace le coût TOTAL, dans l'ordre du tableau : en €/km, ses
+   *  barres paraissaient désordonnées face à un classement au coût total (recette du 16/09/2026).
+   *  Sa verticale « Moyenne par véhicule » est grise : la couleur des barres suit l'écart au km. */
   drawOperatingCostChart() {
     if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
     const canvas = this.operatingCostCanvasRef?.nativeElement;
@@ -8104,13 +8134,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const ranking = this.isRanking;
     const cur = this.getCurrencyCode();
-    const avg = report.averageCostPerKm;
+    // R3 : moyenne par véhicule analysé, sur tout le parc comme les KPI.
+    const avg = ranking
+      ? (report.vehicleCount > 0 ? report.totalCost / report.vehicleCount : null)
+      : report.averageCostPerKm;
     const fmt3 = (n: number) => this.formatCostPerKm(n);
-    const values = rows.map(v => Number(v.costPerKm));
+    const valueLabel = (n: number) => ranking ? this.userPrefs.formatCurrency(n, 0) : `${fmt3(n)} ${cur}/km`;
+    const values = rows.map(v => Number(ranking ? v.totalCost : v.costPerKm));
     const maxValue = Math.max(...values, avg ?? 0, 0.001);
-    // Même signe que la colonne « Écart vs moyenne » (valeur brute du serveur), pas une comparaison sur des arrondis
+    // Même signe que la colonne « Écart » du tableau (écart au km, valeur brute du serveur), dans les deux
+    // rapports : en R3, colorer selon la moyenne par véhicule montrait en rouge un véhicule vert dans le tableau.
     const isAbove = (v: VehicleOperatingCostDto) => (v.deviationFromAveragePct ?? 0) > 0;
+    // Ligne rouge = repère de la couleur des barres (R1). En R3 la moyenne par véhicule ne pilote pas la
+    // couleur : neutre, pour ne pas laisser croire qu'une barre qui la dépasse devrait être rouge.
+    const avgColor = ranking ? '#64748b' : '#dc2626';
 
     const valueAndAvgPlugin = {
       id: 'operatingCostValueAndAvg',
@@ -8126,13 +8165,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.textAlign = 'left';
         c.textBaseline = 'middle';
         meta.data.forEach((bar: any, i: number) => {
-          c.fillText(`${fmt3(values[i])} ${cur}/km`, bar.x + 6, bar.y);
+          c.fillText(valueLabel(values[i]), bar.x + 6, bar.y);
         });
         c.restore();
         if (avg == null) return;
         const x = xScale.getPixelForValue(avg);
         c.save();
-        c.strokeStyle = '#dc2626';
+        c.strokeStyle = avgColor;
         c.lineWidth = 1.5;
         c.setLineDash([5, 5]);
         c.beginPath();
@@ -8141,12 +8180,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.stroke();
         c.setLineDash([]);
         c.font = 'bold 11px sans-serif';
-        c.fillStyle = '#dc2626';
+        c.fillStyle = avgColor;
         const alignRight = x > (area.left + area.right) / 2;
         c.textAlign = alignRight ? 'right' : 'left';
         c.textBaseline = 'top';
         // Dessinée dans la marge haute (layout.padding.top) pour ne pas chevaucher la première barre
-        c.fillText(`Moyenne flotte : ${fmt3(avg)} ${cur}/km`, alignRight ? x - 5 : x + 5, area.top - 15);
+        c.fillText(ranking ? `Moyenne par véhicule : ${valueLabel(avg)}` : `Moyenne flotte : ${valueLabel(avg)}`, alignRight ? x - 5 : x + 5, area.top - 15);
         c.restore();
       }
     };
@@ -8178,9 +8217,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
             callbacks: {
               label: (item) => {
                 const v = rows[item.dataIndex];
-                const lines = [`${fmt3(Number(v.costPerKm))} ${cur}/km`, `Coût total : ${this.formatCurrency(v.totalCost)}`];
+                const parKm = v.costPerKm == null ? 'Coût au km non mesurable' : `${fmt3(Number(v.costPerKm))} ${cur}/km`;
+                const total = `Coût total : ${this.formatCurrency(v.totalCost)}`;
+                const lines = ranking ? [total, parKm] : [parKm, total];
                 if (v.distanceKm != null) lines.push(`Kilométrage : ${this.formatNumber(v.distanceKm)} km`);
-                if (v.deviationFromAveragePct != null) lines.push(`Écart vs moyenne : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
+                // L'écart porte sur le coût au km, même quand les barres montrent le coût total.
+                if (v.deviationFromAveragePct != null) lines.push(`${ranking ? 'Écart au km vs moyenne' : 'Écart vs moyenne'} : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
                 return lines;
               }
             }
@@ -8190,7 +8232,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           x: {
             beginAtZero: true,
             suggestedMax: maxValue * 1.35,
-            title: { display: true, text: `${cur}/km` },
+            title: { display: true, text: ranking ? `Coût total (${cur})` : `${cur}/km` },
             grid: { color: 'rgba(148,163,184,.25)' }
           },
           y: { grid: { display: false }, ticks: { font: { size: 11 } } }
@@ -8204,6 +8246,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeCostEvolutionReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
+    this.costReportInputError = false;
     this.costEvolution = null;
     this.selectedEvolutionMonth = null;
     if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
@@ -8231,7 +8274,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.costEvolution = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': err?.status === 404 ? 'Véhicule introuvable dans votre société' : "Impossible de charger l'évolution des coûts de ce véhicule" };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': err?.status === 404 ? 'Véhicule introuvable dans votre société' : this.messageErreurRapport(err, "Impossible de charger l'évolution des coûts de ce véhicule") };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -8548,6 +8592,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeRepairFrequencyReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
+    this.costReportInputError = false;
     this.repairFrequency = null;
     if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
     if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
@@ -8583,7 +8628,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.repairFrequency = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': 'Impossible de charger la fréquence des réparations' };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger la fréquence des réparations') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();

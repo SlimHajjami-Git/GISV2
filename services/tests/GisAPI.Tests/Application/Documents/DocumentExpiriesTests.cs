@@ -186,7 +186,7 @@ public class DocumentExpiriesTests
         );
 
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => 
+        await Assert.ThrowsAsync<GisAPI.Domain.Exceptions.DomainException>(() =>
             handler.Handle(command, CancellationToken.None));
     }
 

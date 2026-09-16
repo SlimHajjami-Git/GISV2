@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Threading.RateLimiting;
 using MediatR;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Application.Features.Auth.Commands.Login;
@@ -35,6 +36,78 @@ public class AuthController : ControllerBase
         var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent()));
         return Ok(result);
     }
+
+    // ── Limitation de débit des routes d'authentification anonymes ──────────────
+    // Branchée dans le GlobalLimiter (Middleware/RateLimitPolicies.cs). Constat DEF-030 :
+    // dix mots de passe faux d'affilée recevaient dix 400 en moins d'une seconde, la
+    // connexion n'ayant aucune partition. Plafond par adresse IP et non par compte : une
+    // limite par adresse e-mail permettrait à n'importe qui de bloquer la connexion d'un
+    // client en tapant exprès son adresse avec un faux mot de passe.
+
+    /// <summary>
+    /// Tentatives de connexion autorisées par adresse IP et par minute, par défaut
+    /// (Auth:LoginAttemptsPerMinutePerIp l'écrase). Succès compris : derrière un NAT
+    /// d'opérateur (CGNAT, courant en Tunisie) ou le réseau d'un bureau, toute une équipe
+    /// partage une adresse publique, et 5 bloquait une prise de poste ordinaire.
+    /// </summary>
+    public const int DefaultLoginAttemptsPerMinutePerIp = 10;
+
+    // « Depuis cette adresse » se lisait comme l'adresse e-mail tapée : l'utilisateur
+    // croyait son compte bloqué, alors que le plafond vise l'adresse IP partagée.
+    public const string TooManyLoginAttemptsMessage =
+        "Trop de tentatives de connexion depuis ce réseau. Patientez une minute avant de réessayer.";
+
+    public const string TooManyPasswordResetRequestsMessage =
+        "Trop de demandes de réinitialisation depuis ce réseau. Réessayez dans une heure.";
+
+    /// <summary>
+    /// Seul le POST de connexion est compté : le rafraîchissement de jeton
+    /// (/api/auth/refresh), le hub SignalR et le pré-vol CORS n'entament jamais le quota.
+    /// </summary>
+    public static bool IsLoginAttempt(HttpContext ctx) =>
+        HttpMethods.IsPost(ctx.Request.Method)
+        && ctx.Request.Path.StartsWithSegments("/api/auth/login");
+
+    /// <summary>
+    /// Fenêtre fixe d'une minute : le refus porte un Retry-After (la longueur de la
+    /// fenêtre, donc une borne haute de reprise), ce que la fenêtre glissante ne fournit
+    /// pas. Les succès comptent aussi — le limiteur passe avant le contrôle du mot de
+    /// passe, qui est justement le travail coûteux à épargner.
+    /// </summary>
+    public static RateLimitPartition<string> LoginAttemptPartition(HttpContext ctx, int attemptsPerMinute) =>
+        IsLoginAttempt(ctx)
+            ? RateLimitPartition.GetFixedWindowLimiter(
+                "login:" + AssistantController.ResolveClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    // Une valeur de configuration nulle ou négative ferait lever le
+                    // limiteur à chaque requête : la connexion tomberait en 500 pour tous.
+                    PermitLimit = Math.Max(1, attemptsPerMinute),
+                    Window = TimeSpan.FromMinutes(1),
+                    QueueLimit = 0
+                })
+            : RateLimitPartition.GetNoLimiter("open");
+
+    /// <summary>
+    /// Même cause que la connexion : « mot de passe oublié » est anonyme et envoie un
+    /// courriel à chaque appel, en invalidant le lien précédent. Sans plafond, une
+    /// boucle noie la boîte d'un client et rend chacun de ses liens caduc.
+    /// </summary>
+    public static bool IsPasswordResetRequest(HttpContext ctx) =>
+        HttpMethods.IsPost(ctx.Request.Method)
+        && ctx.Request.Path.StartsWithSegments("/api/auth/forgot-password");
+
+    public static RateLimitPartition<string> PasswordResetRequestPartition(HttpContext ctx) =>
+        IsPasswordResetRequest(ctx)
+            ? RateLimitPartition.GetFixedWindowLimiter(
+                "forgot:" + AssistantController.ResolveClientIp(ctx),
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = 5,
+                    Window = TimeSpan.FromHours(1),
+                    QueueLimit = 0
+                })
+            : RateLimitPartition.GetNoLimiter("open");
 
     /// <summary>
     /// Inscription libre : crée la société du visiteur ET son compte administrateur,

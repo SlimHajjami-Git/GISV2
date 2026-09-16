@@ -175,7 +175,11 @@ export class LoginPage {
       error: async (err) => {
         await loading.dismiss();
         let message = 'Erreur de connexion au serveur';
-        if (err.status === 401 || err.status === 400) {
+        if (err.status === 429) {
+          // Plafond de tentatives du réseau (DEF-030) : « Erreur serveur (429) » laissait
+          // croire à une panne et poussait à réessayer, donc à prolonger le blocage.
+          message = err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.';
+        } else if (err.status === 401 || err.status === 400) {
           message = err.error?.message || 'Email ou mot de passe incorrect';
         } else if (err.status === 0) {
           message = 'Serveur injoignable. Vérifiez votre connexion Internet.';

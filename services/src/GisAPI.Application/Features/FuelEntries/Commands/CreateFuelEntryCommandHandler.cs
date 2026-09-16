@@ -35,19 +35,35 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         // ou « 123 tu 4567 » : la ligne était alors enregistrée SANS véhicule, et
         // l'import la comptait comme un succès. Le client croyait ses pleins
         // chargés alors qu'ils n'entraient dans aucun calcul de consommation.
-        // On compare donc sans espaces ni casse, et on refuse explicitement un
-        // matricule renseigné qui ne correspond à rien.
+        // On compare donc lettres et chiffres seuls, sans casse — même règle que
+        // l'import Excel (VehiclePlateKey) : « ga 214 rk » était refusé face à
+        // « GA-214-RK » (DEF-039) — et on refuse explicitement un matricule
+        // renseigné qui ne correspond à rien.
         var plate = (request.VehiclePlate ?? string.Empty).Trim();
         Vehicle? vehicle = null;
+        var key = VehiclePlateKey.Normalize(plate);
 
         if (plate.Length > 0)
         {
-            var normalized = plate.Replace(" ", "").ToUpper();
-            vehicle = await _context.Vehicles
-                .FirstOrDefaultAsync(v => v.CompanyId == companyId &&
-                    ((v.Plate != null && v.Plate.Replace(" ", "").ToUpper() == normalized) ||
-                     v.Name.Replace(" ", "").ToUpper() == normalized),
-                    cancellationToken);
+            // Une frappe faite uniquement de séparateurs (« - ») n'a pas de clé :
+            // elle est refusée comme un matricule inconnu.
+            if (key.Length > 0)
+            {
+                // Présélection en base, limitée à la société ; la clé exacte se
+                // compare sur ces quelques lignes, sans rapatrier le parc.
+                var candidates = await _context.Vehicles
+                    .Where(v => v.CompanyId == companyId)
+                    .Where(VehiclePlateKey.MayMatch(key))
+                    .OrderBy(v => v.Id)
+                    .Select(v => new { v.Id, v.Plate, v.Name })
+                    .ToListAsync(cancellationToken);
+
+                // Un matricule l'emporte sur un nom de véhicule identique.
+                var match = candidates.FirstOrDefault(v => VehiclePlateKey.Normalize(v.Plate) == key)
+                    ?? candidates.FirstOrDefault(v => VehiclePlateKey.Normalize(v.Name) == key);
+                if (match != null)
+                    vehicle = await _context.Vehicles.FirstAsync(v => v.Id == match.Id, cancellationToken);
+            }
 
             if (vehicle == null)
                 throw new GisAPI.Domain.Exceptions.DomainException(

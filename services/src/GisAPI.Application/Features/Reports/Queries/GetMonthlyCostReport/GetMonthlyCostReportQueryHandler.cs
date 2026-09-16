@@ -24,6 +24,9 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
 
     public async Task<MonthlyCostReportDto> Handle(GetMonthlyCostReportQuery request, CancellationToken ct)
     {
+        // 400 et non 500 sur un mois hors bornes : new DateTime lèverait plus bas.
+        ReportRequestRules.EnsureValidMonth(request.Year, request.Month);
+
         var companyId = _tenantService.CompanyId ?? 0;
         var startDate = DateTime.SpecifyKind(new DateTime(request.Year, request.Month, 1), DateTimeKind.Utc);
         var endDate = DateTime.SpecifyKind(startDate.AddMonths(1), DateTimeKind.Utc);

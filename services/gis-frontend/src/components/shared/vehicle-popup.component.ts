@@ -1629,7 +1629,12 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       leasingMonthlyPayment: v.leasingMonthlyPayment ?? null,
       leasingDurationMonths: v.leasingDurationMonths ?? null,
       leasingStartDate: v.leasingStartDate ? String(v.leasingStartDate).substring(0, 10) : '',
-      leasingPaymentDay: v.leasingPaymentDay ?? null,
+      // Jour ancien hors 1..28 (un 31 était accepté) : la liste ne pouvait pas
+      // l'afficher alors que l'échéancier tombait déjà le 28. Ramené à la valeur
+      // réellement appliquée, que le serveur accepte.
+      leasingPaymentDay: v.leasingPaymentDay == null
+        ? null
+        : Math.min(Math.max(Number(v.leasingPaymentDay) || 1, 1), this.paymentDays.length),
       registrationDate: v.registrationDate ? String(v.registrationDate).substring(0, 10) : ''
     };
   }

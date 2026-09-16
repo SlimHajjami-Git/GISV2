@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject, of, tap, map, catchError } from 'rxjs';
+import { Observable, BehaviorSubject, of, tap, map, catchError, throwError } from 'rxjs';
 import { UserPreferencesService } from './user-preferences.service';
 import { SubscriptionFeatures } from './permission.service';
 
@@ -320,6 +320,9 @@ export class AuthService {
       }),
       catchError(err => {
         console.error('AuthService.login - Error:', err);
+        // Le 429 (trop de tentatives depuis ce réseau) est relayé : réduit à null, il
+        // s'affichait « Email ou mot de passe incorrect » et poussait à réessayer.
+        if (err?.status === 429) return throwError(() => err);
         return of(null);
       })
     );

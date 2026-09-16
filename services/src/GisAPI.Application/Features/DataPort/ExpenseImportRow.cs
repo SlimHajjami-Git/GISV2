@@ -58,6 +58,31 @@ public static class ExpenseImportRow
 
     private static readonly Dictionary<string, (string Code, string Label)> ByKey = BuildIndex();
 
+    /// <summary>
+    /// Codes que l'application écrit tels quels dans vehicle_costs.type : ceux du tableau
+    /// (écran Dépenses, Sinistres, renouvellement de documents, import) et « toll »,
+    /// « fine », « other », catégories du scan de facture et de l'écran Coûts.
+    /// </summary>
+    private static readonly HashSet<string> WrittenCodes = new(
+        Types.Select(t => t.Code).Concat(new[] { "toll", "fine", "other" }), StringComparer.Ordinal);
+
+    /// <summary>
+    /// Type à enregistrer pour une catégorie reçue par POST/PUT /api/costs (DEF-040),
+    /// null si elle est inconnue. Un code écrit par l'application est gardé tel quel ;
+    /// un synonyme ou un libellé connu (« carburant », « Entretien », « Carte grise »)
+    /// est ramené à son code. Enregistré tel quel, « carburant » tombait en « Autres »
+    /// dans les rapports, qui ne reconnaissent que « fuel ».
+    /// </summary>
+    public static string? StoredType(string? type)
+    {
+        var raw = (type ?? string.Empty).Trim();
+        var code = raw.ToLowerInvariant();
+        if (WrittenCodes.Contains(code)) return code;
+        return raw.Length > 0 && ByKey.TryGetValue(RepairImportRow.NormalizeKey(raw), out var known)
+            ? known.Code
+            : null;
+    }
+
     private static Dictionary<string, (string Code, string Label)> BuildIndex()
     {
         var index = new Dictionary<string, (string Code, string Label)>(StringComparer.Ordinal);

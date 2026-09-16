@@ -182,7 +182,8 @@ public class OperatingCostReportsTests
         var handler = new GetOperatingCostReportQueryHandler(ctx, Admin());
 
         var byVehicle = await handler.Handle(new GetOperatingCostReportQuery(Start, End, VehicleId: 2), CancellationToken.None);
-        byVehicle.FleetSize.Should().Be(1);
+        byVehicle.FleetSize.Should().Be(4, "taille du parc de la société (véhicules 1, 2, 3, 5), indépendante du filtre véhicule");
+        byVehicle.VehicleCount.Should().Be(1);
         byVehicle.Vehicles.Should().ContainSingle(v => v.VehicleId == 2);
         byVehicle.TotalCost.Should().Be(100m);
         byVehicle.AverageCostPerKm.Should().Be(0.2m);

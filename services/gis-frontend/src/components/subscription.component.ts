@@ -262,7 +262,7 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                     </p>
                   }
                   <ul class="plan-limits">
-                    <li>{{ p.maxVehicles }} véhicules</li>
+                    <li>{{ p.pricePerVehicle ? 'Véhicules illimités' : p.maxVehicles + ' véhicules' }}</li>
                     <li>{{ p.maxUsers }} utilisateurs</li>
                     @if (p.gpsTracking) { <li>Suivi GPS temps réel</li> } @else { <li>Gestion sans boîtier GPS</li> }
                   </ul>

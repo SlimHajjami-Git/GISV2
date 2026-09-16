@@ -449,9 +449,13 @@ export class LoginComponent {
         // le message d'erreur ne s'affichait qu'à l'interaction suivante.
         this.cdr.detectChanges();
       },
-      error: () => {
+      error: (err) => {
         this.isLoading = false;
-        this.errorMessage = 'Email ou mot de passe incorrect';
+        // 429 = plafond de tentatives du réseau (DEF-030) : annoncer un mot de passe faux
+        // pousserait à réessayer aussitôt, donc à prolonger le blocage.
+        this.errorMessage = err?.status === 429
+          ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
+          : 'Email ou mot de passe incorrect';
         this.cdr.detectChanges();
       }
     });

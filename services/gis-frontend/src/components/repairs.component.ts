@@ -98,7 +98,8 @@ interface Vehicle {
             <option value="">Tous les statuts</option>
             <option value="pending">En attente</option>
             <option value="in_progress">En cours</option>
-            <option value="completed">Termine</option>
+            <option value="completed">Terminée</option>
+            <option value="cancelled">Annulée</option>
           </select>
           <button class="btn-export" (click)="exportPdf()" [disabled]="filteredRepairs.length === 0" title="Exporter un PDF groupé par véhicule">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -128,7 +129,7 @@ interface Vehicle {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ stats.totalRepairs }}</span>
-              <span class="stat-label">Total reparations</span>
+              <span class="stat-label">Total réparations</span>
             </div>
           </div>
           <div class="stat-item">
@@ -150,10 +151,21 @@ interface Vehicle {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ stats.completedRepairs }}</span>
-              <span class="stat-label">Terminees</span>
+              <span class="stat-label">Terminées</span>
             </div>
           </div>
-          <div class="stat-item">
+          <div class="stat-item" *ngIf="stats.cancelledRepairs > 0">
+            <div class="stat-icon muted">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+              </svg>
+            </div>
+            <div class="stat-content">
+              <span class="stat-value">{{ stats.cancelledRepairs }}</span>
+              <span class="stat-label">Annulées</span>
+            </div>
+          </div>
+          <div class="stat-item" [title]="stats.cancelledRepairs > 0 ? 'Hors réparations annulées' : ''">
             <div class="stat-icon cost">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
@@ -161,7 +173,7 @@ interface Vehicle {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ stats.totalCost | appCurrency:0 }}</span>
-              <span class="stat-label">Cout total</span>
+              <span class="stat-label">Coût total</span>
             </div>
           </div>
         </div>
@@ -353,7 +365,11 @@ interface Vehicle {
                   <select class="form-control" [(ngModel)]="form.status">
                     <option value="pending">En attente</option>
                     <option value="in_progress">En cours</option>
-                    <option value="completed">Termine</option>
+                    <option value="completed">Terminée</option>
+                    <!-- « Annulée » ne se choisit pas : la liste Dépenses, le tableau de bord
+                         et l'assistant comptent encore une réparation annulée. Proposée
+                         seulement pour qu'une réparation déjà annulée garde son statut. -->
+                    <option value="cancelled" *ngIf="isCancelled(editingRepair)">Annulée</option>
                   </select>
                 </div>
               </div>
@@ -429,6 +445,7 @@ interface Vehicle {
             </div>
           </div>
 
+          <div class="save-error" *ngIf="getAmountError() || saveError" role="alert">{{ getAmountError() || saveError }}</div>
           <div class="panel-footer">
             <button class="btn-cancel" (click)="closePanel()">Annuler</button>
             <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()">
@@ -567,6 +584,7 @@ interface Vehicle {
     .stat-icon.warning { background:#fef3c7; color:#d97706; }
     .stat-icon.info { background:#dbeafe; color:#2563eb; }
     .stat-icon.cost { background:#f3e8ff; color:#7c3aed; }
+    .stat-icon.muted { background:#f1f5f9; color:#64748b; }
     .stat-content { display:flex; flex-direction:column; }
     .stat-value { font-size:16px; font-weight:600; color:#1e293b; }
     .stat-label { font-size:11px; color:#64748b; }
@@ -645,6 +663,7 @@ interface Vehicle {
     .status-badge.completed { background:#dcfce7; color:#16a34a; }
     .status-badge.pending { background:#fef3c7; color:#d97706; }
     .status-badge.in_progress { background:#dbeafe; color:#2563eb; }
+    .status-badge.cancelled { background:#f1f5f9; color:#64748b; }
     .status-badge.large { font-size:12px; padding:6px 12px; }
 
     .actions-cell { display:flex; align-items:center; gap:4px; }
@@ -727,6 +746,7 @@ interface Vehicle {
     .summary-row.total { border-top:1px solid rgba(255,255,255,0.2); margin-top:8px; padding-top:12px; font-size:16px; font-weight:700; }
 
     .panel-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
+    .save-error { padding:8px 20px; background:#fef2f2; border-top:1px solid #fecaca; color:#b91c1c; font-size:12px; line-height:1.4; }
     .btn-cancel { padding:8px 16px; background:white; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; cursor:pointer; }
     .btn-cancel:hover { background:#f1f5f9; }
     .btn-save { padding:8px 20px; background:#3b82f6; color:white; border:none; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }
@@ -787,7 +807,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
   sortColumn: RepairSortKey = 'repairDate';
   sortDirection: 'asc' | 'desc' = 'desc';
 
-  stats = { totalRepairs: 0, pendingRepairs: 0, completedRepairs: 0, totalCost: 0 };
+  stats = { totalRepairs: 0, pendingRepairs: 0, completedRepairs: 0, cancelledRepairs: 0, totalCost: 0 };
 
   isPanelOpen = false;
   editingRepair: Repair | null = null;
@@ -795,6 +815,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
 
   showDeleteConfirm = false;
   repairToDelete: Repair | null = null;
+
+  /** Refus du serveur lors de l'enregistrement : il n'était écrit que dans la console. */
+  saveError: string | null = null;
 
   form = this.getEmptyForm();
 
@@ -942,7 +965,8 @@ export class RepairsComponent implements OnInit, OnDestroy {
       result = result.filter(r => r.vehicleId === +this.filterVehicle);
     }
     if (this.filterStatus) {
-      result = result.filter(r => r.status === this.filterStatus);
+      // Sans casse : des statuts anciens (« Cancelled ») échappaient au filtre.
+      result = result.filter(r => (r.status || '').trim().toLowerCase() === this.filterStatus);
     }
     this.filteredRepairs = result;
   }
@@ -1039,9 +1063,12 @@ export class RepairsComponent implements OnInit, OnDestroy {
       const rs = [...v.repairs].sort((a, b) =>
         new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime()
       );
-      const subParts = rs.reduce((s, r) => s + (r.partsCost || 0), 0);
-      const subLabor = rs.reduce((s, r) => s + (r.laborCost || 0), 0);
-      const subTotal = rs.reduce((s, r) => s + (r.totalCost || 0), 0);
+      // Montants hors réparations annulées, comme le « Coût total » de l'écran : les lignes
+      // annulées restent listées avec leur statut, mais aucun atelier n'est dû.
+      const costed = rs.filter(r => !this.isCancelled(r));
+      const subParts = costed.reduce((s, r) => s + (r.partsCost || 0), 0);
+      const subLabor = costed.reduce((s, r) => s + (r.laborCost || 0), 0);
+      const subTotal = costed.reduce((s, r) => s + (r.totalCost || 0), 0);
 
       grandTotalParts += subParts;
       grandTotalLabor += subLabor;
@@ -1094,12 +1121,23 @@ export class RepairsComponent implements OnInit, OnDestroy {
     } catch { return d; }
   }
 
+  /** Statut enregistré « cancelled », casse et espaces ignorés (valeurs anciennes). */
+  isCancelled(repair: Repair | null): boolean {
+    return (repair?.status || '').trim().toLowerCase() === 'cancelled';
+  }
+
   calculateStats() {
+    // Une réparation annulée (import, API) ne coûte rien : les rapports l'excluent déjà.
+    // Elle gonflait le coût total, et sans compteur dédié en attente + terminées ne
+    // recoupait plus le total (même règle que GET /repairs/stats).
+    const is = (r: Repair, status: string) => (r.status || '').trim().toLowerCase() === status;
+    const costed = this.repairs.filter(r => !this.isCancelled(r));
     this.stats = {
       totalRepairs: this.repairs.length,
-      pendingRepairs: this.repairs.filter(r => r.status === 'pending' || r.status === 'in_progress').length,
-      completedRepairs: this.repairs.filter(r => r.status === 'completed').length,
-      totalCost: this.repairs.reduce((sum, r) => sum + r.totalCost, 0)
+      pendingRepairs: this.repairs.filter(r => is(r, 'pending') || is(r, 'in_progress')).length,
+      completedRepairs: this.repairs.filter(r => is(r, 'completed')).length,
+      cancelledRepairs: this.repairs.length - costed.length,
+      totalCost: costed.reduce((sum, r) => sum + r.totalCost, 0)
     };
   }
 
@@ -1107,9 +1145,10 @@ export class RepairsComponent implements OnInit, OnDestroy {
     const labels: Record<string, string> = {
       pending: 'En attente',
       in_progress: 'En cours',
-      completed: 'Termine'
+      completed: 'Terminée',
+      cancelled: 'Annulée'
     };
-    return labels[status] || status;
+    return labels[(status || '').trim().toLowerCase()] || status;
   }
 
   onVehicleChange() {
@@ -1123,11 +1162,13 @@ export class RepairsComponent implements OnInit, OnDestroy {
     this.form = this.getEmptyForm();
     this.editingRepair = null;
     this.selectedVehicle = null;
+    this.saveError = null;
     this.isPanelOpen = true;
   }
 
   editRepair(repair: Repair) {
     this.editingRepair = repair;
+    this.saveError = null;
     this.form = {
       vehicleId: repair.vehicleId.toString(),
       supplierId: repair.supplierId?.toString() || '',
@@ -1135,7 +1176,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
       mileageAtRepair: repair.mileageAtRepair || null,
       description: repair.description,
       invoiceNumber: repair.invoiceNumber,
-      status: repair.status,
+      status: (repair.status || '').trim().toLowerCase(),
       laborCost: repair.laborCost,
       notes: repair.notes,
       repairType: repair.repairType || '',
@@ -1163,6 +1204,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
   closePanel() {
     this.isPanelOpen = false;
     this.editingRepair = null;
+    this.saveError = null;
     this.form = this.getEmptyForm();
   }
 
@@ -1194,17 +1236,51 @@ export class RepairsComponent implements OnInit, OnDestroy {
   }
 
   isFormValid(): boolean {
-    return !!this.form.vehicleId && !!this.form.repairDate;
+    return !!this.form.vehicleId && !!this.form.repairDate && !this.getAmountError();
+  }
+
+  /**
+   * Premier montant invalide, mêmes règles et mêmes libellés que le serveur
+   * (RepairInputRules) : les attributs min des champs n'empêchent pas de taper un
+   * signe moins, et un total négatif était déduit du poste « Réparations » des rapports.
+   */
+  getAmountError(): string | null {
+    if (Number(this.form.laborCost ?? 0) < 0) return "Main-d'œuvre : le montant ne peut pas être négatif.";
+    for (let i = 0; i < this.form.parts.length; i++) {
+      const p = this.form.parts[i];
+      const name = (p.partName || '').trim();
+      const label = name ? `Pièce n° ${i + 1} (« ${name} »)` : `Pièce n° ${i + 1}`;
+      const quantity = Number(p.quantity);
+      if (!Number.isInteger(quantity) || quantity <= 0) return `${label} : la quantité doit être un nombre entier supérieur à zéro.`;
+      if (Number(p.unitPrice ?? 0) < 0) return `${label} : le prix unitaire ne peut pas être négatif.`;
+    }
+    return null;
+  }
+
+  /** Motif lisible d'un refus : le message métier du serveur tel quel, sinon un texte en français. */
+  private saveErrorMessage(err: any): string {
+    if (err?.status === 0) return 'Serveur injoignable : vérifiez la connexion puis réessayez.';
+    if (err?.status < 500 && err?.error?.message) return err.error.message;
+    if (err?.status === 404) return 'Réparation introuvable : elle a peut-être été supprimée. Rechargez la page.';
+    if (err?.status >= 400 && err?.status < 500) return 'Réparation refusée : vérifiez les valeurs saisies puis réessayez.';
+    return "Erreur serveur : la réparation n'a pas été enregistrée. Réessayez ; si le problème persiste, contactez le support.";
+  }
+
+  private showSaveError(err: any) {
+    this.saveError = this.saveErrorMessage(err);
+    this.cdr.detectChanges();
   }
 
   saveRepair() {
     if (!this.isFormValid()) return;
+    this.saveError = null;
 
+    // Un champ montant vidé vaut null, refusé par le serveur qui attend un nombre : 0 est ce que le total affiche.
     const parts = this.form.parts.map((p: RepairPart) => ({
       partName: p.partName,
       partReference: p.partReference,
       quantity: p.quantity,
-      unitPrice: p.unitPrice,
+      unitPrice: p.unitPrice ?? 0,
       notes: p.notes
     }));
 
@@ -1215,7 +1291,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
         description: this.form.description,
         repairDate: this.form.repairDate,
         mileageAtRepair: this.form.mileageAtRepair || undefined,
-        laborCost: this.form.laborCost,
+        laborCost: this.form.laborCost ?? 0,
         status: this.form.status,
         invoiceNumber: this.form.invoiceNumber,
         notes: this.form.notes,
@@ -1226,7 +1302,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
           this.loadRepairs();
           this.closePanel();
         },
-        error: (err) => console.error('Error updating repair:', err)
+        error: (err) => this.showSaveError(err)
       });
     } else {
       this.apiService.createRepair({
@@ -1235,7 +1311,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
         description: this.form.description,
         repairDate: this.form.repairDate,
         mileageAtRepair: this.form.mileageAtRepair || undefined,
-        laborCost: this.form.laborCost,
+        laborCost: this.form.laborCost ?? 0,
         invoiceNumber: this.form.invoiceNumber,
         notes: this.form.notes,
         repairType: this.form.repairType || null,
@@ -1245,7 +1321,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
           this.loadRepairs();
           this.closePanel();
         },
-        error: (err) => console.error('Error creating repair:', err)
+        error: (err) => this.showSaveError(err)
       });
     }
   }

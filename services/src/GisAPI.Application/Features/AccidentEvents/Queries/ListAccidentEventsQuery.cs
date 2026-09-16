@@ -156,16 +156,25 @@ public class ListAccidentEventsQueryHandler : IRequestHandler<ListAccidentEvents
     /// <summary>
     /// Tags a row with the most-advanced phase it has reached.
     /// Drives the phase chip / color in the list UI.
+    ///
+    /// <para>Seuls comptent les champs que la phase est la seule à écrire. La déclaration
+    /// manuelle pré-remplit le n° de sinistre et le montant estimé (rangé dans
+    /// <c>ExpertEstimatedAmount</c>) : un dossier déclaré à l'instant s'affichait en
+    /// « Assurance » alors qu'aucune expertise, aucun devis ni aucun dépôt n'avait été
+    /// saisi (recette GPA, DEF-045).</para>
     /// </summary>
     private static string DerivePhase(GisAPI.Domain.Entities.AccidentEvent e)
     {
         if (e.Status == "dismissed") return "dismissed";
         if (e.Status == "pending") return "detection";
         if (!string.IsNullOrEmpty(e.ClaimStatus) && e.ClaimStatus is "closed" or "approved" or "rejected") return "closed";
-        if (e.ClaimSubmittedAt.HasValue || !string.IsNullOrEmpty(e.ClaimNumber)) return "claim";
+        if (e.ClaimSubmittedAt.HasValue || !string.IsNullOrEmpty(e.ClaimStatus) || e.ClaimApprovedAmount.HasValue) return "claim";
         if (e.RepairCompletedAt.HasValue || e.ActualRepairCost.HasValue) return "repair";
         if (e.MechanicQuoteAt.HasValue || e.MechanicQuotedAmount.HasValue) return "quote";
-        if (e.ExpertVisitedAt.HasValue || e.ExpertEstimatedAmount.HasValue) return "expertise";
+        if (e.ExpertVisitedAt.HasValue
+            || !string.IsNullOrEmpty(e.ExpertName)
+            || !string.IsNullOrEmpty(e.ExpertCompany)
+            || !string.IsNullOrEmpty(e.ExpertAssessment)) return "expertise";
         return "confirmed";
     }
 }

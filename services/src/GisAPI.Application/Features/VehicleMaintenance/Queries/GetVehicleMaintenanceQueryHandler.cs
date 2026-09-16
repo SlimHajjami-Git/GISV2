@@ -97,7 +97,8 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
                     s.FreeUsesRemaining,
                     s.FreeSource,
                     s.FreeExpiryDate,
-                    s.FreeNotes
+                    s.FreeNotes,
+                    s.IsPaused
                 );
             })
             // « critical » est plus urgent que « due » : il tombait avec « ok » en fin

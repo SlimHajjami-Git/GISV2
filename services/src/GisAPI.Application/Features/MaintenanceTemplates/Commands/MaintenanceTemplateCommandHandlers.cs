@@ -23,8 +23,15 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
 
     public async Task<int> Handle(CreateMaintenanceTemplateCommand request, CancellationToken cancellationToken)
     {
+        // Refus métier en DomainException (400 { message }) : l'ArgumentException tombait
+        // dans le repli 500 « An unexpected error occurred » du middleware et le formulaire
+        // ne pouvait rien expliquer (recette GPA, DEF-031).
         if (!request.IntervalKm.HasValue && !request.IntervalMonths.HasValue)
-            throw new ArgumentException("At least one interval (km or months) must be specified");
+            throw new DomainException(
+                "Indiquez au moins une périodicité : un intervalle en kilomètres ou en mois.");
+
+        var companyId = _tenantService.CompanyId
+            ?? throw new DomainException("Aucune société n'est associée à votre compte : modèle non créé.");
 
         var template = new MaintenanceTemplate
         {
@@ -40,14 +47,13 @@ public class CreateMaintenanceTemplateCommandHandler : IRequestHandler<CreateMai
             WarningDays = request.WarningDays ?? 30,
             CriticalKm = request.CriticalKm ?? 0,
             CriticalDays = request.CriticalDays ?? 0,
-            CompanyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set")
+            CompanyId = companyId
         };
 
         _context.MaintenanceTemplates.Add(template);
         await _context.SaveChangesAsync(cancellationToken);
 
         // Notify company admins
-        var companyId = _tenantService.CompanyId ?? 0;
         var actorId = _tenantService.UserId ?? 0;
         var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
         if (actor != null && companyId > 0)

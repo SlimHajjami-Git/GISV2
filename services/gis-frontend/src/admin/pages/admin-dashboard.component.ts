@@ -821,10 +821,13 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
   getActivityIconClass(action: string): string {
     if (action === 'login') return 'login';
     if (action === 'logout') return 'logout';
+    // Échec de connexion : même pastille rouge que dans l'écran Activité.
+    if (action === 'login_failed') return 'logout';
     return 'action';
   }
 
   formatAction(action: string): string {
+    if (action === 'login_failed') return 'Échec de connexion';
     return action.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   }
 

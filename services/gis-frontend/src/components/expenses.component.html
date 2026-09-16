@@ -137,6 +137,9 @@
                     <input class="sm-input sm-input-amount" type="number" step="0.001" min="0" [(ngModel)]="scan.amount" placeholder="0.000">
                     <span class="sm-currency">{{ currencyCode }}</span>
                   </div>
+                  @if (scanAmountInvalid()) {
+                    <small class="sm-warn">Montant supérieur à zéro requis.</small>
+                  }
                 </div>
                 <div class="sm-field">
                   <label class="sm-label">Fournisseur</label>

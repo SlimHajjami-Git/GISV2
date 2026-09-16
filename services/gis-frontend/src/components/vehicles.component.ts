@@ -528,7 +528,7 @@ interface VehicleTrip {
                   <span class="doc-icon">🛡️</span>
                   <div class="doc-info">
                     <span class="doc-type">Assurance</span>
-                    <span class="doc-expiry">{{ selectedDetailVehicle.insuranceExpiry ? formatDate(selectedDetailVehicle.insuranceExpiry) : 'Non renseignee' }}</span>
+                    <span class="doc-expiry">{{ selectedDetailVehicle.insuranceExpiry ? formatExpiryDate(selectedDetailVehicle.insuranceExpiry) : 'Non renseignee' }}</span>
                   </div>
                   <span class="doc-badge" [class]="getInsuranceStatus(selectedDetailVehicle)">{{ getInsuranceAlertText(selectedDetailVehicle) }}</span>
                 </div>
@@ -536,7 +536,7 @@ interface VehicleTrip {
                   <span class="doc-icon">🔧</span>
                   <div class="doc-info">
                     <span class="doc-type">Visite technique</span>
-                    <span class="doc-expiry">{{ $any(selectedDetailVehicle).technicalInspectionExpiry ? formatDate($any(selectedDetailVehicle).technicalInspectionExpiry) : 'Non renseignee' }}</span>
+                    <span class="doc-expiry">{{ $any(selectedDetailVehicle).technicalInspectionExpiry ? formatExpiryDate($any(selectedDetailVehicle).technicalInspectionExpiry) : 'Non renseignee' }}</span>
                   </div>
                   <span class="doc-badge" [class]="getTechnicalStatus(selectedDetailVehicle)">{{ getTechnicalAlertText(selectedDetailVehicle) }}</span>
                 </div>
@@ -3418,12 +3418,21 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     return days <= 30;
   }
 
+  // Jours calendaires en UTC, comme /documents/expiries (ExpiryCalendar) : compté en jour
+  // local du navigateur, une échéance stockée à 23:59:59 UTC tombait le lendemain à UTC+1
+  // et la fiche annonçait un jour de plus que l'écran Échéances (recette GPA, DEF-035).
   getDaysUntilExpiry(expiryDate: Date | string): number {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const expiry = new Date(expiryDate);
-    expiry.setHours(0, 0, 0, 0);
-    return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const now = new Date();
+    const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.round((expiryDay - today) / (1000 * 60 * 60 * 24));
+  }
+
+  /** Date d'échéance lue sur le même jour UTC que le décompte, sinon « 21/09 » s'affichait à côté de « 7 j ». */
+  formatExpiryDate(date: Date | string): string {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
   }
 
   getInsuranceStatus(vehicle: any): string {

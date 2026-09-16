@@ -32,22 +32,37 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
 
+        // Le motif journalisé est précis, la réponse ne l'est pas : « adresse inconnue »
+        // et « mot de passe incorrect » gardent le même message, sinon la connexion
+        // dirait qui possède un compte.
         if (user == null)
+        {
+            await RecordFailedLoginAsync(request, null, "adresse inconnue", ct);
             throw new DomainException("Email ou mot de passe incorrect");
+        }
 
         if (!_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
+        {
+            await RecordFailedLoginAsync(request, user, "mot de passe incorrect", ct);
             throw new DomainException("Email ou mot de passe incorrect");
+        }
 
         // Un compte en attente de confirmation n'est pas un compte désactivé : dire
         // « Compte désactivé » à quelqu'un qui vient de s'inscrire l'envoie chercher
         // un administrateur au lieu d'ouvrir son courrier.
         if (user.Status == "pending")
+        {
+            await RecordFailedLoginAsync(request, user, "adresse non confirmée", ct);
             throw new DomainException(
                 "Votre adresse email n'est pas encore confirmée. Ouvrez le lien reçu par email, "
                 + "ou demandez-en un nouveau.");
+        }
 
         if (user.Status != "active")
+        {
+            await RecordFailedLoginAsync(request, user, "compte désactivé", ct);
             throw new DomainException("Compte désactivé");
+        }
 
         // Société suspendue ou expirée au-delà de la grâce : pas de nouveau token
         // (le sys_admin plateforme, lui, doit toujours pouvoir se connecter).
@@ -55,9 +70,14 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         {
             var subState = Common.SubscriptionPolicy.Evaluate(user.Societe, DateTime.UtcNow);
             if (subState.IsBlocked)
-                throw new DomainException(subState.Reason == "expired"
+            {
+                var expired = subState.Reason == "expired";
+                await RecordFailedLoginAsync(request, user,
+                    expired ? "abonnement expiré" : "abonnement suspendu", ct);
+                throw new DomainException(expired
                     ? "L'abonnement de votre société a expiré. Contactez votre prestataire pour le renouveler."
                     : "L'abonnement de votre société est suspendu. Contactez votre prestataire.");
+            }
         }
 
         // Explicitly load SubscriptionType if Societe has one
@@ -135,6 +155,92 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             BuildUserDto(user, subscriptionFeatures, assignedVehicleIds, userPermissions)
         );
     }
+
+    /// <summary>Action inscrite dans audit_logs pour chaque connexion refusée.</summary>
+    public const string FailedLoginAction = "login_failed";
+
+    /// <summary>
+    /// Constat DEF-030 : un refus de connexion ne laissait aucune trace, ni journal
+    /// applicatif exploitable (une erreur générique sans adresse ni IP), ni ligne
+    /// d'audit — une force brute passait inaperçue. Chaque refus est désormais écrit
+    /// dans les deux, à côté des lignes « login » / « logout » / « session » existantes.
+    ///
+    /// Adresse MASQUÉE dans le journal applicatif : il part vers la sortie standard
+    /// du pod et ses collecteurs, et le champ e-mail reçoit souvent un mot de passe
+    /// tapé au mauvais endroit. Pour une adresse inconnue, même masque dans l'audit ;
+    /// pour un compte existant, l'audit garde l'adresse du compte, comme la connexion
+    /// réussie. Écriture best-effort : un audit en échec ne change pas la réponse.
+    /// </summary>
+    private async Task RecordFailedLoginAsync(
+        LoginCommand request, GisAPI.Domain.Entities.User? user, string motif, CancellationToken ct)
+    {
+        var maskedEmail = MaskEmail(request.Email);
+        _logger.LogWarning("Échec de connexion pour {Email} depuis {IpAddress} : {Motif}",
+            maskedEmail, request.IpAddress ?? "adresse inconnue", motif);
+
+        try
+        {
+            _context.AuditLogs.Add(new GisAPI.Domain.Entities.AuditLog
+            {
+                // UserId reste vide : FK_audit_logs_users_UserId est en NO ACTION et les
+                // suppressions d'utilisateur ne purgent pas audit_logs, un seul mot de passe
+                // mal tapé rendait le compte insupprimable (500). EntityId et CompanyId, sans
+                // clé étrangère, suffisent à l'administrateur pour retrouver le compte visé.
+                UserId = null,
+                CompanyId = user?.CompanyId,
+                Action = FailedLoginAction,
+                EntityType = "User",
+                EntityId = user?.Id,
+                EntityName = user?.Email ?? maskedEmail,
+                Description = $"Échec de connexion : {motif}",
+                IpAddress = request.IpAddress,
+                // En-tête fourni par l'appelant, donc par l'attaquant : borné comme dans
+                // AuditTrailMiddleware pour qu'une boucle ne gonfle pas la table.
+                UserAgent = request.UserAgent is { Length: > 250 } ua ? ua[..250] : request.UserAgent,
+                Timestamp = DateTime.UtcNow
+            });
+            await _context.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec de connexion non inscrit au journal d'audit ({Email})", maskedEmail);
+        }
+    }
+
+    /// <summary>
+    /// « karim.hajjami@gmail.com » → « ka***@gmail.com ». Le domaine reste lisible :
+    /// il suffit à voir quelle société est visée, sans exposer l'identifiant.
+    ///
+    /// Tout ce qui n'a pas la forme d'une adresse devient « *** », sans rien de visible :
+    /// le validateur laisse passer « Motdepasse@2026 » (un seul @, ni au début ni à la
+    /// fin), et en garder le début et la fin publiait un fragment de mot de passe tapé
+    /// dans le mauvais champ.
+    /// </summary>
+    public static string MaskEmail(string? email)
+    {
+        // Minuscules comme la recherche du compte : deux essais sur la même adresse
+        // se regroupent dans les journaux quelle que soit la casse tapée.
+        var value = email?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (value.Length == 0) return "(vide)";
+
+        // 254 caractères, longueur maximale d'une adresse : au-delà ce n'en est pas une,
+        // et l'expression ne tourne jamais sur une saisie démesurée.
+        var at = value.LastIndexOf('@');
+        if (at <= 0 || value.Length > 254 || !PlausibleDomain.IsMatch(value[at..]))
+            return "***";
+
+        var local = value[..at];
+        var visible = local.Length > 4 ? local[..2] : local[..1];
+        var masked = visible + "***" + value[at..];
+
+        // Une adresse très longue ne doit pas se recopier telle quelle dans les journaux.
+        return masked.Length > 80 ? masked[..80] : masked;
+    }
+
+    // Au moins un point et une extension alphabétique : « @gmail.com » oui, « @2026 » non.
+    private static readonly System.Text.RegularExpressions.Regex PlausibleDomain = new(
+        @"^@([a-z0-9-]+\.)+[a-z]{2,}$",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>Construit le UserDto renvoyé par le login (réutilisé par l'impersonation).</summary>
     public static UserDto BuildUserDto(

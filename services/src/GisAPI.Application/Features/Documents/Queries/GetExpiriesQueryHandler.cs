@@ -59,45 +59,17 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         // Add driver permit expiries (from the standalone drivers table)
         if (!request.VehicleId.HasValue)
         {
-            var driverQuery = _context.Drivers
-                .AsNoTracking()
-                .Where(d => d.CompanyId == companyId && d.PermitExpiry != null);
-
             // Même portée pour les permis : un utilisateur restreint ne voit que
             // les chauffeurs affectés aux véhicules qu'il a le droit de voir.
-            if (accessibleIds is not null)
-                driverQuery = driverQuery.Where(d => d.AssignedVehicleId != null
-                                                 && accessibleIds.Contains(d.AssignedVehicleId.Value));
-
-            var drivers = await driverQuery.ToListAsync(cancellationToken);
+            var drivers = await DriverPermitExpiries.LoadAsync(_context, companyId, accessibleIds, cancellationToken);
 
             foreach (var driver in drivers)
             {
-                var daysUntil = (int)(driver.PermitExpiry!.Value.Date - today).TotalDays;
-                var status = driver.PermitExpiry.Value.Date < today ? "expired"
-                    : daysUntil <= 30 ? "expiring_soon"
-                    : "ok";
-
-                // Find the vehicle assigned to this driver (if any).
-                // Source of truth is driver.AssignedVehicleId — vehicles.AssignedDriverId
-                // is the reverse leg and not always kept in sync when forms only write the
-                // driver-side field (see drivers popup which only edits AssignedVehicleId).
-                var assignedVehicle = driver.AssignedVehicleId.HasValue
-                    ? vehicles.FirstOrDefault(v => v.Id == driver.AssignedVehicleId.Value)
-                    : null;
-
-                expiries.Add(new VehicleExpiryDto(
-                    assignedVehicle?.Id ?? 0,
-                    driver.FullName,
-                    driver.PermitType != null ? $"Permis {driver.PermitType}" : "Permis",
-                    "driver_permit",
-                    driver.PermitExpiry,
-                    status,
-                    daysUntil,
-                    null,
-                    null,
-                    driver.PermitNumber
-                ));
+                expiries.Add(DriverPermitExpiries.ToDto(
+                    driver,
+                    vehicles,
+                    ExpiryCalendar.Status(driver.PermitExpiry, today),
+                    ExpiryCalendar.DaysUntil(driver.PermitExpiry!.Value, today)));
             }
         }
 
@@ -134,9 +106,9 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
             };
         }).ToList();
 
-        // Sort by urgency (expired first, then expiring soon)
+        // Sort by urgency: expirés, bientôt, à jour, puis non renseignées en fin.
         expiries = expiries
-            .OrderBy(e => e.Status == "expired" ? 0 : e.Status == "expiring_soon" ? 1 : 2)
+            .OrderBy(e => ExpiryCalendar.StatusRank(e.Status))
             .ThenBy(e => e.DaysUntilExpiry)
             .ToList();
 
@@ -165,26 +137,16 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
     private void AddExpiry(List<VehicleExpiryDto> expiries, Domain.Entities.Vehicle vehicle, 
         string type, DateTime? expiryDate, DateTime today)
     {
-        var daysUntil = expiryDate.HasValue 
-            ? (int)(expiryDate.Value.Date - today).TotalDays 
-            : int.MaxValue;
-
-        var status = expiryDate switch
-        {
-            null => "unknown",
-            _ when expiryDate.Value.Date < today => "expired",
-            _ when daysUntil <= 30 => "expiring_soon",
-            _ => "ok"
-        };
-
+        // Jours calendaires (ExpiryCalendar) : l'heure stockée ne décale ni le
+        // compte ni la date affichée.
         expiries.Add(new VehicleExpiryDto(
             vehicle.Id,
             vehicle.Name,
             vehicle.Plate,
             type,
-            expiryDate,
-            status,
-            daysUntil == int.MaxValue ? -1 : daysUntil,
+            ExpiryCalendar.Day(expiryDate),
+            ExpiryCalendar.Status(expiryDate, today),
+            expiryDate.HasValue ? ExpiryCalendar.DaysUntil(expiryDate.Value, today) : -1,
             null,
             null,
             null

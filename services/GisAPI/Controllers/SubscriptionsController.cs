@@ -127,7 +127,10 @@ public class SubscriptionsController : ControllerBase
             company.SubscriptionStartedAt,
             Usage = new
             {
-                Vehicles = new { Current = vehicleCount, Max = company.SubscriptionType?.MaxVehicles ?? 0 },
+                // Formule facturée au véhicule : pas de plafond (VehicleWriteRules), le nombre
+                // de véhicules est la base de facturation. Max = 0 masque la jauge « N / 15 »,
+                // qui s'affichait en rouge au-delà du plafond théorique du plan.
+                Vehicles = new { Current = vehicleCount, Max = company.SubscriptionType?.PricePerVehicle == true ? 0 : company.SubscriptionType?.MaxVehicles ?? 0 },
                 Users = new { Current = userCount, Max = company.SubscriptionType?.MaxUsers ?? 0 },
                 Devices = new { Current = deviceCount, Max = company.SubscriptionType?.MaxGpsDevices ?? 0 },
                 Geofences = new { Current = geofenceCount, Max = company.SubscriptionType?.MaxGeofences ?? 0 }

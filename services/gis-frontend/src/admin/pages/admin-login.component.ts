@@ -609,7 +609,11 @@ export class AdminLoginComponent {
         this.router.navigate(['/admin/dashboard']);
       },
       error: (err) => {
-        this.error = 'E-mail ou mot de passe incorrect';
+        // 429 = plafond de tentatives du réseau (DEF-030) : annoncer un mot de passe faux
+        // pousserait à réessayer aussitôt, donc à prolonger le blocage.
+        this.error = err?.status === 429
+          ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
+          : 'E-mail ou mot de passe incorrect';
         this.loading = false;
         // Callback potentiellement hors cycle Angular : sans detectChanges,
         // l'erreur ne s'affichait qu'à l'interaction suivante.
