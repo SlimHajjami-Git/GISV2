@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,14 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
     private readonly ICurrentTenantService _tenantService;
     private readonly ILogger<RenewDocumentCommandHandler> _logger;
     private static readonly string[] ValidDocumentTypes = { "insurance", "technical_inspection", "tax", "registration", "transport_permit" };
+
+    // Tailles des colonnes de vehicle_costs qui reçoivent la saisie (receipt_number,
+    // provider, notes, receipt_url). Au-delà, PostgreSQL refusait l'INSERT et
+    // l'utilisateur recevait une erreur 500 sans explication.
+    public const int DocumentNumberMaxLength = 100;
+    public const int ProviderMaxLength = 200;
+    public const int NotesMaxLength = 1000;
+    public const int DocumentUrlMaxLength = 500;
 
     public RenewDocumentCommandHandler(
         IGisDbContext context,
@@ -29,6 +38,11 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         // Validate document type
         if (!ValidDocumentTypes.Contains(request.DocumentType))
             throw new ArgumentException($"Invalid document type: {request.DocumentType}");
+
+        CheckLength(request.DocumentNumber, DocumentNumberMaxLength, "Numéro de document");
+        CheckLength(request.Provider, ProviderMaxLength, "Fournisseur");
+        CheckLength(request.Notes, NotesMaxLength, "Notes");
+        CheckLength(request.DocumentUrl, DocumentUrlMaxLength, "Lien du justificatif");
 
         // Get vehicle
         var vehicle = await _context.Vehicles
@@ -67,13 +81,20 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         {
             VehicleId = request.VehicleId,
             Type = request.DocumentType,
-            Description = $"Renouvellement {GetDocumentTypeLabel(request.DocumentType)}" +
-                         (string.IsNullOrEmpty(request.Provider) ? "" : $" - {request.Provider}"),
+            Description = BuildDescription(request.DocumentType, request.Provider),
             Amount = request.Amount,
             Date = paymentDateUtc,
+            // Toute la saisie de la fenêtre de renouvellement est conservée :
+            // échéance, fournisseur et notes ont leur colonne depuis la migration
+            // 047 ; le numéro de police et le justificatif vont dans
+            // receipt_number / receipt_url, les colonnes de cette nature. Avant
+            // cela, seule la description restait — la saisie disparaissait sans
+            // message et l'historique rendait la description comme fournisseur.
             ExpiryDate = expiryDateUtc,
-            DocumentNumber = request.DocumentNumber,
-            DocumentUrl = request.DocumentUrl,
+            Provider = request.Provider,
+            Notes = request.Notes,
+            ReceiptNumber = request.DocumentNumber,
+            ReceiptUrl = request.DocumentUrl,
             CompanyId = companyId
         };
 
@@ -126,6 +147,47 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         // 0 = renouvellement sans depense (montant facultatif).
         return cost?.Id ?? 0;
+    }
+
+    private static void CheckLength(string? value, int maxLength, string fieldLabel)
+    {
+        if (value != null && value.Length > maxLength)
+            throw new DomainException(
+                $"{fieldLabel} : {maxLength} caractères au maximum ({value.Length} saisis). Raccourcissez la saisie.");
+    }
+
+    private const string DescriptionPrefix = "Renouvellement ";
+    private const string ProviderSeparator = " - ";
+
+    private static string BuildDescription(string documentType, string? provider) =>
+        DescriptionPrefix + GetDocumentTypeLabel(documentType) +
+        (string.IsNullOrEmpty(provider) ? "" : ProviderSeparator + provider);
+
+    /// <summary>
+    /// Fournisseur d'une dépense de document dont la colonne provider est vide.
+    /// Les renouvellements antérieurs à la migration 047 ne portent leur
+    /// fournisseur que dans la description écrite par <see cref="BuildDescription"/> :
+    /// on l'y relit. « Renouvellement Assurance » seul = aucun fournisseur saisi.
+    /// Une description libre (dépense saisie ou scannée hors renouvellement) est
+    /// rendue telle quelle, comme l'historique le faisait avant la migration.
+    /// </summary>
+    public static string? ProviderFromDescription(string documentType, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+            return null;
+
+        var renewalLabel = DescriptionPrefix + GetDocumentTypeLabel(documentType);
+        if (!description.StartsWith(renewalLabel, StringComparison.Ordinal))
+            return description;
+
+        var rest = description[renewalLabel.Length..];
+        if (rest.Length == 0)
+            return null;
+        if (!rest.StartsWith(ProviderSeparator, StringComparison.Ordinal))
+            return description;
+
+        var provider = rest[ProviderSeparator.Length..].Trim();
+        return provider.Length == 0 ? null : provider;
     }
 
     private static string GetDocumentTypeLabel(string type) => type switch

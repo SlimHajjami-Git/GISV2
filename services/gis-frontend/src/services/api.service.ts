@@ -2765,7 +2765,22 @@ export interface GpaDashboard {
 
 // ==================== MONTHLY COST REPORT ====================
 
-export interface MonthlyCostReport {
+/**
+ * Ratios au kilomètre d'un groupe (société, département), calculés par le serveur
+ * sur les SEULS véhicules à distance mesurée, au numérateur comme au dénominateur.
+ * Diviser à l'écran le coût de tout le groupe par ses seuls km mesurés gonflait le
+ * coût au km dès qu'un véhicule était « non mesuré » (recette du 13/09/2026).
+ * null : aucun kilomètre mesuré dans le groupe.
+ */
+export interface MonthlyCostGroupRatios {
+  costPerKm: number | null;
+  fuelPer100Km: number | null;
+  maintenanceRepairPer100Km: number | null;
+  consumptionPer100Km: number | null;
+  consumptionPrPer100Km: number | null;
+}
+
+export interface MonthlyCostReport extends MonthlyCostGroupRatios {
   year: number;
   month: number;
   monthName: string;
@@ -2784,7 +2799,7 @@ export interface MonthlyCostReport {
   vehicles: VehicleMonthlyCost[];
 }
 
-export interface DepartmentCostGroup {
+export interface DepartmentCostGroup extends MonthlyCostGroupRatios {
   departmentId: number | null;
   departmentName: string;
   totalKm: number;
@@ -2806,8 +2821,12 @@ export interface VehicleMonthlyCost {
   driverName: string | null;
   departmentId: number | null;
   departmentName: string;
-  km: number;
-  kmPr: number;
+  /** null : kilométrage non mesurable sur le mois (pas de distance exploitable entre les relevés). */
+  km: number | null;
+  /** 'gps' (compteur du boîtier), 'odometer' (relevés saisis) ou 'none'. */
+  kmSource: DistanceSource;
+  /** null : kilométrage du mois précédent non mesurable. */
+  kmPr: number | null;
   fuelCostDzd: number;
   maintenanceCostDzd: number;
   repairCostDzd: number;
@@ -2815,11 +2834,13 @@ export interface VehicleMonthlyCost {
   totalCostDzd: number;
   fuelLiters: number;
   fuelLitersPr: number;
-  costPerKm: number;
-  fuelPer100Km: number;
-  maintenanceRepairPer100Km: number;
-  consumptionPer100Km: number;
-  consumptionPrPer100Km: number;
+  // Ratios au kilomètre : null sans distance mesurée — 0 se lirait comme un
+  // coût ou une consommation réellement constatés (recette du 13/09/2026).
+  costPerKm: number | null;
+  fuelPer100Km: number | null;
+  maintenanceRepairPer100Km: number | null;
+  consumptionPer100Km: number | null;
+  consumptionPrPer100Km: number | null;
 }
 
 // ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================
@@ -2905,9 +2926,9 @@ export interface MonthlyVehicleCostDto {
   otherCost: number;
   totalCost: number;
   distanceKm: number | null;
-  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si le mois est incomplet. */
+  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si l'un des deux mois est incomplet. */
   variationPct: number | null;
-  /** La période s’arrête avant la fin du mois (mois en cours, période personnalisée). */
+  /** La période ne couvre pas le mois entier, par l'une OU l'autre borne : elle commence après le 1er, ou s'arrête avant la fin (mois en cours). */
   isPartial?: boolean;
 }
 

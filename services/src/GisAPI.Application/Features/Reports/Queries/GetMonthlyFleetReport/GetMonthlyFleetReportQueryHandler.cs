@@ -100,13 +100,18 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         report.Maintenance = BuildMaintenance(vehicles, realCosts);
         report.DriverPerformance = BuildDriverPerformance(drivers, vehicles, positions);
         report.Efficiency = BuildEfficiency(positions, daysInMonth);
-        report.CostAnalysis = BuildCostAnalysis(vehicles, positions, realCosts);
 
         // Parc sans GPS (recette du 11/09/2026) : une ligne par véhicule, avec
         // ou sans boîtier, et les indicateurs GPS marqués « non mesurés ».
         report.VehiclesWithGps = vehicles.Count(v => v.GpsDeviceId.HasValue);
         report.FleetHasGps = report.VehiclesWithGps > 0;
         (report.Vehicles, report.Totals) = BuildVehicleRows(vehicles, report.Utilization, realCosts);
+
+        // Le coût au km du tableau par véhicule est LE coût au km du rapport : il
+        // était recalculé une seconde fois dans l'analyse des coûts, et le même
+        // document annonçait deux valeurs pour le même mois (recette du 13/09/2026).
+        report.CostAnalysis = BuildCostAnalysis(vehicles, positions, realCosts, report.Totals.CostPerKm);
+
         if (!report.FleetHasGps)
         {
             // « Temps d'inactivité 0 %, cible 20, dans l'objectif » s'affichait
@@ -895,8 +900,13 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     /// deux restant visible dans <c>ByCategory</c>. <c>InsuranceCost</c> est la
     /// part réelle des dépenses de type assurance, <c>OtherCosts</c> tout le
     /// reste. La somme des quatre champs redonne exactement le total.
+    ///
+    /// <paramref name="costPerKm"/> vient du tableau par véhicule
+    /// (<see cref="BuildVehicleRows"/>) : le coût au km ne se recalcule pas ici,
+    /// il n'y en a qu'un pour tout le rapport.
     /// </summary>
-    private CostAnalysisDto BuildCostAnalysis(List<Vehicle> vehicles, List<GpsPosition> positions, RealCostData real)
+    private CostAnalysisDto BuildCostAnalysis(
+        List<Vehicle> vehicles, List<GpsPosition> positions, RealCostData real, decimal? costPerKm)
     {
         var insurance = real.Expenses.Where(e => IsInsuranceType(e.Type)).Sum(e => e.Amount);
 
@@ -910,15 +920,18 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         };
 
         var distanceByVehicle = CostDistanceByVehicle(vehicles, positions, real);
-        var totalDistance = distanceByVehicle.Values.Sum();
 
         // Dénominateur = les véhicules RÉELLEMENT couverts par les dépenses
         // chargées (un utilisateur restreint ne voit que les siens), sinon la
         // moyenne serait diluée par des véhicules hors de sa portée.
         var covered = real.ByVehicle.Count > 0 ? real.ByVehicle.Count : vehicles.Count;
 
-        costs.CostPerKm = totalDistance > 0
-            ? Math.Round(real.Total.Total / (decimal)totalDistance, 3) : 0;
+        // Coût au km : celui du tableau par véhicule (véhicules MESURÉS
+        // seulement), la même moyenne pondérée que « Coût d'exploitation réel ».
+        // Il se calculait ici en divisant le coût de TOUT le parc par la distance
+        // des seuls véhicules mesurés : le KPI affichait 1,271 €/km quand le
+        // tableau du même document et le rapport de coûts annonçaient 0,79.
+        costs.CostPerKm = costPerKm ?? 0;
         costs.CostPerVehicle = covered > 0
             ? Math.Round(real.Total.Total / covered, 2) : 0;
 

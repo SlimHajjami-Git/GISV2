@@ -247,7 +247,7 @@ export interface RenewalFormData {
               <div class="form-group">
                 <label for="documentNumber">{{ getDocumentNumberLabel() }}</label>
                 <input type="text" id="documentNumber" name="documentNumber" [(ngModel)]="formData.documentNumber"
-                       [placeholder]="getDocumentNumberPlaceholder()" class="form-control">
+                       [placeholder]="getDocumentNumberPlaceholder()" class="form-control" maxlength="100">
               </div>
               <div class="form-group">
                 <label for="newExpiryDate">Nouvelle date d'expiration <span class="required-star">*</span></label>
@@ -271,7 +271,7 @@ export interface RenewalFormData {
             <div class="form-row">
               <div class="form-group full">
                 <label for="notes">Notes / Remarques</label>
-                <textarea id="notes" name="notes" [(ngModel)]="formData.notes" rows="2"
+                <textarea id="notes" name="notes" [(ngModel)]="formData.notes" rows="2" maxlength="1000"
                           placeholder="Informations complémentaires..." class="form-control"></textarea>
               </div>
             </div>
@@ -1166,7 +1166,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       error: (err) => {
         console.error('Error renewing document:', err);
         this.saving = false;
-        alert('Erreur lors du renouvellement. Veuillez réessayer.');
+        // Un 400 porte le refus métier en français (saisie trop longue, etc.).
+        alert((err?.status === 400 && err?.error?.message) || 'Erreur lors du renouvellement. Veuillez réessayer.');
       }
     });
   }

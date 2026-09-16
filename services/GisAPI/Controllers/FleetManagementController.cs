@@ -14,6 +14,10 @@ using GisAPI.Application.Features.FleetManagement.SpeedLimits.Queries;
 namespace GisAPI.Controllers;
 
 [ApiController]
+// Cette route est la CLÉ du module dans PermissionMiddleware (droit CanFleetManagement et
+// module d'abonnement Gestion de flotte) : la table y déclarait « /api/fleetmanagement », que
+// personne ne servait, et tout le contrôleur échappait aux deux contrôles. La changer sans
+// changer la table rouvre le trou — PermissionMiddlewareRouteScopeTests lit l'attribut pour le vérifier.
 [Route("api/fleet")]
 [Authorize]
 public class FleetManagementController : ControllerBase

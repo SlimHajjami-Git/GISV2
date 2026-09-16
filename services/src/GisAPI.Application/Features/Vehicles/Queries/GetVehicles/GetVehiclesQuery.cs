@@ -49,7 +49,14 @@ public record VehicleDto(
     // Apport (contrat) ou prix d'achat comptant, daté : l'écran Dépenses en
     // fait une ligne « Achat véhicule » (recette client 04/09/2026).
     decimal? PurchasePrice = null,
-    DateTime? PurchaseDate = null
+    DateTime? PurchaseDate = null,
+    // Immobilisation : l'écran Véhicules se sert de CETTE liste pour la bannière
+    // et le bouton « Lever l'immobilisation ». Sans ces champs, un véhicule
+    // immobilisé repassait « disponible » au premier rechargement de la page
+    // (recette GPA du 11/09/2026).
+    bool IsImmobilized = false,
+    string? ImmobilizationReason = null,
+    DateTime? ImmobilizationStartedAt = null
 );
 
 public record GpsDeviceDto(

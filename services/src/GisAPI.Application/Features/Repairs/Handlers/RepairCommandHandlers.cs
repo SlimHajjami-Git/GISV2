@@ -4,11 +4,24 @@ using GisAPI.Application.Features.Repairs.Commands;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Repairs.Handlers;
+
+/// <summary>
+/// 404 « Véhicule introuvable. », la même réponse que POST /api/costs pour le même refus.
+/// NotFoundException compose un message anglais générique (« Entity ... was not found. »), or
+/// le formulaire Dépenses affiche <c>err.error.message</c> tel quel à l'utilisateur.
+/// </summary>
+public sealed class VehiculeIntrouvableException : NotFoundException
+{
+    public VehiculeIntrouvableException(int vehicleId) : base("Véhicule", vehicleId) { }
+
+    public override string Message => "Véhicule introuvable.";
+}
 
 public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, int>
 {
@@ -27,6 +40,14 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
     {
         var societeId = _tenantService.CompanyId ?? 0;
 
+        // Le véhicule est cherché DANS la société avant toute écriture, comme le fait
+        // POST /api/costs : sans ce contrôle, un vehicleId étranger créait une réparation
+        // rattachée à la société de l'appelant (comptée dans totalCount, absente de la liste)
+        // et un vehicleId inexistant remontait en 500 par violation de clé étrangère.
+        var repairVehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
+            ?? throw new VehiculeIntrouvableException(request.VehicleId);
+
         // Calculate parts cost
         decimal partsCost = 0;
         foreach (var part in request.Parts)
@@ -34,14 +55,10 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
             partsCost += part.Quantity * part.UnitPrice;
         }
 
-        // Generate reference
-        var count = await _context.Repairs
-            .Where(r => r.SocieteId == societeId)
-            .CountAsync(cancellationToken);
-        var reference = $"REP-{DateTime.UtcNow:yyyyMM}-{(count + 1):D4}";
+        var reference = await NextReferenceAsync(societeId, DateTime.UtcNow, cancellationToken);
 
-        var repairDate = request.RepairDate.Kind == DateTimeKind.Unspecified 
-            ? DateTime.SpecifyKind(request.RepairDate, DateTimeKind.Utc) 
+        var repairDate = request.RepairDate.Kind == DateTimeKind.Unspecified
+            ? DateTime.SpecifyKind(request.RepairDate, DateTimeKind.Utc)
             : request.RepairDate.ToUniversalTime();
 
         var repair = new Repair
@@ -68,8 +85,6 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         // Le kilométrage relevé à la réparation fait avancer la fiche véhicule,
         // comme le fait un plein — sans lui, un client sans boîtier voyait son
         // compteur figé alors qu'il venait de le saisir (recette du 08/09/2026).
-        var repairVehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken);
         VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
 
         await _context.SaveChangesAsync(cancellationToken);
@@ -97,12 +112,13 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         {
             var actorId = _tenantService.UserId ?? 0;
             var actor = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == actorId, cancellationToken);
-            var vehicle = await _context.Vehicles.AsNoTracking().FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
             if (actor != null)
             {
-                var repairLabel = !string.IsNullOrEmpty(request.Description)
-                    ? request.Description
-                    : vehicle?.Name ?? vehicle?.Plate ?? "Véhicule";
+                // Le véhicule est déjà chargé et vérifié dans la société : pas de seconde
+                // lecture, surtout pas sans filtre société.
+                var repairLabel = !string.IsNullOrEmpty(request.Description) ? request.Description
+                    : !string.IsNullOrEmpty(repairVehicle.Name) ? repairVehicle.Name
+                    : repairVehicle.Plate ?? "Véhicule";
 
                 await _publisher.Publish(new AdminActionNotificationEvent(
                     societeId, actorId, actor.FullName,
@@ -114,6 +130,32 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
 
         return repair.Id;
     }
+
+    /// <summary>
+    /// Référence REP-AAAAMM-NNNN du mois courant, pour la société.
+    /// Elle était calculée comme « nombre de réparations de la société + 1 » : après une
+    /// suppression, la création suivante réattribuait un numéro encore vivant et deux lignes
+    /// portaient la même référence de facture (recette du 16/09/2026). Le nombre de lignes ne
+    /// dit rien des numéros déjà sortis : on repart du plus grand numéro attribué dans le mois.
+    /// </summary>
+    private async Task<string> NextReferenceAsync(int societeId, DateTime nowUtc, CancellationToken ct)
+    {
+        var prefix = $"REP-{nowUtc:yyyyMM}-";
+        var references = await _context.Repairs
+            .Where(r => r.SocieteId == societeId && r.Reference.StartsWith(prefix))
+            .Select(r => r.Reference)
+            .ToListAsync(ct);
+
+        return prefix + NextSequence(references, prefix).ToString("D4");
+    }
+
+    /// <summary>Plus grand numéro lisible derrière le préfixe, + 1 (1 si le mois est vierge).</summary>
+    internal static int NextSequence(IEnumerable<string?> references, string prefix) =>
+        references
+            .Where(r => r != null && r.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .Select(r => int.TryParse(r![prefix.Length..], out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
 
     /// <summary>
     /// Vide → null (colonne nullable) ; sinon minuscules sans accents (« Électrique » →
@@ -148,6 +190,13 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
 
         if (repair == null) return false;
 
+        // Même contrôle qu'à la création, et AVANT d'écrire quoi que ce soit : la modification
+        // recopiait VehicleId sans le chercher dans la société, ce qui permettait de rattacher
+        // une réparation existante au véhicule d'une autre société.
+        var repairVehicle = await _context.Vehicles
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
+            ?? throw new VehiculeIntrouvableException(request.VehicleId);
+
         // Calculate parts cost
         decimal partsCost = 0;
         foreach (var part in request.Parts)
@@ -174,8 +223,6 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         repair.UpdatedAt = DateTime.UtcNow;
 
         // Même règle qu'à la création : le relevé fait avancer la fiche véhicule.
-        var repairVehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken);
         VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
 
         // Remove old parts

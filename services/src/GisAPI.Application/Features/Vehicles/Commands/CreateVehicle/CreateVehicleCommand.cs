@@ -14,7 +14,19 @@ public record CreateVehicleCommand(
     string? FuelType = null,
     int? FuelTankCapacity = null,
     int? GpsDeviceId = null,
-    GpsDeviceInfo? NewGpsDevice = null
+    GpsDeviceInfo? NewGpsDevice = null,
+    // Acquisition & financement — le formulaire « Ajouter un véhicule » affiche
+    // la section et l'envoie déjà : sans ces champs ici, le contrat saisi était
+    // jeté sans message et l'utilisateur devait le ressaisir en modification
+    // (recette GPA du 11/09/2026).
+    string? AcquisitionType = null,
+    decimal? PurchasePrice = null,
+    DateTime? PurchaseDate = null,
+    decimal? LeasingMonthlyPayment = null,
+    int? LeasingDurationMonths = null,
+    DateTime? LeasingStartDate = null,
+    int? LeasingPaymentDay = null,
+    DateTime? RegistrationDate = null
 ) : ICommand<int>;
 
 public record GpsDeviceInfo(

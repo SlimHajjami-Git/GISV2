@@ -1,6 +1,7 @@
 using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -102,10 +103,20 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .Select(c => new { c.VehicleId, c.Type, c.Amount })
             .ToListAsync(ct);
 
+        // Ventilation IDENTIQUE à OperatingCostAggregator, la définition de
+        // référence des rapports de coûts : ce rapport avait sa propre règle et
+        // rangeait dans « Autres » tout ce qui n'était ni carburant ni entretien.
+        // Deux écarts en découlaient pour le même mois (recette du 13/09/2026) :
+        // une dépense de type « réparation » manquait à la colonne Réparations,
+        // et un remboursement d'assurance — enregistré en montant POSITIF par le
+        // module Sinistres — AUGMENTAIT le coût du mois au lieu de l'alléger
+        // (100 € remboursés = 200 € d'écart avec « Coût d'exploitation réel »).
         static string Bucket(string? type) => (type ?? string.Empty).Trim().ToLowerInvariant() switch
         {
             "fuel" => "fuel",
             "maintenance" or "entretien" => "maintenance",
+            "repair" or "reparation" or "réparation" => "repair",
+            "insurance_refund" => "refund",
             _ => "other"
         };
 
@@ -119,19 +130,32 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        var otherByVehicle = costRows
-            .Where(c => Bucket(c.Type) == "other")
+        var repairCosts = costRows
+            .Where(c => Bucket(c.Type) == "repair")
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
+        // Le remboursement d'assurance est un CRÉDIT : il se soustrait des autres coûts.
+        var otherByVehicle = costRows
+            .Where(c => Bucket(c.Type) is "other" or "refund")
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => Bucket(c.Type) == "refund" ? -c.Amount : c.Amount));
+
         // 4. Fetch repairs from /reparation page's table (repairs)
-        var repairs = await _context.Repairs.AsNoTracking()
+        var repairs = (await _context.Repairs.AsNoTracking()
             .Where(r => r.SocieteId == companyId
                      && vehicleIds.Contains(r.VehicleId)
                      && r.RepairDate >= startDate
                      && r.RepairDate < endDate)
-            .Select(r => new { r.VehicleId, r.TotalCost })
-            .ToListAsync(ct);
+            .Select(r => new { r.VehicleId, r.TotalCost, r.Status })
+            .ToListAsync(ct))
+            // Réparation ANNULÉE : aucun atelier n'est passé, aucun euro n'est dû.
+            // Le tableau de bord, « Coût d'exploitation réel » et le rapport mensuel
+            // flotte l'excluent déjà ; ce rapport la comptait encore et annonçait 325
+            // là où les autres écrans affichaient 245 (recette du 13/09/2026). Son
+            // relevé compteur est écarté de la même façon par OdometerReadings.
+            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         // 5. Kilometrage du mois affiche, puis du mois PRECEDENT.
         //
@@ -174,9 +198,15 @@ ORDER BY device_id, recorded_at DESC;
 ";
         // Une seule implementation, appelee pour le mois courant et pour le
         // precedent : deux copies auraient fini par diverger.
-        async Task<Dictionary<int, decimal>> KilometrageAsync(DateTime debut, DateTime finExclue)
+        //
+        // ABSENT du dictionnaire = distance NON MESUREE, ce qui n’est pas la meme
+        // chose que zero kilometre : un vehicule sans boitier dont les releves du
+        // mois n’additionnent aucun kilometre n’a rien a mesurer. Rendu « 0 km »,
+        // il annoncait une consommation et un cout au km nuls alors qu’il avait
+        // roule 700 km (recette du 13/09/2026).
+        async Task<Dictionary<int, (decimal Km, string Source)>> KilometrageAsync(DateTime debut, DateTime finExclue)
         {
-            var parVehicule = new Dictionary<int, decimal>();
+            var parVehicule = new Dictionary<int, (decimal Km, string Source)>();
             var depuisBoitier = new HashSet<int>();
 
             if (deviceIds.Any())
@@ -201,7 +231,7 @@ ORDER BY device_id, recorded_at DESC;
                         // Ramene a zero si le compteur du boitier a ete remis a
                         // zero en cours de periode : un nombre negatif serait pire
                         // qu’un kilometrage sous-estime.
-                        parVehicule[vehicleId] = Math.Max(0, dernier - premier);
+                        parVehicule[vehicleId] = (Math.Max(0, dernier - premier), OperatingCostAggregator.SourceGps);
                         depuisBoitier.Add(vehicleId);
                     }
                 }
@@ -220,8 +250,14 @@ ORDER BY device_id, recorded_at DESC;
                 foreach (var vehicleId in sansCompteurBoitier)
                 {
                     var distance = OdometerDistance.Compute(releves[vehicleId]);
+                    // Meme regle que OperatingCostAggregator, la definition de
+                    // reference : sans kilometre additionne, pas de distance. Un
+                    // releve isole, des releves identiques ou des ecarts tous
+                    // rompus rendent « non mesure », et non 0 km — sans quoi ce
+                    // rapport et « Cout d'exploitation reel » divergeraient pour
+                    // le meme vehicule sur le meme mois.
                     if (distance.Measurable)
-                        parVehicule[vehicleId] = distance.DistanceKm;
+                        parVehicule[vehicleId] = (distance.DistanceKm, OperatingCostAggregator.SourceOdometer);
                 }
             }
 
@@ -271,20 +307,30 @@ ORDER BY device_id, recorded_at DESC;
 
         foreach (var vehicle in vehicles)
         {
-            var km = mileagePerVehicle.GetValueOrDefault(vehicle.Id, 0);
+            // Distance MESUREE (valeur, eventuellement nulle) ou NON MESUREE (null) :
+            // les deux se rendaient « 0 km » avant, et le rapport presentait une
+            // absence de mesure comme un vehicule immobile.
+            var kmMesure = mileagePerVehicle.TryGetValue(vehicle.Id, out var mesure);
+            decimal? km = kmMesure ? mesure.Km : null;
+            var kmSource = kmMesure ? mesure.Source : OperatingCostAggregator.SourceNone;
             // Mois precedent, pour les colonnes de comparaison « PR ».
-            var kmPrev = mileagePrevPerVehicle.GetValueOrDefault(vehicle.Id, 0);
+            decimal? kmPrev = mileagePrevPerVehicle.TryGetValue(vehicle.Id, out var mesurePrec) ? mesurePrec.Km : null;
             var litersPrev = litersPrevByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var hasFuel = fuelByVehicle.TryGetValue(vehicle.Id, out var fuel);
             var fuelCost = (hasFuel ? fuel!.TotalCost : 0) + fuelCosts.GetValueOrDefault(vehicle.Id, 0);
             var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
             var maintCost = maintByVehicle.GetValueOrDefault(vehicle.Id, 0);
-            var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0);
+            // Réparations = interventions de l'atelier + dépenses saisies sous la
+            // catégorie « Réparation », comme dans les autres rapports de coûts.
+            var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0)
+                           + repairCosts.GetValueOrDefault(vehicle.Id, 0);
             var otherCost = otherByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var totalCost = fuelCost + maintCost + repairCost + otherCost;
 
-            // Only include vehicles with some activity
-            if (km == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0 && otherCost == 0)
+            // Only include vehicles with some activity — sans distance mesuree,
+            // GetValueOrDefault vaut 0 : le vehicule reste hors du rapport tant
+            // qu'aucune depense ne l'y fait entrer, comme avant.
+            if (km.GetValueOrDefault() == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0 && otherCost == 0)
                 continue;
 
             var row = new VehicleMonthlyCostDto
@@ -296,6 +342,7 @@ ORDER BY device_id, recorded_at DESC;
                 DepartmentId = vehicle.DepartmentId,
                 DepartmentName = vehicle.Department?.Name ?? "Non assigné",
                 Km = km,
+                KmSource = kmSource,
                 KmPr = kmPrev,
                 FuelCostDzd = fuelCost,
                 FuelLiters = fuelLiters,
@@ -304,11 +351,13 @@ ORDER BY device_id, recorded_at DESC;
                 RepairCostDzd = repairCost,
                 OtherCostDzd = otherCost,
                 TotalCostDzd = totalCost,
-                CostPerKm = km > 0 ? Math.Round(totalCost / km, 2) : 0,
-                FuelPer100Km = km > 0 ? Math.Round((fuelCost / km) * 100, 2) : 0,
-                MaintenanceRepairPer100Km = km > 0 ? Math.Round(((maintCost + repairCost) / km) * 100, 2) : 0,
-                ConsumptionPer100Km = km > 0 ? Math.Round((fuelLiters / km) * 100, 2) : 0,
-                ConsumptionPrPer100Km = kmPrev > 0 ? Math.Round((litersPrev / kmPrev) * 100, 2) : 0
+                // Pas de distance mesuree, pas de ratio : « 0 » se lirait comme
+                // une consommation ou un cout au km reellement constates.
+                CostPerKm = km > 0 ? Math.Round(totalCost / km.Value, 2) : null,
+                FuelPer100Km = km > 0 ? Math.Round((fuelCost / km.Value) * 100, 2) : null,
+                MaintenanceRepairPer100Km = km > 0 ? Math.Round(((maintCost + repairCost) / km.Value) * 100, 2) : null,
+                ConsumptionPer100Km = km > 0 ? Math.Round((fuelLiters / km.Value) * 100, 2) : null,
+                ConsumptionPrPer100Km = kmPrev > 0 ? Math.Round((litersPrev / kmPrev.Value) * 100, 2) : null
             };
             vehicleRows.Add(row);
         }
@@ -321,8 +370,11 @@ ORDER BY device_id, recorded_at DESC;
             {
                 DepartmentId = g.Key.DepartmentId,
                 DepartmentName = g.Key.DepartmentName,
-                TotalKm = g.Sum(v => v.Km),
-                TotalKmPr = g.Sum(v => v.KmPr),
+                // Les distances NON mesurees ne pesent rien dans le total : on ne
+                // peut pas les inventer. Les ratios du groupe (ComputeRatios)
+                // ecartent pour la meme raison les depenses de ces vehicules.
+                TotalKm = g.Sum(v => v.Km ?? 0),
+                TotalKmPr = g.Sum(v => v.KmPr ?? 0),
                 TotalFuelCostDzd = g.Sum(v => v.FuelCostDzd),
                 TotalFuelLiters = g.Sum(v => v.FuelLiters),
                 TotalFuelLitersPr = g.Sum(v => v.FuelLitersPr),
@@ -333,17 +385,19 @@ ORDER BY device_id, recorded_at DESC;
                 Vehicles = g.OrderBy(v => v.VehicleName).ToList()
             })
             .ToList();
+        foreach (var d in departmentGroups)
+            d.ComputeRatios(d.Vehicles);
 
         // 11. Build final report
-        return new MonthlyCostReportDto
+        var rapport = new MonthlyCostReportDto
         {
             Year = request.Year,
             Month = request.Month,
             MonthName = startDate.ToString("MMMM yyyy", FrenchCulture),
             ReportPeriod = $"{startDate:dd/MM/yyyy} - {endDate.AddDays(-1):dd/MM/yyyy}",
             GeneratedAt = DateTime.UtcNow,
-            TotalKm = vehicleRows.Sum(v => v.Km),
-            TotalKmPr = vehicleRows.Sum(v => v.KmPr),
+            TotalKm = vehicleRows.Sum(v => v.Km ?? 0),
+            TotalKmPr = vehicleRows.Sum(v => v.KmPr ?? 0),
             TotalFuelCostDzd = vehicleRows.Sum(v => v.FuelCostDzd),
             TotalFuelLiters = vehicleRows.Sum(v => v.FuelLiters),
             TotalFuelLitersPr = vehicleRows.Sum(v => v.FuelLitersPr),
@@ -354,6 +408,8 @@ ORDER BY device_id, recorded_at DESC;
             Departments = departmentGroups,
             Vehicles = vehicleRows.OrderBy(v => v.DepartmentName).ThenBy(v => v.VehicleName).ToList()
         };
+        rapport.ComputeRatios(rapport.Vehicles);
+        return rapport;
     }
 
     /// <summary>

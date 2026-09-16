@@ -687,7 +687,9 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.showAddForm = false;
         this.newEmail = { email: '', alertType: '' };
         this.loadAlertEmails();
-      }
+      },
+      // Formulaire laissé ouvert : l'utilisateur corrige sa saisie au lieu de la retaper.
+      error: (err) => this.showToast('error', this.apiErrorMessage(err, "L'adresse n'a pas pu être enregistrée."))
     });
   }
 
@@ -715,7 +717,9 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.editingId = null;
         this.editEmail = { email: '', alertType: '' };
         this.loadAlertEmails();
-      }
+      },
+      // Ligne laissée en édition : l'utilisateur corrige sa saisie au lieu de la retaper.
+      error: (err) => this.showToast('error', this.apiErrorMessage(err, "La modification n'a pas pu être enregistrée."))
     });
   }
 
@@ -755,6 +759,16 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.showToast('error', `Échec de l'envoi à ${item.email}`);
       }
     });
+  }
+
+  /**
+   * Le serveur refuse une adresse vide ou malformée (400, message en français) : sans ce
+   * relais, la saisie restait ouverte sans explication (recette du 16/09/2026).
+   */
+  // Seul le refus de validation (400) porte un message métier en français ;
+  // les autres erreurs du middleware sont en anglais et restent au message par défaut.
+  private apiErrorMessage(err: any, fallback: string): string {
+    return (err?.status === 400 && err?.error?.message) || fallback;
   }
 
   private showToast(kind: 'success' | 'error', message: string): void {

@@ -41,7 +41,20 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
         if (request.Plate != null) vehicle.Plate = request.Plate;
         if (request.Year.HasValue) vehicle.Year = request.Year;
         if (request.Color != null) vehicle.Color = request.Color;
-        if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
+        // Kilométrage : même garde que le PUT — un compteur ne recule pas. Sans
+        // elle, ce chemin (ouvert à l'API, pas au formulaire) laissait tomber le
+        // compteur à n'importe quelle valeur sans motif ni trace, alors qu'il sert
+        // de base aux entretiens et aux rapports. Une baisse assumée passe par
+        // PUT /api/vehicles/{id}/mileage, qui exige un motif et journalise.
+        if (request.Mileage is > 0)
+        {
+            if (request.Mileage.Value < vehicle.Mileage)
+                throw new GisAPI.Domain.Exceptions.DomainException(
+                    $"Le kilométrage saisi ({request.Mileage.Value:N0} km) est inférieur au kilométrage " +
+                    $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+
+            vehicle.Mileage = request.Mileage.Value;
+        }
         if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity;
 
         // Acquisition — l'empreinte des 7 champs est relevée avant/après :

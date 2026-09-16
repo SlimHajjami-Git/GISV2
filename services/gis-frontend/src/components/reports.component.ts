@@ -588,10 +588,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       next: (drivers) => this.drivers = drivers,
       error: (err) => console.error('Error loading drivers:', err)
     });
-    this.apiService.getDepartments().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (departments) => { this.departments = departments; this.cdr.detectChanges(); },
-      error: (err) => console.error('Error loading departments:', err)
-    });
+    // Les départements ne servent qu'à un filtre facultatif et viennent du module Gestion de
+    // flotte : un plan qui ne l'inclut pas répond désormais 403. Liste vide, sans bruit console.
+    this.apiService.getDepartments().pipe(
+      catchError(() => of([])),
+      takeUntil(this.destroy$)
+    ).subscribe(departments => { this.departments = departments; this.cdr.detectChanges(); });
   }
 
   onDriverFilterChange() {
@@ -3563,8 +3565,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         'KM Total': this.formatNumber(report.totalKm) + ' km',
         'Litres Total': this.formatNumber(report.totalFuelLiters) + ' L',
         'Coût Carburant': this.formatCurrency(report.totalFuelCostDzd),
-        'Consommation Moyenne': report.totalKm > 0
-          ? ((report.totalFuelLiters / report.totalKm) * 100).toFixed(2) + ' L/100km'
+        // Ratio du serveur, sur les seuls véhicules à distance mesurée.
+        'Consommation Moyenne': report.consumptionPer100Km != null
+          ? this.formatDecimal(report.consumptionPer100Km) + ' L/100km'
           : 'N/A'
       };
     }
@@ -3574,6 +3577,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
       ...v,
       type: this.monthlyCostReportType
     }));
+  }
+
+  /**
+   * Info-bulle de la colonne KM du rapport mensuel : d'où vient le kilométrage,
+   * ou pourquoi il n'y en a pas. Même vocabulaire que le rapport mensuel flotte.
+   */
+  kmMensuelTitre(v: VehicleMonthlyCost): string {
+    switch (v.kmSource) {
+      case 'gps': return 'Distance mesurée par le boîtier GPS';
+      case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
+      default: return 'Kilométrage non mesurable sur le mois : les relevés compteur saisis ne permettent pas de calculer une distance (un seul relevé, compteur inchangé ou relevés incohérents)';
+    }
   }
 
   /**
@@ -3640,7 +3655,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       case 'gps': return 'Distance mesurée par le boîtier GPS';
       case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)'
         + (v.reliableDistance ? '' : ' — incertain : rupture de compteur ou relevé écarté');
-      default: return 'Kilométrage non mesurable ce mois : moins de deux relevés compteur';
+      default: return 'Kilométrage non mesurable sur le mois';
     }
   }
 
@@ -5853,12 +5868,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     // Montant : formate pour le PDF, brut pour les tableurs.
     const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
-    // Ratio a deux decimales : idem.
-    const rt = (v: any) => pourPdf ? this.formatDecimal(Number(v) || 0) : n2(v);
+    // Ratio a deux decimales : idem. NULL = pas de distance mesuree, donc pas de
+    // ratio : « — » au PDF et cellule VIDE au tableur, jamais 0 — un zero se
+    // remoyenne ensuite comme une mesure.
+    const rt = (v: any) => v == null ? (pourPdf ? '—' : '') : (pourPdf ? this.formatDecimal(Number(v)) : n2(v));
     // Volume : une decimale.
     const lt = (v: any) => pourPdf ? this.formatLitres(Number(v) || 0) : n2(v);
-    // Distance : le PDF porte l’unite, le tableur non.
-    const km = (v: any) => pourPdf ? this.formatNumber(Number(v) || 0) + ' km' : n2(v);
+    // Distance : le PDF porte l’unite, le tableur non ; NULL = non mesuree.
+    const km = (v: any) => v == null
+      ? (pourPdf ? 'non mesuré' : '')
+      : (pourPdf ? this.formatNumber(Number(v)) + ' km' : n2(v));
 
     const columns = isCosts
       ? [
@@ -5922,12 +5941,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // juste avant de cliquer sur Exporter.
           'Litres': String(pourPdf ? this.formatLitres(r.totalFuelLiters) + ' L' : n2(r.totalFuelLiters)),
           'Coût carburant': String(mt(r.totalFuelCostDzd)),
+          // Ratio du serveur, sur les seuls vehicules a distance mesuree : les
+          // litres d’un vehicule « non mesure » gonflaient la moyenne. Sans
+          // kilometre mesure, pas de moyenne — et surtout pas 0.
           'Conso. moyenne': String(
-            r.totalKm > 0
+            r.consumptionPer100Km != null
               ? (pourPdf
-                  ? this.formatDecimal((r.totalFuelLiters / r.totalKm) * 100) + ' L/100km'
-                  : n2((r.totalFuelLiters / r.totalKm) * 100))
-              : (pourPdf ? '-' : 0))
+                  ? this.formatDecimal(r.consumptionPer100Km) + ' L/100km'
+                  : n2(r.consumptionPer100Km))
+              : (pourPdf ? '—' : ''))
         };
 
     return {
@@ -5939,10 +5961,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       orientation: 'landscape',
       // Les intitules de colonnes sont abreges pour tenir sur une seule ligne :
       // cette note dit ce qu’ils recouvrent. « E+R » surtout, qui ne se devine
-      // pas quand on decouvre le rapport.
-      footnote: isCosts
-        ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.`
-        : undefined,
+      // pas quand on decouvre le rapport. Suit la regle du kilometrage : sans
+      // distance mesurable dans le mois, il n’y a pas de ratio au kilometre.
+      footnote: (isCosts
+        ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.   `
+        : '* ')
+        + 'Km « non mesuré » : kilométrage non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
     };
   }
 
@@ -8229,6 +8253,50 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return !!this.costEvolution?.months?.some(m => m.isPartial);
   }
 
+  /**
+   * Quelle BORNE tronque un mois incomplet. Le serveur ne renvoie qu'un drapeau
+   * isPartial ; l'écran annonçait « en cours » dans tous les cas, donc rien du
+   * tout pour un mois coupé par la date de début — le seul mois qui, lui, est
+   * bel et bien terminé (recette du 13/09/2026).
+   * Les dates sont lues telles qu'écrites (les dix premiers caractères ISO) :
+   * passer par `new Date()` ferait glisser le jour d'un fuseau à l'autre.
+   */
+  private partialMonthBounds(m: MonthlyVehicleCostDto): { debut: boolean; fin: boolean } {
+    const ymd = (iso: string | null | undefined) => {
+      const p = (iso || '').slice(0, 10).split('-').map(Number);
+      return p.length === 3 && p.every(n => Number.isFinite(n)) ? { y: p[0], m: p[1], d: p[2] } : null;
+    };
+    const debutPeriode = ymd(this.costEvolution?.startDate);
+    const finPeriode = ymd(this.costEvolution?.endDate);   // dernier jour INCLUS
+    const dernierJourDuMois = new Date(Date.UTC(m.year, m.month, 0)).getUTCDate();
+    return {
+      debut: !!debutPeriode && debutPeriode.y === m.year && debutPeriode.m === m.month && debutPeriode.d > 1,
+      fin: !!finPeriode && finPeriode.y === m.year && finPeriode.m === m.month && finPeriode.d < dernierJourDuMois
+    };
+  }
+
+  /** Badge d'un mois incomplet, au plus court : « en cours », « début tronqué », « fin tronquée ». */
+  partialMonthBadge(m: MonthlyVehicleCostDto): string {
+    const { debut, fin } = this.partialMonthBounds(m);
+    if (debut && fin) return 'partiel';
+    if (debut) return 'début tronqué';
+    if (fin) {
+      const now = new Date();
+      return m.year === now.getFullYear() && m.month === now.getMonth() + 1 ? 'en cours' : 'fin tronquée';
+    }
+    // Le serveur fait foi : bornes illisibles côté écran, le mois reste signalé.
+    return 'incomplet';
+  }
+
+  /** Info-bulle du même badge : la phrase complète, bornes nommées. */
+  partialMonthTitle(m: MonthlyVehicleCostDto): string {
+    const { debut, fin } = this.partialMonthBounds(m);
+    if (debut && fin) return 'La période ne couvre qu’une partie de ce mois : elle commence après le 1er et s’arrête avant la fin.';
+    if (debut) return 'La période commence après le 1er de ce mois : le début du mois n’est pas compté.';
+    if (fin) return 'La période s’arrête avant la fin de ce mois.';
+    return 'La période ne couvre pas ce mois en entier.';
+  }
+
   /** Lignes du bloc de détail : le mois sélectionné, sinon toute la période. */
   evolutionDetailRows(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     return this.selectedEvolutionMonth ? this.evolutionMonthDetail() : this.evolutionCategoryTotals();
@@ -8241,7 +8309,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
   evolutionDetailLabel(): string {
     const sel = this.selectedEvolutionMonth;
-    if (sel) return sel.monthName + (sel.isPartial ? ' (en cours)' : '');
+    if (sel) return sel.monthName + (sel.isPartial ? ` (${this.partialMonthBadge(sel)})` : '');
     const mois = this.costEvolution?.months ?? [];
     if (!mois.length) return '';
     const premier = mois[0].monthName, dernier = mois[mois.length - 1].monthName;
@@ -8331,8 +8399,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.evolutionChart = new Chart(ctx, {
       type: 'bar',
-      // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (en cours) ».
-      data: { labels: months.map(m => m.isPartial ? [m.monthName, '(en cours)'] : m.monthName), datasets },
+      // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (incomplet) ».
+      // « (en cours) » était faux pour un mois tronqué par la date de début.
+      data: { labels: months.map(m => m.isPartial ? [m.monthName, '(incomplet)'] : m.monthName), datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -8946,7 +9015,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué reste à
    * l’écran). Recette du 11/09/2026 : valeurs formatées dans le PDF, brutes pour
    * les tableurs ; largeurs mesurées à la police réelle ; ligne TOTAL ajoutée et
-   * mise en évidence ; mois en cours signalé.
+   * mise en évidence ; mois incomplet signalé, quelle que soit la borne qui le tronque.
    */
   private buildCostEvolutionExport(vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     const r = this.costEvolution;
@@ -8975,8 +9044,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
     const data: any[] = (r.months || []).map(m => ({
-      // Le mois en cours est dit tel dans le PDF ; le tableur garde le mois brut.
-      monthName: m.monthName + (pourPdf && m.isPartial ? ' (en cours)' : ''),
+      // Un mois incomplet est dit tel dans le PDF, quelle que soit la borne qui
+      // le tronque ; le tableur garde le mois brut.
+      monthName: m.monthName + (pourPdf && m.isPartial ? ` (${this.partialMonthBadge(m)})` : ''),
       fuelCost: mt(m.fuelCost),
       maintenanceCost: mt(m.maintenanceCost),
       repairCost: mt(m.repairCost),
@@ -9007,7 +9077,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (r.lowestMonth) statistics[`Moins élevé : ${r.lowestMonth.monthName}`] = String(mt(r.lowestMonth.totalCost));
     else statistics['Mois le moins élevé'] = '—';
 
-    const enCours = (r.months || []).find(m => m.isPartial);
+    const incomplets = (r.months || []).filter(m => m.isPartial);
     const label = r.plate ? `${r.vehicleName} (${r.plate})` : (r.vehicleName || vehicleName);
     return {
       title: `${this.selectedTemplate?.name || 'Évolution des coûts'} — ${label}`,
@@ -9019,10 +9089,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       columns,
       data,
       highlightLastRow: true,
-      // Dit pourquoi le mois en cours n’a pas de variation et n’entre pas
-      // dans les mois le plus et le moins élevés.
-      footnote: enCours
-        ? `* ${enCours.monthName} est en cours : la période s’arrête avant la fin du mois. Il n’est comparé à aucun autre mois et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+      // Dit pourquoi un mois incomplet n’a pas de variation et n’entre pas dans
+      // les mois le plus et le moins élevés. La note ne parlait que du mois en
+      // cours : un mois tronqué par la date de début n’était expliqué nulle part.
+      footnote: incomplets.length
+        ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
         : undefined,
     };
   }

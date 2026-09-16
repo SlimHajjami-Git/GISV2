@@ -2,7 +2,7 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subject, takeUntil, forkJoin, of, catchError } from 'rxjs';
+import { Subject, takeUntil, forkJoin, of, catchError, expand, reduce, defer, EMPTY, Observable } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto, AcquisitionPaymentDto } from '../services/api.service';
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -168,6 +168,14 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   loading = false;
 
+  // ── Chargement des listes paginées (pleins, réparations) ───────────────────
+  /** Lignes demandées par appel. */
+  private static readonly PAGE_SIZE = 500;
+  /** Garde-fou : au-delà, on arrête de paginer et on le DIT (voir listTruncated). */
+  private static readonly MAX_PAGES = 40;
+  /** Vrai quand le garde-fou a coupé le chargement : totaux et filtres sont partiels. */
+  listTruncated = false;
+
   // ── Invoice scan (IA) — extract → review → save as a generic cost ──────────
   scanning = false;
   saving = false;
@@ -281,11 +289,63 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Enchaîne les pages d'une liste paginée jusqu'à la dernière.
+   *
+   * L'écran additionne lui-même les lignes qu'il a chargées : une page unique
+   * rendait le total et le filtre par mois FAUX dès que l'historique dépassait
+   * cette page, sans aucun avertissement (société de test : 399 pleins en base,
+   * 200 chargés, 19 796 € affichés au lieu de 39 341, et pas une ligne pour
+   * octobre 2025 — recette du 13/09/2026). Au-delà du garde-fou, on marque la
+   * liste comme tronquée au lieu de laisser croire à un total complet.
+   */
+  private loadAllPages<T>(
+    fetch: (page: number) => Observable<{ items?: T[]; totalCount?: number }>
+  ): Observable<T[]> {
+    return defer(() => {
+      let page = 1;
+      let recues = 0;
+      return fetch(page).pipe(
+        // On compte NOUS-MÊME les lignes reçues : les listes du serveur ne
+        // nomment pas leur page de la même façon (pleins « pageNumber »,
+        // réparations « page ») et une page vide arrête la boucle quoi qu'il
+        // arrive.
+        expand(res => {
+          const lot = res?.items?.length ?? 0;
+          recues += lot;
+          if (lot === 0 || recues >= (res?.totalCount ?? 0)) return EMPTY;
+          if (page >= ExpensesComponent.MAX_PAGES) { this.listTruncated = true; return EMPTY; }
+          return fetch(++page);
+        }),
+        // Une page en échec (réseau, 500) faisait échouer le forkJoin entier :
+        // l'écran Dépenses se vidait sans un mot, alors que les pages déjà
+        // reçues sont exploitables. On garde ce qui est arrivé et on le DIT,
+        // comme la branche voisine des échéances d'acquisition qui retombe sur
+        // une liste vide plutôt que d'emporter les autres dépenses.
+        catchError((err) => {
+          // 403 : la liste relève d'un droit ou d'un module que l'écran Dépenses
+          // n'exige pas (il ne demande que la fonctionnalité costs, les pleins
+          // demandent le droit ET le module Carburant). Rien n'a été tronqué :
+          // ces lignes ne sont simplement pas visibles pour cet utilisateur, et
+          // l'avertissement « liste tronquée » serait faux.
+          if (err?.status === 403) return EMPTY;
+          console.error('Error loading paged list:', err);
+          this.listTruncated = true;
+          return EMPTY;   // reduce émet alors les pages déjà reçues
+        }),
+        reduce((acc: T[], res) => acc.concat(res?.items || []), [] as T[])
+      );
+    });
+  }
+
   private loadExpenses(): void {
+    this.listTruncated = false;
     forkJoin({
       costs: this.apiService.getCosts(),
-      fuelEntries: this.apiService.getFuelEntries({ pageSize: 200 }),
-      repairs: this.apiService.getRepairs({ pageSize: 200 }),
+      fuelEntries: this.loadAllPages<any>(page =>
+        this.apiService.getFuelEntries({ page, pageSize: ExpensesComponent.PAGE_SIZE })),
+      repairs: this.loadAllPages<any>(page =>
+        this.apiService.getRepairs({ page, pageSize: ExpensesComponent.PAGE_SIZE })),
       // Échéances d'acquisition (mensualités, apport, achat comptant) lues en
       // base : sans includeFuture le serveur ne renvoie que ce qui compte ou a
       // compté en dépense (payées, planifiées échues, ignorées échues).
@@ -341,7 +401,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         });
 
         // FuelEntries
-        ((result.fuelEntries as any)?.items || []).forEach((f: any) => {
+        (result.fuelEntries || []).forEach((f: any) => {
           allExpenses.push({
             id: 'fuel_' + f.id,
             vehicleId: f.vehicleId || 0,
@@ -360,7 +420,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         });
 
         // Repairs
-        ((result.repairs as any)?.items || []).forEach((r: any) => {
+        (result.repairs || []).forEach((r: any) => {
           allExpenses.push({
             id: 'repair_' + r.id,
             vehicleId: r.vehicleId,

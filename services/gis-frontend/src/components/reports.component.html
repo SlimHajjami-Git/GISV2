@@ -406,7 +406,9 @@
                 <div class="stat-card stat-card--icone">
                   <span class="stat-icone stat-icone--vert"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20h16"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="6" y="12" width="3" height="6" rx="1"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="11" y="8" width="3" height="10" rx="1"/><rect stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" x="16" y="4" width="3" height="14" rx="1"/></svg></span>
                   <span class="stat-corps">
-                  <span class="stat-value">{{ monthlyCostReport.totalKm > 0 ? formatDecimal((monthlyCostReport.totalFuelLiters / monthlyCostReport.totalKm) * 100) : '-' }} L/100km</span>
+                  <!-- Ratio du serveur : les litres d’un vehicule « non mesure » n’ont
+                       aucun kilometre en face et gonflaient la moyenne. -->
+                  <span class="stat-value">{{ monthlyCostReport.consumptionPer100Km == null ? '—' : formatDecimal(monthlyCostReport.consumptionPer100Km) + ' L/100km' }}</span>
                   <span class="stat-label">Conso. Moyenne</span>
                   </span>
                 </div>
@@ -460,22 +462,27 @@
                                (« Commercial 01 ») ne dit rien a qui lit le rapport, et
                                doubler nom + plaque mangeait la largeur de la colonne. -->
                           <td>{{ v.plate || v.vehicleName }}</td>
-                          <td class="num">{{ formatNumber(v.km) }}</td>
+                          <!-- « non mesuré » plutot que 0 : des releves compteur qui
+                               n’additionnent aucun kilometre (releve unique, compteur
+                               inchange, ecarts incoherents) ne mesurent aucune distance,
+                               et les ratios qui en decoulent n’existent pas non plus
+                               (recette du 13/09/2026). -->
+                          <td class="num" [title]="kmMensuelTitre(v)">{{ v.km == null ? 'non mesuré' : formatNumber(v.km) }}</td>
                           @if (monthlyCostReportType === 'costs') {
                             <td class="num">{{ formatCurrency(v.fuelCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.maintenanceCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.repairCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCostDzd) }}</td>
                             <td class="num total-cell">{{ formatCurrency(v.totalCostDzd) }}</td>
-                            <td class="num">{{ formatDecimal(v.costPerKm) }}</td>
-                            <td class="num">{{ formatDecimal(v.fuelPer100Km) }}</td>
-                            <td class="num">{{ formatDecimal(v.maintenanceRepairPer100Km) }}</td>
+                            <td class="num">{{ v.costPerKm == null ? '—' : formatDecimal(v.costPerKm) }}</td>
+                            <td class="num">{{ v.fuelPer100Km == null ? '—' : formatDecimal(v.fuelPer100Km) }}</td>
+                            <td class="num">{{ v.maintenanceRepairPer100Km == null ? '—' : formatDecimal(v.maintenanceRepairPer100Km) }}</td>
                           } @else {
-                            <td class="num">{{ formatNumber(v.kmPr) }}</td>
+                            <td class="num">{{ v.kmPr == null ? 'non mesuré' : formatNumber(v.kmPr) }}</td>
                             <td class="num">{{ formatLitres(v.fuelLiters) }}</td>
                             <td class="num">{{ formatLitres(v.fuelLitersPr) }}</td>
-                            <td class="num">{{ formatDecimal(v.consumptionPer100Km) }}</td>
-                            <td class="num">{{ formatDecimal(v.consumptionPrPer100Km) }}</td>
+                            <td class="num">{{ v.consumptionPer100Km == null ? '—' : formatDecimal(v.consumptionPer100Km) }}</td>
+                            <td class="num">{{ v.consumptionPrPer100Km == null ? '—' : formatDecimal(v.consumptionPrPer100Km) }}</td>
                           }
                         </tr>
                       }
@@ -491,10 +498,13 @@
                           <td class="num"><strong>{{ formatCurrency(dept.totalOtherCostDzd) }}</strong></td>
                           <td class="num total-cell"><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
                           <!-- Ratios au format francais, comme les lignes au-dessus : ils
-                               sortaient de toFixed, donc « 0.13 » a cote de « 250,77 € ». -->
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal(dept.totalCostDzd / dept.totalKm) : '-' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal((dept.totalFuelCostDzd / dept.totalKm) * 100) : '-' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal(((dept.totalMaintenanceCostDzd + dept.totalRepairCostDzd) / dept.totalKm) * 100) : '-' }}</strong></td>
+                               sortaient de toFixed, donc « 0.13 » a cote de « 250,77 € ».
+                               Calcules par le serveur sur les seuls vehicules mesures :
+                               diviser ici le cout de TOUT le departement par ses km
+                               mesures gonflait le cout au km (recette du 13/09/2026). -->
+                          <td class="num"><strong>{{ dept.costPerKm == null ? '—' : formatDecimal(dept.costPerKm) }}</strong></td>
+                          <td class="num"><strong>{{ dept.fuelPer100Km == null ? '—' : formatDecimal(dept.fuelPer100Km) }}</strong></td>
+                          <td class="num"><strong>{{ dept.maintenanceRepairPer100Km == null ? '—' : formatDecimal(dept.maintenanceRepairPer100Km) }}</strong></td>
                         } @else {
                           <!-- Les trois colonnes « mois precedent » recopiaient le mois
                                COURANT : la ligne de total contredisait ses propres lignes
@@ -502,13 +512,20 @@
                           <td class="num"><strong>{{ formatNumber(dept.totalKmPr) }}</strong></td>
                           <td class="num"><strong>{{ formatLitres(dept.totalFuelLiters) }}</strong></td>
                           <td class="num"><strong>{{ formatLitres(dept.totalFuelLitersPr) }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKm > 0 ? formatDecimal((dept.totalFuelLiters / dept.totalKm) * 100) : '-' }}</strong></td>
-                          <td class="num"><strong>{{ dept.totalKmPr > 0 ? formatDecimal((dept.totalFuelLitersPr / dept.totalKmPr) * 100) : '-' }}</strong></td>
+                          <td class="num"><strong>{{ dept.consumptionPer100Km == null ? '—' : formatDecimal(dept.consumptionPer100Km) }}</strong></td>
+                          <td class="num"><strong>{{ dept.consumptionPrPer100Km == null ? '—' : formatDecimal(dept.consumptionPrPer100Km) }}</strong></td>
                         }
                       </tr>
                     </tfoot>
                   </table>
                 </div>
+              </div>
+            }
+
+            @if (monthlyCostReport.departments.length > 0) {
+              <div class="report-note">
+                <span>ℹ️</span>
+                <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « non mesuré » quand le kilométrage n’est pas mesurable sur le mois (un seul relevé, compteur inchangé ou relevés incohérents), et les ratios au kilomètre affichent alors « — » plutôt que 0. Le KM total ne compte que les distances mesurées, et les ratios des lignes de total ne portent que sur les véhicules mesurés.</span>
               </div>
             }
 
@@ -1271,8 +1288,9 @@
                 <span class="stat-corps">
                   <span class="stat-label">Mois le moins élevé</span>
                   <span class="stat-value success">{{ costEvolution.lowestMonth ? costEvolution.lowestMonth.monthName : '—' }}</span>
-                  <!-- Parmi les mois COMPLETS : un mois en cours serait par construction
-                       le moins élevé (voir GetVehicleCostEvolutionQueryHandler). -->
+                  <!-- Parmi les mois COMPLETS : un mois incomplet, tronqué par l’une ou
+                       l’autre borne, serait par construction le moins élevé (voir
+                       GetVehicleCostEvolutionQueryHandler). -->
                   <span class="stat-sub" *ngIf="costEvolution.lowestMonth">{{ formatCurrency(costEvolution.lowestMonth.totalCost) }}<ng-container *ngIf="hasPartialEvolutionMonth()"> &bull; mois complets</ng-container></span>
                 </span>
               </div>
@@ -1339,7 +1357,11 @@
                     <tbody>
                       @for (m of costEvolution.months; track (m.year + '-' + m.month)) {
                         <tr class="clickable" [class.highlighted]="isSelectedEvolutionMonth(m)" [class.muted]="m.totalCost === 0" [class.partial]="m.isPartial" (click)="selectEvolutionMonth(m)">
-                          <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" title="La période s’arrête avant la fin de ce mois">en cours</span></td>
+                          <!-- Le serveur dit QU’un mois est incomplet ; la borne en
+                               cause se lit sur la période demandée. Le badge disait
+                               « en cours » pour les deux, donc rien pour un mois
+                               tronqué par la date de début (recette du 13/09/2026). -->
+                          <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" [title]="partialMonthTitle(m)">{{ partialMonthBadge(m) }}</span></td>
                           <td class="num">{{ formatCurrency(m.fuelCost) }}</td>
                           <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
                           <td class="num">{{ formatCurrency(m.repairCost) }}</td>
@@ -1404,7 +1426,7 @@
 
             <div class="report-note">
               <span>ℹ️</span>
-              <span>Les mois sans dépense apparaissent à 0. La variation compare le total du mois au mois précédent (« — » pour le premier mois, si le mois précédent est à 0, ou pour un mois « en cours » : dix jours ne se comparent pas à un mois entier). Un mois en cours n’entre pas dans les mois le plus et le moins élevés. Carburant = pleins saisis, Entretiens = coûts d’entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d’acquisition ne sont pas comptées.</span>
+              <span>Les mois sans dépense apparaissent à 0. Un mois est dit INCOMPLET quand la période ne le couvre pas en entier, par l’une ou l’autre borne : elle commence après le 1er (période personnalisée) ou s’arrête avant la fin (mois en cours). La variation compare le total du mois au mois précédent (« — » pour le premier mois, si le mois précédent est à 0, ou dès que l’un des deux mois est incomplet : dix jours ne se comparent pas à un mois entier). Un mois incomplet n’entre pas non plus dans les mois le plus et le moins élevés. Carburant = pleins saisis, Entretiens = coûts d’entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d’acquisition ne sont pas comptées.</span>
             </div>
           </div>
         } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency && repairFrequency.totalInterventions === 0) {

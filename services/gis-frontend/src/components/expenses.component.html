@@ -267,6 +267,11 @@
             @if (getNotCountedCount() > 0) {
               <span class="stat-hint">+ {{ getNotCountedCount() }} non comptée(s)</span>
             }
+            <!-- Historique plus long que ce que l'écran sait charger : le total
+                 affiché n'est qu'une partie, il faut le dire. -->
+            @if (listTruncated) {
+              <span class="stat-hint">liste tronquée — total partiel</span>
+            }
           </span>
         </div>
       </div>

@@ -68,7 +68,10 @@ public class PermissionMiddleware
         { "/api/documents", "CanDocuments" },
         { "/api/accidentclaims", "CanAccidents" },
         { "/api/suppliers", "CanSuppliers" },
-        { "/api/fleetmanagement", "CanFleetManagement" },
+        // FleetManagementController est routé « api/fleet » : la clé « /api/fleetmanagement »
+        // ne correspondait à AUCUN chemin réel, et tout le module échappait aux deux contrôles
+        // (recette du 16/09/2026). « /api/fleet » couvre aussi l'ancienne clé.
+        { "/api/fleet", "CanFleetManagement" },
         { "/api/tours", "CanTours" },
         { "/api/gps", "CanMonitoring" },
         { "/api/gpsdevices", "CanMonitoring" },
@@ -145,7 +148,8 @@ public class PermissionMiddleware
         { "/api/documents", sub => sub.ModuleDocuments },
         { "/api/accidentclaims", sub => sub.ModuleAccidents },
         { "/api/suppliers", sub => sub.ModuleSuppliers },
-        { "/api/fleetmanagement", sub => sub.ModuleFleetManagement },
+        // Même clé que _modulePermissions ci-dessus : le [Route] EXACT du contrôleur.
+        { "/api/fleet", sub => sub.ModuleFleetManagement },
         { "/api/tours", sub => sub.ModuleTours },
         { "/api/users", sub => sub.ModuleUsers },
         { "/api/roles", sub => sub.ModuleUsers },
@@ -173,13 +177,19 @@ public class PermissionMiddleware
         "/api/statistics",
     };
 
+    /// <summary>
+    /// Clé la plus précise (préfixe le plus long) qui vise ce chemin dans une table de règles ;
+    /// null si aucune. Une règle plus longue ne peut qu'AJOUTER du contrôle, d'où le préfixe.
+    /// </summary>
+    private static string? MostSpecificRuleKey(IEnumerable<string> keys, string path) =>
+        keys
+            .Where(k => path.StartsWith(k, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(k => k.Length)
+            .FirstOrDefault();
+
     /// <summary>Permission utilisateur exigée par un chemin (préfixe le plus long) ; null si aucune.</summary>
     internal static string? RequiredUserPermission(string path) =>
-        _modulePermissions
-            .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(kv => kv.Key.Length)
-            .Select(kv => kv.Value)
-            .FirstOrDefault();
+        MostSpecificRuleKey(_modulePermissions.Keys, path) is { } key ? _modulePermissions[key] : null;
 
     /// <summary>
     /// L'utilisateur détient-il la permission nommée ? Un rapport exige le module Rapports
@@ -248,6 +258,44 @@ public class PermissionMiddleware
         "/api/geofences",
     };
 
+    /// <summary>
+    /// Le chemin EST la route, ou l'une de ses sous-routes (frontière de segment).
+    /// Une règle qui OUVRE un accès doit se comparer ainsi, jamais par simple préfixe :
+    /// « /api/vehiclestops » commence par « /api/vehicles » sans en être une sous-route
+    /// (recette du 16/09/2026). Les tables qui RESTREIGNENT gardent le préfixe le plus
+    /// long, qui ne peut qu'ajouter du contrôle.
+    /// </summary>
+    internal static bool IsRouteOrSubRoute(string path, string route) =>
+        string.Equals(path, route, StringComparison.OrdinalIgnoreCase)
+        || path.StartsWith(route + "/", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Ce GET porte-t-il sur une donnée de référence partagée ? La frontière de segment ne suffit
+    /// pas : « /api/vehicles/with-positions » EST une sous-route de « /api/vehicles » et héritait
+    /// du passe-droit, si bien que sa propre règle Suivi (CanMonitoring) ne servait jamais
+    /// (recette du 16/09/2026). La règle qui RESTREINT doit l'emporter sur celle qui OUVRE : le
+    /// passe-droit n'est accordé que si aucune règle — permission ou abonnement — ne vise le
+    /// chemin plus précisément que la route partagée elle-même.
+    /// </summary>
+    internal static bool IsSharedReferenceRead(string path, string method)
+    {
+        if (!HttpMethods.IsGet(method))
+            return false;
+
+        var sharedRoute = _readOnlySharedRoutes
+            .Where(r => IsRouteOrSubRoute(path, r))
+            .OrderByDescending(r => r.Length)
+            .FirstOrDefault();
+
+        if (sharedRoute == null)
+            return false;
+
+        return !EstPlusPrecise(MostSpecificRuleKey(_modulePermissions.Keys, path), sharedRoute)
+            && !EstPlusPrecise(MostSpecificRuleKey(_subscriptionModuleChecks.Keys, path), sharedRoute);
+
+        static bool EstPlusPrecise(string? cle, string route) => cle != null && cle.Length > route.Length;
+    }
+
     public PermissionMiddleware(RequestDelegate next)
     {
         _next = next;
@@ -293,14 +341,12 @@ public class PermissionMiddleware
             return;
         }
 
-        // Shared reference data: GET requests are allowed for any authenticated user
-        // (vehicles, drivers, geofences are needed by many modules)
-        // Write operations still go through full permission checks below
-        if (context.Request.Method == "GET" && _readOnlySharedRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
-        {
-            await _next(context);
-            return;
-        }
+        // Données de référence partagées (véhicules, chauffeurs, géofences) : leur LECTURE reste
+        // ouverte à tout utilisateur connecté, beaucoup d'écrans en ont besoin. Mais ce passe-droit
+        // ne porte QUE sur la permission utilisateur (CHECK 2) : il rendait aussi la main avant le
+        // contrôle d'abonnement (CHECK 1), si bien qu'un module non vendu — Suivi, Géofences —
+        // restait lisible par l'API, seule la garde Angular le masquait (recette du 16/09/2026).
+        var isSharedReferenceRead = IsSharedReferenceRead(path, context.Request.Method);
 
         // Admin routes check - only System Admin can access /api/admin/*
         if (path.StartsWith("/api/admin"))
@@ -333,6 +379,8 @@ public class PermissionMiddleware
             return;
         }
 
+        // Chargé pour TOUTE requête non exemptée, même quand aucune règle ne vise le chemin : c'est
+        // ce qui refuse (401) le jeton encore valide d'un utilisateur supprimé.
         var currentUser = await dbContext.Users
             .AsNoTracking()
             .Include(u => u.Role)
@@ -360,19 +408,15 @@ public class PermissionMiddleware
         var subscriptionType = currentUser.Societe?.SubscriptionType;
         if (subscriptionType != null)
         {
-            var matchedSub = _subscriptionModuleChecks
-                .Where(kv => path.StartsWith(kv.Key, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(kv => kv.Key.Length)
-                .FirstOrDefault();
-
-            if (matchedSub.Key != null)
+            var subscriptionRuleKey = MostSpecificRuleKey(_subscriptionModuleChecks.Keys, path);
+            if (subscriptionRuleKey != null)
             {
-                var moduleEnabled = matchedSub.Value(subscriptionType);
+                var moduleEnabled = _subscriptionModuleChecks[subscriptionRuleKey](subscriptionType);
                 if (!moduleEnabled)
                 {
                     // Distinguish between a blocked report type vs a blocked module
-                    var isReportTypeBlock = matchedSub.Key.StartsWith("/api/reports/", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(matchedSub.Key, "/api/ai-chat/fleet-report", StringComparison.OrdinalIgnoreCase);
+                    var isReportTypeBlock = subscriptionRuleKey.StartsWith("/api/reports/", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(subscriptionRuleKey, "/api/ai-chat/fleet-report", StringComparison.OrdinalIgnoreCase);
                     context.Response.StatusCode = 403;
                     await context.Response.WriteAsJsonAsync(new
                     {
@@ -393,24 +437,16 @@ public class PermissionMiddleware
         // CHECK 2: User-level permission (per-user module access)
         // ──────────────────────────────────────────────────────────
         var isAdmin = currentUser.Role?.IsCompanyAdmin == true || currentUser.AccessLevel == "admin";
-        if (!isAdmin)
+        var requiredPermission = isSharedReferenceRead ? null : RequiredUserPermission(path);
+        if (!isAdmin && requiredPermission != null && !IsGranted(currentUser, requiredPermission))
         {
-            var requiredPermission = RequiredUserPermission(path);
-            if (requiredPermission != null)
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsJsonAsync(new
             {
-                var allowed = IsGranted(currentUser, requiredPermission);
-
-                if (!allowed)
-                {
-                    context.Response.StatusCode = 403;
-                    await context.Response.WriteAsJsonAsync(new
-                    {
-                        message = "Vous n'avez pas accès à ce module",
-                        code = "USER_PERMISSION_DENIED"
-                    });
-                    return;
-                }
-            }
+                message = "Vous n'avez pas accès à ce module",
+                code = "USER_PERMISSION_DENIED"
+            });
+            return;
         }
 
         await _next(context);

@@ -32,27 +32,35 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
 
         var months = new List<MonthlyVehicleCostDto>();
         decimal? previousTotal = null;
+        var previousPartial = false;
         foreach (var (year, month) in data.MonthsInRange())
         {
             var bucket = vehicle.Months.GetValueOrDefault((year, month), CostBucket.Zero);
             var total = bucket.Total;
 
-            decimal? variation = previousTotal is > 0
-                ? (total - previousTotal.Value) / previousTotal.Value * 100m
-                : null;
-
             var km = vehicle.MonthlyKm.GetValueOrDefault((year, month));
 
-            // Mois INCOMPLET : la période s’arrête avant son dernier jour. C’est
-            // le cas du mois en cours sur « 12 derniers mois » et « Cette année ».
-            // Présenté comme un mois normal, il affichait une chute de 33 à
+            // Mois INCOMPLET : la période ne couvre pas le mois entier, par l'une
+            // OU l'autre borne. Elle s'arrête avant son dernier jour (mois en
+            // cours de « 12 derniers mois » et « Cette année ») ou elle commence
+            // après son premier jour (période personnalisée qui ne démarre pas un
+            // 1er). Présenté comme un mois normal, il affichait une chute de 33 à
             // 100 % sur les 12 véhicules du jeu de recette (10 jours sur 30), et
-            // la carte « Mois le moins élevé » le désignait presque toujours :
-            // un fait faux, affiché en gros (recette du 11/09/2026).
-            var finDuMois = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
-            var incomplet = endExclusiveUtc < finDuMois;
-            if (incomplet)
-                variation = null;   // comparer 10 jours à un mois entier n’a pas de sens
+            // la carte « Mois le moins élevé » le désignait presque toujours : un
+            // fait faux, affiché en gros. Corrigé sur la borne de fin le
+            // 11/09/2026, la borne de début était restée ouverte — octobre 2025
+            // démarré le 15 sortait « mois le moins élevé » à 278,64 alors que le
+            // mois entier vaut 390,10 (recette du 13/09/2026).
+            var debutDuMois = new DateTime(year, month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var finDuMois = debutDuMois.AddMonths(1);
+            var incomplet = startUtc > debutDuMois || endExclusiveUtc < finDuMois;
+
+            // Comparer 10 jours à un mois entier n'a pas de sens, dans un sens
+            // comme dans l'autre : un mois complet qui suit un mois tronqué
+            // afficherait une flambée aussi fausse que la chute du mois tronqué.
+            decimal? variation = !incomplet && !previousPartial && previousTotal is > 0
+                ? (total - previousTotal.Value) / previousTotal.Value * 100m
+                : null;
 
             months.Add(new MonthlyVehicleCostDto(
                 Year: year,
@@ -68,6 +76,7 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
                 IsPartial: incomplet));
 
             previousTotal = total;
+            previousPartial = incomplet;
         }
 
         var totalCost = vehicle.Total.Total;
