@@ -99,9 +99,12 @@ public class GetVehicleMaintenanceQueryHandler : IRequestHandler<GetVehicleMaint
                     s.FreeExpiryDate,
                     s.FreeNotes
                 );
-            }).OrderBy(i => i.Status == "overdue" ? 0 : i.Status == "due" ? 1 : i.Status == "upcoming" ? 2 : 3)
-              .ThenBy(i => i.DaysUntilDue ?? int.MaxValue)
-              .ToList();
+            })
+            // « critical » est plus urgent que « due » : il tombait avec « ok » en fin
+            // de liste. Même ordre que /vehicle-maintenance/alerts.
+            .OrderBy(i => i.Status == "overdue" ? 0 : i.Status == "critical" ? 1 : i.Status == "due" ? 2 : i.Status == "upcoming" ? 3 : 4)
+            .ThenBy(i => i.DaysUntilDue ?? int.MaxValue)
+            .ToList();
 
             results.Add(new VehicleMaintenanceStatusDto(
                 vehicle.Id,

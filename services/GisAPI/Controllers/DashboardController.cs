@@ -323,8 +323,10 @@ public class DashboardController : ControllerBase
             .ToList();
 
         // ── Immobilized vehicles (from maintenance schedules overdue/critical + vehicle status) ──
+        // Modèle désactivé exclu comme dans /vehicle-maintenance/alerts et /stats :
+        // le recalcul des statuts l'ignore, son statut est figé (recette GPA, DEF-016).
         var immobSchedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"))
             .Include(s => s.Vehicle)
             .Include(s => s.Template)
@@ -356,7 +358,7 @@ public class DashboardController : ControllerBase
         var monthEnd = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
 
         var immobRaw = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical") &&
                         s.NextDueDate.HasValue &&
                         s.NextDueDate.Value >= sixMonthsAgo &&
@@ -741,15 +743,16 @@ public class DashboardController : ControllerBase
             .CountAsync();
 
         // Maintenance stats (from VehicleMaintenanceSchedules — the active system)
+        // Même périmètre que /vehicle-maintenance/stats : ni pause, ni modèle désactivé.
         var upcomingMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "upcoming" || s.Status == "due"))
             .CountAsync();
 
         var overdueMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical"))
             .CountAsync();
 

@@ -407,7 +407,8 @@ public class AiChatController : ControllerBase
         // Scheduled maintenance (upcoming)
         ctx.ScheduledMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.VehicleId == vehicle.Id && s.Status != "completed")
+            // Ni pause ni gabarit désactivé : leur statut figé annonçait un entretien qui n'est plus suivi.
+            .Where(s => s.VehicleId == vehicle.Id && s.Status != "completed" && !s.IsPaused && s.Template!.IsActive)
             .Include(s => s.Template)
             .Take(5)
             .Select(s => new ScheduledMaintenanceSummary
@@ -803,7 +804,7 @@ public class AiChatController : ControllerBase
 
         // ── Scheduled maintenance status ──
         var schedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused)
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive)
             .Include(s => s.Template)
             .ToListAsync();
 

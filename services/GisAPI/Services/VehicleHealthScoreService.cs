@@ -77,10 +77,12 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         var sixMonthsAgo = now.AddMonths(-6);
         var thirtyDaysAgo = now.AddDays(-30);
 
-        // 1 requête : entretiens par (véhicule, statut).
+        // 1 requête : entretiens par (véhicule, statut). Un échéancier en pause ou d'un
+        // gabarit désactivé n'est plus recalculé : son statut reste figé (souvent « overdue »)
+        // et retirait des points au score. Même périmètre que /vehicle-maintenance/stats.
         var schedRows = await context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => vehicleIds.Contains(s.VehicleId))
+            .Where(s => vehicleIds.Contains(s.VehicleId) && !s.IsPaused && s.Template!.IsActive)
             .GroupBy(s => new { s.VehicleId, s.Status })
             .Select(g => new { g.Key.VehicleId, g.Key.Status, Count = g.Count() })
             .ToListAsync(ct);
@@ -125,7 +127,7 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
 
         var schedules = await context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.VehicleId == vehicle.Id)
+            .Where(s => s.VehicleId == vehicle.Id && !s.IsPaused && s.Template!.IsActive)
             .Select(s => s.Status)
             .ToListAsync(ct);
         var statusCounts = schedules

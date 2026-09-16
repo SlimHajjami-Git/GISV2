@@ -241,11 +241,18 @@ public class PredictiveAlertService : BackgroundService
     private async Task CheckMaintenanceDue(GisDbContext context, INotificationService notifService,
         IAlertEmailDispatcher alertDispatcher, Vehicle vehicle, int companyId, CancellationToken ct)
     {
+        // Même périmètre que /vehicle-maintenance/alerts : ni pause, ni modèle
+        // désactivé. Le recalcul des statuts les ignore, leur statut reste figé ;
+        // l'écran conseille de désactiver un modèle pour qu'il ne soit « plus
+        // surveillé », il ne doit donc plus déclencher d'alerte (recette GPA, DEF-016).
         var schedules = await context.VehicleMaintenanceSchedules
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(s => s.Template)
-            .Where(s => s.VehicleId == vehicle.Id && (s.Status == "due" || s.Status == "overdue" || s.Status == "critical"))
+            .Where(s => s.VehicleId == vehicle.Id
+                     && !s.IsPaused
+                     && s.Template!.IsActive
+                     && (s.Status == "due" || s.Status == "overdue" || s.Status == "critical"))
             .ToListAsync(ct);
 
         foreach (var schedule in schedules)

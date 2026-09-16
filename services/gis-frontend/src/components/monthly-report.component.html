@@ -83,7 +83,8 @@
             <div class="card-content">
               <span class="card-value">{{ formatNumber(report.executiveSummary.totalDistanceKm) }}</span>
               <span class="card-label">km parcourus</span>
-              <span class="card-sub">{{ report.executiveSummary.totalTrips }} trajets</span>
+              <span class="card-sub" *ngIf="!sansBoitier">{{ report.executiveSummary.totalTrips }} trajets</span>
+              <span class="card-sub" *ngIf="sansBoitier" title="Kilométrage reconstitué des relevés compteur saisis">Trajets : {{ nonDisponible | lowercase }}</span>
             </div>
           </div>
           <div class="summary-card warning">
@@ -107,15 +108,17 @@
             <div class="card-content">
               <span class="card-value">{{ formatPercent(report.executiveSummary.fleetUtilizationRate) }}</span>
               <span class="card-label">Utilisation</span>
-              <span class="card-sub">{{ report.utilization.totalOperatingDays }} jours actifs</span>
+              <span class="card-sub" *ngIf="!sansBoitier">{{ report.utilization.totalOperatingDays }} jours actifs</span>
+              <span class="card-sub" *ngIf="sansBoitier">{{ nonDisponible }}</span>
             </div>
           </div>
           <div class="summary-card purple">
             <div class="card-icon">⏱️</div>
             <div class="card-content">
-              <span class="card-value">{{ report.executiveSummary.totalDrivingHours }}</span>
+              <span class="card-value">{{ formatNumber(report.executiveSummary.totalDrivingHours) }}</span>
               <span class="card-label">heures de conduite</span>
-              <span class="card-sub">{{ report.driverPerformance.activeDrivers }} conducteurs</span>
+              <span class="card-sub" *ngIf="!sansBoitier">{{ report.driverPerformance.activeDrivers }} conducteurs</span>
+              <span class="card-sub" *ngIf="sansBoitier">{{ nonDisponible }}</span>
             </div>
           </div>
         </div>
@@ -140,19 +143,24 @@
         <div class="comparison-section">
           <h3>📊 Comparaison avec le mois précédent</h3>
           <div class="comparison-grid">
-            <div class="comparison-item" *ngFor="let metric of [
-              report.monthOverMonth.distance,
-              report.monthOverMonth.fuelConsumption,
-              report.monthOverMonth.trips,
-              report.monthOverMonth.utilization
-            ]">
-              <span class="metric-name">{{ metric.metricName }}</span>
-              <span class="metric-value">{{ formatNumber(metric.currentValue, 1) }}</span>
-              <span class="metric-change" [class.positive]="metric.isPositiveTrend" [class.negative]="!metric.isPositiveTrend">
-                {{ getTrendIcon(metric.trend) }} {{ metric.changePercent > 0 ? '+' : '' }}{{ formatNumber(metric.changePercent, 1) }}%
-              </span>
+            <div class="comparison-item" *ngFor="let c of comparaisonMoisPrecedent">
+              <span class="metric-name">{{ c.nom }}</span>
+              <ng-container *ngIf="c.metrique as metric; else nonMesure">
+                <span class="metric-value">{{ formatNumber(metric.currentValue, 1) }}</span>
+                <span class="metric-change" [class.positive]="metric.isPositiveTrend" [class.negative]="!metric.isPositiveTrend">
+                  {{ getTrendIcon(metric.trend) }} {{ metric.changePercent > 0 ? '+' : '' }}{{ formatNumber(metric.changePercent, 1) }}%
+                </span>
+              </ng-container>
+              <ng-template #nonMesure>
+                <span class="metric-value">—</span>
+                <span class="metric-change">{{ nonDisponible }}</span>
+              </ng-template>
             </div>
           </div>
+          <p class="section-note" *ngIf="sansBoitier">
+            Sans boîtier GPS, la distance comparée est le kilométrage reconstitué des relevés compteur saisis,
+            et le carburant les litres achetés sur chacun des deux mois.
+          </p>
         </div>
 
         <!-- Charts Row -->
@@ -214,11 +222,15 @@
                 <td>{{ type.type }}</td>
                 <td>{{ type.count }}</td>
                 <td>{{ formatPercent(type.percentage) }}</td>
-                <td>{{ type.totalDistanceKm | appDistance:0 }}</td>
-                <td>{{ type.avgDistanceKm | appDistance:0 }}</td>
+                <td>{{ type.totalDistanceKm == null ? '—' : (type.totalDistanceKm | appDistance:0) }}</td>
+                <td>{{ type.avgDistanceKm == null ? '—' : (type.avgDistanceKm | appDistance:0) }}</td>
               </tr>
             </tbody>
           </table>
+          <p class="section-note" *ngIf="sansBoitier">
+            Sans boîtier GPS, la distance est reconstituée des relevés compteur saisis (pleins, entretiens,
+            réparations, dépenses) ; la moyenne porte sur les véhicules mesurés, « — » quand aucun ne l'est.
+          </p>
         </div>
       </section>
 
@@ -228,6 +240,12 @@
           <h2>📈 Utilisation des véhicules</h2>
         </div>
 
+        <div class="empty-hint" *ngIf="sansBoitier">
+          Taux d'utilisation, jours d'activité, distance journalière et trajets : non disponibles sans boîtier GPS.
+          Le kilométrage du mois, reconstitué des relevés compteur saisis, figure dans le résumé.
+        </div>
+
+        <ng-container *ngIf="!sansBoitier">
         <div class="utilization-stats">
           <div class="stat-box primary">
             <span class="stat-value">{{ formatPercent(report.utilization.overallUtilizationRate) }}</span>
@@ -324,6 +342,7 @@
             </div>
           </div>
         </div>
+        </ng-container>
       </section>
 
       <!-- Fuel Section -->
@@ -376,19 +395,23 @@
             <tbody>
               <tr *ngFor="let v of report.fuelAnalytics.byVehicle">
                 <td>{{ v.vehicleName }}</td>
-                <td>{{ v.totalDistanceKm | appDistance:0 }}</td>
+                <!-- Sans distance mesurée (un seul relevé, aucun boîtier), 0 km, 0 L/100 km
+                     et « Faible » se lisaient comme des mesures. -->
+                <td>{{ v.totalDistanceKm > 0 ? (v.totalDistanceKm | appDistance:0) : '—' }}</td>
                 <td>
                   {{ v.totalConsumedLiters | appVolume:0 }}
                   <span class="est-tag" *ngIf="v.isEstimated" title="Aucun plein saisi pour ce véhicule : litres estimés">estimé</span>
                 </td>
-                <td>{{ formatNumber(v.consumptionPer100Km, 1) }}</td>
-                <td>{{ formatNumber(v.efficiencyKmPerLiter, 1) }}</td>
+                <td>{{ v.totalDistanceKm > 0 ? formatNumber(v.consumptionPer100Km, 1) : '—' }}</td>
+                <td>{{ v.totalDistanceKm > 0 ? formatNumber(v.efficiencyKmPerLiter, 1) : '—' }}</td>
                 <td>
-                  <span class="badge" [class.success]="v.efficiencyRating === 'Excellent' || v.efficiencyRating === 'Bon'"
+                  <span class="badge" *ngIf="v.totalDistanceKm > 0; else sansDistance"
+                        [class.success]="v.efficiencyRating === 'Excellent' || v.efficiencyRating === 'Bon'"
                         [class.warning]="v.efficiencyRating === 'Moyen'"
                         [class.danger]="v.efficiencyRating === 'Faible'">
                     {{ v.efficiencyRating }}
                   </span>
+                  <ng-template #sansDistance>—</ng-template>
                 </td>
               </tr>
             </tbody>
@@ -474,6 +497,11 @@
           </div>
         </div>
 
+        <div class="empty-hint" *ngIf="sansBoitier">
+          Score, distance, trajets, vitesse et excès de vitesse des conducteurs : non disponibles sans boîtier GPS.
+        </div>
+
+        <ng-container *ngIf="!sansBoitier">
         <div class="charts-row">
           <div class="chart-card">
             <h4>Classement des conducteurs</h4>
@@ -539,6 +567,7 @@
             </tbody>
           </table>
         </div>
+        </ng-container>
       </section>
 
       <!-- Costs Section -->

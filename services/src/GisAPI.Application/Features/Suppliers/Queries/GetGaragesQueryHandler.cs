@@ -76,6 +76,13 @@ public class GetGaragesQueryHandler : IRequestHandler<GetGaragesQuery, Paginated
             ))
             .ToListAsync(cancellationToken);
 
+        // Même défaut que la liste des fournisseurs : services lus en table (DEF-012).
+        var services = await SupplierServiceCodes.ParFournisseurAsync(
+            _context, items.Select(s => s.Id).ToList(), cancellationToken);
+        items = items
+            .Select(s => s with { Services = services.GetValueOrDefault(s.Id) ?? new List<string>() })
+            .ToList();
+
         return new PaginatedList<SupplierDto>(items, totalCount, request.Page, request.PageSize);
     }
 }

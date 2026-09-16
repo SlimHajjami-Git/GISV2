@@ -3001,10 +3001,11 @@ export interface ExecutiveSummary {
   totalDistanceKm: number;
   totalFuelConsumedLiters: number;
   totalOperationalCost: number;
-  fleetUtilizationRate: number;
+  /** null : parc sans boîtier, non mesuré (voir MonthlyFleetReport.fleetHasGps). */
+  fleetUtilizationRate: number | null;
   averageFuelEfficiency: number;
-  totalTrips: number;
-  totalDrivingHours: number;
+  totalTrips: number | null;
+  totalDrivingHours: number | null;
   keyInsights: string[];
   recommendations: string[];
 }
@@ -3023,8 +3024,9 @@ export interface VehicleTypeSummary {
   type: string;
   count: number;
   percentage: number;
-  totalDistanceKm: number;
-  avgDistanceKm: number;
+  /** Sans boîtier : kilométrage des relevés saisis ; null si aucun véhicule du type n'est mesuré. */
+  totalDistanceKm: number | null;
+  avgDistanceKm: number | null;
 }
 
 export interface VehicleStatusSummary {
@@ -3041,11 +3043,12 @@ export interface DepartmentSummary {
 }
 
 export interface VehicleUtilization {
-  overallUtilizationRate: number;
+  /** Taux, distance journalière et jours : null pour un parc sans boîtier (non mesurés). */
+  overallUtilizationRate: number | null;
   averageDailyUsageHours: number;
-  averageDailyDistanceKm: number;
-  totalOperatingDays: number;
-  totalIdleDays: number;
+  averageDailyDistanceKm: number | null;
+  totalOperatingDays: number | null;
+  totalIdleDays: number | null;
   dailyTrend: DailyUtilization[];
   byVehicle: VehicleUtilizationDetail[];
   statistics: StatisticalMetrics;
@@ -3169,7 +3172,8 @@ export interface UpcomingMaintenance {
 export interface DriverPerformance {
   totalDrivers: number;
   activeDrivers: number;
-  averagePerformanceScore: number;
+  /** Score tiré des vitesses GPS ; null pour un parc sans boîtier. */
+  averagePerformanceScore: number | null;
   driverMetrics: DriverMetrics[];
   topPerformers: DriverRanking[];
   needsImprovement: DriverRanking[];
@@ -3210,7 +3214,8 @@ export interface OperationalEfficiency {
   // Disponibilité flotte, ponctualité et efficacité d'itinéraire ont été retirées
   // du serveur le 09/09/2026 : c'étaient trois constantes (95, 92, 88) affichées
   // comme des mesures. Seul le temps d'inactivité est réellement calculé.
-  idleTimePercentage: number;
+  // null pour un parc sans boîtier (aucune trame).
+  idleTimePercentage: number | null;
   dailyTrend: DailyEfficiency[];
   metrics: EfficiencyMetric[];
 }
@@ -3270,9 +3275,10 @@ export interface FleetPeriodComparison {
   distance: ComparisonMetric;
   fuelConsumption: ComparisonMetric;
   cost: ComparisonMetric;
-  utilization: ComparisonMetric;
+  /** null pour un parc sans boîtier (non mesuré). */
+  utilization: ComparisonMetric | null;
   efficiency: ComparisonMetric;
-  trips: ComparisonMetric;
+  trips: ComparisonMetric | null;
 }
 
 export interface ComparisonMetric {

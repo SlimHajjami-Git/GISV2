@@ -30,14 +30,19 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
         var template = await _context.MaintenanceTemplates
             .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken);
 
+        // Refus métier (400 lisible) plutôt qu'une erreur 500 anonyme : le cas
+        // réel est un modèle ou un véhicule supprimé pendant que le panneau
+        // « Affecter » était ouvert, et l'écran affiche ce message tel quel.
         if (template == null)
-            throw new InvalidOperationException($"Template not found: {request.TemplateId}");
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce modèle d'entretien n'existe plus. Rechargez la page puis recommencez l'affectation.");
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
 
         if (vehicle == null)
-            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce véhicule n'existe plus. Rechargez la page puis recommencez l'affectation.");
 
         // Calypso 7 (P-maint-bis): use the smart mileage resolver instead of
         // raw vehicle.Mileage. The resolver cascades GPS odometer → manual
@@ -250,10 +255,16 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         await _context.SaveChangesAsync(cancellationToken);
 
         // Update schedule
+        // L'intervalle personnalisé du véhicule (PUT schedules/{id}/intervals) prime
+        // sur celui du modèle, comme dans UpdateScheduleIntervals, le rebase et
+        // MaintenanceSchedulerService. Seul le modèle était lu ici : le réglage
+        // restait en base mais était ignoré dès le premier entretien réalisé.
+        var intervalKm = schedule.CustomIntervalKm ?? template.IntervalKm;
+        var intervalMonths = schedule.CustomIntervalMonths ?? template.IntervalMonths;
         schedule.LastDoneDate = request.Date;
         schedule.LastDoneKm = request.Mileage;
-        schedule.NextDueKm = template.IntervalKm.HasValue ? request.Mileage + template.IntervalKm.Value : null;
-        schedule.NextDueDate = template.IntervalMonths.HasValue ? request.Date.AddMonths(template.IntervalMonths.Value) : null;
+        schedule.NextDueKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : null;
+        schedule.NextDueDate = intervalMonths.HasValue ? request.Date.AddMonths(intervalMonths.Value) : null;
         // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
         // already-loaded template (the schedule was fetched without Include
         // so schedule.Template was null inside CalculateStatus, falling back

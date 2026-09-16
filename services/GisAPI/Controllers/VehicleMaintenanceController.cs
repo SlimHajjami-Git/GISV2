@@ -45,7 +45,7 @@ public class VehicleMaintenanceController : ControllerBase
     }
 
     /// <summary>
-    /// Get maintenance alerts (overdue and due)
+    /// Get maintenance alerts (overdue, critical and due), excluding paused schedules and inactive templates
     /// </summary>
     [HttpGet("alerts")]
     public async Task<ActionResult<List<MaintenanceItemDto>>> GetAlerts()

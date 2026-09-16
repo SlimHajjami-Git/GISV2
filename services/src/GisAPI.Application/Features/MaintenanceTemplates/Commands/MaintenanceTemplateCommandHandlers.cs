@@ -1,6 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -113,10 +114,36 @@ public class DeleteMaintenanceTemplateCommandHandler : IRequestHandler<DeleteMai
 
         if (template == null) return false;
 
+        // Les clés étrangères vers maintenance_templates sont en ON DELETE CASCADE :
+        // supprimer un modèle effaçait les journaux des entretiens déjà réalisés,
+        // alors que leurs dépenses (sans lien vers le modèle) restaient. L'historique
+        // du véhicule se vidait pendant que Dépenses et « Coûts maintenance »
+        // montraient toujours l'intervention (recette GPA, DEF-016).
+        // Un modèle qui a servi se désactive donc au lieu d'être supprimé : aucune
+        // donnée n'est perdue. Sans historique, la suppression reste possible (elle
+        // ne retire que des échéances à venir).
+        var doneCount = await _context.MaintenanceLogs
+            .CountAsync(l => l.TemplateId == template.Id, cancellationToken);
+
+        if (doneCount > 0)
+            throw new ConflictException(HistoryConflictMessage(template, doneCount));
+
         _context.MaintenanceTemplates.Remove(template);
         await _context.SaveChangesAsync(cancellationToken);
 
         return true;
+    }
+
+    private static string HistoryConflictMessage(MaintenanceTemplate template, int doneCount)
+    {
+        var history = doneCount > 1
+            ? $"{doneCount} entretiens réalisés y sont rattachés"
+            : "1 entretien réalisé y est rattaché";
+        var advice = template.IsActive
+            ? "Désactivez-le plutôt : il ne sera plus proposé ni surveillé, et son historique restera consultable."
+            : "Il est déjà désactivé : il n'est plus proposé ni surveillé, et son historique reste consultable.";
+        return $"Le modèle « {template.Name} » ne peut pas être supprimé : {history}, " +
+               $"et la suppression effacerait cet historique. {advice}";
     }
 }
 

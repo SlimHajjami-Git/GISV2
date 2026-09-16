@@ -55,6 +55,14 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
                     "Vérifiez le matricule ou créez d'abord le véhicule.");
         }
 
+        // Type de carburant : une valeur hors référentiel n'était arrêtée que par la
+        // clé étrangère au SaveChanges, d'où un 500 anonyme en saisie unitaire et un
+        // message EF en anglais dans le bilan d'import. On la refuse en amont.
+        if (!await _context.FuelTypes.AnyAsync(t => t.Id == request.FuelTypeId, cancellationToken))
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"Type de carburant inconnu (identifiant {request.FuelTypeId}). " +
+                "Choisissez un type de carburant de la liste.");
+
         // Calypso 9 p2 — operator may submit a ticket where only the
         // gross total is legible. Honour an explicit TotalAmount > 0
         // and fall back to volume × price otherwise. Volume / price

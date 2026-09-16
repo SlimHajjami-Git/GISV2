@@ -615,8 +615,9 @@ public class GetMonthlyFleetReportQueryHandlerTests
         report.FuelAnalytics.ByVehicle.Single().ConsumptionPer100Km.Should().Be(11.67);
         report.FuelAnalytics.IsEstimated.Should().BeFalse("le Camion entrait sans litres et faussait le drapeau");
 
-        // Heures de conduite : les trajets du Camion ne comptent pas.
-        report.ExecutiveSummary.TotalDrivingHours.Should().Be(0);
+        // Heures de conduite : les trajets du Camion ne comptent pas. L'Opel seul
+        // n'a pas de boîtier : non mesurées (null), et non « 0 h » (DEF-024).
+        report.ExecutiveSummary.TotalDrivingHours.Should().BeNull();
         report.ExecutiveSummary.TotalOperationalCost.Should().Be(1_770m);
     }
 

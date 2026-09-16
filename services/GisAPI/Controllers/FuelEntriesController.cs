@@ -13,12 +13,10 @@ namespace GisAPI.Controllers;
 public class FuelEntriesController : ControllerBase
 {
     private readonly IMediator _mediator;
-    private readonly ILogger<FuelEntriesController> _logger;
 
-    public FuelEntriesController(IMediator mediator, ILogger<FuelEntriesController> logger)
+    public FuelEntriesController(IMediator mediator)
     {
         _mediator = mediator;
-        _logger = logger;
     }
 
     [HttpGet]
@@ -64,38 +62,28 @@ public class FuelEntriesController : ControllerBase
     }
 
     [HttpPost("bulk")]
-    public async Task<ActionResult> BulkCreateFuelEntries([FromBody] List<CreateFuelEntryRequest> requests)
+    public async Task<ActionResult<BulkCreateFuelEntriesResult>> BulkCreateFuelEntries(
+        [FromBody] List<CreateFuelEntryRequest?> requests,
+        CancellationToken cancellationToken)
     {
-        var results = new List<object>();
-        foreach (var request in requests)
-        {
-            try
-            {
-                var command = new CreateFuelEntryCommand(
-                    request.VehiclePlate,
-                    request.FuelTypeId,
-                    request.Volume,
-                    request.PricePerLiter,
-                    request.InvoiceDate,
-                    request.StationName,
-                    request.InvoiceNumber,
-                    request.Notes,
-                    request.DriverId,
-                    request.OdometerKm,
-                    request.TotalAmount
-                );
-                var id = await _mediator.Send(command);
-                results.Add(new { Id = id, Success = true, Error = (string?)null });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning("BulkImport failed for plate={Plate}, fuelTypeId={FuelTypeId}, volume={Volume}, date={Date}: {Error}",
-                    request.VehiclePlate, request.FuelTypeId, request.Volume, request.InvoiceDate, ex.Message);
-                results.Add(new { Id = 0, Success = false, Error = ex.Message });
-            }
-        }
-        var successCount = results.Count(r => ((dynamic)r).Success);
-        return Ok(new { Total = requests.Count, Success = successCount, Failed = requests.Count - successCount, Results = results });
+        var lignes = requests
+            .Select(request => request == null ? null : new CreateFuelEntryCommand(
+                request.VehiclePlate,
+                request.FuelTypeId,
+                request.Volume,
+                request.PricePerLiter,
+                request.InvoiceDate,
+                request.StationName,
+                request.InvoiceNumber,
+                request.Notes,
+                request.DriverId,
+                request.OdometerKm,
+                request.TotalAmount
+            ))
+            .ToList();
+
+        var result = await _mediator.Send(new BulkCreateFuelEntriesCommand(lignes), cancellationToken);
+        return Ok(result);
     }
 
     [HttpDelete("{id}")]

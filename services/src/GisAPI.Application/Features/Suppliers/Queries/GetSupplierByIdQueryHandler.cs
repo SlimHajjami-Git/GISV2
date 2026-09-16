@@ -30,6 +30,11 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
         if (supplier == null)
             return null;
 
+        // Les services étaient renvoyés vides en dur (DEF-012) ; GET /{id}/services
+        // s'appuie aussi sur cette requête.
+        var services = await SupplierServiceCodes.ParFournisseurAsync(
+            _context, new[] { supplier.Id }, cancellationToken);
+
         return new SupplierDto(
             supplier.Id,
             supplier.Name,
@@ -48,7 +53,7 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
             supplier.Rating,
             supplier.Notes,
             supplier.IsActive,
-            new List<string>(),
+            services.GetValueOrDefault(supplier.Id) ?? new List<string>(),
             supplier.CreatedAt,
             supplier.UpdatedAt
         );

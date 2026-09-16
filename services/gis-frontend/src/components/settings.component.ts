@@ -294,11 +294,11 @@ import { AppLayoutComponent } from './shared/app-layout.component';
             <!-- ══ Données : import / export Excel (recette client du 25/08/2026) ══ -->
             <div class="panel-section" *ngIf="activeTab === 'data'">
               <h2>Données</h2>
-              <p class="section-desc">Exportez votre parc, vos entretiens, vos réparations et vos pleins, ou importez-les en masse depuis un fichier Excel.</p>
+              <p class="section-desc">Exportez votre parc, vos entretiens, vos réparations, vos pleins et vos autres dépenses, ou importez-les en masse depuis un fichier Excel.</p>
 
               <div class="settings-group">
                 <h3>Exporter</h3>
-                <p class="section-desc" style="margin-top:0">Télécharge un fichier Excel avec quatre feuilles : Véhicules, Entretiens, Réparations, Carburant.</p>
+                <p class="section-desc" style="margin-top:0">Télécharge un fichier Excel avec cinq feuilles : Véhicules, Entretiens, Réparations, Carburant, Dépenses (assurance, amendes, vignette, péage…).</p>
                 <button class="btn-primary" (click)="exportData()" [disabled]="dataBusy">
                   {{ dataBusy ? 'Préparation…' : 'Exporter mes données (Excel)' }}
                 </button>
@@ -308,8 +308,8 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 <h3>Importer</h3>
                 <p class="section-desc" style="margin-top:0">
                   Téléchargez d'abord le modèle, complétez-le, puis importez-le. Rien n'est écrasé :
-                  seuls de nouveaux enregistrements sont créés. Un matricule déjà présent est ignoré.
-                  Une réparation déjà présente (même référence) est ignorée.
+                  seuls de nouveaux enregistrements sont créés. Un matricule déjà présent est ignoré,
+                  comme un entretien, une réparation, un plein ou une dépense déjà enregistré.
                 </p>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
                   <button class="btn-secondary" (click)="downloadTemplate()" [disabled]="dataBusy">Télécharger le modèle</button>

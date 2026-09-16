@@ -25,6 +25,10 @@ public record CreateEmployeeCommand(
 
 public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeCommand, EmployeeDto>
 {
+    internal const string AffectationVehiculeRefusee =
+        "Un employé n'est pas une fiche chauffeur : l'affectation d'un véhicule se fait " +
+        "depuis l'écran Chauffeurs ou depuis la fiche du véhicule.";
+
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ICurrentTenantService _tenantService;
@@ -41,6 +45,15 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
 
     public async Task<EmployeeDto> Handle(CreateEmployeeCommand request, CancellationToken ct)
     {
+        // Affectation de véhicule refusée, AVANT toute écriture. Elle écrivait
+        // users.id dans vehicles.assigned_driver_id, clé étrangère vers drivers(id) :
+        // violation 23503, ou véhicule confié au chauffeur qui porte par hasard le
+        // même numéro. Depuis le découplage chauffeurs / utilisateurs, aucun lien
+        // n'existe entre un employé et une fiche chauffeur (drivers.user_id n'est
+        // plus mappé ni renseigné) : il n'y a donc aucun id de chauffeur à écrire.
+        if (request.AssignVehicleId.HasValue)
+            throw new DomainException(AffectationVehiculeRefusee);
+
         // Check email uniqueness
         var exists = await _context.Users.AnyAsync(u => u.Email.ToLower() == request.Email.ToLower(), ct);
         if (exists)
@@ -100,21 +113,6 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);
 
-        // Assign to vehicle if requested
-        string? vehicleName = null;
-        string? vehiclePlate = null;
-        if (request.AssignVehicleId.HasValue)
-        {
-            var vehicle = await _context.Vehicles.FindAsync(new object[] { request.AssignVehicleId.Value }, ct);
-            if (vehicle != null)
-            {
-                vehicle.AssignedDriverId = user.Id;
-                vehicleName = vehicle.Name;
-                vehiclePlate = vehicle.Plate;
-                await _context.SaveChangesAsync(ct);
-            }
-        }
-
         return new EmployeeDto(
             user.Id,
             user.FirstName,
@@ -130,9 +128,9 @@ public class CreateEmployeeCommandHandler : IRequestHandler<CreateEmployeeComman
             user.CIN,
             user.DateOfBirth,
             user.HireDate,
-            request.AssignVehicleId,
-            vehicleName,
-            vehiclePlate,
+            null,
+            null,
+            null,
             null
         );
     }

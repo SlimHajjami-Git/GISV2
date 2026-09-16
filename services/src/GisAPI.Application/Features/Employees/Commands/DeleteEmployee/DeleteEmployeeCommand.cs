@@ -22,12 +22,9 @@ public class DeleteEmployeeCommandHandler : IRequestHandler<DeleteEmployeeComman
         if (user == null)
             throw new DomainException("Employé introuvable");
 
-        // Unassign from any vehicle
-        var vehicles = await _context.Vehicles
-            .Where(v => v.AssignedDriverId == user.Id)
-            .ToListAsync(ct);
-        foreach (var v in vehicles)
-            v.AssignedDriverId = null;
+        // vehicles.assigned_driver_id n'est pas touché : c'est une clé étrangère vers
+        // drivers(id), pas vers users(id). Filtrer sur user.Id retirait le chauffeur
+        // du véhicule dont l'id drivers coïncidait avec celui de l'employé supprimé.
 
         // Remove user-vehicle assignments
         var userVehicles = await _context.UserVehicles
