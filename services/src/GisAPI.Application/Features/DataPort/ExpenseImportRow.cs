@@ -1,3 +1,5 @@
+using GisAPI.Application.Features.Reports.Common;
+
 namespace GisAPI.Application.Features.DataPort;
 
 /// <summary>
@@ -42,6 +44,8 @@ public static class ExpenseImportRow
         ("repair", "Réparation accident", Array.Empty<string>()),
         ("insurance", "Assurance", new[] { "assurance" }),
         ("insurance_refund", "Remboursement assurance", new[] { "remb. assurance" }),
+        // Crédit comme le remboursement d'assurance (VehicleCostCategory), montant positif.
+        (VehicleCostCategory.CreditNote, "Avoir fournisseur", new[] { "avoir", "credit note" }),
         ("technical_inspection", "Visite technique", new[] { "visite_technique" }),
         ("tax", "Vignette", new[] { "vignette", "taxe" }),
         ("registration", "Carte grise", Array.Empty<string>()),

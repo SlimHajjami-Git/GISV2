@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Reports.Common;
 using Microsoft.Extensions.Logging;
 using UglyToad.PdfPig;
 
@@ -42,11 +43,12 @@ public record InvoiceExtraction(
     decimal? AmountTVA,
     decimal? AmountTTC,
     string? Currency,
-    string? Category,      // fuel|maintenance|insurance|tax|toll|parking|fine|repair|other
+    string? Category,      // fuel|maintenance|insurance|tax|toll|parking|fine|repair|other, credit_note (avoir)
     string? VehiclePlate,
     string? Description,
     string? Confidence,    // high|medium|low
-    List<InvoiceLineItem>? Items = null);  // lignes de la facture (détail, best-effort)
+    List<InvoiceLineItem>? Items = null,   // lignes de la facture (détail, best-effort)
+    bool IsCreditNote = false);            // avoir fournisseur (document intitulé avoir, ou total négatif), montants rendus positifs
 
 public class InvoiceExtractionService : IInvoiceExtractionService
 {
@@ -74,6 +76,7 @@ Réponds UNIQUEMENT par un objet JSON avec exactement ces clés :
   ""vehiclePlate"": string|null,        // immatriculation si présente
   ""description"": string|null,         // résumé court des biens/prestations
   ""confidence"": string|null,          // high | medium | low
+  ""isCreditNote"": boolean,            // true si le document s'intitule avoir (voir règle)
   ""items"": [                          // DÉTAIL: chaque ligne facturée (article/prestation)
     { ""label"": string,                // désignation de la ligne, ex: ""Vidange moteur""
       ""amount"": number|null,          // montant TTC de la ligne (NÉGATIF pour une remise)
@@ -86,6 +89,7 @@ En Tunisie les montants ont souvent 3 DÉCIMALES (millimes, ex: 128,540 DT) — 
 amountTTC = la ligne ""TOTAL TTC"" / ""NET À PAYER"" / ""TOTAL"" du document (pas ta propre addition).
 Le TIMBRE FISCAL (souvent 0,600 ou 1,000 DT) fait partie du TTC mais N'EST PAS une ligne d'article : ne le mets pas dans items (TTC peut donc valoir HT + TVA + timbre).
 Si une REMISE GLOBALE figure sur le document, ajoute-la dans items comme ligne ""Remise"" avec un montant NÉGATIF (ainsi la somme des lignes reste égale au total).
+isCreditNote=true UNIQUEMENT si le document s'intitule ""Avoir"", ""Facture d'avoir"", ""Note de crédit"" ou ""Credit note"" (il rembourse ou annule une facture) ; une simple remise ne suffit pas. Recopie alors les montants tels qu'imprimés.
 Immatriculation tunisienne: formats ""123 TUN 4567"" / ""123 تونس 4567"" / régime spécial (RS, TRAC...). Si elle est écrite en arabe, translittère en ""123 TUN 4567"".
 Choisis la catégorie la plus probable d'après le contenu (carburant/gasoil/essence→fuel, entretien/vidange→maintenance, réparation/pièces→repair, assurance→insurance, vignette/taxe→tax, péage→toll, parking→parking, amende→fine, sinon other).
 Pour items: liste les lignes réellement facturées (désignation + montant TTC ligne), dans l'ordre du document. Vérifie que la somme des lignes (remises comprises) est cohérente avec le total — si elle ne l'est pas, re-lis le document avant de répondre.
@@ -172,7 +176,47 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
                 extraction = extraction with { Confidence = "medium" };
         }
 
-        return new InvoiceExtractionResult(extraction, tokens);
+        return new InvoiceExtractionResult(AsCreditNoteIfDetected(extraction), tokens);
+    }
+
+    /// <summary>
+    /// Avoir fournisseur — document intitulé avoir (<c>isCreditNote</c> lu par l'IA) OU
+    /// total NÉGATIF : catégorie <c>credit_note</c> et montants en valeur absolue,
+    /// lignes comprises.
+    ///
+    /// <para>Depuis DEF-050, POST /api/costs refuse un montant ≤ 0 : un avoir scanné
+    /// arrivait à -120 dans le formulaire de revue et ne pouvait plus être enregistré
+    /// (« Montant supérieur à zéro requis. »). Décision du 16/09/2026 : il s'enregistre
+    /// comme le remboursement d'assurance, montant positif déduit des coûts
+    /// (<see cref="VehicleCostCategory"/>).</para>
+    ///
+    /// <para>Beaucoup d'avoirs impriment leurs montants en POSITIF sous le titre
+    /// « AVOIR » : lus sur le seul signe du total, ils partaient en DÉPENSE et
+    /// gonflaient les coûts du montant que le fournisseur rendait. Une facture
+    /// ordinaire au total positif ne change pas. (Public pour les tests.)</para>
+    /// </summary>
+    public static InvoiceExtraction AsCreditNoteIfDetected(InvoiceExtraction x)
+    {
+        // Même total que le formulaire de revue : TTC, à défaut HT.
+        if (!x.IsCreditNote && (x.AmountTTC ?? x.AmountHT) is not < 0m) return x;
+
+        // Les lignes ne changent de signe que si elles font un total négatif : sur un
+        // avoir aux lignes imprimées en positif, les inverser les rendrait fausses.
+        var items = x.Items;
+        if (items is { Count: > 0 } && items.Sum(i => i.Amount ?? 0m) < 0m)
+            items = items.Select(i => i with { Amount = -i.Amount }).ToList();
+
+        return x with
+        {
+            AmountHT = Abs(x.AmountHT),
+            AmountTVA = Abs(x.AmountTVA),
+            AmountTTC = Abs(x.AmountTTC),
+            Category = VehicleCostCategory.CreditNote,
+            Items = items,
+            IsCreditNote = true
+        };
+
+        static decimal? Abs(decimal? amount) => amount is decimal d ? Math.Abs(d) : null;
     }
 
     /// <summary>
@@ -274,7 +318,8 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
                 Str(r, "vehiclePlate"),
                 Str(r, "description"),
                 Str(r, "confidence"),
-                ParseItems(r));
+                ParseItems(r),
+                Bool(r, "isCreditNote"));
         }
         catch
         {
@@ -319,6 +364,19 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
                 return dt.ToString("yyyy-MM-dd");
         return DateTime.TryParse(d, CultureInfo.InvariantCulture, DateTimeStyles.None, out var any)
             ? any.ToString("yyyy-MM-dd") : null;
+    }
+
+    // Drapeau booléen : true/false JSON, ou chaîne « true » / « oui » renvoyée par le
+    // modèle. Absent ou illisible → false : le document reste une facture ordinaire.
+    private static bool Bool(JsonElement e, string name)
+    {
+        if (!e.TryGetProperty(name, out var v)) return false;
+        return v.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.String => (v.GetString() ?? "").Trim().ToLowerInvariant() is "true" or "oui" or "yes",
+            _ => false
+        };
     }
 
     private static string? Str(JsonElement e, string name) =>

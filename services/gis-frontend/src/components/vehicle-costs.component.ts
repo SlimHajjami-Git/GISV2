@@ -8,6 +8,35 @@ import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
+/**
+ * Crédits déduits des coûts : avoir fournisseur et remboursement d'assurance, montant
+ * POSITIF compté en crédit, comme VehicleCostCategory côté serveur. Codes, libellés et
+ * synonymes anciens (« avoir », « Remb. assurance »…) de la table ExpenseImportRow.Types :
+ * un synonyme ajouté là-bas s'ajoute ici. Exportée pour la fiche véhicule : une copie par
+ * composant divergerait au premier synonyme ajouté.
+ */
+const COST_CREDIT_FAMILIES = new Map<string, 'insurance_refund' | 'credit_note'>([
+  ['insurance_refund', 'insurance_refund'],
+  ['remboursement assurance', 'insurance_refund'],
+  ['remb. assurance', 'insurance_refund'],
+  ['credit_note', 'credit_note'],
+  ['avoir fournisseur', 'credit_note'],
+  ['avoir', 'credit_note'],
+  ['credit note', 'credit_note'],
+]);
+
+/** Type de dépense normalisé comme RepairTypeClassifier.Normalize : accents retirés, minuscules, espaces réduits. */
+export function normalizeCostType(type: string | null | undefined): string {
+  return (type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Code du crédit (insurance_refund, credit_note) d'un type de dépense ; null pour une dépense. */
+export function costCreditFamily(type: string | null | undefined): 'insurance_refund' | 'credit_note' | null {
+  // Map plutôt qu'objet : un type saisi « constructor » tombait sur Object.prototype et passait en crédit.
+  return COST_CREDIT_FAMILIES.get(normalizeCostType(type)) ?? null;
+}
+
 @Component({
   selector: 'app-vehicle-costs',
   standalone: true,
@@ -32,6 +61,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <option value="parking">Parking</option>
             <option value="fine">Amende</option>
             <option value="other">Autre</option>
+            <option value="credit_note">Avoir fournisseur</option>
+            <option value="insurance_refund">Remb. assurance</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterVehicle" (change)="filterCosts()">
             <option value="">Tous les véhicules</option>
@@ -163,12 +194,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                     <span class="vehicle-name">{{ getVehicleName(cost.vehicleId) }}</span>
                   </td>
                   <td>
-                    <span class="type-badge" [class]="cost.type">
+                    <span class="type-badge" [class]="creditFamily(cost.type) || cost.type">
                       {{ getTypeLabel(cost.type) }}
                     </span>
                   </td>
                   <td class="description-cell">{{ cost.description }}</td>
-                  <td class="amount-cell">{{ cost.amount | appCurrency:0 }}</td>
+                  <td class="amount-cell" [class.credit]="isCredit(cost.type)">{{ isCredit(cost.type) ? '−' : '' }}{{ cost.amount | appCurrency:0 }}</td>
                   <td class="reference-cell">{{ cost.receiptNumber || '-' }}</td>
                   <td>
                     <div class="action-buttons">
@@ -243,6 +274,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                     <option value="parking">Parking</option>
                     <option value="fine">Amende</option>
                     <option value="other">Autre</option>
+                    <option value="credit_note">Avoir fournisseur</option>
                   </select>
                 </div>
 
@@ -254,6 +286,9 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                 <div class="form-group">
                   <label for="costAmount">Montant *</label>
                   <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0.01" step="0.01" placeholder="0" />
+                  @if (isCredit(costForm.type)) {
+                    <span class="form-hint">Montant en positif : il est déduit des coûts.</span>
+                  }
                 </div>
 
                 <div class="form-group full-width">
@@ -577,6 +612,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .type-badge.parking { background: #cffafe; color: #0891b2; }
     .type-badge.fine { background: #fecaca; color: #b91c1c; }
     .type-badge.other { background: #f1f5f9; color: #64748b; }
+    .type-badge.repair, .type-badge.reparation { background: #ffedd5; color: #c2410c; }
+    .type-badge.credit_note, .type-badge.insurance_refund { background: #d1fae5; color: #047857; }
 
     .description-cell {
       max-width: 200px;
@@ -589,6 +626,14 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .amount-cell {
       font-weight: 600;
       color: #16a34a;
+      white-space: nowrap;
+    }
+
+    .amount-cell.credit { color: #047857; }
+
+    .form-hint {
+      font-size: 11px;
+      color: #64748b;
     }
 
     .reference-cell {
@@ -850,7 +895,9 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
     });
 
     this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => { this.vehicles = vehicles; this.cdr.detectChanges(); },
+      // La synthèse par véhicule part de la liste des véhicules : arrivée après les
+      // dépenses, elle laissait « Résumé par véhicule » vide.
+      next: (vehicles) => { this.vehicles = vehicles; this.calculateSummaries(); this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading vehicles:', err)
     });
   }
@@ -880,7 +927,9 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       // dépense sans description faisait échouer toute la recherche.
       const matchesSearch = !this.searchQuery ||
         (c.description || '').toLowerCase().includes(this.searchQuery.toLowerCase());
-      const matchesType = !this.filterType || c.type === this.filterType;
+      // Filtre d'un crédit : ses lignes anciennes (« avoir »…), affichées en crédit, sont listées avec lui.
+      const matchesType = !this.filterType || c.type === this.filterType
+        || costCreditFamily(c.type) === this.filterType;
       const matchesVehicle = !this.filterVehicle || c.vehicleId === this.filterVehicle;
       const matchesPeriod = !startDate || new Date(c.date) >= startDate;
       return matchesSearch && matchesType && matchesVehicle && matchesPeriod;
@@ -898,27 +947,50 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
         fuelCost: 0,
         maintenanceCost: 0,
         otherCost: 0,
-        totalCost: 0
+        totalCost: 0,
+        count: 0
       });
     });
 
     this.allCosts.forEach(c => {
       const summary = summaryMap.get(c.vehicleId);
       if (summary) {
+        const amount = this.signedAmount(c);
         if (c.type === 'fuel') {
-          summary.fuelCost += c.amount;
+          summary.fuelCost += amount;
         } else if (c.type === 'maintenance') {
-          summary.maintenanceCost += c.amount;
+          summary.maintenanceCost += amount;
         } else {
-          summary.otherCost += c.amount;
+          summary.otherCost += amount;
         }
-        summary.totalCost += c.amount;
+        summary.totalCost += amount;
+        summary.count++;
       }
     });
 
+    // Un véhicule qui n'a qu'un avoir a un total négatif : il reste dans la synthèse.
     this.vehicleSummaries = Array.from(summaryMap.values())
-      .filter(s => s.totalCost > 0)
+      .filter(s => s.count > 0)
       .sort((a, b) => b.totalCost - a.totalCost);
+  }
+
+  /**
+   * Avoir fournisseur et remboursement d'assurance (synonymes anciens compris) : crédits
+   * déduits, comme les totaux serveur. Additionnés bruts, ils gonflaient le total de
+   * l'écran du montant rendu.
+   */
+  creditFamily(type: string | null | undefined): string | null {
+    return costCreditFamily(type);
+  }
+
+  isCredit(type: string | null | undefined): boolean {
+    return this.creditFamily(type) !== null;
+  }
+
+  signedAmount(c: VehicleCost): number {
+    // Crédit en valeur absolue, comme VehicleCostCategory.SignedAmount : un avoir ancien
+    // saisi à −120 ne doit pas devenir une dépense de +120.
+    return this.isCredit(c.type) ? -Math.abs(c.amount) : c.amount;
   }
 
   getFuelCost(): number {
@@ -934,14 +1006,18 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   }
 
   getTotalCost(): number {
-    return this.allCosts.reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.reduce((sum, c) => sum + this.signedAmount(c), 0);
   }
 
   getTypeLabel(type: string): string {
     const labels: any = {
       fuel: 'Carburant',
       maintenance: 'Maintenance',
+      repair: 'Réparation',
+      reparation: 'Réparation',
       insurance: 'Assurance',
+      insurance_refund: 'Remboursement assurance',
+      credit_note: 'Avoir fournisseur',
       technical_inspection: 'Visite technique',
       tax: 'Vignette/Taxe',
       registration: 'Carte grise',
@@ -951,7 +1027,8 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       fine: 'Amende',
       other: 'Autre'
     };
-    return labels[type] || type;
+    // Ligne ancienne au libellé d'un crédit (« avoir ») : même libellé que son code.
+    return labels[type] || labels[this.creditFamily(type) ?? ''] || type;
   }
 
   getVehicleName(vehicleId: string): string {

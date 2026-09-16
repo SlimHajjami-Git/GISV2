@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Services;
@@ -709,10 +710,12 @@ public class AiChatController : ControllerBase
         {
             sb.AppendLine();
             sb.AppendLine("═══ COÛTS RÉCENTS ═══");
-            var totalCosts = ctx.RecentCosts.Sum(c => c.Amount);
-            sb.AppendLine($"Total des coûts listés: {totalCosts:N0} {AppCurrency.Default}");
+            // Avoir et remboursement d'assurance, stockés en positif, sont des crédits :
+            // additionnés bruts, l'assistant annonçait un coût gonflé du montant remboursé.
+            var totalCosts = ctx.RecentCosts.Sum(c => VehicleCostCategory.SignedAmount(c.Type, c.Amount));
+            sb.AppendLine($"Total des coûts listés (crédits déduits): {totalCosts:N0} {AppCurrency.Default}");
             foreach (var c in ctx.RecentCosts)
-                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {c.Amount:N0} {AppCurrency.Default}");
+                sb.AppendLine($"- {c.Date:dd/MM/yyyy} | {c.Type} | {c.Description ?? "N/A"} | {VehicleCostCategory.SignedAmount(c.Type, c.Amount):N0} {AppCurrency.Default}");
         }
 
         // ═══ ALERTS ═══
@@ -766,10 +769,22 @@ public class AiChatController : ControllerBase
         var tripsByVehicle = trips.GroupBy(t => t.VehicleId).ToDictionary(g => g.Key, g => g.ToList());
 
         // ── Costs data ──
-        var costs = await _context.VehicleCosts.AsNoTracking()
+        // Ventilation partagée VehicleCostCategory, celle du tableau de bord et des rapports
+        // de coûts : avoir et remboursement d'assurance y sont DÉDUITS. Additionnés bruts,
+        // ils gonflaient les coûts transmis à l'assistant du montant remboursé. Une somme
+        // par véhicule et par type en SQL : le détail des dépenses n'est jamais chargé.
+        var costRows = await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart)
+            .GroupBy(c => new { c.VehicleId, c.Type })
+            .Select(g => new { g.Key.VehicleId, g.Key.Type, Amount = g.Sum(c => c.Amount) })
             .ToListAsync();
-        var costsByType = costs.GroupBy(c => c.Type).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+        var costs = costRows
+            .Select(c => (c.VehicleId, Category: VehicleCostCategory.Classify(c.Type).Category,
+                          Amount: VehicleCostCategory.SignedAmount(c.Type, c.Amount)))
+            .ToList();
+        var costsByVehicle = costs.GroupBy(c => c.VehicleId).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+        decimal CategoryCost(CostCategory category) => costs.Where(c => c.Category == category).Sum(c => c.Amount);
+        var netCost = costs.Sum(c => c.Amount);
 
         // ── Maintenance & Repairs ──
         var vehicleIds = vehicles.Select(v => v.Id).ToList();
@@ -810,11 +825,11 @@ public class AiChatController : ControllerBase
 
         // ══════════ BUILD CHART DATA ══════════
         var totalDistance = trips.Sum(t => t.DistanceKm);
-        var totalFuelCost = costsByType.GetValueOrDefault("fuel", 0) + costsByType.GetValueOrDefault("carburant", 0);
-        var totalMaintCost = costsByType.GetValueOrDefault("maintenance", 0) + costsByType.GetValueOrDefault("entretien", 0);
-        var totalRepairCost = costsByType.GetValueOrDefault("repair", 0) + costsByType.GetValueOrDefault("reparation", 0);
-        var totalOtherCost = costs.Sum(c => c.Amount) - totalFuelCost - totalMaintCost - totalRepairCost;
-        if (totalOtherCost < 0) totalOtherCost = 0;
+        var totalFuelCost = CategoryCost(CostCategory.Fuel);
+        var totalMaintCost = CategoryCost(CostCategory.Maintenance);
+        var totalRepairCost = CategoryCost(CostCategory.Repair);
+        // Net des crédits, négatif si les avoirs dépassent les autres frais.
+        var totalOtherCost = CategoryCost(CostCategory.Other);
 
         // Health distribution
         var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
@@ -831,7 +846,7 @@ public class AiChatController : ControllerBase
             var vHealth = healthMap.GetValueOrDefault(v.Id);
             var vAlerts = alertsByVehicle.GetValueOrDefault(v.Id, 0);
             var vFuel = fuelByVehicle.GetValueOrDefault(v.Id, 0);
-            var vCosts = costs.Where(c => c.VehicleId == v.Id).Sum(c => c.Amount);
+            var vCosts = costsByVehicle.GetValueOrDefault(v.Id, 0m);
             var vRepairs = repairs.Where(r => r.VehicleId == v.Id).ToList();
             var vMaint = maintenance.Where(m => m.VehicleId == v.Id).ToList();
             var vSchedules = schedules.Where(s => s.VehicleId == v.Id).ToList();
@@ -908,7 +923,7 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Véhicules actifs (avec trajets): {tripsByVehicle.Count}");
         sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
         sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
-        sb.AppendLine($"Coûts totaux: {costs.Sum(c => c.Amount):N0} {AppCurrency.Default} (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
+        sb.AppendLine($"Coûts totaux (avoirs et remboursements déduits): {netCost:N0} {AppCurrency.Default} (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
         sb.AppendLine($"Alertes totales: {totalAlerts}");
         sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
@@ -1002,14 +1017,18 @@ Calendrier recommandé pour les 3 prochains mois.";
                     totalDistance = Math.Round(totalDistance, 0),
                     totalTrips = trips.Count,
                     avgHealthScore = healthScores.Any() ? (int)Math.Round(healthScores.Average(h => h.Score)) : 0,
-                    totalCosts = Math.Round(costs.Sum(c => c.Amount), 0),
+                    totalCosts = Math.Round(netCost, 0),
                     totalAlerts,
                     overdueSchedules = schedules.Count(s => s.Status == "overdue" || s.Status == "critical")
                 },
                 charts = new
                 {
                     healthDistribution = new { excellent = exc, good = goo, fair = fai, poor = poo, critical = cri },
-                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(totalOtherCost, 0) },
+                    // Barre empilée des écrans : une part négative n'a pas de largeur, "Autres" s'arrête à 0.
+                    // Les crédits que les autres frais n'absorbent pas vont dans "credits" (positif) : bornés
+                    // seuls, ils disparaissaient et la légende ne retombait plus sur totalCosts.
+                    // fuel + maintenance + repairs + other − credits = totalCosts.
+                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(Math.Max(0m, totalOtherCost), 0), credits = Math.Round(Math.Max(0m, -totalOtherCost), 0) },
                     topFuelConsumers = topFuel,
                     mileageByVehicle = mileageChart,
                     drivingScores = drivingChart

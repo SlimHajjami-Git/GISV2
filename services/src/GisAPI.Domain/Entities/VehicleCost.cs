@@ -17,9 +17,17 @@ public class VehicleCost : TenantEntity
     ///   <item><c>"insurance_refund"</c> — auto-inserted when an accident's
     ///     Phase 6 (insurance settlement) records an approved amount.
     ///     Rendered as a credit (green/negative) in the /depenses UI.</item>
+    ///   <item><c>"credit_note"</c> — avoir fournisseur (décision du 16/09/2026) :
+    ///     écran Dépenses, scan d'un avoir, import Excel.</item>
     /// </list>
     /// Existing values (fuel, maintenance, document renewal, …) remain
     /// unchanged — only new values are added.
+    ///
+    /// <para>CRÉDITS : <c>insurance_refund</c> et <c>credit_note</c> sont stockés en
+    /// <see cref="Amount"/> POSITIF (un montant ≤ 0 est refusé, DEF-050) et DÉDUITS des
+    /// coûts. Tout lecteur qui additionne des dépenses passe par
+    /// <c>VehicleCostCategory.SignedAmount</c> / <c>SignedTotalAsync</c> : une somme brute
+    /// de <see cref="Amount"/> ajoute le crédit au lieu de le retrancher.</para>
     /// </summary>
     public string Type { get; set; } = string.Empty;
     public string? Description { get; set; }

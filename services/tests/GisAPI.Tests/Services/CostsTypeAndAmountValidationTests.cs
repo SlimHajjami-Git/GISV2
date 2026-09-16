@@ -112,6 +112,8 @@ public class CostsTypeAndAmountValidationTests
         // Écran Dépenses, « Nouvelle dépense » (catégories hors carburant/entretien/réparation).
         "maintenance", "insurance", "technical_inspection", "tax", "registration", "transport_permit",
         "peage", "stationnement", "amende", "autre",
+        // Écran Dépenses et scan d'une facture négative : avoir fournisseur (16/09/2026).
+        "credit_note",
         // Scan de facture IA (InvoiceExtractionService) et écran Coûts (vehicle-costs).
         "fuel", "repair", "toll", "parking", "fine", "other",
         // Module Sinistres (phases 5 et 6).
@@ -253,10 +255,12 @@ public class CostsTypeAndAmountValidationTests
             VehicleId = 32, Type = "maintenance", Description = "QA montant negatif", Amount = amount, Date = Day
         });
 
-        // Le conseil renvoie au dossier sinistre : l'écran Dépenses ne propose pas de
-        // catégorie « Remboursement assurance ».
+        // Le conseil donne le chemin d'un crédit : la catégorie « Avoir fournisseur » de
+        // l'écran Dépenses, ou le dossier sinistre pour un remboursement d'assurance
+        // (l'écran Dépenses ne propose pas cette catégorie).
         Message(created.Result!).Should().Be(
-            "Le montant doit être supérieur à zéro. Un remboursement d'assurance se saisit en positif dans le dossier sinistre.");
+            "Le montant doit être supérieur à zéro. Un avoir se saisit en positif dans la catégorie " +
+            "« Avoir fournisseur », un remboursement d'assurance dans le dossier sinistre.");
         (await ctx.VehicleCosts.AsNoTracking().CountAsync()).Should().Be(2);
     }
 

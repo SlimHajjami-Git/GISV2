@@ -10,10 +10,11 @@ namespace GisAPI.Application.Features.Costs;
 /// (DEF-040 : « xyz » créait une catégorie fantôme, affichée brute à l'écran et
 /// comptée en « Autres ») et n'importe quel montant (DEF-050 : -50 était enregistré
 /// et jouait comme un crédit silencieux dans les totaux de l'écran Dépenses, du
-/// tableau de bord et des rapports). Le crédit prévu est la catégorie
-/// « insurance_refund » à montant POSITIF, créée par le dossier sinistre et que les
-/// agrégats soustraient explicitement : aucun écrivain légitime n'envoie de montant
-/// négatif.</para>
+/// tableau de bord et des rapports). Un crédit est une catégorie à montant POSITIF que
+/// les agrégats soustraient explicitement (<c>VehicleCostCategory.SignedAmount</c>) :
+/// « insurance_refund », créée par le dossier sinistre, et « credit_note », l'avoir
+/// fournisseur (décision du 16/09/2026, un avoir scanné ne pouvait plus être
+/// enregistré). Aucun écrivain légitime n'envoie de montant négatif.</para>
 /// </summary>
 public static class VehicleCostRules
 {
@@ -36,8 +37,8 @@ public static class VehicleCostRules
     public static string? AmountError(decimal amount)
     {
         if (amount <= 0)
-            return "Le montant doit être supérieur à zéro. Un remboursement d'assurance se saisit en positif " +
-                   "dans le dossier sinistre.";
+            return "Le montant doit être supérieur à zéro. Un avoir se saisit en positif dans la catégorie " +
+                   "« Avoir fournisseur », un remboursement d'assurance dans le dossier sinistre.";
         if (amount > MaxAmount)
             return "Montant trop élevé : 99 999 999,99 au maximum.";
         return null;

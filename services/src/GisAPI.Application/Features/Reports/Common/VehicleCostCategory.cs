@@ -1,3 +1,7 @@
+using GisAPI.Application.Features.DataPort;
+using GisAPI.Domain.Entities;
+using Microsoft.EntityFrameworkCore;
+
 namespace GisAPI.Application.Features.Reports.Common;
 
 /// <summary>Seau d'une dépense <c>vehicle_costs</c> dans les écrans de coûts.</summary>
@@ -34,6 +38,10 @@ public static class VehicleCostCategory
     ///   <item><c>repair</c> / <c>reparation</c> / <c>réparation</c> → Réparations (catégorie proposée
     ///     par l'écran Dépenses et le scan de facture) ;</item>
     ///   <item><c>insurance_refund</c> → Autres, en CRÉDIT (le module Sinistres l'enregistre en montant positif) ;</item>
+    ///   <item><c>credit_note</c> (« Avoir fournisseur ») → Autres, en CRÉDIT, même convention : montant
+    ///     saisi en positif (écran Dépenses, scan d'un avoir, import Excel) ;</item>
+    ///   <item>type ancien synonyme de l'un de ces deux crédits (« avoir », « Avoir fournisseur »,
+    ///     « credit note », « remb. assurance »…) → Autres, en CRÉDIT ;</item>
     ///   <item>tout le reste → Autres.</item>
     /// </list>
     /// </summary>
@@ -42,12 +50,58 @@ public static class VehicleCostCategory
         "fuel" => (CostCategory.Fuel, 1),
         "maintenance" or "entretien" => (CostCategory.Maintenance, 1),
         "repair" or "reparation" or "réparation" => (CostCategory.Repair, 1),
-        "insurance_refund" => (CostCategory.Other, -1),
-        _ => (CostCategory.Other, 1)
+        // Avoir fournisseur (décision du 16/09/2026) : depuis DEF-050 le montant négatif
+        // est refusé, l'avoir est donc un crédit explicite comme le remboursement d'assurance.
+        "insurance_refund" or CreditNote => (CostCategory.Other, -1),
+        // Lignes écrites avant la liste blanche (« avoir », « credit note »…) : l'export
+        // les écrit sous le libellé du crédit et l'import les relit sous son code. Comptées
+        // en dépense ici, elles changeaient de signe au premier aller-retour du classeur.
+        _ => IsCreditSynonym(type) ? (CostCategory.Other, -1) : (CostCategory.Other, 1)
     };
 
-    /// <summary>Montant signé : négatif pour un remboursement d'assurance.</summary>
-    public static decimal SignedAmount(string? type, decimal amount) => Classify(type).Sign * amount;
+    /// <summary>Code de l'avoir fournisseur dans <c>vehicle_costs.type</c> (« credit » est déjà « Crédit / Leasing »).</summary>
+    public const string CreditNote = "credit_note";
+
+    /// <summary>
+    /// Synonyme d'un crédit, avec la normalisation de l'import Excel (casse, accents, libellés).
+    /// <c>StoredType</c> plutôt que <c>TypeFamily</c> : un code déjà connu (« insurance »,
+    /// « amende »…) y est reconnu sans normalisation Unicode, or cette règle tourne sur
+    /// chaque dépense des rapports.
+    /// </summary>
+    private static bool IsCreditSynonym(string? type) =>
+        ExpenseImportRow.StoredType(type) is "insurance_refund" or CreditNote;
+
+    /// <summary>
+    /// Montant signé : négatif pour un remboursement d'assurance ou un avoir fournisseur. Un
+    /// crédit compte en valeur absolue : avant le refus des montants négatifs (DEF-050), un
+    /// avoir pouvait être saisi à −120 ; −1 × −120 en aurait fait une dépense de +120.
+    /// </summary>
+    public static decimal SignedAmount(string? type, decimal amount) =>
+        Classify(type).Sign < 0 ? -Math.Abs(amount) : amount;
+
+    /// <summary>
+    /// Total net de dépenses, crédits déduits. La règle (synonymes, accents) n'a pas
+    /// d'équivalent SQL : une somme par type côté base, quelques lignes, puis le signe
+    /// ici — jamais le détail des dépenses chargé en mémoire.
+    /// </summary>
+    public static async Task<decimal> SignedTotalAsync(IQueryable<VehicleCost> costs, CancellationToken ct = default)
+    {
+        // Parts positive et négative à part : un crédit se déduit ligne à ligne en valeur
+        // absolue (voir SignedAmount), ce que la somme brute d'un type mélangé ne permet pas.
+        // CASE plutôt que Math.Abs, que le fournisseur SQLite des tests ne traduit pas.
+        var byType = await costs
+            .GroupBy(c => c.Type)
+            .Select(g => new
+            {
+                Type = g.Key,
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
+            })
+            .ToListAsync(ct);
+        return byType.Sum(t => Classify(t.Type).Sign < 0
+            ? -(t.Positive - t.Negative)
+            : t.Positive + t.Negative);
+    }
 
     public static bool IsFuel(string? type) => Classify(type).Category == CostCategory.Fuel;
     public static bool IsMaintenance(string? type) => Classify(type).Category == CostCategory.Maintenance;

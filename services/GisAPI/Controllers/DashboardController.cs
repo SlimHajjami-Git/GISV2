@@ -10,6 +10,7 @@ using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
 using GisAPI.Application.Features.Dashboard.Queries.GetGpaDashboard;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Services;
 using System.Security.Claims;
 
@@ -389,12 +390,12 @@ public class DashboardController : ControllerBase
         var mileageTrend = prevMileage > 0 ? Math.Round((double)(currentMileage - prevMileage) / (double)prevMileage * 100, 1) : 0;
 
         // Cost trend: compare current vs previous period costs
-        var currentCost = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-        var prevCost = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+        // Crédits déduits (avoir, remboursement d'assurance) : additionnés bruts, ils
+        // faisaient MONTER la tendance des coûts du mois où le fournisseur remboursait.
+        var currentCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd));
+        var prevCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd));
         var costTrend = prevCost > 0 ? Math.Round((double)(currentCost - prevCost) / (double)prevCost * 100, 1) : 0;
 
         var result = new
@@ -770,11 +771,10 @@ public class DashboardController : ControllerBase
                         (s.Status == "overdue" || s.Status == "critical"))
             .CountAsync();
 
-        // Cost stats this month
-        var costsThisMonth = await _context.VehicleCosts
+        // Cost stats this month — net des crédits (avoir, remboursement d'assurance).
+        var costsThisMonth = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth)
-            .SumAsync(c => c.Amount);
+            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth));
 
         var fuelCostsThisMonth = await _context.VehicleCosts
             .AsNoTracking()
@@ -888,11 +888,11 @@ public class DashboardController : ControllerBase
             .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
-        var otherCost = await _context.VehicleCosts
+        // Avoir et remboursement d'assurance y sont DÉDUITS, comme dans les rapports de coûts.
+        var otherCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                && c.Type != "fuel" && c.Type != "maintenance")
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+                && c.Type != "fuel" && c.Type != "maintenance"));
 
         var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 

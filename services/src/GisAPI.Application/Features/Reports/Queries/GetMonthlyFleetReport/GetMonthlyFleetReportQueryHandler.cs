@@ -1133,6 +1133,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     {
         "insurance" or "assurance" => "Assurance",
         "insurance_refund" => "Remboursement assurance",
+        VehicleCostCategory.CreditNote => "Avoir fournisseur",
         "technical_inspection" or "visite_technique" => "Visite technique",
         "tax" or "vignette" => "Taxe / vignette",
         "peage" or "toll" => "Péage",

@@ -148,7 +148,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
         this.createLineChart('distanceTrend', this.distanceTrendChartRef, this.report.charts.dailyDistanceTrend);
         break;
       case 'costs':
-        this.createPieChart('costDistribution', this.costDistributionChartRef, this.report.charts.costDistribution);
+        this.createPieChart('costDistribution', this.costDistributionChartRef, this.positiveSlices(this.report.charts.costDistribution));
         break;
       case 'maintenance':
         this.createBarChart('maintenanceCost', this.maintenanceCostChartRef, this.report.charts.maintenanceCostByType);
@@ -157,6 +157,27 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
         this.createBarChart('driverRanking', this.driverRankingChartRef, this.report.charts.driverRanking);
         break;
     }
+  }
+
+  /**
+   * Parts strictement positives d'un camembert. Un avoir fournisseur ou un remboursement
+   * d'assurance arrive en montant NÉGATIF (crédit déduit) : Chart.js le dessinait en valeur
+   * absolue, comme une dépense de plus. Même règle que le donut de reports.component ; le
+   * tableau « Répartition par catégorie » garde la ligne et le total net. Chaque part
+   * garde la couleur de son rang d'origine.
+   */
+  private positiveSlices(data: ChartData): ChartData {
+    if (!data?.values) return data;
+    const palette = data.colors?.length ? data.colors : ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+    const kept = data.values
+      .map((value, i) => ({ value: Number(value) || 0, label: data.labels[i], color: palette[i % palette.length] }))
+      .filter(s => s.value > 0);
+    return {
+      ...data,
+      labels: kept.map(s => s.label),
+      values: kept.map(s => s.value),
+      colors: kept.map(s => s.color)
+    };
   }
 
   private destroyCharts() {

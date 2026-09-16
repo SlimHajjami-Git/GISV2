@@ -258,7 +258,8 @@ public class DataPortController : ControllerBase
         line = WriteHelpSection(help, line, "Carburant", FuelCols, FuelExample,
             "Montant total vide : calculé à partir du volume et du prix au litre.");
         WriteHelpSection(help, line, "Dépenses", ExpenseCols, ExpenseExample,
-            "Type : Assurance, Visite technique, Vignette, Carte grise, Péage, Stationnement, Amende, Lavage, Autre…");
+            "Type : Assurance, Visite technique, Vignette, Carte grise, Péage, Stationnement, Amende, Lavage, Autre… " +
+            "Un avoir : type « Avoir fournisseur », montant positif, déduit des coûts.");
         for (var c = 1; c <= RepairCols.Length; c++)
             help.Column(c).Width = 22;
 
@@ -719,9 +720,10 @@ public class DataPortController : ControllerBase
                 { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant « {Str(row.Cell(5))} » illisible."); continue; }
                 var amount = Math.Round(Dec(row.Cell(5)) ?? 0, 2, MidpointRounding.AwayFromZero);
                 // Même règle que POST /api/costs (DEF-050) : un crédit se saisit en positif, sous le
-                // type « Remboursement assurance », que les totaux soustraient explicitement.
+                // type « Avoir fournisseur » ou « Remboursement assurance », que les totaux
+                // soustraient explicitement.
                 if (amount < 0)
-                { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant négatif (un remboursement d'assurance se saisit en positif)."); continue; }
+                { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant négatif (un avoir se saisit en positif, type « Avoir fournisseur »)."); continue; }
                 if (amount > ExpenseImportRow.MaxAmount)
                 { result.ExpensesIgnored++; result.AddNote($"{label} ignorée : montant trop élevé."); continue; }
 

@@ -8,6 +8,7 @@ using GisAPI.Application.Features.Costs;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Services;
 using MediatR;
 
@@ -326,7 +327,7 @@ public class CostsController : ControllerBase
         if (scope is not null)
             scoped = scoped.Where(c => scope.Contains(c.VehicleId));
 
-        var costs = await scoped
+        var byType = await scoped
             .GroupBy(c => c.Type)
             .Select(g => new
             {
@@ -335,6 +336,13 @@ public class CostsController : ControllerBase
                 Count = g.Count()
             })
             .ToListAsync(ct);
+
+        // Avoir fournisseur et remboursement d'assurance : stockés en positif, ce sont
+        // des crédits (décision du 16/09/2026). La somme brute les AJOUTAIT au total,
+        // qui contredisait alors l'écran Dépenses, le tableau de bord et les rapports.
+        var costs = byType
+            .Select(t => new { t.Type, Total = VehicleCostCategory.SignedAmount(t.Type, t.Total), t.Count })
+            .ToList();
 
         var totalFuel = await scoped
             .Where(c => c.Type == "fuel")
