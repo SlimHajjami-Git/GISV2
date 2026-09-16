@@ -229,10 +229,10 @@ public class LoginFailureAuditTests
                 .DeleteUserCommandHandler(ctx, tenant)
                 .Handle(new GisAPI.Application.Features.Users.Commands.DeleteUser.DeleteUserCommand(42), CancellationToken.None),
             "employés" => () => new GisAPI.Application.Features.Employees.Commands.DeleteEmployee
-                .DeleteEmployeeCommandHandler(ctx)
+                .DeleteEmployeeCommandHandler(ctx, tenant)
                 .Handle(new GisAPI.Application.Features.Employees.Commands.DeleteEmployee.DeleteEmployeeCommand(42), CancellationToken.None),
             _ => () => new GisAPI.Application.Features.Admin.Users.Commands.DeleteAdminUser
-                .DeleteAdminUserCommandHandler(ctx)
+                .DeleteAdminUserCommandHandler(ctx, tenant)
                 .Handle(new GisAPI.Application.Features.Admin.Users.Commands.DeleteAdminUser.DeleteAdminUserCommand(42), CancellationToken.None)
         };
 

@@ -114,7 +114,7 @@ public class EmployeeVehicleAssignmentTests
     {
         using var context = CreerContexte();
 
-        await new DeleteEmployeeCommandHandler(context).Handle(new DeleteEmployeeCommand(EmployeId), CancellationToken.None);
+        await new DeleteEmployeeCommandHandler(context, TestDbContextFactory.CreateMockTenantService(companyId: CompanyId).Object).Handle(new DeleteEmployeeCommand(EmployeId), CancellationToken.None);
 
         context.ChangeTracker.Clear();
         (await context.Users.CountAsync()).Should().Be(0);
