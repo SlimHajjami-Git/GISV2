@@ -90,6 +90,66 @@ export interface CreateUserRequest {
   assignedVehicleIds?: number[];
 }
 
+// ── Commandes boîtiers (écran admin) ──
+export interface DeviceCommandTarget {
+  deviceId: number;
+  imei: string;
+  mat?: string;
+  label?: string;
+  vehicleId?: number;
+  plate?: string;
+  vehicleName?: string;
+  protocolType?: string;
+  brand?: string;
+  model?: string;
+  firmwareVersion?: string;
+  isNems: boolean;
+  lastCommunication?: string;
+  onlineRecently: boolean;
+  status: string;
+}
+
+export interface DeviceCommandTargetResult {
+  deviceId: number;
+  imei: string;
+  plate?: string;
+  vehicleName?: string;
+  outcome: 'pushed' | 'offline' | 'failed' | 'skipped_non_nems' | 'blocked' | 'pending' | string;
+  detail?: string;
+}
+
+export interface DeviceCommandSendResult {
+  accepted: boolean;
+  error?: string;
+  commandText: string;
+  targeted: number;
+  pushedLive: number;
+  offline: number;
+  failed: number;
+  skippedNonNems: number;
+  blocked: number;
+  details: DeviceCommandTargetResult[];
+}
+
+export interface DeviceCommandHistoryRow {
+  id: number;
+  deviceId: number;
+  imei?: string;
+  plate?: string;
+  vehicleName?: string;
+  companyId: number;
+  companyName?: string;
+  userId: number;
+  commandType: string;
+  commandText: string;
+  status: string;
+  source: string;
+  attempts: number;
+  sentAt?: string;
+  createdAt: string;
+  errorMessage?: string;
+}
+
 export interface AdminVehicle {
   id: number;
   name: string;
@@ -127,6 +187,8 @@ export interface ReplaceDeviceRequest {
   newSimNumber?: string;
   newMat?: string;
   newSimOperator?: string;
+  /** Mode capteur carburant saisi : sinon la fiche conservée garderait la valeur par défaut de l'ingestion. */
+  newFuelSensorMode?: string;
 }
 
 export interface ReplaceDeviceResult {
@@ -135,6 +197,8 @@ export interface ReplaceDeviceResult {
   deviceId?: number;
   previousImei?: string;
   releasedDeviceId?: number;
+  /** 'rename' : fiche du véhicule renommée ; 'attach' : véhicule rattaché à la fiche qui émet. */
+  mode?: 'rename' | 'attach';
 }
 
 export interface ServiceHealth {
@@ -693,6 +757,21 @@ export class AdminService {
   }
 
   // ==================== VEHICLE MANAGEMENT ====================
+
+  // ── Commandes boîtiers (sys_admin) : envoi AJ+ via le socket de l'ingest ──
+  getDeviceCommandTargets(companyId: number): Observable<DeviceCommandTarget[]> {
+    return this.http.get<DeviceCommandTarget[]>(`${this.apiUrl}/admin/device-commands/targets?companyId=${companyId}`, { headers: this.getHeaders() });
+  }
+
+  sendDeviceCommand(payload: { companyId: number; commandText: string; deviceIds?: number[]; allFleet: boolean }): Observable<DeviceCommandSendResult> {
+    return this.http.post<DeviceCommandSendResult>(`${this.apiUrl}/admin/device-commands/send`, payload, { headers: this.getHeaders() });
+  }
+
+  getDeviceCommandHistory(companyId?: number, limit = 100, source = 'admin'): Observable<DeviceCommandHistoryRow[]> {
+    const params: string[] = [`limit=${limit}`, `source=${encodeURIComponent(source)}`];
+    if (companyId) params.push(`companyId=${companyId}`);
+    return this.http.get<DeviceCommandHistoryRow[]>(`${this.apiUrl}/admin/device-commands/history?${params.join('&')}`, { headers: this.getHeaders() });
+  }
 
   getVehicles(search?: string, companyId?: number, status?: string): Observable<AdminVehicle[]> {
     let url = `${this.apiUrl}/admin/vehicles`;

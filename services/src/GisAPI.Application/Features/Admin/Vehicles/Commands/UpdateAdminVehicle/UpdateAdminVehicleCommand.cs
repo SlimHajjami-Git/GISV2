@@ -30,4 +30,9 @@ public record UpdateAdminVehicleCommand(
     DateTime? GpsInstallationDate
 ) : IRequest<UpdateAdminVehicleResult>;
 
-public record UpdateAdminVehicleResult(bool Success, string? Error = null, AdminVehicleDto? Vehicle = null);
+/// <param name="ReplaceSuggested">
+/// Refus pour doublon qu'un remplacement de boîtier (replace-device) résoudrait avec les
+/// valeurs saisies : l'écran ne propose la confirmation que dans ce cas (14/09/2026).
+/// </param>
+public record UpdateAdminVehicleResult(
+    bool Success, string? Error = null, AdminVehicleDto? Vehicle = null, bool ReplaceSuggested = false);

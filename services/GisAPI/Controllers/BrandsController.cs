@@ -2,10 +2,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common.Interfaces;
-using GisAPI.Domain.Entities;
 
 namespace GisAPI.Controllers;
 
+/// <summary>
+/// Lecture seule du référentiel marques / modèles, ouverte à tout utilisateur connecté
+/// (formulaire véhicule client et admin). Les créations, renommages et désactivations
+/// sont dans AdminBrandsController (/api/admin/brands) : exposées ici, elles laissaient
+/// n'importe quel client modifier ces données globales pour toute la plateforme.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
@@ -50,50 +55,6 @@ public class BrandsController : ControllerBase
         return Ok(brand);
     }
 
-    [HttpPost]
-    public async Task<ActionResult<int>> CreateBrand([FromBody] CreateBrandRequest request)
-    {
-        var brand = new Brand
-        {
-            Name = request.Name,
-            LogoUrl = request.LogoUrl,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.Brands.Add(brand);
-        await _context.SaveChangesAsync(default);
-
-        return CreatedAtAction(nameof(GetBrand), new { id = brand.Id }, brand.Id);
-    }
-
-    [HttpPut("{id}")]
-    public async Task<ActionResult> UpdateBrand(int id, [FromBody] UpdateBrandRequest request)
-    {
-        var brand = await _context.Brands.FindAsync(id);
-        if (brand == null)
-            return NotFound();
-
-        brand.Name = request.Name;
-        brand.LogoUrl = request.LogoUrl;
-        brand.IsActive = request.IsActive;
-
-        await _context.SaveChangesAsync(default);
-        return NoContent();
-    }
-
-    [HttpDelete("{id}")]
-    public async Task<ActionResult> DeleteBrand(int id)
-    {
-        var brand = await _context.Brands.FindAsync(id);
-        if (brand == null)
-            return NotFound();
-
-        brand.IsActive = false;
-        await _context.SaveChangesAsync(default);
-        return NoContent();
-    }
-
     [HttpGet("{brandId}/models")]
     public async Task<ActionResult<List<VehicleModelDto>>> GetModelsByBrand(int brandId)
     {
@@ -105,65 +66,8 @@ public class BrandsController : ControllerBase
 
         return Ok(models);
     }
-
-    [HttpPost("{brandId}/models")]
-    public async Task<ActionResult<int>> CreateModel(int brandId, [FromBody] CreateModelRequest request)
-    {
-        var brand = await _context.Brands.FindAsync(brandId);
-        if (brand == null)
-            return NotFound("Brand not found");
-
-        var model = new VehicleModel
-        {
-            BrandId = brandId,
-            Name = request.Name,
-            VehicleType = request.VehicleType,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.VehicleModels.Add(model);
-        await _context.SaveChangesAsync(default);
-
-        return CreatedAtAction(nameof(GetModelsByBrand), new { brandId }, model.Id);
-    }
-
-    [HttpPut("models/{id}")]
-    public async Task<ActionResult> UpdateModel(int id, [FromBody] UpdateModelRequest request)
-    {
-        var model = await _context.VehicleModels.FindAsync(id);
-        if (model == null)
-            return NotFound();
-
-        model.Name = request.Name;
-        model.VehicleType = request.VehicleType;
-        model.IsActive = request.IsActive;
-
-        await _context.SaveChangesAsync(default);
-        return NoContent();
-    }
-
-    [HttpDelete("models/{id}")]
-    public async Task<ActionResult> DeleteModel(int id)
-    {
-        var model = await _context.VehicleModels.FindAsync(id);
-        if (model == null)
-            return NotFound();
-
-        model.IsActive = false;
-        await _context.SaveChangesAsync(default);
-        return NoContent();
-    }
 }
 
 public record BrandDto(int Id, string Name, string? LogoUrl, int ModelCount);
 public record BrandDetailDto(int Id, string Name, string? LogoUrl, bool IsActive, List<VehicleModelDto> Models);
 public record VehicleModelDto(int Id, string Name, string? VehicleType);
-public record CreateBrandRequest(string Name, string? LogoUrl);
-public record UpdateBrandRequest(string Name, string? LogoUrl, bool IsActive);
-public record CreateModelRequest(string Name, string? VehicleType);
-public record UpdateModelRequest(string Name, string? VehicleType, bool IsActive);
-
-
-
-

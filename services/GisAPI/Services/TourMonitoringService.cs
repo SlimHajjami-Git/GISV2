@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Infrastructure.Persistence;
 
 namespace GisAPI.Services;
@@ -256,7 +257,7 @@ public class TourMonitoringService : BackgroundService
             }, ct);
 
         // Persist notification
-        await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+        await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
             "tour_started",
             $"Tournee demarree: {tour.Name}",
             $"Tournee '{tour.Name}' demarree a l'heure prevue.",
@@ -507,7 +508,7 @@ public class TourMonitoringService : BackgroundService
                     }, ct);
 
                 var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
-                await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+                await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
                     "tour_waypoint",
                     $"Point atteint: {wpLabel}",
                     $"Tournee '{tour.Name}' - le vehicule est arrive a '{wpLabel}'.",
@@ -549,7 +550,7 @@ public class TourMonitoringService : BackgroundService
                         }, ct);
 
                     var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
-                    await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+                    await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
                         "tour_overdue",
                         $"Temps depasse: {wpLabel}",
                         $"Tournee '{tour.Name}' — le vehicule n'est pas arrive a '{wpLabel}' dans le delai imparti (prevu {wp.EstimatedArrivalTime.Value:HH:mm} + {wp.DeadlineMarginMinutes}min de marge).",
@@ -624,7 +625,7 @@ public class TourMonitoringService : BackgroundService
             }, ct);
 
         // Persist notification
-        await SendNotificationToCompanyUsers(context, notifService, tour.CompanyId,
+        await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
             "tour_completed",
             $"Tournee terminee: {tour.Name}",
             $"La tournee '{tour.Name}' est terminee. Duree: {tour.ActualDurationMinutes} min, Distance: {tour.ActualDistanceKm} km.",
@@ -848,20 +849,19 @@ public class TourMonitoringService : BackgroundService
     /// <summary>
     /// Send a persisted notification to all users of the company
     /// </summary>
-    private async Task SendNotificationToCompanyUsers(
+    private async Task SendTourNotification(
         GisDbContext context, INotificationService notifService,
-        int companyId, string type, string title, string message,
+        int companyId, int vehicleId, string type, string title, string message,
         string priority, string? refType, int? refId, string? actionUrl,
         CancellationToken ct)
     {
         try
         {
-            var userIds = await context.Users
-                .IgnoreQueryFilters()
-                .AsNoTracking()
-                .Where(u => u.CompanyId == companyId)
-                .Select(u => u.Id)
-                .ToListAsync(ct);
+            // Une tournee est le trajet d'UN vehicule : seuls les administrateurs
+            // et les utilisateurs affectes a ce vehicule sont concernes. Avant,
+            // la requete prenait tous les comptes de la societe — sans meme
+            // filtrer sur "active" (incident Hertz du 15/09/2026).
+            var userIds = await NotificationAudience.ForVehicleAsync(context, companyId, vehicleId, ct);
 
             foreach (var userId in userIds)
             {

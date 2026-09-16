@@ -431,7 +431,9 @@ public class AdminController : ControllerBase
     /// Le garde-fou anti-doublons bloque la modification classique quand le nouvel
     /// IMEI a déjà une fiche : cet endpoint est la porte de sortie légitime — il
     /// libère la fiche occupante SI ELLE EST VIDE, puis renomme le boîtier du
-    /// véhicule en place pour préserver son historique.
+    /// véhicule en place pour préserver son historique. Si c'est au contraire la
+    /// fiche du véhicule qui est vide (IMEI mal saisi, 14/09/2026), il rattache le
+    /// véhicule à la fiche qui émet et supprime la fiche vide.
     /// </summary>
     [HttpPost("vehicles/{id}/replace-device")]
     public async Task<ActionResult<ReplaceVehicleDeviceResult>> ReplaceVehicleDevice(
@@ -442,7 +444,8 @@ public class AdminController : ControllerBase
             request.NewImei,
             request.NewSimNumber,
             request.NewMat,
-            request.NewSimOperator));
+            request.NewSimOperator,
+            request.NewFuelSensorMode));
 
         if (!result.Success) return BadRequest(new { message = result.Message });
         return Ok(result);
@@ -461,7 +464,9 @@ public class AdminController : ControllerBase
             request.GpsSimNumber, request.GpsSimOperator, request.GpsInstallationDate
         ));
         if (!result.Success && result.Error == "not_found") return NotFound();
-        if (!result.Success) return BadRequest(new { message = result.Error });
+        // replaceSuggested : l'écran ne propose le remplacement de boîtier que si le
+        // serveur a vérifié qu'il aboutirait (boucle « Doublon refusé » du 14/09/2026).
+        if (!result.Success) return BadRequest(new { message = result.Error, replaceSuggested = result.ReplaceSuggested });
         return Ok(result.Vehicle);
     }
 
@@ -1535,6 +1540,7 @@ public class ReplaceVehicleDeviceRequest
     public string? NewSimNumber { get; set; }
     public string? NewMat { get; set; }
     public string? NewSimOperator { get; set; }
+    public string? NewFuelSensorMode { get; set; }
 }
 
 public class UpdateAdminVehicleRequest

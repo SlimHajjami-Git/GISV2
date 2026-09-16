@@ -3,6 +3,7 @@ using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.AcquisitionPayments;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Vehicles;
 
 namespace GisAPI.Services;
@@ -555,8 +556,10 @@ public class DashboardService : IDashboardService
     ///     compter les journaux doublerait (recette client du 25/08/2026) ;
     ///   • réparations = repairs, statut « cancelled » EXCLU — une réparation
     ///     annulée n'est pas une dépense, et les rapports de coûts l'excluent
-    ///     déjà : la compter ici faisait diverger le total des deux écrans ;
-    ///   • autres      = le reste des dépenses.
+    ///     déjà : la compter ici faisait diverger le total des deux écrans —,
+    ///     plus les dépenses de type « repair » ;
+    ///   • autres      = le reste des dépenses, remboursement d'assurance déduit
+    ///     (ventilation <see cref="VehicleCostCategory"/>).
     /// Une seule définition, partagée par la période courante et la période
     /// précédente : sans cela le total et la flèche de tendance ne comparaient pas
     /// les mêmes choses. Les mensualités d'acquisition sont comptées à part
@@ -589,21 +592,39 @@ public class DashboardService : IDashboardService
         }
 
         var fuel = await fuelEntries.Select(f => (decimal?)f.TotalAmount).SumAsync(ct) ?? 0m;
-        fuel += await costs.Where(c => c.Type == "fuel")
-            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
 
-        var maintenance = await costs.Where(c => c.Type == "maintenance")
-            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
+        // Dépenses : une somme par type EN SQL (quelques lignes, jamais le détail),
+        // puis la ventilation partagée en C# (VehicleCostCategory) — la même que
+        // les rapports de coûts et le tableau de bord GPA. Constat du 14/09/2026 :
+        // « repair » tombait ici en « Autres » et « insurance_refund » s'y
+        // ajoutait en positif, alors que les rapports les rangent en Réparations
+        // et en crédit ; la comparaison exacte « maintenance » laissait aussi
+        // « Entretien » (casse) et « entretien » en « Autres ».
+        var byType = await costs
+            .GroupBy(c => c.Type)
+            .Select(g => new { Type = g.Key, Amount = g.Sum(c => c.Amount) })
+            .ToListAsync(ct);
+
+        decimal maintenance = 0m, repair = 0m, other = 0m;
+        foreach (var t in byType)
+        {
+            var (category, sign) = VehicleCostCategory.Classify(t.Type);
+            var amount = sign * t.Amount;
+            switch (category)
+            {
+                case CostCategory.Fuel: fuel += amount; break;
+                case CostCategory.Maintenance: maintenance += amount; break;
+                case CostCategory.Repair: repair += amount; break;
+                default: other += amount; break;
+            }
+        }
 
         // Statut comparé en mémoire : la casse varie selon la source de saisie,
         // et OperatingCostAggregator applique exactement le même filtre.
         var repairRows = await repairs.Select(r => new { r.TotalCost, r.Status }).ToListAsync(ct);
-        var repair = repairRows
+        repair += repairRows
             .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
             .Sum(r => r.TotalCost);
-
-        var other = await costs.Where(c => c.Type != "fuel" && c.Type != "maintenance")
-            .Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m;
 
         return (fuel, maintenance, repair, other);
     }

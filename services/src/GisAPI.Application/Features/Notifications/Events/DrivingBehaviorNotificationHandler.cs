@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -25,10 +26,11 @@ public class DrivingBehaviorNotificationHandler : INotificationHandler<DrivingBe
     {
         try
         {
-            var targetUsers = await _context.Users
-                .Where(u => u.CompanyId == e.CompanyId && u.Status == "active")
-                .Select(u => u.Id)
-                .ToListAsync(ct);
+            // Cloisonnement : administrateurs de societe + utilisateurs affectes
+            // a CE vehicule. Sans ce filtre, un operateur restreint a 2 vehicules
+            // etait notifie de tout le parc (incident Hertz du 15/09/2026).
+            var targetUsers = await NotificationAudience.ForVehicleAsync(
+                _context, e.CompanyId, e.VehicleId, ct);
 
             if (targetUsers.Count == 0) return;
 

@@ -134,6 +134,11 @@ public static class OperatingCostAggregator
         return fallback;
     }
 
+    /// <param name="includeDistance">
+    /// false : ni trajets ni relevés compteur ne sont lus (distance « none » partout).
+    /// Pour un appelant qui n'affiche aucune distance — le tableau de bord GPA
+    /// matérialisait sinon deux fois l'année des trajets terminés sans en rien montrer.
+    /// </param>
     public static async Task<OperatingCostData> LoadAsync(
         IGisDbContext context,
         ICurrentTenantService tenant,
@@ -141,7 +146,8 @@ public static class OperatingCostAggregator
         DateTime endExclusiveUtc,
         int? vehicleId,
         int? departmentId,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool includeDistance = true)
     {
         var companyId = tenant.CompanyId ?? 0;
 
@@ -223,7 +229,9 @@ public static class OperatingCostAggregator
             .ToList();
 
         // ── Trajets GPS (véhicules équipés seulement) ─────────────────────────
-        var gpsVehicleIds = vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.Id).ToList();
+        var gpsVehicleIds = includeDistance
+            ? vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.Id).ToList()
+            : new List<int>();
         var trips = gpsVehicleIds.Count == 0
             ? new List<(int VehicleId, DateTime StartTime, decimal DistanceKm)>()
             : (await context.Trips.AsNoTracking()
@@ -250,8 +258,10 @@ public static class OperatingCostAggregator
         // 109 releves sur 508. Meme source que le rapport « Couts mensuel par
         // vehicule », pour qu’un vehicule ne rende pas deux kilometrages
         // differents selon le rapport ouvert.
-        var odometerReadings = await OdometerReadings.LoadAsync(
-            context, companyId, vehicleIds, startUtc, endExclusiveUtc, ct);
+        var odometerReadings = includeDistance
+            ? await OdometerReadings.LoadAsync(context, companyId, vehicleIds, startUtc, endExclusiveUtc, ct)
+            : Array.Empty<(int VehicleId, (long Km, DateTime Date) Reading)>()
+                .ToLookup(r => r.VehicleId, r => r.Reading);
 
         var result = new List<VehicleCostData>(vehicles.Count);
         foreach (var v in vehicles)
@@ -269,25 +279,29 @@ public static class OperatingCostAggregator
 
             foreach (var c in costsByVehicle[v.Id])
             {
-                var type = (c.Type ?? string.Empty).Trim().ToLowerInvariant();
                 var acc = Bucket(c.Date);
-                if (type == "fuel") acc.Fuel += c.Amount;
-                else if (type == "maintenance" || type == "entretien") acc.Maintenance += c.Amount;
-                // « Réparation » est une catégorie proposée par l’écran Dépenses (et
-                // par le scan de facture). Elle tombait en « Autres », si bien que
-                // la colonne Réparations sous-estimait ce que coûtent les
-                // réparations. En production le 11/09/2026 : 2 lignes « repair ».
-                // Montant seul, sans compter une intervention : RepairCount mesure
-                // les passages à l’atelier de la table repairs, et une dépense
-                // « repair » peut être la facture de l’une d’elles.
-                else if (type == "repair" || type == "reparation" || type == "réparation") acc.Repair += c.Amount;
-                // Remboursement d’assurance : enregistré en montant POSITIF par le
-                // module Sinistres, et affiché en crédit par l’écran Dépenses.
-                // L’additionner gonflait le coût du mois du montant remboursé au
-                // lieu de l’alléger, et le total ne recoupait plus celui de l’écran
-                // Dépenses. On le soustrait : c’est un crédit.
-                else if (type == "insurance_refund") acc.Other -= c.Amount;
-                else acc.Other += c.Amount;
+                // Ventilation partagée (VehicleCostCategory) avec le tableau de bord
+                // GPS et « Coûts mensuels par véhicule » :
+                // - « Réparation » est une catégorie proposée par l’écran Dépenses (et
+                //   par le scan de facture). Elle tombait en « Autres », si bien que
+                //   la colonne Réparations sous-estimait ce que coûtent les
+                //   réparations. En production le 11/09/2026 : 2 lignes « repair ».
+                //   Montant seul, sans compter une intervention : RepairCount mesure
+                //   les passages à l’atelier de la table repairs, et une dépense
+                //   « repair » peut être la facture de l’une d’elles.
+                // - Remboursement d’assurance : enregistré en montant POSITIF par le
+                //   module Sinistres, et affiché en crédit par l’écran Dépenses.
+                //   L’additionner gonflait le coût du mois du montant remboursé au
+                //   lieu de l’alléger. On le soustrait : c’est un crédit.
+                var (category, sign) = VehicleCostCategory.Classify(c.Type);
+                var amount = sign * c.Amount;
+                switch (category)
+                {
+                    case CostCategory.Fuel: acc.Fuel += amount; break;
+                    case CostCategory.Maintenance: acc.Maintenance += amount; break;
+                    case CostCategory.Repair: acc.Repair += amount; break;
+                    default: acc.Other += amount; break;
+                }
             }
 
             foreach (var r in repairsByVehicle[v.Id])

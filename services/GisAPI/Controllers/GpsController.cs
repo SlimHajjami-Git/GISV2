@@ -772,7 +772,11 @@ public class GpsController : ControllerBase
                 Brand = d.Brand,
                 Model = d.Model,
                 Status = d.Status,
-                LastCommunication = d.LastCommunication
+                LastCommunication = d.LastCommunication,
+                // Le formulaire véhicule recopie MAT et mode capteur de l'appareil choisi : sans
+                // eux, il envoyait un MAT vide et remettait le mode par défaut (14/09/2026).
+                Mat = d.Mat,
+                FuelSensorMode = d.FuelSensorMode
             })
             .ToListAsync();
 
@@ -1538,6 +1542,8 @@ public class GpsDeviceDto
     public DateTime? LastCommunication { get; set; }
     public int? AssignedVehicleId { get; set; }
     public string? AssignedVehicleName { get; set; }
+    public string? Mat { get; set; }
+    public string? FuelSensorMode { get; set; }
 }
 
 public class TestPositionUpdateRequest

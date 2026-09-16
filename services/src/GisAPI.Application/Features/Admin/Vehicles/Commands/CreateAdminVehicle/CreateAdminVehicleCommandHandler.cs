@@ -49,12 +49,18 @@ public class CreateAdminVehicleCommandHandler : IRequestHandler<CreateAdminVehic
             gpsDevice.Status = "assigned";
             gpsDevice.Vehicle = vehicle;
 
-            if (!string.IsNullOrWhiteSpace(r.GpsMat)) gpsDevice.Mat = r.GpsMat;
+            // Même règle que GpsDeviceResolver : une fiche existante qui a déjà communiqué
+            // garde l'orthographe de son MAT (l'ingestion le compare à l'identique) si la
+            // saisie n'en diffère que par la casse ou des espaces. Sans cela, cette ligne
+            // réécrivait la saisie brute juste après le Resolver.
+            if (!string.IsNullOrWhiteSpace(r.GpsMat))
+                gpsDevice.Mat = GpsDeviceUniquenessGuard.StoredValueFor(
+                    gpsDevice.Mat, r.GpsMat, keepDeviceSpelling: gpsDevice.LastCommunication != null);
             if (!string.IsNullOrWhiteSpace(r.GpsBrand)) gpsDevice.Brand = r.GpsBrand;
             if (!string.IsNullOrWhiteSpace(r.GpsModel)) gpsDevice.Model = r.GpsModel;
             if (!string.IsNullOrWhiteSpace(r.GpsFirmwareVersion)) gpsDevice.FirmwareVersion = r.GpsFirmwareVersion;
             if (!string.IsNullOrWhiteSpace(r.GpsFuelSensorMode)) gpsDevice.FuelSensorMode = r.GpsFuelSensorMode;
-            if (!string.IsNullOrWhiteSpace(r.GpsSimNumber)) gpsDevice.SimNumber = r.GpsSimNumber;
+            if (!string.IsNullOrWhiteSpace(r.GpsSimNumber)) gpsDevice.SimNumber = r.GpsSimNumber.Trim();
             if (!string.IsNullOrWhiteSpace(r.GpsSimOperator)) gpsDevice.SimOperator = r.GpsSimOperator;
             if (r.GpsInstallationDate.HasValue) gpsDevice.InstallationDate = r.GpsInstallationDate;
 

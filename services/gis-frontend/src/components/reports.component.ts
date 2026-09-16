@@ -14,6 +14,7 @@ import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { libellePerimetreParc } from './dashboard-gpa.helpers';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
@@ -3629,6 +3630,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return n.charAt(0).toUpperCase() + n.slice(1);
   }
 
+  /** « Tout le parc » pour un administrateur, « Mes véhicules (N) » sinon : le
+   *  serveur borne le rapport aux véhicules affectés (VehicleScope), N est le même
+   *  compteur que le KPI Véhicules. */
+  mfPerimetre(): string {
+    return libellePerimetreParc(this.permissionService.isAnyAdmin(), this.monthlyReport?.fleetOverview.totalVehicles ?? 0);
+  }
+
   private mfMoisPrecedent(): string {
     const r = this.monthlyReport;
     if (!r) return 'le mois précédent';
@@ -6154,7 +6162,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     return {
       title: this.selectedTemplate?.name || 'Rapport mensuel flotte',
-      vehicleName: pourPdf ? undefined : 'Tout le parc',
+      vehicleName: pourPdf ? undefined : this.mfPerimetre(),
       dateRange: this.mfMoisLibelle(),
       statistics,
       columns,
@@ -8613,14 +8621,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (!r) return '';
     if (this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return this.rfTitre();
     const n = `${r.fleetSize} véhicule${r.fleetSize > 1 ? 's' : ''}`;
-    return `${this.rfPerimetreExecute.departement || 'Tout le parc'} (${n})`;
+    return `${this.rfPerimetreExecute.departement || this.rfParc()} (${n})`;
   }
 
   /** Dernier maillon du fil d'Ariane R4. */
   rfPerimetre(): string {
     const r = this.repairFrequency;
     if (r && this.rfPerimetreExecute.vehicule && r.vehicles.length === 1) return r.vehicles[0].vehicleName;
-    return this.rfPerimetreExecute.departement || 'Tout le parc';
+    return this.rfPerimetreExecute.departement || this.rfParc();
+  }
+
+  /** « Tout le parc » pour un administrateur, « Mes véhicules » sinon (portée VehicleScope du serveur). */
+  private rfParc(): string {
+    return this.permissionService.isAnyAdmin() ? 'Tout le parc' : 'Mes véhicules';
   }
 
   rfInterventions(n: number): string {

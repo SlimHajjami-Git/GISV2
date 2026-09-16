@@ -39,6 +39,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<Geofence> Geofences => Set<Geofence>();
     public DbSet<GeofenceVehicle> GeofenceVehicles => Set<GeofenceVehicle>();
     public DbSet<GeofenceEvent> GeofenceEvents => Set<GeofenceEvent>();
+    public DbSet<PoiVisit> PoiVisits => Set<PoiVisit>();
     public DbSet<MaintenanceRecord> MaintenanceRecords => Set<MaintenanceRecord>();
     public DbSet<MaintenancePart> MaintenanceParts => Set<MaintenancePart>();
     public DbSet<VehicleCost> VehicleCosts => Set<VehicleCost>();
@@ -179,6 +180,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
             .Ignore(g => g.Coordinates)
             .Ignore(g => g.ActiveDays)
             .Ignore(g => g.Group);
+
+        // === PointOfInterest (via PoiVisit): horaires en JSONB en prod ===
+        modelBuilder.Entity<PointOfInterest>().Ignore(p => p.Hours);
 
         // === GPS: JSONB metadata ===
         modelBuilder.Entity<GpsPosition>().Ignore(p => p.Metadata);

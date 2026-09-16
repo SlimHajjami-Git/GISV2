@@ -618,6 +618,9 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Plus ancienne date acceptée par GET /api/dashboard/gpa.</summary>
+    public static readonly DateTime GpaMinDate = new(2000, 1, 1);
+
     /// <summary>
     /// Tableau de bord d'un compte SANS GPS (offre Calypso GPA) : coûts
     /// d'exploitation, acquisitions, interventions, échéances et alertes, sur
@@ -625,13 +628,17 @@ public class DashboardController : ControllerBase
     /// défaut : du 1er janvier de l'année en cours à aujourd'hui.
     /// Pas de cache : la réponse dépend de la portée véhicules de l'appelant
     /// (appliquée par le handler). /api/dashboard est exempté du contrôle
-    /// d'abonnement dans PermissionMiddleware, ce chemin compris.
+    /// d'abonnement ET des permissions dans PermissionMiddleware, ce chemin
+    /// compris : le handler masque lui-même chaque bloc que l'appelant n'a pas le
+    /// droit de voir, et refuse une société équipée du suivi GPS (403).
     /// </summary>
     /// <response code="200">Tableau de bord GPA</response>
-    /// <response code="400">Date de début postérieure à la date de fin</response>
+    /// <response code="400">Plage inversée ou hors bornes</response>
+    /// <response code="403">Société avec suivi GPS</response>
     [HttpGet("gpa")]
     [ProducesResponseType(typeof(GpaDashboardDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<GpaDashboardDto>> GetGpaDashboard(
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null)
@@ -642,6 +649,13 @@ public class DashboardController : ControllerBase
 
         if (start > end)
             return BadRequest(new { message = "La date de début doit précéder la date de fin." });
+
+        // Bornes : to=9999-12-31 faisait déborder la fin exclusive (AddDays(1)) en
+        // 500, et from=0001-01-01 lisait tout l'historique à chaque appel. Aucune
+        // limite de durée en deçà : une plage « Personnalisé » de plusieurs années
+        // reste légitime.
+        if (start < GpaMinDate || end > today.AddYears(1))
+            return BadRequest(new { message = $"La période doit être comprise entre le {GpaMinDate:dd/MM/yyyy} et le {today.AddYears(1):dd/MM/yyyy}." });
 
         var result = await _mediator.Send(new GetGpaDashboardQuery(start, end), HttpContext.RequestAborted);
         return Ok(result);

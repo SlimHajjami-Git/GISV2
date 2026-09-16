@@ -103,43 +103,39 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
             .Select(c => new { c.VehicleId, c.Type, c.Amount })
             .ToListAsync(ct);
 
-        // Ventilation IDENTIQUE à OperatingCostAggregator, la définition de
-        // référence des rapports de coûts : ce rapport avait sa propre règle et
-        // rangeait dans « Autres » tout ce qui n'était ni carburant ni entretien.
-        // Deux écarts en découlaient pour le même mois (recette du 13/09/2026) :
-        // une dépense de type « réparation » manquait à la colonne Réparations,
-        // et un remboursement d'assurance — enregistré en montant POSITIF par le
-        // module Sinistres — AUGMENTAIT le coût du mois au lieu de l'alléger
-        // (100 € remboursés = 200 € d'écart avec « Coût d'exploitation réel »).
-        static string Bucket(string? type) => (type ?? string.Empty).Trim().ToLowerInvariant() switch
-        {
-            "fuel" => "fuel",
-            "maintenance" or "entretien" => "maintenance",
-            "repair" or "reparation" or "réparation" => "repair",
-            "insurance_refund" => "refund",
-            _ => "other"
-        };
+        //    Ventilation partagée (VehicleCostCategory) avec le tableau de bord et
+        //    les rapports de coûts : une dépense « repair » va en Réparations et
+        //    un remboursement d'assurance est un CRÉDIT. Constat du 14/09/2026 :
+        //    ce rapport les comptait en « Autres », en positif, quand les rapports
+        //    de coûts les rangeaient en Réparations et en déduction.
+        var classified = costRows
+            .Select(c => new
+            {
+                c.VehicleId,
+                Category = VehicleCostCategory.Classify(c.Type).Category,
+                Amount = VehicleCostCategory.SignedAmount(c.Type, c.Amount)
+            })
+            .ToList();
 
-        var maintenanceLogs = costRows
-            .Where(c => Bucket(c.Type) == "maintenance")
+        var maintenanceLogs = classified
+            .Where(c => c.Category == CostCategory.Maintenance)
             .Select(c => new { c.VehicleId, ActualCost = c.Amount })
             .ToList();
 
-        var fuelCosts = costRows
-            .Where(c => Bucket(c.Type) == "fuel")
+        var fuelCosts = classified
+            .Where(c => c.Category == CostCategory.Fuel)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        var repairCosts = costRows
-            .Where(c => Bucket(c.Type) == "repair")
+        var otherByVehicle = classified
+            .Where(c => c.Category == CostCategory.Other)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        // Le remboursement d'assurance est un CRÉDIT : il se soustrait des autres coûts.
-        var otherByVehicle = costRows
-            .Where(c => Bucket(c.Type) is "other" or "refund")
+        var repairExpensesByVehicle = classified
+            .Where(c => c.Category == CostCategory.Repair)
             .GroupBy(c => c.VehicleId)
-            .ToDictionary(g => g.Key, g => g.Sum(c => Bucket(c.Type) == "refund" ? -c.Amount : c.Amount));
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
         // 4. Fetch repairs from /reparation page's table (repairs)
         var repairs = (await _context.Repairs.AsNoTracking()
@@ -320,10 +316,8 @@ ORDER BY device_id, recorded_at DESC;
             var fuelCost = (hasFuel ? fuel!.TotalCost : 0) + fuelCosts.GetValueOrDefault(vehicle.Id, 0);
             var fuelLiters = hasFuel ? fuel!.TotalLiters : 0;
             var maintCost = maintByVehicle.GetValueOrDefault(vehicle.Id, 0);
-            // Réparations = interventions de l'atelier + dépenses saisies sous la
-            // catégorie « Réparation », comme dans les autres rapports de coûts.
             var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0)
-                           + repairCosts.GetValueOrDefault(vehicle.Id, 0);
+                           + repairExpensesByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var otherCost = otherByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var totalCost = fuelCost + maintCost + repairCost + otherCost;
 

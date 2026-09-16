@@ -161,6 +161,8 @@ public class PermissionMiddleware
     };
 
     // Routes that skip all permission/subscription checks (always accessible when authenticated)
+    // /api/brands n'y porte plus que des lectures (référentiel global) : ses mutations sont
+    // sous /api/admin/brands, donc derrière la garde administrateur système ci-dessous.
     private static readonly HashSet<string> _skipRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
         "/api/auth",
@@ -301,6 +303,57 @@ public class PermissionMiddleware
         _next = next;
     }
 
+    /// <summary>Contrôle appliqué à une requête authentifiée, dans l'ordre exact d'InvokeAsync.</summary>
+    internal enum RouteGate
+    {
+        /// <summary>Hors /api/ : aucun contrôle.</summary>
+        NotApi,
+        /// <summary>_skipRoutes : ouvert à tout utilisateur connecté.</summary>
+        AlwaysOpen,
+        /// <summary>Compte de l'appelant lui-même (IsSelfServiceUserRoute).</summary>
+        SelfService,
+        /// <summary>GET d'un référentiel partagé (IsSharedReferenceRead) : abonnement contrôlé, pas la permission utilisateur.</summary>
+        SharedRead,
+        /// <summary>/api/admin : administrateur système uniquement.</summary>
+        SystemAdmin,
+        /// <summary>Abonnement de la société puis permission de l'utilisateur.</summary>
+        TenantChecks,
+    }
+
+    /// <summary>
+    /// Aiguillage d'un chemin (déjà en minuscules) vers son contrôle. Extrait d'InvokeAsync
+    /// pour qu'un test prouve qu'une route d'administration n'est court-circuitée par
+    /// aucune exemption placée avant la garde système.
+    /// </summary>
+    internal static RouteGate ClassifyRoute(string path, string method)
+    {
+        if (!path.StartsWith("/api/"))
+            return RouteGate.NotApi;
+
+        if (_skipRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+            return RouteGate.AlwaysOpen;
+
+        // Routes « moi-même » : elles ne touchent que le compte de l'appelant. Rangées sous
+        // /api/users, elles exigeaient CanUsers : un employé sans ce droit (utilisateur 51
+        // de la recette du 11/09/2026) ne pouvait ni lire son propre profil ni régler ses
+        // heures silencieuses. Liste EXACTE, pas de préfixe : /api/users/{id} et la gestion
+        // des autres comptes restent soumis à CanUsers. PUT /api/users/me (nom, e-mail) N'EN
+        // FAIT PAS PARTIE : changer son e-mail reste réservé à CanUsers — l'unicité de
+        // l'e-mail n'y est vérifiée que dans la société et en respectant la casse.
+        if (IsSelfServiceUserRoute(path, method))
+            return RouteGate.SelfService;
+
+        // Données de référence partagées (véhicules, chauffeurs, géofences) en lecture : frontière
+        // de segment et règle plus précise prioritaire, voir IsSharedReferenceRead.
+        if (IsSharedReferenceRead(path, method))
+            return RouteGate.SharedRead;
+
+        if (path.StartsWith("/api/admin"))
+            return RouteGate.SystemAdmin;
+
+        return RouteGate.TenantChecks;
+    }
+
     // IGisDbContext plutôt que GisDbContext : la DI rend la même instance scopée
     // (DependencyInjection.cs), et le middleware devient testable sur TestGisDbContext.
     public async Task InvokeAsync(HttpContext context, IGisDbContext dbContext)
@@ -313,29 +366,11 @@ public class PermissionMiddleware
         }
 
         var path = context.Request.Path.Value?.ToLower() ?? "";
+        var gate = ClassifyRoute(path, context.Request.Method);
 
-        // Skip non-API routes
-        if (!path.StartsWith("/api/"))
-        {
-            await _next(context);
-            return;
-        }
-
-        // Skip always-accessible routes
-        if (_skipRoutes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
-        {
-            await _next(context);
-            return;
-        }
-
-        // Routes « moi-même » : elles ne touchent que le compte de l'appelant. Rangées sous
-        // /api/users, elles exigeaient CanUsers : un employé sans ce droit (utilisateur 51
-        // de la recette du 11/09/2026) ne pouvait ni lire son propre profil ni régler ses
-        // heures silencieuses. Liste EXACTE, pas de préfixe : /api/users/{id} et la gestion
-        // des autres comptes restent soumis à CanUsers. PUT /api/users/me (nom, e-mail) N'EN
-        // FAIT PAS PARTIE : changer son e-mail reste réservé à CanUsers — l'unicité de
-        // l'e-mail n'y est vérifiée que dans la société et en respectant la casse.
-        if (IsSelfServiceUserRoute(path, context.Request.Method))
+        // Hors API, routes toujours ouvertes, compte de l'appelant. La lecture d'un référentiel
+        // partagé n'en fait PAS partie : elle passe encore le contrôle d'abonnement (CHECK 1).
+        if (gate is RouteGate.NotApi or RouteGate.AlwaysOpen or RouteGate.SelfService)
         {
             await _next(context);
             return;
@@ -346,10 +381,10 @@ public class PermissionMiddleware
         // ne porte QUE sur la permission utilisateur (CHECK 2) : il rendait aussi la main avant le
         // contrôle d'abonnement (CHECK 1), si bien qu'un module non vendu — Suivi, Géofences —
         // restait lisible par l'API, seule la garde Angular le masquait (recette du 16/09/2026).
-        var isSharedReferenceRead = IsSharedReferenceRead(path, context.Request.Method);
+        var isSharedReferenceRead = gate == RouteGate.SharedRead;
 
         // Admin routes check - only System Admin can access /api/admin/*
-        if (path.StartsWith("/api/admin"))
+        if (gate == RouteGate.SystemAdmin)
         {
             var userIdClaim = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (int.TryParse(userIdClaim, out var userId))

@@ -4,6 +4,7 @@ using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.AcquisitionPayments;
 using GisAPI.Application.Features.Documents;
 using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,10 @@ namespace GisAPI.Application.Features.Dashboard.Queries.GetGpaDashboard;
 ///     documents, en direct à la date du jour. Aucune alerte GPS.</item>
 /// </list>
 /// Tout ce qui est lu hors de l'agrégateur est borné par la société ET par
-/// <see cref="VehicleScope"/>. Pas de cache : la réponse dépend de l'appelant.
+/// <see cref="VehicleScope"/>. Chaque bloc n'est calculé et rendu que si
+/// l'appelant a le droit de le voir (<see cref="GpaSectionAccess"/>), sinon il vaut
+/// null : /api/dashboard est exempté de PermissionMiddleware. Réservé aux sociétés
+/// sans suivi GPS (403 sinon). Pas de cache : la réponse dépend de l'appelant.
 /// </summary>
 public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery, GpaDashboardDto>
 {
@@ -76,22 +80,32 @@ public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery,
         var now = _clock.UtcNow;
         var today = now.Date;
 
+        await EnsureCompanyWithoutGpsAsync(companyId, ct);
+        var access = await LoadAccessAsync(ct);
+
         // Période [from 00:00, to + 1 jour[ en UTC, comme les rapports de coûts.
         var startUtc = OperatingCostAggregator.StartUtc(request.From);
         var endExclusiveUtc = OperatingCostAggregator.EndExclusiveUtc(request.To);
         var lastDayUtc = endExclusiveUtc.AddDays(-1);
 
         // ── Agrégateur : période choisie, puis 12 mois glissants ──────────────
-        var period = await OperatingCostAggregator.LoadAsync(
-            _context, _tenant, startUtc, endExclusiveUtc, vehicleId: null, departmentId: null, ct);
+        // Seulement pour les blocs que l'appelant peut voir, et SANS distance :
+        // aucun bloc n'en affiche, et l'agrégateur lisait sinon tous les trajets
+        // terminés de la période puis des 12 mois (deux fois l'année des trajets).
+        OperatingCostData? period = access.Costs || access.Top5 || access.Interventions
+            ? await OperatingCostAggregator.LoadAsync(
+                _context, _tenant, startUtc, endExclusiveUtc, vehicleId: null, departmentId: null, ct, includeDistance: false)
+            : null;
 
         // Du 1er du mois d'il y a 11 mois à aujourd'hui inclus, quelle que soit la période.
         var rollingStartUtc = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-11);
         var rollingEndExclusiveUtc = OperatingCostAggregator.EndExclusiveUtc(today);
-        var rolling = rollingStartUtc == startUtc && rollingEndExclusiveUtc == endExclusiveUtc
-            ? period
-            : await OperatingCostAggregator.LoadAsync(
-                _context, _tenant, rollingStartUtc, rollingEndExclusiveUtc, vehicleId: null, departmentId: null, ct);
+        OperatingCostData? rolling = !access.Monthly
+            ? null
+            : period is not null && rollingStartUtc == startUtc && rollingEndExclusiveUtc == endExclusiveUtc
+                ? period
+                : await OperatingCostAggregator.LoadAsync(
+                    _context, _tenant, rollingStartUtc, rollingEndExclusiveUtc, vehicleId: null, departmentId: null, ct, includeDistance: false);
 
         // ── Périmètre de tout ce qui est calculé hors de l'agrégateur ─────────
         // Même définition que lui : société + véhicules visibles (null = tout le
@@ -113,54 +127,117 @@ public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery,
         // mensualités), indépendant de la période — décision de Karim, recette
         // du 11/09/2026 : 3 360 € de mensualités échues ne disaient pas ce que
         // le parc a coûté. Le reste à payer en est la part encore à venir.
-        var (acquisitionTotal, purchasedVehicles, financedVehicles) = await AcquisitionCostCalculator.FleetTotalAsync(
-            _context, companyId, scope, vehicles, ct);
-        var (leasingAmount, leasingContracts, leasingInstallments) = await AcquisitionCostCalculator.LeasingRemainingAsync(
-            _context, companyId, scope, vehicles, now, ct);
+        // La part de la PÉRIODE (tuile « Achats véhicule » livrée le 11/09) est
+        // rendue à côté : sans elle, aucun chiffre de l'écran ne suivait plus la
+        // période pour les achats.
+        GpaAcquisitionDto? acquisition = null;
+        GpaLeasingRemainingDto? leasingRemaining = null;
+        if (access.Acquisition)
+        {
+            var (acquisitionTotal, purchasedVehicles, financedVehicles) = await AcquisitionCostCalculator.FleetTotalAsync(
+                _context, companyId, scope, vehicles, ct);
+            var acquisitionPeriod = await AcquisitionCostCalculator.PeriodCostAsync(
+                _context, companyId, scope, vehicles, startUtc, lastDayUtc, now, ct);
+            var (leasingAmount, leasingContracts, leasingInstallments) = await AcquisitionCostCalculator.LeasingRemainingAsync(
+                _context, companyId, scope, vehicles, now, ct);
 
-        // ── Entretiens saisis de la période (dépenses maintenance/entretien) ──
-        var maintenanceCosts = await LoadMaintenanceCostsAsync(companyId, vehicleIds, startUtc, endExclusiveUtc, ct);
+            acquisition = new GpaAcquisitionDto(R(acquisitionTotal), purchasedVehicles, financedVehicles, R(acquisitionPeriod));
+            leasingRemaining = new GpaLeasingRemainingDto(R(leasingAmount), leasingContracts, leasingInstallments);
+        }
 
         // ── Échéances d'entretien et de documents, à la date du jour ──────────
-        var schedules = await LoadSchedulesAsync(companyId, vehicleIds, ct);
-        var (upcoming, maintenanceAlerts) = BuildMaintenance(schedules, labels, mileageById, today);
-        var documentAlerts = BuildDocumentAlerts(vehicles, labels, today);
+        GpaUpcomingMaintenanceDto? upcoming = null;
+        var maintenanceAlerts = new List<GpaAlertDto>();
+        if (access.Maintenance)
+        {
+            var schedules = await LoadSchedulesAsync(companyId, vehicleIds, ct);
+            (upcoming, maintenanceAlerts) = BuildMaintenance(schedules, labels, mileageById, today);
+        }
+        var documentAlerts = access.Documents ? BuildDocumentAlerts(vehicles, labels, today) : new List<GpaAlertDto>();
 
-        var allAlerts = maintenanceAlerts.Concat(documentAlerts).ToList();
-        var alertCounts = new GpaAlertCountsDto(allAlerts.Count, allAlerts.Count(a => a.Severity == SeverityCritical));
-        var alerts = allAlerts
-            .OrderBy(a => a.Severity == SeverityCritical ? 0 : 1)
-            .ThenBy(a => a.Date.HasValue ? 0 : 1)
-            .ThenBy(a => a.Date)
-            .ThenBy(a => a.Plate ?? a.VehicleName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(a => a.Title, StringComparer.Ordinal)
-            .Take(MaxAlerts)
-            .ToList();
+        List<GpaAlertDto>? alerts = null;
+        GpaAlertCountsDto? alertCounts = null;
+        if (access.Maintenance || access.Documents)
+        {
+            var allAlerts = maintenanceAlerts.Concat(documentAlerts).ToList();
+            alertCounts = new GpaAlertCountsDto(allAlerts.Count, allAlerts.Count(a => a.Severity == SeverityCritical));
+            alerts = allAlerts
+                .OrderBy(a => a.Severity == SeverityCritical ? 0 : 1)
+                .ThenBy(a => a.Date.HasValue ? 0 : 1)
+                .ThenBy(a => a.Date)
+                .ThenBy(a => a.Plate ?? a.VehicleName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.Title, StringComparer.Ordinal)
+                .Take(MaxAlerts)
+                .ToList();
+        }
 
         // ── Coûts de la période (définition du rapport « Coût d'exploitation ») ──
-        var costs = Costs(period.Vehicles.Aggregate(CostBucket.Zero, (acc, v) => acc.Plus(v.Total)));
+        var costs = access.Costs && period is not null
+            ? Costs(period.Vehicles.Aggregate(CostBucket.Zero, (acc, v) => acc.Plus(v.Total)))
+            : null;
 
-        // ── Interventions : les réparations viennent de l'agrégateur (non annulées) ──
-        var interventions = new GpaInterventionsDto(
-            Maintenance: maintenanceCosts.Count,
-            Repairs: period.Repairs.Count,
-            Total: maintenanceCosts.Count + period.Repairs.Count);
-
-        var recentInterventions = await BuildRecentInterventionsAsync(companyId, maintenanceCosts, period.Repairs, labels, ct);
+        // ── Interventions : entretiens saisis + réparations de l'agrégateur (non annulées) ──
+        GpaInterventionsDto? interventions = null;
+        List<GpaInterventionDto>? recentInterventions = null;
+        if (access.Interventions && period is not null)
+        {
+            var maintenanceCosts = await LoadMaintenanceCostsAsync(companyId, vehicleIds, startUtc, endExclusiveUtc, ct);
+            interventions = new GpaInterventionsDto(
+                Maintenance: maintenanceCosts.Count,
+                Repairs: period.Repairs.Count,
+                Total: maintenanceCosts.Count + period.Repairs.Count);
+            recentInterventions = await BuildRecentInterventionsAsync(companyId, maintenanceCosts, period.Repairs, labels, ct);
+        }
 
         return new GpaDashboardDto(
             From: startUtc,
             To: lastDayUtc,
             Costs: costs,
-            Acquisition: new GpaAcquisitionDto(R(acquisitionTotal), purchasedVehicles, financedVehicles),
-            LeasingRemaining: new GpaLeasingRemainingDto(R(leasingAmount), leasingContracts, leasingInstallments),
+            Acquisition: acquisition,
+            LeasingRemaining: leasingRemaining,
             Interventions: interventions,
             UpcomingMaintenance: upcoming,
             Alerts: alerts,
             AlertCounts: alertCounts,
-            Monthly: BuildMonthly(rolling),
-            Top5: BuildTop5(period),
+            Monthly: rolling is not null ? BuildMonthly(rolling) : null,
+            Top5: access.Top5 && period is not null ? BuildTop5(period) : null,
             RecentInterventions: recentInterventions);
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Contrôles d'accès
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Réservé aux sociétés SANS suivi GPS (abonnement moduleMonitoring = false),
+    /// règle SOCIÉTÉ comme le front. Une société GPS n'a aucun écran qui appelle
+    /// cette route : l'appeler à la main renvoyait des définitions GPA sans les
+    /// alertes GPS. Société sans abonnement : non bloquée (rien ne la classe).
+    /// </summary>
+    private async Task EnsureCompanyWithoutGpsAsync(int companyId, CancellationToken ct)
+    {
+        var moduleMonitoring = await _context.Societes.AsNoTracking()
+            .Where(s => s.Id == companyId && s.SubscriptionType != null)
+            .Select(s => (bool?)s.SubscriptionType!.ModuleMonitoring)
+            .FirstOrDefaultAsync(ct);
+
+        if (moduleMonitoring == true)
+            throw new ForbiddenAccessException("Le tableau de bord de gestion est réservé aux comptes sans boîtier GPS.");
+    }
+
+    /// <summary>Blocs visibles : l'utilisateur appelant et son rôle, relus en base (jamais les claims).</summary>
+    private async Task<GpaSectionAccess> LoadAccessAsync(CancellationToken ct)
+    {
+        if (_tenant.IsSystemAdmin) return GpaSectionAccess.All;
+
+        var userId = _tenant.UserId ?? 0;
+        if (userId <= 0) return GpaSectionAccess.None;
+
+        var user = await _context.Users.AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId, ct);
+
+        return GpaSectionAccess.For(user, isSystemAdmin: false);
     }
 
     // ═════════════════════════════════════════════════════════════════════════
@@ -173,9 +250,8 @@ public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery,
 
     private sealed record LogRow(int Id, int CostId, int TemplateId, int DoneKm, int? SupplierId);
 
-    /// <summary>Même normalisation que l'agrégateur (trim + minuscules).</summary>
-    private static bool IsMaintenanceType(string? type) =>
-        (type ?? string.Empty).Trim().ToLowerInvariant() is "maintenance" or "entretien";
+    /// <summary>Même ventilation que l'agrégateur (<see cref="VehicleCostCategory"/>).</summary>
+    private static bool IsMaintenanceType(string? type) => VehicleCostCategory.IsMaintenance(type);
 
     private async Task<List<MaintenanceCostRow>> LoadMaintenanceCostsAsync(
         int companyId, List<int> vehicleIds, DateTime startUtc, DateTime endExclusiveUtc, CancellationToken ct)

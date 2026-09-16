@@ -19,6 +19,9 @@ public interface IGisDbContext
     DbSet<Geofence> Geofences { get; }
     DbSet<GeofenceVehicle> GeofenceVehicles { get; }
     DbSet<GeofenceEvent> GeofenceEvents { get; }
+    // Passages sur point d'intérêt : exposés pour l'inventaire « fiche boîtier
+    // strictement vide » du remplacement de boîtier (poi_visits.device_id).
+    DbSet<PoiVisit> PoiVisits { get; }
     DbSet<MaintenanceRecord> MaintenanceRecords { get; }
     DbSet<MaintenancePart> MaintenanceParts { get; }
     DbSet<VehicleCost> VehicleCosts { get; }
