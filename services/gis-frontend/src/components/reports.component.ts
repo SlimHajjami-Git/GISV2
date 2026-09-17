@@ -8156,6 +8156,25 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return this.operatingCostChartRows().length > 0;
   }
 
+  /**
+   * Légende du graphe R3 « Véhicules les plus coûteux ». La couleur des barres suit l'écart au
+   * km (colonne « Écart »), pas leur longueur : un véhicule qui roule peu sort rouge avec un
+   * coût total faible, à gauche de la verticale grise, qui mesure autre chose (moyenne du coût
+   * TOTAL par véhicule). Question de Karim du 17/09/2026, une entrée par ligne, texte court.
+   */
+  operatingCostChartLegend(): string {
+    const cur = this.getCurrencyCode();
+    const parKm = this.operatingCost?.averageCostPerKm;
+    const vc = this.operatingCost?.vehicleCount ?? 0;
+    const moyenneVehicule = vc > 0 && this.operatingCost
+      ? this.userPrefs.formatCurrency(this.operatingCost.totalCost / vc, 0)
+      : null;
+    const parts: string[] = [];
+    if (moyenneVehicule) parts.push(`Ligne grise : moyenne par véhicule (${moyenneVehicule})`);
+    if (parKm != null) parts.push(`parc : ${this.formatCostPerKm(parKm)} ${cur}/km`);
+    return parts.length ? parts.join('. ') + '.' : '';
+  }
+
   /** Hauteur du graphe à barres horizontales : 28 px par véhicule, 240 px minimum. */
   operatingCostChartHeight(): number {
     return Math.max(240, 28 * this.operatingCostChartRows().length + 60);

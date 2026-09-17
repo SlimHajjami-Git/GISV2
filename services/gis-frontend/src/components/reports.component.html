@@ -1213,6 +1213,15 @@
                 <div class="dept-header">
                   <span class="dept-badge">{{ isRanking ? 'Classement par coût total (' + getCurrencyCode() + ')' : 'Classement par coût d’exploitation (' + getCurrencyCode() + '/km)' }}</span>
                 </div>
+                @if (isRanking && hasOperatingCostChartData()) {
+                  <div class="chart-color-legend">
+                    <span class="ccl-item"><i class="ccl-dot ccl-above"></i><span>Rouge : plus cher au km que la moyenne.</span></span>
+                    <span class="ccl-item"><i class="ccl-dot ccl-below"></i><span>Bleu : moins cher au km.</span></span>
+                    @if (operatingCostChartLegend()) {
+                      <span class="ccl-item ccl-note"><i class="ccl-dot ccl-line"></i><span>{{ operatingCostChartLegend() }}</span></span>
+                    }
+                  </div>
+                }
                 <div class="cost-chart-box" [style.height.px]="operatingCostChartHeight()">
                   <canvas #operatingCostCanvas></canvas>
                 </div>
