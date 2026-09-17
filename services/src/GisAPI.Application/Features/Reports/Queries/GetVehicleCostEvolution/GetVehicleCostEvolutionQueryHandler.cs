@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 
@@ -27,7 +28,7 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
         // Hors société ou hors portée de l'appelant : même réponse qu'un véhicule
         // inexistant (404 via ExceptionHandlingMiddleware), pas de fuite.
         var vehicle = data.Vehicles.FirstOrDefault(v => v.VehicleId == request.VehicleId)
-            ?? throw new VehiculeIntrouvableException(request.VehicleId);
+            ?? throw new NotFoundException(VehiculeIntrouvableException.Libelle);
 
         var months = new List<MonthlyVehicleCostDto>();
         decimal? previousTotal = null;

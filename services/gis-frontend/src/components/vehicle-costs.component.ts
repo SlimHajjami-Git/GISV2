@@ -37,6 +37,52 @@ export function costCreditFamily(type: string | null | undefined): 'insurance_re
   return COST_CREDIT_FAMILIES.get(normalizeCostType(type)) ?? null;
 }
 
+/**
+ * Postes Carburant, Entretien et Réparations des rapports (VehicleCostCategory.Classify) :
+ * codes, libellés et synonymes de la même table ExpenseImportRow.Types, normalisés. Un plein
+ * ancien « carburant » est du carburant dans les rapports ; comparé au seul code « fuel », il
+ * tombait ici en « Autres ». Un synonyme ajouté là-bas s'ajoute ici.
+ */
+const COST_CATEGORY_FAMILIES = new Map<string, 'fuel' | 'maintenance' | 'repair'>([
+  ['fuel', 'fuel'],
+  ['carburant', 'fuel'],
+  ['maintenance', 'maintenance'],
+  ['entretien', 'maintenance'],
+  ['repair', 'repair'],
+  ['reparation', 'repair'],
+  ['reparation accident', 'repair'],
+]);
+
+/** Poste (fuel, maintenance, repair) d'un type de dépense ; null pour les autres types et les crédits. */
+export function costCategoryFamily(type: string | null | undefined): 'fuel' | 'maintenance' | 'repair' | null {
+  return COST_CATEGORY_FAMILIES.get(normalizeCostType(type)) ?? null;
+}
+
+/**
+ * Détail du plein que l'écran Coûts envoie à POST et PUT /api/costs. PUT remplace litres,
+ * carburant et prix au litre par ce qu'il reçoit. Le prix au litre n'a pas de champ à
+ * l'écran : il est renvoyé tel quel tant que montant et litres ne changent pas ; sinon il ne
+ * correspond plus au plein, et PUT recalculerait le montant saisi à partir de ce prix.
+ * Hors carburant, les champs du plein sont masqués : un plein reclassé (péage, assurance)
+ * gardait ses litres, qui ressortaient dans l'export Excel des dépenses.
+ */
+export function fuelDetailToSave(
+  form: { type?: string | null; fuelType?: string | null; liters?: number | string | null },
+  amount: number,
+  original: { amount: number | string; liters?: number | string | null; pricePerLiter?: number | string | null } | null
+): { fuelType: string | null; liters: number | null; pricePerLiter: number | null } {
+  if (costCategoryFamily(form.type) !== 'fuel') {
+    return { fuelType: null, liters: null, pricePerLiter: null };
+  }
+  const liters = form.liters ? Number(form.liters) : null;
+  const pricePerLiter = original?.pricePerLiter != null
+    && amount === Number(original.amount)
+    && liters === (original.liters ? Number(original.liters) : null)
+    ? Number(original.pricePerLiter)
+    : null;
+  return { fuelType: form.fuelType || null, liters, pricePerLiter };
+}
+
 @Component({
   selector: 'app-vehicle-costs',
   standalone: true,
@@ -194,7 +240,7 @@ export function costCreditFamily(type: string | null | undefined): 'insurance_re
                     <span class="vehicle-name">{{ getVehicleName(cost.vehicleId) }}</span>
                   </td>
                   <td>
-                    <span class="type-badge" [class]="creditFamily(cost.type) || cost.type">
+                    <span class="type-badge" [class]="creditFamily(cost.type) || categoryFamily(cost.type) || cost.type">
                       {{ getTypeLabel(cost.type) }}
                     </span>
                   </td>
@@ -307,7 +353,7 @@ export function costCreditFamily(type: string | null | undefined): 'insurance_re
                 </div>
 
                 <!-- Fuel specific fields -->
-                @if (costForm.type === 'fuel') {
+                @if (categoryFamily(costForm.type) === 'fuel') {
                   <div class="form-group">
                     <label for="fuelType">Type carburant</label>
                     <select id="fuelType" [(ngModel)]="costForm.fuelType" name="fuelType">
@@ -927,9 +973,11 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       // dépense sans description faisait échouer toute la recherche.
       const matchesSearch = !this.searchQuery ||
         (c.description || '').toLowerCase().includes(this.searchQuery.toLowerCase());
-      // Filtre d'un crédit : ses lignes anciennes (« avoir »…), affichées en crédit, sont listées avec lui.
+      // Filtre d'un crédit ou d'un poste : ses lignes anciennes (« avoir », « carburant »…),
+      // comptées avec lui, sont listées avec lui.
       const matchesType = !this.filterType || c.type === this.filterType
-        || costCreditFamily(c.type) === this.filterType;
+        || costCreditFamily(c.type) === this.filterType
+        || costCategoryFamily(c.type) === this.filterType;
       const matchesVehicle = !this.filterVehicle || c.vehicleId === this.filterVehicle;
       const matchesPeriod = !startDate || new Date(c.date) >= startDate;
       return matchesSearch && matchesType && matchesVehicle && matchesPeriod;
@@ -956,9 +1004,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       const summary = summaryMap.get(c.vehicleId);
       if (summary) {
         const amount = this.signedAmount(c);
-        if (c.type === 'fuel') {
+        const family = costCategoryFamily(c.type);
+        if (family === 'fuel') {
           summary.fuelCost += amount;
-        } else if (c.type === 'maintenance') {
+        } else if (family === 'maintenance') {
           summary.maintenanceCost += amount;
         } else {
           summary.otherCost += amount;
@@ -987,6 +1036,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
     return this.creditFamily(type) !== null;
   }
 
+  categoryFamily(type: string | null | undefined): string | null {
+    return costCategoryFamily(type);
+  }
+
   signedAmount(c: VehicleCost): number {
     // Crédit en valeur absolue, comme VehicleCostCategory.SignedAmount : un avoir ancien
     // saisi à −120 ne doit pas devenir une dépense de +120.
@@ -994,11 +1047,11 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   }
 
   getFuelCost(): number {
-    return this.allCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.filter(c => costCategoryFamily(c.type) === 'fuel').reduce((sum, c) => sum + c.amount, 0);
   }
 
   getMaintenanceCost(): number {
-    return this.allCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.filter(c => costCategoryFamily(c.type) === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
   }
 
   getInsuranceCost(): number {
@@ -1027,8 +1080,8 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       fine: 'Amende',
       other: 'Autre'
     };
-    // Ligne ancienne au libellé d'un crédit (« avoir ») : même libellé que son code.
-    return labels[type] || labels[this.creditFamily(type) ?? ''] || type;
+    // Ligne ancienne au libellé d'un crédit ou d'un poste (« avoir », « carburant ») : même libellé que son code.
+    return labels[type] || labels[this.creditFamily(type) ?? ''] || labels[this.categoryFamily(type) ?? ''] || type;
   }
 
   getVehicleName(vehicleId: string): string {
@@ -1090,6 +1143,8 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       return;
     }
 
+    const fuel = fuelDetailToSave(this.costForm, amount, this.editingCost);
+
     // Champs que POST et PUT /api/costs lisent, et rien d'autre : le formulaire porte
     // aussi les colonnes d'affichage de la liste. Le justificatif est renvoyé tel quel,
     // PUT l'écraserait sinon.
@@ -1103,8 +1158,9 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       mileage: this.costForm.mileage ? Number(this.costForm.mileage) : null,
       receiptNumber: this.costForm.receiptNumber || null,
       receiptUrl: this.costForm.receiptUrl || null,
-      fuelType: this.costForm.fuelType || null,
-      liters: this.costForm.liters ? Number(this.costForm.liters) : null
+      fuelType: fuel.fuelType,
+      liters: fuel.liters,
+      pricePerLiter: fuel.pricePerLiter
     };
 
     // Modification en place (PUT). Elle supprimait puis recréait la dépense : si la

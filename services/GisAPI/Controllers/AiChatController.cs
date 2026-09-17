@@ -5,6 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Services;
@@ -255,8 +256,11 @@ public class AiChatController : ControllerBase
 
             if (ctx.RecentMaintenance.Count > 0)
                 sb.AppendLine($"Entretiens récents: {ctx.RecentMaintenance.Count} | Coût total: {ctx.RecentMaintenance.Sum(m => m.TotalCost):N0} {AppCurrency.Default}");
-            if (ctx.RecentRepairs.Count > 0)
-                sb.AppendLine($"Réparations récentes: {ctx.RecentRepairs.Count} | Coût total: {ctx.RecentRepairs.Sum(r => r.TotalCost):N0} {AppCurrency.Default}");
+            // Une réparation annulée n'est ni une intervention ni un coût : additionnée ici,
+            // la comparaison gonflait le coût du véhicule, à l'inverse des rapports de coûts.
+            var costedRepairs = ctx.RecentRepairs.Where(r => !r.IsCancelled).ToList();
+            if (costedRepairs.Count > 0)
+                sb.AppendLine($"Réparations récentes: {costedRepairs.Count} | Coût total: {costedRepairs.Sum(r => r.TotalCost):N0} {AppCurrency.Default}");
             if (ctx.FuelEntries.Count > 0)
                 sb.AppendLine($"Consommation moyenne: {ctx.FuelEntries.Average(f => f.Liters):F1} L/plein");
             sb.AppendLine();
@@ -689,8 +693,10 @@ public class AiChatController : ControllerBase
         {
             sb.AppendLine();
             sb.AppendLine("═══ RÉPARATIONS RÉCENTES ═══");
+            // Ligne annulée gardée (historique du véhicule) mais signalée hors coûts : avec le
+            // seul code « cancelled », l'assistant additionnait son montant aux autres.
             foreach (var r in ctx.RecentRepairs)
-                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} {AppCurrency.Default} | Statut: {r.Status}");
+                sb.AppendLine($"- {r.Date:dd/MM/yyyy} | {r.Description ?? "N/A"} | {r.MileageAtRepair} km | {r.TotalCost:N0} {AppCurrency.Default} | Statut: {(r.IsCancelled ? "annulée, non comptée dans les coûts" : r.Status)}");
         }
 
         if (ctx.ScheduledMaintenance.Count > 0)
@@ -791,8 +797,12 @@ public class AiChatController : ControllerBase
         var maintenance = await _context.MaintenanceRecords.AsNoTracking()
             .Where(m => vehicleIds.Contains(m.VehicleId) && m.Date >= periodStart)
             .ToListAsync();
+        // Réparations annulées écartées : elles gonflaient le nombre et le coût des réparations
+        // par véhicule transmis à l'assistant, alors que les rapports de coûts les excluent.
+        // Casse et espaces ignorés : des statuts anciens « Cancelled » restent en base.
         var repairs = await _context.Repairs.AsNoTracking()
-            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= periodStart)
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= periodStart
+                     && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .ToListAsync();
 
         // ── Alerts ──
@@ -1161,6 +1171,9 @@ public class RepairSummary
     public decimal TotalCost { get; set; }
     public int MileageAtRepair { get; set; }
     public string Status { get; set; } = "";
+
+    /// <summary>Statut « cancelled », casse et espaces ignorés : listée, jamais comptée en coût.</summary>
+    public bool IsCancelled => RepairInputRules.HasStatus(Status, RepairInputRules.Cancelled);
 }
 
 public class CostSummary

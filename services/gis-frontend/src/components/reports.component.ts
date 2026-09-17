@@ -22,6 +22,33 @@ import * as L from 'leaflet';
 
 Chart.register(...registerables);
 
+/** Barre « Répartition des coûts » du rapport IA : parts positives et crédits déduits hors barre. */
+export interface AiCostBreakdownView {
+  items: { label: string; value: number; pct: number; color: string }[];
+  credits: number;
+}
+
+/**
+ * fleetSummary.totalCosts est NET des avoirs et remboursements (costBreakdown.credits) :
+ * pris pour base, les parts dépassaient 100 % dès que les crédits dépassaient les autres
+ * frais, et la barre tronquée ne montrait pas la déduction. Base = somme des parts
+ * positives ; credits absent (API antérieure) = 0.
+ */
+export function buildAiCostBreakdown(cb: any): AiCostBreakdownView {
+  const num = (v: any) => Number(v) || 0;
+  const parts = [
+    { label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
+    { label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
+    { label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
+    { label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
+  ];
+  const positiveTotal = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
+  return {
+    items: parts.map(p => ({ ...p, pct: positiveTotal > 0 ? Math.max(0, p.value) / positiveTotal * 100 : 0 })),
+    credits: Math.max(0, num(cb?.credits))
+  };
+}
+
 @Component({
   selector: 'app-reports',
   standalone: true,
@@ -7951,6 +7978,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   getAiBarPct(value: number, max: number): number {
     return max > 0 ? (value / max) * 100 : 0;
+  }
+
+  private aiCostBreakdownCache: { source: any; value: AiCostBreakdownView } | null = null;
+
+  /**
+   * Barre « Répartition des coûts » du rapport IA (calcul : buildAiCostBreakdown).
+   * Mémorisée par rapport : un nouveau tableau à chaque détection de changements
+   * referait les segments.
+   */
+  get aiCostBreakdown(): AiCostBreakdownView {
+    const cb = this.aiFleetReport?.charts?.costBreakdown;
+    if (this.aiCostBreakdownCache && this.aiCostBreakdownCache.source === cb) return this.aiCostBreakdownCache.value;
+
+    const value = buildAiCostBreakdown(cb);
+    this.aiCostBreakdownCache = { source: cb, value };
+    return value;
   }
 
   get aiMaxFuel(): number {

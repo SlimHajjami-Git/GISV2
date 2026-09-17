@@ -281,6 +281,12 @@ public class CostsController : ControllerBase
                 // dans le panneau de détail de la dépense.
                 c.ReceiptUrl,
                 c.DetailsJson,
+                // Détail d'un plein : l'écran Coûts modifie par PUT, qui remplace ces
+                // colonnes par ce qu'il reçoit. Absentes de la liste, elles repartaient
+                // à null et la modification d'un plein effaçait ses litres et son prix au litre.
+                c.FuelType,
+                c.Liters,
+                c.PricePerLiter,
                 c.CreatedAt,
                 // Calypso 7 — link to the accident timeline that produced
                 // this cost (Phase 5 repair / Phase 6 insurance refund).
@@ -333,7 +339,8 @@ public class CostsController : ControllerBase
             {
                 Type = g.Key,
                 Total = g.Sum(c => c.Amount),
-                Count = g.Count()
+                Count = g.Count(),
+                Liters = g.Sum(c => c.Liters ?? 0m)
             })
             .ToListAsync(ct);
 
@@ -344,9 +351,11 @@ public class CostsController : ControllerBase
             .Select(t => new { t.Type, Total = VehicleCostCategory.SignedAmount(t.Type, t.Total), t.Count })
             .ToList();
 
-        var totalFuel = await scoped
-            .Where(c => c.Type == "fuel")
-            .SumAsync(c => c.Liters ?? 0, ct);
+        // Litres des pleins selon la ventilation des rapports : un plein ancien « carburant »
+        // est du carburant là-bas, la comparaison au seul code « fuel » l'ignorait ici.
+        var totalFuel = byType
+            .Where(t => VehicleCostCategory.IsFuel(t.Type))
+            .Sum(t => t.Liters);
 
         return Ok(new
         {
@@ -446,6 +455,12 @@ public class CostsController : ControllerBase
         if (type is null)
             return BadRequest(new { message = VehicleCostRules.UnknownTypeMessage(updated.Type) });
 
+        // Montant recalculé seulement si les litres ou le prix au litre changent : les deux
+        // colonnes sont arrondies au centime, et un plein créé à 45,678 L × 2,205 (100,72)
+        // relu à 45,68 × 2,21 donnait 100,95 — renvoyer le plein tel quel pour corriger sa
+        // description en aurait changé le montant.
+        var fuelDetailChanged = updated.Liters != cost.Liters || updated.PricePerLiter != cost.PricePerLiter;
+
         cost.Type = type;
         cost.Description = updated.Description;
         cost.Amount = updated.Amount;
@@ -457,8 +472,8 @@ public class CostsController : ControllerBase
         cost.Liters = updated.Liters;
         cost.PricePerLiter = updated.PricePerLiter;
 
-        // Recalculate for fuel
-        if (cost.Type == "fuel" && cost.Liters.HasValue && cost.PricePerLiter.HasValue)
+        if (fuelDetailChanged && VehicleCostCategory.IsFuel(cost.Type)
+            && cost.Liters.HasValue && cost.PricePerLiter.HasValue)
         {
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }

@@ -275,8 +275,13 @@ public class EntretienRefusMetierTests
     [Fact]
     public async Task Le_middleware_rend_un_404_avec_le_message_francais()
     {
+        // Levée réelle du handler (et non une exception fabriquée par le test) : c'est le
+        // message que l'écran Entretiens reçoit dans err.error.message.
+        using var context = await SeedAsync();
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: CompanyId);
         var middleware = new ExceptionHandlingMiddleware(
-            _ => throw EntretienIntrouvableException.Modele(99_999),
+            async _ => await new MarkMaintenanceDoneCommandHandler(context, tenant.Object)
+                .Handle(MarkDone(1, 99_999), CancellationToken.None),
             NullLogger<ExceptionHandlingMiddleware>.Instance);
         var http = new DefaultHttpContext();
         http.Response.Body = new MemoryStream();
@@ -286,8 +291,8 @@ public class EntretienRefusMetierTests
         http.Response.StatusCode.Should().Be(StatusCodes.Status404NotFound);
         http.Response.Body.Position = 0;
         using var json = await JsonDocument.ParseAsync(http.Response.Body);
-        json.RootElement.GetProperty("message").GetString()
-            .Should().StartWith("Ce modèle d'entretien est introuvable");
+        json.RootElement.GetProperty("message").GetString().Should().Be(
+            "Ce modèle d'entretien est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.");
     }
 
     // ── DEF-042 : l'écran sait qu'un échéancier est en pause ───────────────────

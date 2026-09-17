@@ -358,7 +358,7 @@ public class RecetteRapportsMineursTests
     public void DEF060_le_format_general_de_NotFoundException_ne_change_pas()
     {
         new NotFoundException("Vehicle", 4).Message.Should().Be("Entity \"Vehicle\" (4) was not found.");
-        new VehiculeIntrouvableException(4).Should().BeAssignableTo<NotFoundException>();
+        new NotFoundException("Véhicule introuvable.").Message.Should().Be("Véhicule introuvable.");
     }
 
     // ───────────────── DEF-061 : période inversée → 400 ─────────────────

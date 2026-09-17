@@ -564,7 +564,7 @@
       <tbody>
         @for (e of filteredExpenses; track e.id) {
           <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isCredit"
-              [class.pay-skipped]="e.paymentStatus === 'skipped'" [class.pay-future]="e.isFuture">
+              [class.pay-skipped]="e.paymentStatus === 'skipped' || e.repairCancelled" [class.pay-future]="e.isFuture">
             <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
             <td><span class="plate-badge">{{ e.vehiclePlate }}</span></td>
             <td>
@@ -582,7 +582,7 @@
             </td>
             <td class="label-cell">
               {{ e.label }}
-              <!-- Échéance d'acquisition : statut de paiement (règle serveur). -->
+              <!-- Échéance d'acquisition : statut de paiement (règle serveur) ; réparation annulée : « Annulée », hors totaux. -->
               @if (paymentBadge(e); as badge) {
                 <span class="pay-badge {{ badge.cls }}" [title]="e.note || ''">{{ badge.text }}</span>
               }
@@ -734,6 +734,11 @@
           <span class="xd-row-label">Source</span>
           <span class="xd-row-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : detailExpense.sourceTable === 'acquisition_payment' ? 'Échéance d\'acquisition' : 'Coût véhicule' }}</span>
         </div>
+        <div class="xd-row" *ngIf="detailExpense.repairCancelled">
+          <span class="xd-row-label">Statut</span>
+          <span class="xd-row-value"><span class="pay-badge skipped">Annulée</span></span>
+        </div>
+        <p class="xd-hint" *ngIf="detailExpense.repairCancelled">Réparation annulée : exclue des totaux et des rapports de coûts.</p>
       </div>
 
       <!-- Échéance d'acquisition : statut et paiement -->

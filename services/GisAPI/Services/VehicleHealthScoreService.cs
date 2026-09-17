@@ -1,6 +1,7 @@
 using System.Globalization;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Documents;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -92,10 +93,13 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             .GroupBy(x => x.VehicleId)
             .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Status ?? "", x => x.Count));
 
-        // 1 requête : réparations des 6 derniers mois par véhicule.
+        // 1 requête : réparations des 6 derniers mois par véhicule. Une réparation annulée
+        // n'a pas eu lieu : comptée, elle retirait des points « Réparations » et pouvait
+        // classer le véhicule « à surveiller ». Casse et espaces ignorés (statuts anciens).
         var repairCounts = (await context.Repairs
             .AsNoTracking()
-            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= sixMonthsAgo)
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= sixMonthsAgo
+                     && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .GroupBy(r => r.VehicleId)
             .Select(g => new { VehicleId = g.Key, Count = g.Count() })
             .ToListAsync(ct))
@@ -137,9 +141,11 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             .ToDictionary(g => g.Key, g => g.Count());
 
         var sixMonthsAgo = now.AddMonths(-6);
+        // Même périmètre que le calcul de flotte : réparations annulées exclues.
         var recentRepairs = await context.Repairs
             .AsNoTracking()
-            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo)
+            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo
+                     && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .CountAsync(ct);
 
         var thirtyDaysAgo = now.AddDays(-30);

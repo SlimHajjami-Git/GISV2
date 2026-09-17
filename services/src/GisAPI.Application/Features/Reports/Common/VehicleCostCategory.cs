@@ -40,36 +40,45 @@ public static class VehicleCostCategory
     ///   <item><c>insurance_refund</c> → Autres, en CRÉDIT (le module Sinistres l'enregistre en montant positif) ;</item>
     ///   <item><c>credit_note</c> (« Avoir fournisseur ») → Autres, en CRÉDIT, même convention : montant
     ///     saisi en positif (écran Dépenses, scan d'un avoir, import Excel) ;</item>
-    ///   <item>type ancien synonyme de l'un de ces deux crédits (« avoir », « Avoir fournisseur »,
-    ///     « credit note », « remb. assurance »…) → Autres, en CRÉDIT ;</item>
+    ///   <item>type ancien synonyme ou libellé de l'un de ces codes (« carburant », « Réparation
+    ///     accident », « avoir », « remb. assurance »…) → le poste et le signe de son code ;</item>
     ///   <item>tout le reste → Autres.</item>
     /// </list>
     /// </summary>
     public static (CostCategory Category, int Sign) Classify(string? type) => Normalize(type) switch
     {
+        // Codes exacts d'abord : c'est ce qu'écrivent l'application et l'import, soit la
+        // quasi-totalité des lignes, et cette règle tourne sur chaque dépense des rapports.
         "fuel" => (CostCategory.Fuel, 1),
         "maintenance" or "entretien" => (CostCategory.Maintenance, 1),
         "repair" or "reparation" or "réparation" => (CostCategory.Repair, 1),
         // Avoir fournisseur (décision du 16/09/2026) : depuis DEF-050 le montant négatif
         // est refusé, l'avoir est donc un crédit explicite comme le remboursement d'assurance.
         "insurance_refund" or CreditNote => (CostCategory.Other, -1),
-        // Lignes écrites avant la liste blanche (« avoir », « credit note »…) : l'export
-        // les écrit sous le libellé du crédit et l'import les relit sous son code. Comptées
-        // en dépense ici, elles changeaient de signe au premier aller-retour du classeur.
-        _ => IsCreditSynonym(type) ? (CostCategory.Other, -1) : (CostCategory.Other, 1)
+        // Lignes écrites avant la liste blanche (DEF-040) : « carburant », « avoir »…
+        // L'export les écrit sous le libellé de leur code et l'import les relit sous ce
+        // code. Classées sur leur seul texte, un plein « carburant » restait en « Autres »
+        // et un avoir comptait en dépense, jusqu'au premier aller-retour du classeur.
+        _ => ClassifyCode(ExpenseImportRow.StoredType(type))
     };
 
     /// <summary>Code de l'avoir fournisseur dans <c>vehicle_costs.type</c> (« credit » est déjà « Crédit / Leasing »).</summary>
     public const string CreditNote = "credit_note";
 
     /// <summary>
-    /// Synonyme d'un crédit, avec la normalisation de l'import Excel (casse, accents, libellés).
-    /// <c>StoredType</c> plutôt que <c>TypeFamily</c> : un code déjà connu (« insurance »,
-    /// « amende »…) y est reconnu sans normalisation Unicode, or cette règle tourne sur
-    /// chaque dépense des rapports.
+    /// Poste d'un code de <see cref="ExpenseImportRow.StoredType"/>, qui ramène synonymes et
+    /// libellés à leur code avec la normalisation de l'import (casse, accents) : la table des
+    /// synonymes reste unique. <c>StoredType</c> plutôt que <c>TypeFamily</c> : un code déjà
+    /// connu (« insurance », « amende »…) y est reconnu sans normalisation Unicode.
     /// </summary>
-    private static bool IsCreditSynonym(string? type) =>
-        ExpenseImportRow.StoredType(type) is "insurance_refund" or CreditNote;
+    private static (CostCategory Category, int Sign) ClassifyCode(string? code) => code switch
+    {
+        "fuel" => (CostCategory.Fuel, 1),
+        "maintenance" => (CostCategory.Maintenance, 1),
+        "repair" or "reparation" => (CostCategory.Repair, 1),
+        "insurance_refund" or CreditNote => (CostCategory.Other, -1),
+        _ => (CostCategory.Other, 1)
+    };
 
     /// <summary>
     /// Montant signé : négatif pour un remboursement d'assurance ou un avoir fournisseur. Un

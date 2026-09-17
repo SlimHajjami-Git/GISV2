@@ -12,18 +12,6 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Application.Features.Repairs.Handlers;
 
 /// <summary>
-/// 404 « Véhicule introuvable. », la même réponse que POST /api/costs pour le même refus.
-/// NotFoundException compose un message anglais générique (« Entity ... was not found. »), or
-/// le formulaire Dépenses affiche <c>err.error.message</c> tel quel à l'utilisateur.
-/// </summary>
-public sealed class VehiculeIntrouvableException : NotFoundException
-{
-    public VehiculeIntrouvableException(int vehicleId) : base("Véhicule", vehicleId) { }
-
-    public override string Message => "Véhicule introuvable.";
-}
-
-/// <summary>
 /// Le fournisseur d'une réparation doit exister DANS la société (DEF-057) : aucun contrôle
 /// ni clé étrangère, un supplierId inventé était stocké et la colonne Fournisseur restait
 /// vide sans explication. Le filtre multi-tenant est contourné pour l'administrateur
@@ -80,7 +68,7 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         // et un vehicleId inexistant remontait en 500 par violation de clé étrangère.
         var repairVehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
-            ?? throw new VehiculeIntrouvableException(request.VehicleId);
+            ?? throw new NotFoundException("Véhicule introuvable.");
 
         await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, null, cancellationToken);
 
@@ -237,7 +225,7 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         // une réparation existante au véhicule d'une autre société.
         var repairVehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
-            ?? throw new VehiculeIntrouvableException(request.VehicleId);
+            ?? throw new NotFoundException("Véhicule introuvable.");
 
         await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, repair.SupplierId, cancellationToken);
 

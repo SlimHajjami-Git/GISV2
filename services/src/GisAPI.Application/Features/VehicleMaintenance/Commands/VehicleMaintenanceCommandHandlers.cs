@@ -9,31 +9,19 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Application.Features.VehicleMaintenance.Commands;
 
 /// <summary>
-/// 404 au message français pour un modèle ou un véhicule introuvable (ou hors société).
+/// Messages des 404 d'un modèle ou d'un véhicule introuvable (ou hors société).
 /// « Marquer fait » et « Déclarer des entretiens gratuits » levaient une
 /// InvalidOperationException (« Template not found: … ») qui tombait en 500 anonyme
-/// (recette GPA, DEF-031). NotFoundException compose un message anglais générique, or
-/// l'écran Entretiens et la fiche véhicule affichent <c>err.error.message</c> tel quel.
+/// (recette GPA, DEF-031) ; l'écran Entretiens et la fiche véhicule affichent
+/// <c>err.error.message</c> tel quel.
 /// </summary>
-public sealed class EntretienIntrouvableException : NotFoundException
+internal static class EntretienIntrouvable
 {
-    private readonly string _message;
+    public const string Modele =
+        "Ce modèle d'entretien est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.";
 
-    private EntretienIntrouvableException(string entityName, int key, string message)
-        : base(entityName, key)
-    {
-        _message = message;
-    }
-
-    public override string Message => _message;
-
-    public static EntretienIntrouvableException Modele(int templateId) => new(
-        "Modèle d'entretien", templateId,
-        "Ce modèle d'entretien est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.");
-
-    public static EntretienIntrouvableException Vehicule(int vehicleId) => new(
-        "Véhicule", vehicleId,
-        "Ce véhicule est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.");
+    public const string Vehicule =
+        "Ce véhicule est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.";
 }
 
 public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMaintenanceTemplateCommand, int>
@@ -218,11 +206,11 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         // enregistrer un entretien (et sa dépense) sur le véhicule d'une autre société.
         var template = await _context.MaintenanceTemplates
             .FirstOrDefaultAsync(t => t.Id == request.TemplateId && t.CompanyId == companyId, cancellationToken)
-            ?? throw EntretienIntrouvableException.Modele(request.TemplateId);
+            ?? throw new NotFoundException(EntretienIntrouvable.Modele);
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken)
-            ?? throw EntretienIntrouvableException.Vehicule(request.VehicleId);
+            ?? throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
         // Un compteur ne recule pas — même règle que les pleins
         // (CreateFuelEntryCommandHandler). Un kilométrage inférieur à
@@ -585,15 +573,15 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
 
         var template = await _context.MaintenanceTemplates
             .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken)
-            ?? throw EntretienIntrouvableException.Modele(request.TemplateId);
+            ?? throw new NotFoundException(EntretienIntrouvable.Modele);
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken)
-            ?? throw EntretienIntrouvableException.Vehicule(request.VehicleId);
+            ?? throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
         // Même garde qu'à l'affectation : filtre multi-tenant contourné pour l'administrateur système.
         if (vehicle.CompanyId != template.CompanyId)
-            throw EntretienIntrouvableException.Vehicule(request.VehicleId);
+            throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
         // Find existing schedule OR create a new one
         var schedule = await _context.VehicleMaintenanceSchedules

@@ -39,7 +39,7 @@ public class UpdateDocumentExpiryCommandHandler
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct)
-            ?? throw new DocumentVehiculeIntrouvableException(request.VehicleId);
+            ?? throw new NotFoundException("Véhicule introuvable.");
 
         // Minuit UTC, comme la fiche véhicule et le renouvellement : l'ancien
         // 23:59:59 décalait d'un jour les jours restants selon le chemin de

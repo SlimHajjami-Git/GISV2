@@ -57,6 +57,9 @@ export interface Expense {
   overdue?: boolean;
   /** Planifiée non échue — affichée seulement avec « Afficher les échéances à venir ». */
   isFuture?: boolean;
+
+  /** Réparation au statut « cancelled » : listée « Annulée », jamais comptée (règle des rapports de coûts). */
+  repairCancelled?: boolean;
 }
 
 export interface RepairPart {
@@ -449,7 +452,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             date: new Date(r.repairDate),
             description: r.notes,
             createdAt: new Date(r.createdAt || r.repairDate),
-            sourceTable: 'repairs'
+            sourceTable: 'repairs',
+            // Statut comparé sans casse ni espaces, comme l'écran Réparations : des
+            // valeurs anciennes « Cancelled » restent en base.
+            repairCancelled: (r.status || '').trim().toLowerCase() === 'cancelled'
           });
         });
 
@@ -1093,8 +1099,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
    * Une ligne entre dans les totaux (barre de stats, export PDF) si c'est une
    * dépense ordinaire, ou une échéance que le serveur dit « counted » (payée,
    * ou planifiée et échue). Les échéances ignorées et à venir sont exclues.
+   * Une réparation annulée aussi : comptée ici, le Total dépassait le tableau
+   * de bord et les rapports de coûts du montant annulé.
    */
   countsInTotals(e: Expense): boolean {
+    if (e.repairCancelled) return false;
     return !this.isAcquisition(e) || !!e.counted;
   }
 
@@ -1135,6 +1144,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
    * « À venir » (planifiée non échue, hors totaux), « Ignorée » (hors totaux).
    */
   paymentBadge(e: Expense, withYear = false): { cls: string; text: string } | null {
+    // Réparation annulée : même marque « hors totaux » qu'une échéance ignorée.
+    if (e.repairCancelled) return { cls: 'skipped', text: 'Annulée' };
     if (!this.isAcquisition(e)) return null;
     switch (e.paymentStatus) {
       case 'paid': {
@@ -1330,7 +1341,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   getTotalAmount(): number { return this.countedExpenses().reduce((sum, e) => sum + this.signedAmount(e), 0); }
   /** Nombre de lignes réellement comptées (même base que le Total et que l'export). */
   getCountedCount(): number { return this.countedExpenses().length; }
-  /** Lignes affichées mais non comptées (échéances à venir ou ignorées). */
+  /** Lignes affichées mais non comptées (échéances à venir ou ignorées, réparations annulées). */
   getNotCountedCount(): number { return this.filteredExpenses.length - this.getCountedCount(); }
   getUniqueVehiclesCount(): number { return new Set(this.countedExpenses().map(e => e.vehicleId)).size; }
   getAverageAmount(): number { const c = this.getUniqueVehiclesCount(); return c > 0 ? this.getTotalAmount() / c : 0; }

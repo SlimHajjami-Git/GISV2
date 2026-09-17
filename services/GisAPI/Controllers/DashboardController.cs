@@ -11,6 +11,7 @@ using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
 using GisAPI.Application.Features.Dashboard.Queries.GetGpaDashboard;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Services;
 using System.Security.Claims;
 
@@ -882,9 +883,13 @@ public class DashboardController : ControllerBase
             .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
         // 3. Réparations: from Repairs table (SocieteId = companyId)
+        // Une réparation annulée n'est pas un coût : les rapports de coûts et le tableau de
+        // bord GPA l'écartent déjà, cette synthèse l'additionnait encore. Casse et espaces
+        // ignorés : des statuts anciens « Cancelled » restent en base.
         var repairCost = await _context.Repairs
             .AsNoTracking()
-            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd
+                && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)

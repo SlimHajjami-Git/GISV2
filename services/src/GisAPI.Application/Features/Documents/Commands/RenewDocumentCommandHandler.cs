@@ -52,7 +52,7 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         // filtre global multi-tenance est contourné pour les administrateurs système.
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken)
-            ?? throw new DocumentVehiculeIntrouvableException(request.VehicleId);
+            ?? throw new NotFoundException("Véhicule introuvable.");
 
         // Convert dates to UTC. L'échéance est enregistrée à minuit UTC, comme
         // la fiche véhicule et la correction d'échéance (ExpiryCalendar).
