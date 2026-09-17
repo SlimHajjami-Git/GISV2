@@ -351,6 +351,7 @@ mod tests {
             speed_kph: speed,
             heading_deg: 0.0,
             power_voltage: 12,
+            battery_raw: 0,
             power_source_rescue: false,
             fuel_raw: 50,
             ignition_on: ignition,

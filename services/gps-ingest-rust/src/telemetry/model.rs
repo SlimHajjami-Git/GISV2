@@ -25,6 +25,11 @@ pub struct HhFrame {
     pub heading_deg: f64,
     pub power_voltage: u8,
     pub power_source_rescue: bool,
+    /// Octet 34-36 « Batterie » (doc constructeur, 17/09/2026) : tension de la
+    /// batterie du véhicule, facteur 0,156 V/unité (40 V / 256). 0 = pas de mesure
+    /// (firmware C30d : l'octet recopie le cap ; C32a/C17 : mesure réelle).
+    /// Toujours 0 pour les protocoles non NEMS (Noron, Teltonika, GT06, Coban).
+    pub battery_raw: u8,
     pub fuel_raw: u8,
     pub ignition_on: bool,
     pub mems_x: i8,

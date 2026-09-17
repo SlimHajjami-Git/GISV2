@@ -129,6 +129,13 @@ public class GpsPosition : Entity
     public bool? IgnitionOn { get; set; }
     public int? FuelRaw { get; set; }
     public int? PowerVoltage { get; set; }
+    /// <summary>
+    /// Octet 34-36 de la trame NEMS (« Batterie ») : tension batterie du véhicule,
+    /// × <see cref="Common.VoltageScale.NemsBatteryFactor"/>. NULL = le boîtier ne
+    /// renseigne pas ce champ. Ne pas confondre avec <see cref="PowerVoltage"/>
+    /// (octet 32-34), qui ne mesure rien sur la quasi-totalité des NEMS.
+    /// </summary>
+    public short? BatteryRaw { get; set; }
     public int? Satellites { get; set; }
     public bool IsValid { get; set; }
     public bool IsRealTime { get; set; }

@@ -233,6 +233,7 @@ fn avl_record_to_hh_frame(record: &AVLRecord, codec_label: &'static str) -> HhFr
         heading_deg: (record.angle as f64).clamp(0.0, 360.0),
         power_voltage: power_voltage_byte,
         power_source_rescue: false,
+        battery_raw: 0,
         fuel_raw: 0, // FMB does not report fuel level in a canonical IO — would need a Dallas / 1-Wire sensor mapping per fleet
         ignition_on,
         mems_x,

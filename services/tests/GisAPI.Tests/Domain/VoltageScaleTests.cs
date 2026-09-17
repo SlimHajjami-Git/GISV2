@@ -5,90 +5,181 @@ using Xunit;
 namespace GisAPI.Tests.Domain;
 
 /// <summary>
-/// Règle d'affichage de la batterie. Les valeurs des cas nommés sont celles
-/// relevées sur la flotte TN le 14/08/2026, le jour où l'application a affiché
-/// « 12,9 V / 100 % » sur un véhicule qui ne démarrait pas.
+/// Règle d'affichage de la batterie.
+///
+/// <para>Deux dates structurent ces cas. Le <b>14/08/2026</b>, l'application a
+/// affiché « 12,9 V / 100 % » sur un véhicule qui ne démarrait pas (259 TU 4987) :
+/// l'octet 32-34 (« Power ») ne mesurait rien sur 281 boîtiers NEMS sur 288, d'où
+/// le masquage. Le <b>17/09/2026</b>, le fournisseur a indiqué que la tension
+/// batterie est l'octet 34-36 (« Batterie »), facteur 40 V / 256 — et que « Power »
+/// est à ignorer. Les valeurs chiffrées ci-dessous sont celles relevées sur la
+/// flotte TN ces jours-là.</para>
 /// </summary>
 public class VoltageScaleTests
 {
-    [Theory]
-    [InlineData("gps_type_1", 0.3)]
-    [InlineData("teltonika", 0.1)]
-    public void FactorFor_KnownProtocols_ReturnsScale(string protocol, double expected)
+    // ── Échelles ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NemsBatteryFactor_EstLaPleineEchelle40VSur8Bits()
     {
-        VoltageScale.FactorFor(protocol).Should().Be(expected);
+        VoltageScale.NemsBatteryFactor.Should().BeApproximately(0.156, 0.0005,
+            "le fournisseur l'écrit 0,156 ; c'est 40 V / 256");
+
+        // Relevés réels du 17/09 sur les boîtiers qui renseignent le champ.
+        (85 * VoltageScale.NemsBatteryFactor).Should().BeApproximately(13.28, 0.01);
+        (80 * VoltageScale.NemsBatteryFactor).Should().BeApproximately(12.50, 0.01);
+    }
+
+    [Fact]
+    public void FactorFor_NeCouvrePlusLesNems_LeurTensionVientDeLOctetBatterie()
+    {
+        // Le 0,3 sur « Power » est ce qui affichait une fausse assurance.
+        VoltageScale.FactorFor("gps_type_1").Should().BeNull();
+    }
+
+    [Fact]
+    public void FactorFor_Teltonika_ResteAUnDixiemeDeVolt()
+    {
+        VoltageScale.FactorFor("teltonika").Should().Be(0.1);
+        (127 * VoltageScale.FactorFor("teltonika")!.Value).Should().BeApproximately(12.7, 0.01);
     }
 
     [Theory]
     [InlineData("noron")]
     [InlineData("gt06")]
     [InlineData(null)]
-    public void FactorFor_UnknownProtocol_ReturnsNull_SoNothingIsDisplayed(string? protocol)
+    public void FactorFor_ProtocoleInconnu_RetourneNull_DoncOnNAfficheRien(string? protocol)
     {
         // Inventer une échelle serait pire que ne rien afficher.
         VoltageScale.FactorFor(protocol).Should().BeNull();
     }
 
+    // ── Choix de la source d'affichage ──────────────────────────────────────
+
     [Fact]
-    public void FlatSensor_IsRejected()
+    public void DisplayVolts_Nems_LitLOctetBatterie_PasPower()
     {
-        // 259 TU 4987 : 43 au repos comme à 20 km/h. Aucun alternateur ne fait
-        // ça — le capteur ne mesure rien, et c'est ce véhicule qui est tombé en
-        // panne pendant que l'écran affichait 100 %.
-        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 43, restingMedian: 43,
-            drivingFrames: 500, restingFrames: 300).Should().BeFalse();
+        // Opel 250 TU 5217 la nuit du 17/09 : Batterie 85, Power 43.
+        VoltageScale.DisplayVolts("gps_type_1", batteryRaw: 85, powerVoltage: 43)
+            .Should().BeApproximately(13.28, 0.01);
     }
 
     [Fact]
-    public void SensorFollowingAlternator_IsAccepted()
+    public void DisplayVolts_Nems_SansOctetBatterie_NAfficheRien()
     {
-        // 12,6 V au repos → 14,1 V en roulant : comportement électrique normal.
-        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 47, restingMedian: 42,
-            drivingFrames: 500, restingFrames: 300).Should().BeTrue();
+        // 245 TU 536 depuis son firmware C32a : le champ reste à 0 alors que
+        // Power vaut toujours 43. Ne rien afficher, plutôt que 12,9 V inventés.
+        VoltageScale.DisplayVolts("gps_type_1", batteryRaw: 0, powerVoltage: 43).Should().BeNull();
+        VoltageScale.DisplayVolts("gps_type_1", batteryRaw: null, powerVoltage: 43).Should().BeNull();
     }
 
     [Fact]
-    public void Teltonika_IsScaledAtOneTenth_NotThreeTenths()
+    public void DisplayVolts_Teltonika_LitToujoursPowerVoltage()
     {
-        // Médiane 137 = 13,7 V avec le bon facteur. Avec l'ancien 0,3 partagé,
-        // ça donnait 41 V, écrêté à 14,4 V — soit « 100 % » en permanence.
+        VoltageScale.DisplayVolts("teltonika", batteryRaw: null, powerVoltage: 127)
+            .Should().BeApproximately(12.7, 0.01);
+    }
+
+    [Fact]
+    public void DisplayVolts_ProtocoleInconnu_NAfficheRien()
+    {
+        VoltageScale.DisplayVolts("noron", batteryRaw: 85, powerVoltage: 43).Should().BeNull();
+    }
+
+    // ── Verdict sur le champ « Batterie » des NEMS ──────────────────────────
+
+    [Fact]
+    public void NemsBattery_TensionPlausible_EstAcceptee()
+    {
+        // 234 TU 4624 : 80 au repos = 12,5 V. Une batterie 12 V chargée.
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 136)
+            .Should().BeTrue();
+    }
+
+    [Fact]
+    public void NemsBattery_CopieDeLOctetDeCap_EstRejetee()
+    {
+        // Firmwares R00C30d : le champ recopie le cap (0-44 brut = 0-6,9 V).
+        // 272 boîtiers sur 288 étaient dans ce cas le 17/09.
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 21, restingFrames: 107)
+            .Should().BeFalse("21 × 0,156 = 3,3 V : hors de toute plage 12 V");
+    }
+
+    [Fact]
+    public void NemsBattery_ChampNonRenseigne_EstRejete()
+    {
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 0, restingFrames: 300).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NemsBattery_TensionAberrante_EstRejetee()
+    {
+        // 255 × 0,156 = 39,8 V : l'octet ne porte pas une tension de véhicule.
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 255, restingFrames: 300).Should().BeFalse();
+    }
+
+    [Fact]
+    public void NemsBattery_PasAssezDeTramesAuRepos_ResteIndecis()
+    {
+        // Indécis, pas « en panne » : un véhicule peu à l'arrêt ne doit pas être
+        // déclaré défectueux. En aval, indécis = on n'affiche rien non plus.
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 5).Should().BeNull();
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: null, restingFrames: 300).Should().BeNull();
+    }
+
+    [Fact]
+    public void NemsBattery_NExigePasLAlternateur()
+    {
+        // Point délibéré : sur les 7 boîtiers qui renseignent le champ, l'écart
+        // roulage/repos va de −0,16 à +0,47 V, jamais les ~1,6 V d'une recharge —
+        // le boîtier lisse sa mesure. Exiger l'alternateur rejetterait les 7
+        // boîtiers sains et n'afficherait plus rien.
+        // 236 TU 2192 : 80 au repos, 81 en roulant.
+        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 1103)
+            .Should().BeTrue();
+    }
+
+    // ── Verdict Teltonika (inchangé : alternateur exigé) ────────────────────
+
+    [Fact]
+    public void Teltonika_CapteurSuivantLAlternateur_EstAccepte()
+    {
+        // 12,7 V au repos → 14,1 V en roulant : comportement électrique normal.
         VoltageScale.EvaluateSensor("teltonika", drivingMedian: 141, restingMedian: 127,
             drivingFrames: 500, restingFrames: 300).Should().BeTrue();
-
-        (127 * VoltageScale.FactorFor("teltonika")!.Value).Should().BeApproximately(12.7, 0.01);
     }
 
     [Fact]
-    public void MovingSensorWithImplausibleScale_IsRejected()
+    public void Teltonika_CapteurPlat_EstRejete()
     {
-        // Le capteur bouge, mais 55 × 0,3 = 16,5 V au repos : hors de tout
-        // système 12 V. La jauge calibrée 11,0–12,8 V n'en tirerait rien de bon.
-        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 60, restingMedian: 55,
+        // Même valeur au repos et à 20 km/h : aucun alternateur ne fait ça.
+        VoltageScale.EvaluateSensor("teltonika", drivingMedian: 127, restingMedian: 127,
             drivingFrames: 500, restingFrames: 300).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Teltonika_EchelleInvraisemblable_EstRejetee()
+    {
+        // Le capteur bouge, mais 200 × 0,1 = 20 V au repos : hors système 12 V.
+        VoltageScale.EvaluateSensor("teltonika", drivingMedian: 220, restingMedian: 200,
+            drivingFrames: 500, restingFrames: 300).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Nems_NePassePlusParEvaluateSensor()
+    {
+        // FactorFor ne connaît plus gps_type_1 : ce chemin rend null, et l'audit
+        // aiguille les NEMS vers EvaluateNemsBattery.
+        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 47, restingMedian: 42,
+            drivingFrames: 500, restingFrames: 300).Should().BeNull();
     }
 
     [Theory]
     [InlineData(10, 300)]   // n'a quasiment pas roulé
     [InlineData(500, 5)]    // jamais vraiment à l'arrêt
-    public void NotEnoughData_StaysUndecided(long drivingFrames, long restingFrames)
+    public void Teltonika_PasAssezDeDonnees_ResteIndecis(long drivingFrames, long restingFrames)
     {
-        // Indécis, pas « en panne » : un véhicule peu utilisé ne doit pas être
-        // déclaré défectueux. En aval, indécis = on n'affiche rien non plus.
-        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 47, restingMedian: 42,
+        VoltageScale.EvaluateSensor("teltonika", drivingMedian: 141, restingMedian: 127,
             drivingFrames, restingFrames).Should().BeNull();
-    }
-
-    [Fact]
-    public void MissingMedians_StayUndecided()
-    {
-        VoltageScale.EvaluateSensor("gps_type_1", null, null, 500, 300).Should().BeNull();
-    }
-
-    [Fact]
-    public void DeltaJustUnderThreshold_IsRejected()
-    {
-        // 2 unités = 0,6 V : trop peu pour un alternateur, qui en ajoute ~1,6.
-        VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 44, restingMedian: 42,
-            drivingFrames: 500, restingFrames: 300).Should().BeFalse();
     }
 }

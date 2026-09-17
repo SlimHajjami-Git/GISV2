@@ -452,6 +452,7 @@ mod tests {
             speed_kph: if ignition { 50.0 } else { 0.0 },
             heading_deg: 0.0,
             power_voltage: 12,
+            battery_raw: 0,
             power_source_rescue: false,
             fuel_raw: fuel,
             ignition_on: ignition,
