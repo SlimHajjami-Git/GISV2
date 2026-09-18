@@ -27,6 +27,7 @@ namespace GisAPI.Controllers;
 ///   <item><c>POST   /:id/confirm               </c> — Phase 2 trigger (status → confirmed)</item>
 ///   <item><c>POST   /:id/dismiss               </c> — false alarm</item>
 ///   <item><c>POST   /manual                    </c> — create a manually-declared accident</item>
+///   <item><c>DELETE /:id                       </c> — suppression définitive du dossier (admin / droit Sinistres)</item>
 ///   <item><c>PATCH  /:id/initial-damages       </c> — Phase 2 form fields</item>
 ///   <item><c>PATCH  /:id/expert                </c> — Phase 3</item>
 ///   <item><c>PATCH  /:id/mechanic-quote        </c> — Phase 4</item>
@@ -142,6 +143,37 @@ public class AccidentReportsController : ControllerBase
             return Ok(new { accidentEventId = id });
         }
         catch (NotFoundException) { return NotFound(); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
+    // ── Suppression du dossier ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Suppression définitive d'un dossier de sinistre (demande du 18/09/2026) :
+    /// documents et tiers partent avec lui, fichiers compris ; les dépenses déjà
+    /// enregistrées restent dans Dépenses, simplement détachées du dossier.
+    /// Garde propre à la route : ce contrôleur n'est visé par aucune clé du
+    /// PermissionMiddleware, la commande refuse donc elle-même (403) un compte
+    /// sans droit Sinistres ni statut d'administrateur.
+    /// </summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+        try
+        {
+            var result = await _mediator.Send(new DeleteAccidentEventCommand(id, uploadsRoot), ct);
+            return Ok(new
+            {
+                message = result.DetachedCosts > 0
+                    ? $"Dossier de sinistre {result.Reference} supprimé. {result.DetachedCosts} dépense(s) restent dans Dépenses."
+                    : $"Dossier de sinistre {result.Reference} supprimé.",
+                detachedCosts = result.DetachedCosts
+            });
+        }
+        catch (NotFoundException) { return NotFound(new { message = "Dossier de sinistre introuvable." }); }
+        // Avant DomainException : ForbiddenAccessException en hérite, l'ordre fait le code HTTP.
+        catch (ForbiddenAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 

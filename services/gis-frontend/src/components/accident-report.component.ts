@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, AfterViewInit, ElementRef, ViewChild, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, RouterModule } from '@angular/router';
+import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription, firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -191,6 +191,14 @@ interface ImpactProfile {
                       title="Reconstruit le PDF à partir de l'état actuel (remorquage, phases…)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                 {{ pdfBusy ? 'Génération…' : 'Régénérer le PDF' }}
+              </button>
+              <!-- Le doublon se constate en ouvrant la fiche : la suppression est
+                   aussi ici, pas seulement dans la liste. -->
+              <button *ngIf="accidentEventId" type="button"
+                      class="status-pdf status-pdf-btn status-del-btn" (click)="askDelete()"
+                      title="Supprimer définitivement ce dossier de sinistre">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                Supprimer le dossier
               </button>
             </div>
             <p class="status-error" *ngIf="pdfError">{{ pdfError }}</p>
@@ -848,6 +856,26 @@ interface ImpactProfile {
           </footer>
 
         </article>
+
+        <!-- Confirmation de suppression — définitive, et elle dit ce qui reste -->
+        <div class="del-overlay" *ngIf="deleteOpen" (click)="cancelDelete()">
+          <div class="del-modal" (click)="$event.stopPropagation()">
+            <h3 class="del-title">Supprimer le dossier {{ reference || ('#' + accidentEventId) }} ?</h3>
+            <p class="del-line"><strong>{{ vehicleLabel || '—' }}</strong><span *ngIf="impactDateLabel"> — {{ impactDateLabel }}</span></p>
+            <p class="del-warn">Suppression définitive : le dossier, ses documents, ses photos et les tiers déclarés seront effacés.</p>
+            <p class="del-keep">
+              Les dépenses déjà enregistrées (réparation, remboursement d'assurance) sont
+              <strong>conservées</strong> dans Dépenses ; elles ne seront simplement plus rattachées à ce dossier.
+            </p>
+            <p class="del-error" *ngIf="deleteError">{{ deleteError }}</p>
+            <div class="del-foot">
+              <button type="button" class="del-cancel" (click)="cancelDelete()" [disabled]="deleteBusy">Annuler</button>
+              <button type="button" class="del-confirm" (click)="confirmDelete()" [disabled]="deleteBusy">
+                {{ deleteBusy ? 'Suppression…' : 'Supprimer définitivement' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </app-layout>
   `,
@@ -1074,6 +1102,30 @@ interface ImpactProfile {
     .status-pdf:hover { background: #fecaca; }
     .status-pdf-btn { border: none; cursor: pointer; margin-left: 8px; font-family: inherit; }
     .status-pdf-btn:disabled { opacity: 0.6; cursor: default; }
+    /* Suppression : discrète tant qu'on ne la vise pas, elle est définitive */
+    .status-del-btn { background: #f1f5f9; color: #64748b; margin-left: 8px; }
+    .status-del-btn:hover { background: #fee2e2; color: #dc2626; }
+
+    /* Confirmation de suppression du dossier */
+    .del-overlay {
+      position: fixed; inset: 0; background: rgba(15,23,42,.45);
+      display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 16px;
+    }
+    .del-modal {
+      background: #fff; border-radius: 12px; width: 100%; max-width: 440px;
+      padding: 20px 22px; box-shadow: 0 20px 50px rgba(0,0,0,.25);
+      font-family: 'Manrope', system-ui, sans-serif;
+    }
+    .del-title { margin: 0 0 12px 0; font-size: 15px; color: #0f172a; }
+    .del-line { margin: 0 0 10px 0; font-size: 13px; color: #0f172a; }
+    .del-warn { margin: 0 0 8px 0; font-size: 12px; color: #b91c1c; }
+    .del-keep { margin: 0; font-size: 12px; color: #475569; line-height: 1.5; }
+    .del-error { margin: 10px 0 0 0; padding: 8px 10px; border-radius: 6px; background: #fef2f2; color: #b91c1c; font-size: 12px; }
+    .del-foot { display: flex; gap: 8px; justify-content: flex-end; margin-top: 18px; }
+    .del-foot button { padding: 8px 14px; border-radius: 6px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    .del-cancel { background: #fff; border: 1px solid #cbd5e1; color: #475569; }
+    .del-confirm { background: #dc2626; border: 1px solid #dc2626; color: #fff; font-weight: 600; }
+    .del-foot button:disabled { opacity: .6; cursor: default; }
     /* Damages capture (Calypso 6 P9) */
     .damages-card {
       margin-bottom: 28px;
@@ -1904,6 +1956,11 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   pdfBusy = false;
   pdfError: string | null = null;
 
+  /** Fenêtre de confirmation de la suppression du dossier (demande du 18/09/2026). */
+  deleteOpen = false;
+  deleteBusy = false;
+  deleteError: string | null = null;
+
   // Calypso 7 — timeline state. One form object per phase, edited
   // independently. The frontend keeps everything in memory and only POSTs
   // when the admin clicks the per-phase "Enregistrer" button.
@@ -1943,6 +2000,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   constructor(
     private apiService: ApiService,
     private route: ActivatedRoute,
+    private router: Router,
     private cdr: ChangeDetectorRef,
     private authService: AuthService,
     private accidentPdf: AccidentPdfService,
@@ -2825,6 +2883,49 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       error: () => {
         this.pdfBusy = false;
         this.pdfError = 'Impossible de charger le rapport pour régénérer le PDF.';
+        this.cdr.markForCheck();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  // ── Suppression du dossier ──────────────────────────────────────────────
+
+  /** Date de l'incident en clair, citée dans la confirmation de suppression. */
+  get impactDateLabel(): string {
+    const d = new Date(this.impactAtIso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  askDelete(): void {
+    this.deleteOpen = true;
+    this.deleteError = null;
+  }
+
+  cancelDelete(): void {
+    if (this.deleteBusy) return;
+    this.deleteOpen = false;
+    this.deleteError = null;
+  }
+
+  /**
+   * Suppression définitive. Le serveur refuse (403) un compte sans droit Sinistres :
+   * son message est affiché tel quel plutôt qu'un texte générique.
+   */
+  confirmDelete(): void {
+    if (!this.accidentEventId || this.deleteBusy) return;
+    this.deleteBusy = true;
+    this.deleteError = null;
+    const sub = this.apiService.deleteAccidentEvent(this.accidentEventId).subscribe({
+      next: () => {
+        this.deleteBusy = false;
+        this.deleteOpen = false;
+        // Le dossier n'existe plus : la fiche n'a plus rien à montrer.
+        this.router.navigate(['/accident-reports']);
+      },
+      error: (err) => {
+        this.deleteBusy = false;
+        this.deleteError = err?.error?.message || 'La suppression du dossier a échoué.';
         this.cdr.markForCheck();
       },
     });

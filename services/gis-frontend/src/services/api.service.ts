@@ -1906,6 +1906,16 @@ export class ApiService {
     return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/manual`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Suppression définitive d'un dossier de sinistre (demande du 18/09/2026).
+   * Les documents, photos et tiers partent avec le dossier ; les dépenses déjà
+   * enregistrées restent dans Dépenses, simplement détachées (`detachedCosts`).
+   * Le serveur la réserve à un administrateur de société ou au droit Sinistres.
+   */
+  deleteAccidentEvent(id: number): Observable<{ message: string; detachedCosts: number }> {
+    return this.http.delete<{ message: string; detachedCosts: number }>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {

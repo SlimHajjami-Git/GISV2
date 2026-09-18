@@ -99,8 +99,9 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                   </a>
                   <span *ngIf="!row.pdfReportUrl" class="muted">—</span>
                 </td>
-                <td>
+                <td class="actions-cell">
                   <button class="btn-row" (click)="open(row); $event.stopPropagation()">Ouvrir →</button>
+                  <button class="btn-row danger" (click)="askDelete(row); $event.stopPropagation()" title="Supprimer ce dossier">Supprimer</button>
                 </td>
               </tr>
             </tbody>
@@ -118,6 +119,33 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
           <button (click)="prev()" [disabled]="page <= 1">‹</button>
           <span>Page {{ page }} / {{ totalPages }}</span>
           <button (click)="next()" [disabled]="page >= totalPages">›</button>
+        </div>
+      </div>
+
+      <!-- Confirmation de suppression — définitive, et elle dit ce qui reste -->
+      <div class="overlay" *ngIf="deleteTarget" (click)="cancelDelete()">
+        <div class="modal modal-sm" (click)="$event.stopPropagation()">
+          <div class="modal-head">
+            <h3>Supprimer le dossier {{ deleteReference(deleteTarget) }} ?</h3>
+            <button class="modal-close" (click)="cancelDelete()">×</button>
+          </div>
+          <div class="modal-body">
+            <p class="del-line">
+              <strong>{{ deleteTarget.vehicleLabel || ('Véhicule #' + deleteTarget.vehicleId) }}</strong>
+              — {{ deleteTarget.incidentAt | date:'dd/MM/yyyy HH:mm' }}
+            </p>
+            <p class="del-warn">Suppression définitive : le dossier, ses documents, ses photos et les tiers déclarés seront effacés.</p>
+            <p class="del-keep">Les dépenses déjà enregistrées (réparation, remboursement d'assurance) sont <strong>conservées</strong> dans Dépenses ; elles ne seront simplement plus rattachées à ce dossier.</p>
+            <p class="del-warn" *ngIf="peutEtreRedetecte(deleteTarget)">Ce dossier vient d'une détection automatique et l'incident date de moins de 30 minutes : il peut être redétecté. Préférez « Fausse alerte » pour l'écarter définitivement.</p>
+            <p class="del-error" *ngIf="deleteError">{{ deleteError }}</p>
+          </div>
+          <div class="modal-foot">
+            <button class="btn-secondary" (click)="cancelDelete()" [disabled]="deleteBusy">Annuler</button>
+            <button class="btn-primary" (click)="confirmDelete()" [disabled]="deleteBusy">
+              <span *ngIf="!deleteBusy">Supprimer définitivement</span>
+              <span *ngIf="deleteBusy">Suppression…</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -270,6 +298,9 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
       border-radius:4px; font-size:11px; color:#475569; cursor:pointer;
     }
     .btn-row:hover { background:#f8fafc; border-color:#3b82f6; color:#3b82f6; }
+    /* Suppression : discrète tant qu'on ne la vise pas (l'écran fait 1536 px, deux boutons tiennent) */
+    .btn-row.danger:hover { border-color:#dc2626; color:#dc2626; background:#fef2f2; }
+    .actions-cell { white-space:nowrap; display:flex; align-items:center; gap:6px; justify-content:flex-end; }
 
     .empty { padding:60px 20px; text-align:center; color:#94a3b8; }
     .empty h3 { margin:12px 0 4px 0; color:#475569; font-size:14px; }
@@ -300,6 +331,13 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .field textarea { resize:vertical; }
     .hint { font-size:11px; color:#94a3b8; margin:6px 0 0 0; }
     .modal-foot { display:flex; gap:8px; justify-content:flex-end; padding:14px 20px; border-top:1px solid #f1f5f9; background:#f8fafc; }
+
+    /* Confirmation de suppression */
+    .modal-sm { max-width:440px; }
+    .del-line { margin:0 0 10px 0; font-size:13px; color:#0f172a; }
+    .del-warn { margin:0 0 8px 0; font-size:12px; color:#b91c1c; }
+    .del-keep { margin:0; font-size:12px; color:#475569; line-height:1.5; }
+    .del-error { margin:10px 0 0 0; padding:8px 10px; border-radius:6px; background:#fef2f2; color:#b91c1c; font-size:12px; }
   `]
 })
 export class AccidentReportsListComponent implements OnInit, OnDestroy {
@@ -312,6 +350,11 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
   pageSize = 25;
   statusFilter = '';
   includeDismissed = false;
+
+  /** Dossier visé par la confirmation de suppression (null = fenêtre fermée). */
+  deleteTarget: AccidentEventListItemDto | null = null;
+  deleteBusy = false;
+  deleteError = '';
 
   vehicles: Vehicle[] = [];
   manualOpen = false;
@@ -381,6 +424,64 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
 
   open(row: AccidentEventListItemDto): void {
     this.router.navigate(['/rapport-accident', row.id]);
+  }
+
+  // Suppression d'un dossier ------------------------------------------------
+
+  /** La liste ne porte pas reference_code : le numéro du dossier suffit à l'identifier. */
+  deleteReference(row: AccidentEventListItemDto): string {
+    return `#${row.id}`;
+  }
+
+  /**
+   * Un accident DÉTECTÉ est reconstruit par AccidentDetectionService tant que son incident
+   * reste dans la fenêtre de scan (les 25 dernières minutes) : supprimé, il réapparaît seul.
+   * « Fausse alerte » garde la ligne au statut « dismissed », que la détection reconnaît.
+   */
+  peutEtreRedetecte(row: AccidentEventListItemDto | null): boolean {
+    if (!row || row.origin === 'manual') return false;
+    const minutes = (Date.now() - new Date(row.incidentAt).getTime()) / 60000;
+    return minutes >= 0 && minutes < 30;
+  }
+
+  askDelete(row: AccidentEventListItemDto): void {
+    this.deleteTarget = row;
+    this.deleteError = '';
+  }
+
+  cancelDelete(): void {
+    if (this.deleteBusy) return;
+    this.deleteTarget = null;
+    this.deleteError = '';
+  }
+
+  confirmDelete(): void {
+    const row = this.deleteTarget;
+    if (!row || this.deleteBusy) return;
+    this.deleteBusy = true;
+    this.deleteError = '';
+
+    this.api.deleteAccidentEvent(row.id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        // La ligne part sans recharger toute la page ; le total suit pour la pagination.
+        this.items = this.items.filter(item => item.id !== row.id);
+        this.totalCount = Math.max(0, this.totalCount - 1);
+        this.deleteBusy = false;
+        this.deleteTarget = null;
+        // Page vidée alors qu'il reste des dossiers : on recharge, sinon l'écran
+        // annoncerait « Aucun rapport » avec un total non nul (page 1 sur 2 vidée).
+        if (this.items.length === 0 && this.totalCount > 0) {
+          if (this.page > 1) this.page--;
+          this.reload();
+        }
+        this.cdr.markForCheck();
+      },
+      error: (err) => {
+        this.deleteError = err?.error?.message || 'La suppression du dossier a échoué.';
+        this.deleteBusy = false;
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   formatLocation(row: AccidentEventListItemDto): string {
