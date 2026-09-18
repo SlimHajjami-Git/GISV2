@@ -27,6 +27,7 @@ public class LatestPositionData
     public int? FuelRaw { get; set; }
     public short? TemperatureC { get; set; }
     public int? PowerVoltage { get; set; }
+    public int? BatteryRaw { get; set; }
     public string? Address { get; set; }
     public long? OdometerKm { get; set; }
 }
@@ -108,13 +109,14 @@ SELECT
     lp.fuel_raw       AS ""FuelRaw"",
     lp.temperature_c  AS ""TemperatureC"",
     lp.power_voltage  AS ""PowerVoltage"",
+    lp.battery_raw    AS ""BatteryRaw"",
     lp.address        AS ""Address"",
     lp.odometer_km    AS ""OdometerKm""
 FROM unnest({0}::integer[]) AS d(device_id)
 CROSS JOIN LATERAL (
     SELECT id, device_id, latitude, longitude, speed_kph, course_deg,
            ignition_on, recorded_at, fuel_raw, temperature_c,
-           power_voltage, address, odometer_km
+           power_voltage, battery_raw, address, odometer_km
     FROM gps_positions
     WHERE device_id = d.device_id
     ORDER BY recorded_at DESC
@@ -237,20 +239,19 @@ GROUP BY device_id;
             // mieux qu'une fausse assurance — d'où le silence par défaut, y
             // compris quand le verdict est encore inconnu (null).
             //
-            // Le facteur dépend du protocole : 0,3 en NEMS, 0,1 en Teltonika.
-            // Le 0,3 appliqué à tous plafonnait les Teltonika à 14,4 V en
-            // permanence, quel que soit l'état de la batterie.
+            // Depuis le 17/09/2026 la tension des NEMS vient de l'octet 34-36
+            // (« Batterie », × 0,156 V) et non plus de l'octet 32-34 (« Power »,
+            // × 0,3) qui ne mesurait rien sur 281 boîtiers sur 288. Les Teltonika
+            // gardent leur power_voltage en dixièmes de volt : eux mesurent bien.
             int? batteryLevel = null;
             double? batteryVoltageV = null;
-            var voltageFactor = VoltageScale.FactorFor(v.GpsDevice?.ProtocolType);
-            if (v.GpsDevice?.VoltageSensorReliable == true
-                && voltageFactor != null
-                && position?.PowerVoltage != null
-                && position.PowerVoltage > 0)
+            var displayVolts = VoltageScale.DisplayVolts(
+                v.GpsDevice?.ProtocolType, position?.BatteryRaw, position?.PowerVoltage);
+            if (v.GpsDevice?.VoltageSensorReliable == true && displayVolts != null)
             {
                 const double batteryMinV = 11.0;
                 const double batteryMaxV = 12.8;
-                var voltage = position.PowerVoltage.Value * voltageFactor.Value;
+                var voltage = displayVolts.Value;
                 if (voltage > VoltageScale.AlternatorCeilingV) voltage = VoltageScale.AlternatorCeilingV;
                 batteryVoltageV = Math.Round(voltage, 1);
 

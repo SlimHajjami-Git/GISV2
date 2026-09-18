@@ -420,6 +420,7 @@ mod tests {
             is_real_time: true,
             ignition_on: true,
             power_voltage: 12,
+            battery_raw: 0,
             power_source_rescue: false,
             fuel_raw: 50,
             mems_x: 0,

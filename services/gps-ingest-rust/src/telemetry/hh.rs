@@ -159,7 +159,10 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
     // Position 26-29: Speed x10 in mph (4 chars)
     // Position 30-31: Heading / 8 (2 chars)
     // Position 32-33: Power (2 chars)
-    // Position 34-35: Fuel Analogic2 (2 chars)
+    // Position 34-35: Batterie — tension batterie véhicule, ×0,156 V (doc
+    //                 constructeur 17/09/2026 ; 0 = pas de mesure). Longtemps
+    //                 étiqueté "Fuel Analogic2" et utilisé comme REPLI carburant :
+    //                 c'est ce repli qui fabriquait de fausses chutes de jauge.
     // Position 36-41: MEMS (6 chars)
     // Position 42-43: Flags (2 chars)
     // Position 44-47: Temp (4 chars)
@@ -186,7 +189,7 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
     let speed_raw = payload.get(26..30).context("V3: missing speed")?;
     let heading_raw = payload.get(30..32).context("V3: missing heading")?;
     let power_raw = payload.get(32..34).context("V3: missing power")?;
-    let fuel_raw = payload.get(34..36).context("V3: missing fuel")?;
+    let battery_hex = payload.get(34..36).context("V3: missing battery")?;
     let mems_raw = payload.get(36..42).context("V3: missing mems")?;
     let flags_raw = payload.get(42..44).context("V3: missing flags")?;
     let temp_raw = payload.get(44..48).context("V3: missing temp")?;
@@ -207,7 +210,7 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
     let base_odometer = u32::from_str_radix(odo_raw, 16)?;
     let send_flag = u8::from_str_radix(send_flag_raw, 16)?;
     let added_info = u32::from_str_radix(added_info_raw, 16)?;
-    let base_fuel = u8::from_str_radix(fuel_raw, 16)?;
+    let battery_raw = u8::from_str_radix(battery_hex, 16)?;
 
     // Check if FMS data is present (frame length >= 100 chars)
     let has_fms_data = payload.len() >= 100;
@@ -246,9 +249,12 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
         (None, None, None, None, None)
     };
     
-    // FMS values from CAN bus are more reliable - prioritize them when available
-    // Base fuel is often a raw/percentage value, FMS fuel is actual liters from vehicle
-    let fuel_final = fms_fuel.unwrap_or(base_fuel);
+    // Carburant = jauge CAN (octet 70-71) UNIQUEMENT. L'ancien repli sur l'octet
+    // 34-36 quand le CAN vaut 0 ou > 100 injectait la batterie (ou le cap) dans
+    // fuel_raw : Scania 001 le 04/08/2026, « chute » de 47 à 17 à 14:58:31 puis 887
+    // trames à 12-21 — ce n'était pas un flotteur coincé mais ce repli.
+    // 0 = pas de jauge (db.rs et redis_cache.rs traitent déjà 0 comme absent).
+    let fuel_final = fms_fuel.unwrap_or(0);
     // Filter GPS sentinel values BEFORE fallback:
     // base_odometer and fms_odometer can both contain 0x0FFFFE (1048574)
     // which means "no CAN bus odometer" — treat as 0 (no data)
@@ -294,6 +300,7 @@ fn parse_unified(payload: &str, kind: FrameKind) -> Result<HhFrame> {
         heading_deg,
         power_voltage,
         power_source_rescue,
+        battery_raw,
         fuel_raw: fuel_final,
         ignition_on,
         mems_x: mems.0,
@@ -425,7 +432,8 @@ mod tests {
 
         assert_eq!(frame.power_voltage, 41);
         assert!(!frame.power_source_rescue);
-        assert_eq!(frame.fuel_raw, 0x26);
+        assert_eq!(frame.battery_raw, 0x26, "octet 34-36 = Batterie");
+        assert_eq!(frame.fuel_raw, 0, "trame sans FMS : plus de repli carburant sur l'octet Batterie");
         assert!(frame.ignition_on);
         assert_eq!((frame.mems_x, frame.mems_y, frame.mems_z), (-4, 4, -5));
         assert_eq!(frame.temperature_raw, 0x80FB);
@@ -476,8 +484,9 @@ mod tests {
         // Power: 0x2A = 42
         assert_eq!(frame.power_voltage, 42);
         
-        // Fuel: 0x18 = 24
-        assert_eq!(frame.fuel_raw, 24);
+        // Batterie (octet 34-35): 0x18 = 24 ; pas de FMS => fuel_raw = 0
+        assert_eq!(frame.battery_raw, 24);
+        assert_eq!(frame.fuel_raw, 0);
         
         // SendFlag: 0x01 = SENDP (periodic)
         assert_eq!(frame.send_flag, 1);
@@ -513,8 +522,9 @@ mod tests {
         // Power: 0x2B = 43
         assert_eq!(frame.power_voltage, 43);
         
-        // Fuel from frame
-        // Note: fuel_raw value depends on parsing logic
+        // Batterie (octet 34-35) = 0x00 ; carburant = jauge CAN (octet 70-71) = 0x46
+        assert_eq!(frame.battery_raw, 0x00);
+        assert_eq!(frame.fuel_raw, 0x46, "carburant CAN seul, jamais l'octet 34-36");
         
         // SendFlag: 0x01 = SENDP
         assert_eq!(frame.send_flag, 1);
@@ -559,8 +569,9 @@ mod tests {
         // SendFlag: 0x03 = CAPDEV (cap deviation > 10°)
         assert_eq!(frame.send_flag, 3);
         
-        // Fuel: 0x18 = 24
-        assert_eq!(frame.fuel_raw, 24);
+        // Batterie (octet 34-35): 0x18 = 24 ; pas de FMS => fuel_raw = 0
+        assert_eq!(frame.battery_raw, 24);
+        assert_eq!(frame.fuel_raw, 0);
     }
 
     #[test]

@@ -7,6 +7,7 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { CompanyResetResult } from '../services/admin.service';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
+import { parseScanQuotaInput } from './scan-quota.helpers';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
@@ -2509,7 +2510,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   scanQuotaLimit: number | null = null;
   scanQuotaUsed = 0;
   /** Champ de saisie : '' = défaut plateforme. */
-  scanQuotaInput = '';
+  scanQuotaInput: string | number | null = '';
   scanQuotaSaving = false;
   scanQuotaMsg = '';
   readonly SCAN_QUOTA_DEFAULT = 20;
@@ -2647,12 +2648,14 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   }
 
   saveScanQuota() {
-    const raw = (this.scanQuotaInput || '').trim();
-    const limit = raw === '' ? null : Math.max(0, Math.floor(Number(raw)));
-    if (raw !== '' && (isNaN(limit as number) || (limit as number) > 100000)) {
-      this.scanQuotaMsg = 'Valeur invalide (0 à 100000, ou vide pour le défaut).';
+    // Nombre, chaîne ou null selon l'état du champ type="number" : le helper absorbe tout,
+    // et surtout garde le 0 (« désactiver ») que l'ancien `|| ''` transformait en défaut.
+    const parsed = parseScanQuotaInput(this.scanQuotaInput);
+    if (!parsed.ok) {
+      this.scanQuotaMsg = parsed.message;
       return;
     }
+    const limit = parsed.limit;
     this.scanQuotaSaving = true;
     this.scanQuotaMsg = '';
     this.adminService.setScanQuota(this.companyId, limit).pipe(takeUntil(this.destroy$)).subscribe({

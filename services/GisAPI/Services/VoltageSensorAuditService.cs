@@ -92,15 +92,17 @@ public class VoltageSensorAuditService : BackgroundService
         const string sql = @"
 SELECT p.device_id AS ""DeviceId"",
        percentile_disc(0.5) WITHIN GROUP (ORDER BY p.power_voltage)
-           FILTER (WHERE p.ignition_on AND p.speed_kph > {1})            AS ""DrivingMedian"",
+           FILTER (WHERE p.power_voltage > 0 AND p.ignition_on AND p.speed_kph > {1})  AS ""DrivingMedian"",
        percentile_disc(0.5) WITHIN GROUP (ORDER BY p.power_voltage)
-           FILTER (WHERE p.ignition_on = false)                          AS ""RestingMedian"",
-       count(*) FILTER (WHERE p.ignition_on AND p.speed_kph > {1})       AS ""DrivingFrames"",
-       count(*) FILTER (WHERE p.ignition_on = false)                     AS ""RestingFrames""
+           FILTER (WHERE p.power_voltage > 0 AND p.ignition_on = false)                AS ""RestingMedian"",
+       count(*) FILTER (WHERE p.power_voltage > 0 AND p.ignition_on AND p.speed_kph > {1}) AS ""DrivingFrames"",
+       count(*) FILTER (WHERE p.power_voltage > 0 AND p.ignition_on = false)               AS ""RestingFrames"",
+       percentile_disc(0.5) WITHIN GROUP (ORDER BY p.battery_raw)
+           FILTER (WHERE p.battery_raw > 0 AND p.ignition_on = false)                  AS ""BatteryRestingMedian"",
+       count(*) FILTER (WHERE p.battery_raw > 0 AND p.ignition_on = false)             AS ""BatteryRestingFrames""
 FROM gps_positions p
 WHERE p.recorded_at >= {0}
-  AND p.power_voltage IS NOT NULL
-  AND p.power_voltage > 0
+  AND (p.power_voltage > 0 OR p.battery_raw > 0)
 GROUP BY p.device_id;
 ";
         var since = DateTime.UtcNow.AddDays(-WindowDays);
@@ -123,12 +125,23 @@ GROUP BY p.device_id;
         foreach (var device in devices)
         {
             samples.TryGetValue(device.Id, out var sample);
-            var verdict = VoltageScale.EvaluateSensor(
-                device.ProtocolType,
-                sample?.DrivingMedian,
-                sample?.RestingMedian,
-                sample?.DrivingFrames ?? 0,
-                sample?.RestingFrames ?? 0);
+
+            // Deux familles, deux sources. Les NEMS : octet « Batterie » (34-36),
+            // jugé sur la seule plausibilité de la tension au repos — leur mesure
+            // est lissée et ne montre pas l'alternateur (voir EvaluateNemsBattery).
+            // Les autres (Teltonika) : power_voltage, jugé comme avant, alternateur
+            // compris.
+            var verdict = string.Equals(device.ProtocolType, VoltageScale.NemsProtocol,
+                                        StringComparison.OrdinalIgnoreCase)
+                ? VoltageScale.EvaluateNemsBattery(
+                    sample?.BatteryRestingMedian,
+                    sample?.BatteryRestingFrames ?? 0)
+                : VoltageScale.EvaluateSensor(
+                    device.ProtocolType,
+                    sample?.DrivingMedian,
+                    sample?.RestingMedian,
+                    sample?.DrivingFrames ?? 0,
+                    sample?.RestingFrames ?? 0);
 
             // VERDICT CUMULATIF : « pas assez de données cette semaine » n'est
             // pas une raison d'effacer ce qu'on savait déjà. Un véhicule qui a
@@ -167,6 +180,8 @@ GROUP BY p.device_id;
         public int? RestingMedian { get; set; }
         public long DrivingFrames { get; set; }
         public long RestingFrames { get; set; }
+        public int? BatteryRestingMedian { get; set; }
+        public long BatteryRestingFrames { get; set; }
     }
 
 }

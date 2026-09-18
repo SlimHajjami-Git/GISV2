@@ -85,6 +85,7 @@ impl TelemetryEventPublisher for TelemetryPublisher {
             "ignition_on": frame.ignition_on,
             "fuel_raw": frame.fuel_raw,
             "power_voltage": frame.power_voltage,
+            "battery_raw": frame.battery_raw,
             "raw_payload": frame.raw_payload,
         });
 

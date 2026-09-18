@@ -54,7 +54,7 @@ impl RedisCache {
         // Preserve last known good values from previous cache entry
         // Use GETDEL-like pattern: read previous in same pipeline as write (below)
         let device_key = format!("vehicle:position:{}", device_uid);
-        let needs_fallback = frame.fuel_raw == 0 || frame.odometer_km == 1048574;
+        let needs_fallback = frame.fuel_raw == 0 || frame.battery_raw == 0 || frame.odometer_km == 1048574;
         let prev_cache: Option<serde_json::Value> = if needs_fallback {
             // Read previous cache when we need fallback values (fuel=0 or odometer artifact)
             conn.get::<_, Option<String>>(&device_key).await
@@ -75,19 +75,25 @@ impl RedisCache {
                 .unwrap_or(0)
         };
 
-        // Battery voltage conversion using 47-ohm resistance divider (rule of 3)
-        const VOLTAGE_FACTOR: f64 = 0.3;
+        // Tension batterie = octet « Batterie » (34-36) × 0,156 V (doc constructeur,
+        // 17/09/2026 : 40 V / 256). Le champ Power (32-34, ex-facteur 0,3) ne
+        // mesure rien sur 88 % de la flotte et n'est plus utilisé pour l'affichage.
+        // 0 = pas de mesure : on garde la dernière valeur connue du cache, sinon null
+        // (le .NET masque de toute façon tant que l'audit n'a pas validé le capteur).
+        const BATTERY_VOLTAGE_FACTOR: f64 = 0.156;
         const BATTERY_MIN_V: f64 = 11.0; // 12V system: 0%
         const BATTERY_MAX_V: f64 = 12.8; // 12V system: 100%
 
-        let battery_voltage = frame.power_voltage as f64 * VOLTAGE_FACTOR;
-        let battery_percent = if battery_voltage <= BATTERY_MIN_V {
-            0
-        } else if battery_voltage >= BATTERY_MAX_V {
-            100
+        let battery_voltage: Option<f64> = if frame.battery_raw > 0 {
+            Some(frame.battery_raw as f64 * BATTERY_VOLTAGE_FACTOR)
         } else {
-            ((battery_voltage - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0) as i32
+            prev_cache.as_ref().and_then(|c| c["batteryVoltage"].as_f64())
         };
+        let battery_percent: Option<i32> = battery_voltage.map(|v| {
+            if v <= BATTERY_MIN_V { 0 }
+            else if v >= BATTERY_MAX_V { 100 }
+            else { ((v - BATTERY_MIN_V) / (BATTERY_MAX_V - BATTERY_MIN_V) * 100.0) as i32 }
+        });
 
         // Temperature: ONLY use FMS temperature from CAN bus (V3 frames, J1939 raw - 40)
         // The base frame temperature_raw is "80+Analogic1 or digital temp" (raw analog value),
@@ -108,7 +114,8 @@ impl RedisCache {
             "isValid": frame.is_valid,
             "fuelRaw": fuel_raw,
             "powerVoltage": frame.power_voltage,
-            "batteryVoltage": (battery_voltage * 10.0).round() / 10.0,
+            "batteryRaw": frame.battery_raw,
+            "batteryVoltage": battery_voltage.map(|v| (v * 10.0).round() / 10.0),
             "batteryPercent": battery_percent,
             "powerSourceRescue": frame.power_source_rescue,
             "temperatureC": temperature_c,

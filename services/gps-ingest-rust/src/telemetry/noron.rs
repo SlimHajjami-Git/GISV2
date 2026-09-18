@@ -513,6 +513,7 @@ fn noron_position_to_hh_frame(pos: &NoronPosition, flag: NoronFlag) -> HhFrame {
         heading_deg,
         power_voltage: pos.vol_value,
         power_source_rescue: false,
+        battery_raw: 0,
         fuel_raw: 0, // Noron doesn't report fuel
         ignition_on,
         mems_x: 0,

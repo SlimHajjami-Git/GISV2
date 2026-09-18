@@ -271,6 +271,7 @@ fn decode_position(payload: &[u8], serial: u16, protocol: u8) -> Result<Gt06Deco
         heading_deg: (course as f64).clamp(0.0, 360.0),
         power_voltage: 0, // 0x13 status carries voltage as a 0-6 level, not a real V reading; we keep this 0 to avoid lying
         power_source_rescue: false,
+        battery_raw: 0,
         fuel_raw: 0,
         ignition_on: speed > 0, // GT06 doesn't expose ignition in 0x10; infer from motion
         mems_x: 0, mems_y: 0, mems_z: 0, // GT06 has no accelerometer IO
@@ -349,6 +350,7 @@ fn decode_status(payload: &[u8], serial: u16) -> Result<Gt06DecodeResult> {
             heading_deg: 0.0,
             power_voltage: voltage_level,
             power_source_rescue: false,
+            battery_raw: 0,
             fuel_raw: 0,
             ignition_on,
             mems_x: 0, mems_y: 0, mems_z: 0,

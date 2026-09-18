@@ -1504,10 +1504,11 @@ impl Database {
                 send_flag,
                 protocol_version,
                 address,
-                fuel_rate_l_per_100km
+                fuel_rate_l_per_100km,
+                battery_raw
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(),
-                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+                $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
             )
             -- Catches both unique constraints: event_key AND
             -- (device_id, recorded_at). The latter was added in migration 028
@@ -1544,6 +1545,7 @@ impl Database {
         .bind(protocol_version)
         .bind(&frame.address) // Geocoded address
         .bind(if has_fms { frame.fuel_rate_l_per_100km } else { None }) // FMS Fuel Rate in L/100km
+        .bind(if frame.battery_raw > 0 { Some(frame.battery_raw as i16) } else { None::<i16> }) // Batterie (octet 34-36), NULL = pas de mesure
         .fetch_optional(&self.pool)
         .await?;
 

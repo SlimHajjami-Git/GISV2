@@ -73,6 +73,7 @@ public class GpsPositionConfiguration : IEntityTypeConfiguration<GpsPosition>
         builder.Property(e => e.IgnitionOn).HasColumnName("ignition_on");
         builder.Property(e => e.FuelRaw).HasColumnName("fuel_raw");
         builder.Property(e => e.PowerVoltage).HasColumnName("power_voltage");
+        builder.Property(e => e.BatteryRaw).HasColumnName("battery_raw");
         builder.Property(e => e.Satellites).HasColumnName("satellites");
         builder.Property(e => e.IsValid).HasColumnName("is_valid");
         builder.Property(e => e.IsRealTime).HasColumnName("is_real_time");

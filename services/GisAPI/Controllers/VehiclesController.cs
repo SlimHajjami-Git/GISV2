@@ -156,10 +156,11 @@ public class VehiclesController : ControllerBase
                                 {
                                     // Preserve DB values for fields Redis doesn't store
                                     var dbPos = vehicle.LastPosition;
-                                    // BatteryVoltage: Redis already publishes the volts directly
-                                    // (computed in redis_cache.rs with the same 0.3 factor used
-                                    // server-side), so we trust the cache value first; fall back
-                                    // to whatever the DB query returned earlier.
+                                    // BatteryVoltage : Redis publie déjà les volts (calculés dans
+                                    // redis_cache.rs avec le même facteur que le serveur — depuis
+                                    // le 17/09/2026, l'octet « Batterie » × 0,156 sur les NEMS),
+                                    // donc on fait confiance au cache d'abord ; à défaut on garde
+                                    // ce que la requête SQL avait renvoyé.
                                     //
                                     // Apply the same 14.4 V ceiling as the DB query path
                                     // (alternator regulator max on a 12 V system). Anything
