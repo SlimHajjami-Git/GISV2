@@ -2,6 +2,7 @@ using FluentAssertions;
 using GisAPI.Application.Features.MaintenanceTemplates.Commands;
 using GisAPI.Application.Features.MaintenanceTemplates.Queries;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Tests.Common;
 using MediatR;
 using Moq;
@@ -60,8 +61,9 @@ public class MaintenanceTemplateTests
             IsActive: true
         );
 
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => 
+        // Act & Assert : refus métier (400 avec message), pas une ArgumentException
+        // qui tombait en 500 générique (DEF-031).
+        await Assert.ThrowsAsync<DomainException>(() =>
             handler.Handle(command, CancellationToken.None));
     }
 

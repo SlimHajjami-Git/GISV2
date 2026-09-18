@@ -22,7 +22,7 @@ public record OperatingCostReportDto(
     decimal TotalKm,                       // Σ distances mesurables
     decimal? AverageCostPerKm,             // Σ coût véhicules mesurables / Σ km (moyenne pondérée)
     int VehicleCount,                      // véhicules analysés (dépense ou distance)
-    int FleetSize,
+    int FleetSize,                         // parc visible (portée + département), filtre véhicule NON appliqué
     int VehiclesWithoutDistance,
     decimal TotalFuelCost,
     decimal TotalMaintenanceCost,

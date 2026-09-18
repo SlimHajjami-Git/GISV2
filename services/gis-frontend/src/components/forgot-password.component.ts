@@ -101,10 +101,14 @@ export class ForgotPasswordComponent {
       `${environment.apiUrl}/auth/forgot-password`, { email: this.email.trim() }
     ).subscribe({
       next: () => { this.loading = false; this.sent = true; },
-      error: () => {
+      error: (err) => {
         this.loading = false;
-        // Même en cas d'échec réseau on ne révèle rien de l'adresse.
-        this.error = "L'envoi n'a pas abouti. Vérifiez votre connexion et réessayez.";
+        // Même en cas d'échec réseau on ne révèle rien de l'adresse. Un 429 (5 demandes
+        // par heure et par réseau) n'est pas une panne de connexion : « réessayez » y
+        // envoyait l'utilisateur buter sur le même refus pendant une heure.
+        this.error = err?.status === 429
+          ? (err.error?.message || 'Trop de demandes de réinitialisation. Réessayez dans une heure.')
+          : "L'envoi n'a pas abouti. Vérifiez votre connexion et réessayez.";
       }
     });
   }

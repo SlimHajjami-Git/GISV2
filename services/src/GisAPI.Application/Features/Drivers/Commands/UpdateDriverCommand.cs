@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -42,10 +43,18 @@ public class UpdateDriverCommandHandler : IRequestHandler<UpdateDriverCommand>
             .FirstOrDefaultAsync(d => d.Id == request.Id && d.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Chauffeur", request.Id);
 
-        if (request.AssignedVehicleId.HasValue)
+        // Véhicule affecté : 0 vaut désaffectation, comme AssignedDriverId côté
+        // véhicule. null aussi — contrairement au formulaire véhicule qui ne
+        // porte AUCUN champ chauffeur (d'où « champ absent = champ non modifié »
+        // dans UpdateVehicleCommandHandler), le formulaire chauffeur porte le
+        // champ et envoie null pour « Aucun véhicule » : le traiter comme un
+        // champ absent retirerait le seul moyen de désaffecter.
+        var assignedVehicleId = request.AssignedVehicleId is null or 0 ? null : request.AssignedVehicleId;
+
+        if (assignedVehicleId.HasValue)
         {
             var vehicleExists = await _context.Vehicles
-                .AnyAsync(v => v.Id == request.AssignedVehicleId.Value && v.CompanyId == companyId, ct);
+                .AnyAsync(v => v.Id == assignedVehicleId.Value && v.CompanyId == companyId, ct);
             if (!vehicleExists)
                 throw new DomainException("Véhicule invalide");
         }
@@ -60,10 +69,14 @@ public class UpdateDriverCommandHandler : IRequestHandler<UpdateDriverCommand>
         driver.CIN = request.CIN;
         driver.DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null;
         driver.HireDate = request.HireDate.HasValue ? DateTime.SpecifyKind(request.HireDate.Value, DateTimeKind.Utc) : null;
-        driver.AssignedVehicleId = request.AssignedVehicleId;
+        driver.AssignedVehicleId = assignedVehicleId;
         if (!string.IsNullOrEmpty(request.Status))
             driver.Status = request.Status;
         driver.UpdatedAt = DateTime.UtcNow;
+
+        // L'affectation a deux jambes : vehicles.assigned_driver_id suit, sinon
+        // l'écran Véhicules continue d'afficher l'ancien chauffeur (ou aucun).
+        await VehicleDriverAssignment.SyncVehicleSideAsync(_context, driver, ct);
 
         await _context.SaveChangesAsync(ct);
     }

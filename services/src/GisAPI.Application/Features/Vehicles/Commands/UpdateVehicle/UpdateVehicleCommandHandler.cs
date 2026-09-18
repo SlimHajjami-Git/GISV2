@@ -27,6 +27,23 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         if (vehicle == null)
             throw new NotFoundException("Vehicle", request.Id);
 
+        // Un véhicule n'est jamais lié au chauffeur d'une autre société : la clé
+        // étrangère vers drivers ne contrôle que l'existence, pas la société, et
+        // un identifiant inconnu finissait en erreur base (500). Même contrôle
+        // que le volet chauffeur, qui refuse un véhicule d'une autre société.
+        if (request.AssignedDriverId is { } requestedDriverId && requestedDriverId != 0)
+        {
+            var driverInCompany = await _context.Drivers
+                .AnyAsync(d => d.Id == requestedDriverId && d.CompanyId == vehicle.CompanyId, ct);
+            if (!driverInCompany)
+                throw new DomainException(
+                    "Chauffeur invalide : un véhicule ne peut être affecté qu'à un chauffeur de sa propre société.");
+        }
+
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay, vehicle.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(
+            _context, vehicle.CompanyId, request.Plate, vehicle.Id, vehicle.Plate, ct);
+
         vehicle.Name = request.Name;
         vehicle.Type = request.Type;
         vehicle.Brand = request.Brand;
@@ -49,8 +66,21 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
             vehicle.Mileage = request.Mileage;
         if (request.FuelType != null) vehicle.FuelType = request.FuelType;
         vehicle.FuelTankCapacity = request.FuelTankCapacity;
-        vehicle.AssignedDriverId = request.AssignedDriverId;
-        vehicle.AssignedSupervisorId = request.AssignedSupervisorId;
+        // Chauffeur et superviseur : champ ABSENT = champ non modifié, comme les
+        // champs d'acquisition et de documents. Le formulaire véhicule ne porte
+        // aucun champ chauffeur : l'écrasement inconditionnel effaçait
+        // l'affectation à chaque changement de couleur (recette GPA du
+        // 11/09/2026). 0 = désaffectation explicite (même convention que
+        // DepartmentId dans le PATCH).
+        var driverProvided = request.AssignedDriverId.HasValue;
+        if (driverProvided)
+            vehicle.AssignedDriverId = request.AssignedDriverId!.Value == 0
+                ? null
+                : request.AssignedDriverId.Value;
+        if (request.AssignedSupervisorId.HasValue)
+            vehicle.AssignedSupervisorId = request.AssignedSupervisorId.Value == 0
+                ? null
+                : request.AssignedSupervisorId.Value;
 
         // Acquisition info — l'empreinte des 7 champs est relevée avant/après :
         // l'échéancier persisté n'est recalé que si le contrat a changé.
@@ -77,6 +107,13 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         if (request.TechnicalInspectionReminderDays.HasValue) vehicle.TechnicalInspectionReminderDays = request.TechnicalInspectionReminderDays.Value;
 
         vehicle.UpdatedAt = DateTime.UtcNow;
+
+        // L'affectation a deux jambes : drivers.assigned_vehicle_id suit, sinon
+        // l'écran Chauffeurs contredit l'écran Véhicules. Recalé dès que le champ
+        // est fourni (même à valeur inchangée) : c'est ce qui répare les
+        // affectations déjà divergentes en base.
+        if (driverProvided)
+            await VehicleDriverAssignment.SyncDriverSideAsync(_context, vehicle, ct);
 
         // Échéancier d'acquisition persisté (acquisition_payments) : recalé dans
         // la même transaction que le véhicule, seulement si le contrat a bougé.

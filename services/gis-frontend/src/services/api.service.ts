@@ -1906,6 +1906,16 @@ export class ApiService {
     return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/manual`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Suppression définitive d'un dossier de sinistre (demande du 18/09/2026).
+   * Les documents, photos et tiers partent avec le dossier ; les dépenses déjà
+   * enregistrées restent dans Dépenses, simplement détachées (`detachedCosts`).
+   * Le serveur la réserve à un administrateur de société ou au droit Sinistres.
+   */
+  deleteAccidentEvent(id: number): Observable<{ message: string; detachedCosts: number }> {
+    return this.http.delete<{ message: string; detachedCosts: number }>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
+  }
+
   // ==================== MAINTENANCE TEMPLATES ====================
 
   getMaintenanceTemplates(options?: { category?: string; isActive?: boolean; page?: number; pageSize?: number }): Observable<PaginatedResult<MaintenanceTemplateDto>> {
@@ -2771,7 +2781,22 @@ export interface GpaDashboard {
 
 // ==================== MONTHLY COST REPORT ====================
 
-export interface MonthlyCostReport {
+/**
+ * Ratios au kilomètre d'un groupe (société, département), calculés par le serveur
+ * sur les SEULS véhicules à distance mesurée, au numérateur comme au dénominateur.
+ * Diviser à l'écran le coût de tout le groupe par ses seuls km mesurés gonflait le
+ * coût au km dès qu'un véhicule était « non mesuré » (recette du 13/09/2026).
+ * null : aucun kilomètre mesuré dans le groupe.
+ */
+export interface MonthlyCostGroupRatios {
+  costPerKm: number | null;
+  fuelPer100Km: number | null;
+  maintenanceRepairPer100Km: number | null;
+  consumptionPer100Km: number | null;
+  consumptionPrPer100Km: number | null;
+}
+
+export interface MonthlyCostReport extends MonthlyCostGroupRatios {
   year: number;
   month: number;
   monthName: string;
@@ -2790,7 +2815,7 @@ export interface MonthlyCostReport {
   vehicles: VehicleMonthlyCost[];
 }
 
-export interface DepartmentCostGroup {
+export interface DepartmentCostGroup extends MonthlyCostGroupRatios {
   departmentId: number | null;
   departmentName: string;
   totalKm: number;
@@ -2812,8 +2837,12 @@ export interface VehicleMonthlyCost {
   driverName: string | null;
   departmentId: number | null;
   departmentName: string;
-  km: number;
-  kmPr: number;
+  /** null : kilométrage non mesurable sur le mois (pas de distance exploitable entre les relevés). */
+  km: number | null;
+  /** 'gps' (compteur du boîtier), 'odometer' (relevés saisis) ou 'none'. */
+  kmSource: DistanceSource;
+  /** null : kilométrage du mois précédent non mesurable. */
+  kmPr: number | null;
   fuelCostDzd: number;
   maintenanceCostDzd: number;
   repairCostDzd: number;
@@ -2821,11 +2850,13 @@ export interface VehicleMonthlyCost {
   totalCostDzd: number;
   fuelLiters: number;
   fuelLitersPr: number;
-  costPerKm: number;
-  fuelPer100Km: number;
-  maintenanceRepairPer100Km: number;
-  consumptionPer100Km: number;
-  consumptionPrPer100Km: number;
+  // Ratios au kilomètre : null sans distance mesurée — 0 se lirait comme un
+  // coût ou une consommation réellement constatés (recette du 13/09/2026).
+  costPerKm: number | null;
+  fuelPer100Km: number | null;
+  maintenanceRepairPer100Km: number | null;
+  consumptionPer100Km: number | null;
+  consumptionPrPer100Km: number | null;
 }
 
 // ==================== RAPPORTS DE COÛTS (contrat du 04/09/2026) ====================
@@ -2911,9 +2942,9 @@ export interface MonthlyVehicleCostDto {
   otherCost: number;
   totalCost: number;
   distanceKm: number | null;
-  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si le mois est incomplet. */
+  /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si l'un des deux mois est incomplet. */
   variationPct: number | null;
-  /** La période ne couvre pas le mois en entier : elle commence après le 1er ou s’arrête avant la fin. */
+  /** La période ne couvre pas le mois entier, par l'une OU l'autre borne : elle commence après le 1er, ou s'arrête avant la fin (mois en cours). */
   isPartial?: boolean;
 }
 
@@ -2986,10 +3017,11 @@ export interface ExecutiveSummary {
   totalDistanceKm: number;
   totalFuelConsumedLiters: number;
   totalOperationalCost: number;
-  fleetUtilizationRate: number;
+  /** null : parc sans boîtier, non mesuré (voir MonthlyFleetReport.fleetHasGps). */
+  fleetUtilizationRate: number | null;
   averageFuelEfficiency: number;
-  totalTrips: number;
-  totalDrivingHours: number;
+  totalTrips: number | null;
+  totalDrivingHours: number | null;
   keyInsights: string[];
   recommendations: string[];
 }
@@ -3008,8 +3040,9 @@ export interface VehicleTypeSummary {
   type: string;
   count: number;
   percentage: number;
-  totalDistanceKm: number;
-  avgDistanceKm: number;
+  /** Sans boîtier : kilométrage des relevés saisis ; null si aucun véhicule du type n'est mesuré. */
+  totalDistanceKm: number | null;
+  avgDistanceKm: number | null;
 }
 
 export interface VehicleStatusSummary {
@@ -3026,11 +3059,12 @@ export interface DepartmentSummary {
 }
 
 export interface VehicleUtilization {
-  overallUtilizationRate: number;
+  /** Taux, distance journalière et jours : null pour un parc sans boîtier (non mesurés). */
+  overallUtilizationRate: number | null;
   averageDailyUsageHours: number;
-  averageDailyDistanceKm: number;
-  totalOperatingDays: number;
-  totalIdleDays: number;
+  averageDailyDistanceKm: number | null;
+  totalOperatingDays: number | null;
+  totalIdleDays: number | null;
   dailyTrend: DailyUtilization[];
   byVehicle: VehicleUtilizationDetail[];
   statistics: StatisticalMetrics;
@@ -3154,7 +3188,8 @@ export interface UpcomingMaintenance {
 export interface DriverPerformance {
   totalDrivers: number;
   activeDrivers: number;
-  averagePerformanceScore: number;
+  /** Score tiré des vitesses GPS ; null pour un parc sans boîtier. */
+  averagePerformanceScore: number | null;
   driverMetrics: DriverMetrics[];
   topPerformers: DriverRanking[];
   needsImprovement: DriverRanking[];
@@ -3195,7 +3230,8 @@ export interface OperationalEfficiency {
   // Disponibilité flotte, ponctualité et efficacité d'itinéraire ont été retirées
   // du serveur le 09/09/2026 : c'étaient trois constantes (95, 92, 88) affichées
   // comme des mesures. Seul le temps d'inactivité est réellement calculé.
-  idleTimePercentage: number;
+  // null pour un parc sans boîtier (aucune trame).
+  idleTimePercentage: number | null;
   dailyTrend: DailyEfficiency[];
   metrics: EfficiencyMetric[];
 }
@@ -3255,9 +3291,10 @@ export interface FleetPeriodComparison {
   distance: ComparisonMetric;
   fuelConsumption: ComparisonMetric;
   cost: ComparisonMetric;
-  utilization: ComparisonMetric;
+  /** null pour un parc sans boîtier (non mesuré). */
+  utilization: ComparisonMetric | null;
   efficiency: ComparisonMetric;
-  trips: ComparisonMetric;
+  trips: ComparisonMetric | null;
 }
 
 export interface ComparisonMetric {
@@ -4049,6 +4086,7 @@ export interface MaintenanceItemDto {
   status: string;
   kmUntilDue?: number;
   daysUntilDue?: number;
+  isPaused?: boolean;
   // Free maintenance benefits
   freeUsesTotal?: number;
   freeUsesRemaining?: number;

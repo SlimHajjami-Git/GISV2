@@ -42,5 +42,5 @@ public record MonthlyVehicleCostDto(
     decimal OtherCost,
     decimal TotalCost,
     decimal? DistanceKm,                   // km attribués au mois (relevé aval / trajets du mois)
-    decimal? VariationPct,                 // vs mois précédent ; null le 1er mois, si précédent = 0, ou si mois INCOMPLET
-    bool IsPartial = false);               // la période ne couvre pas le mois entier : elle commence après le 1er ou s’arrête avant la fin (mois en cours, période personnalisée)
+    decimal? VariationPct,                 // vs mois précédent ; null le 1er mois, si précédent = 0, ou si l'un des deux mois est INCOMPLET
+    bool IsPartial = false);               // la période ne couvre pas le mois entier, par l'une OU l'autre borne (mois en cours, période personnalisée)

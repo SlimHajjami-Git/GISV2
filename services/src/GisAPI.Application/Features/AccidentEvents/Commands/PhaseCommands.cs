@@ -172,7 +172,7 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
                 ev,
                 type: "repair",
                 amount: request.ActualCost.Value,
-                date: ev.RepairCompletedAt ?? DateTime.UtcNow,
+                date: ev.RepairCompletedAt,
                 description: $"Réparation accident — {ev.ReferenceCode ?? $"#{ev.Id}"}",
                 ct: ct);
         }
@@ -207,11 +207,16 @@ public class RegisterClaimCommandHandler : PhaseCommandHandlerBase, IRequestHand
 
     public async Task<Unit> Handle(RegisterClaimCommand request, CancellationToken ct)
     {
+        // Contrôle AVANT tout chargement ou modification : la phase 6 est réécrite en
+        // bloc, et un statut hors liste devenait NULL en silence — l'appel répondait
+        // 204 et le suivi assurance déjà saisi était perdu (recette GPA, DEF-021).
+        var claimStatus = NormaliseClaimStatus(request.Status);
+
         var ev = await LoadConfirmedAsync(request.AccidentEventId, ct);
         ev.ClaimNumber = string.IsNullOrWhiteSpace(request.ClaimNumber) ? null : request.ClaimNumber.Trim();
         ev.ClaimSubmittedAt = request.SubmittedAt?.ToUniversalTime();
         ev.ClaimApprovedAmount = request.ApprovedAmount;
-        ev.ClaimStatus = NormaliseClaimStatus(request.Status);
+        ev.ClaimStatus = claimStatus;
         if (request.ThirdPartyInvolved.HasValue) ev.ThirdPartyInvolved = request.ThirdPartyInvolved.Value;
         ev.UpdatedAt = DateTime.UtcNow;
 
@@ -224,7 +229,7 @@ public class RegisterClaimCommandHandler : PhaseCommandHandlerBase, IRequestHand
                 ev,
                 type: "insurance_refund",
                 amount: request.ApprovedAmount.Value,
-                date: ev.ClaimSubmittedAt ?? DateTime.UtcNow,
+                date: ev.ClaimSubmittedAt,
                 description: $"Remboursement assurance — {ev.ClaimNumber ?? ev.ReferenceCode ?? $"#{ev.Id}"}",
                 ct: ct);
         }
@@ -233,15 +238,20 @@ public class RegisterClaimCommandHandler : PhaseCommandHandlerBase, IRequestHand
         return Unit.Value;
     }
 
+    private static readonly string[] ClaimStatuses = { "pending", "approved", "partial", "rejected", "closed" };
+
+    /// <summary>
+    /// Vide = pas de statut (NULL). Valeur inconnue = refus explicite (400), jamais NULL.
+    /// </summary>
     private static string? NormaliseClaimStatus(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
         var lc = raw.Trim().ToLowerInvariant();
-        return lc switch
-        {
-            "pending" or "approved" or "partial" or "rejected" or "closed" => lc,
-            _ => null,
-        };
+        if (ClaimStatuses.Contains(lc)) return lc;
+        throw new DomainException(
+            $"Statut de sinistre inconnu : « {raw.Trim()} ». Valeurs acceptées : " +
+            "pending (en cours), approved (approuvé), partial (partiellement approuvé), rejected (rejeté), closed (clos). " +
+            "Aucune modification n'a été enregistrée.");
     }
 }
 
@@ -411,11 +421,17 @@ public abstract class PhaseCommandHandlerBase
     /// <c>(VehicleId, AccidentEventId, Type)</c> — if present, updates
     /// amount/date/description; otherwise inserts a new one.
     /// </summary>
+    /// <param name="date">
+    /// Date métier (réparation terminée, dépôt du sinistre). Absente : une ligne
+    /// existante garde sa date, une nouvelle ligne prend la date du jour. Re-dater
+    /// au jour de l'appel déplaçait la dépense d'un mois à l'autre dans les rapports
+    /// à chaque enregistrement de la phase (recette GPA, DEF-021).
+    /// </param>
     protected async Task UpsertVehicleCostAsync(
         AccidentEvent ev,
         string type,
         decimal amount,
-        DateTime date,
+        DateTime? date,
         string description,
         CancellationToken ct)
     {
@@ -429,11 +445,27 @@ public abstract class PhaseCommandHandlerBase
         if (existing != null)
         {
             existing.Amount = amount;
-            existing.Date = date;
+            if (date.HasValue) existing.Date = date.Value;
             existing.Description = description;
             Logger.LogDebug(
                 "Phase auto-sync: updated VehicleCost {Cost} for accident {Accident} (type={Type}, amount={Amount})",
                 existing.Id, ev.Id, type, amount);
+            return;
+        }
+
+        // accident_events.vehicle_id n'a pas de clé étrangère : un sinistre survit à la
+        // suppression de son véhicule, pas ses dépenses (vehicle_costs → vehicles). Insérer
+        // la dépense violait la contrainte au SaveChanges : erreur 500, rien d'enregistré
+        // (recette GPA, DEF-021). Même règle que l'accident sans véhicule : la phase et son
+        // montant s'enregistrent, seule la dépense liée est omise. Refuser la phase aurait
+        // poussé à vider un coût de réparation ou un montant approuvé déjà saisi.
+        var vehicleExists = await Context.Vehicles
+            .AnyAsync(v => v.Id == ev.VehicleId.Value && v.CompanyId == ev.CompanyId, ct);
+        if (!vehicleExists)
+        {
+            Logger.LogWarning(
+                "Phase auto-sync: vehicle {Vehicle} of accident {Accident} no longer exists, VehicleCost (type={Type}) skipped",
+                ev.VehicleId.Value, ev.Id, type);
             return;
         }
 
@@ -445,7 +477,7 @@ public abstract class PhaseCommandHandlerBase
             Type = type,
             Description = description,
             Amount = amount,
-            Date = date,
+            Date = date ?? DateTime.UtcNow,
             CreatedByUserId = TenantService.UserId,
             CreatedAt = DateTime.UtcNow,
         };

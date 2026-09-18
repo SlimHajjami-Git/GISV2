@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Admin.Vehicles.Services;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -25,6 +26,17 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
 
         // Société enregistrée en base, avant la modification (le plan de remplacement la relit).
         var originalCompanyId = vehicle.CompanyId;
+
+        // Matricule unique dans la société (DEF-037), contrôlé avant toute modification.
+        // Changement de société : le matricule, même inchangé, est contrôlé dans la
+        // société d'arrivée. Sinon seul un matricule modifié l'est, pour qu'un doublon
+        // déjà en base reste modifiable.
+        var movesCompany = r.CompanyId.HasValue && r.CompanyId.Value != originalCompanyId;
+        var plateClash = await VehicleWriteRules.FindPlateClashAsync(
+            _context, r.CompanyId ?? originalCompanyId, r.Plate ?? vehicle.Plate, vehicle.Id,
+            movesCompany ? null : vehicle.Plate, ct);
+        if (plateClash != null)
+            return new UpdateAdminVehicleResult(false, VehicleWriteRules.AdminPlateClashMessage(plateClash));
 
         if (!string.IsNullOrEmpty(r.Name)) vehicle.Name = r.Name;
         if (r.Type != null) vehicle.Type = r.Type;

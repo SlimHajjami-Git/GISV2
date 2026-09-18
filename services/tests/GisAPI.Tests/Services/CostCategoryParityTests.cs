@@ -32,6 +32,10 @@ public class CostCategoryParityTests
     [InlineData("Réparation", CostCategory.Repair, 1)]
     [InlineData("reparation", CostCategory.Repair, 1)]
     [InlineData("insurance_refund", CostCategory.Other, -1)]
+    // Avoir fournisseur (16/09/2026) : crédit comme le remboursement ; « credit » reste le leasing.
+    [InlineData("credit_note", CostCategory.Other, -1)]
+    [InlineData(" Credit_Note ", CostCategory.Other, -1)]
+    [InlineData("credit", CostCategory.Other, 1)]
     [InlineData("insurance", CostCategory.Other, 1)]
     [InlineData(null, CostCategory.Other, 1)]
     public void La_ventilation_d_une_depense_est_unique(string? type, CostCategory expected, int sign) =>
@@ -50,7 +54,8 @@ public class CostCategoryParityTests
             new VehicleCost { Id = 4, CompanyId = CompanyId, VehicleId = 1, Type = "repair", Amount = 300, Date = Sept(6) },
             new VehicleCost { Id = 5, CompanyId = CompanyId, VehicleId = 1, Type = "insurance", Amount = 600, Date = Sept(7) },
             new VehicleCost { Id = 6, CompanyId = CompanyId, VehicleId = 1, Type = "insurance_refund", Amount = 250, Date = Sept(8) },
-            new VehicleCost { Id = 7, CompanyId = CompanyId, VehicleId = 1, Type = "tax", Amount = 20, Date = Sept(9) });
+            new VehicleCost { Id = 7, CompanyId = CompanyId, VehicleId = 1, Type = "tax", Amount = 20, Date = Sept(9) },
+            new VehicleCost { Id = 8, CompanyId = CompanyId, VehicleId = 1, Type = "credit_note", Amount = 30, Date = Sept(12) });
         ctx.Repairs.AddRange(
             new Repair { Id = 1, SocieteId = CompanyId, VehicleId = 1, Reference = "REP-1", RepairDate = Sept(10), TotalCost = 100, Status = "completed" },
             new Repair { Id = 2, SocieteId = CompanyId, VehicleId = 1, Reference = "REP-2", RepairDate = Sept(11), TotalCost = 999, Status = "Cancelled" });
@@ -74,11 +79,11 @@ public class CostCategoryParityTests
             .Handle(new GetMonthlyCostReportQuery(2026, 9), CancellationToken.None);
 
         // Carburant 100 + 60 ; entretiens 120 + 50 ; réparations 100 (l'annulée exclue)
-        // + facture 300 ; autres 600 − 250 + 20.
-        (fuel, maintenance, repair, other).Should().Be((160m, 170m, 400m, 370m));
+        // + facture 300 ; autres 600 − 250 (remboursement) + 20 − 30 (avoir).
+        (fuel, maintenance, repair, other).Should().Be((160m, 170m, 400m, 340m));
         (total.Fuel, total.Maintenance, total.Repair, total.Other).Should().Be((fuel, maintenance, repair, other));
         (monthly.TotalFuelCostDzd, monthly.TotalMaintenanceCostDzd, monthly.TotalRepairCostDzd, monthly.TotalOtherCostDzd)
             .Should().Be((fuel, maintenance, repair, other));
-        monthly.TotalCostDzd.Should().Be(1_100m).And.Be(total.Total);
+        monthly.TotalCostDzd.Should().Be(1_070m).And.Be(total.Total);
     }
 }

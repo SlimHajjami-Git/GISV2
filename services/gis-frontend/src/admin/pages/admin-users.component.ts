@@ -180,7 +180,7 @@ interface EditUserForm {
                 </div>
                 <div class="form-field">
                   <label>Téléphone</label>
-                  <input type="tel" [(ngModel)]="editForm.phone" placeholder="+216 …" />
+                  <input type="tel" [(ngModel)]="editForm.phone" placeholder="+33 6 12 34 56 78" />
                 </div>
                 <div class="form-field">
                   <label>Statut</label>
@@ -245,6 +245,8 @@ interface EditUserForm {
             <div class="popup-body">
               <p>Voulez-vous vraiment supprimer <strong>{{ userToDelete.name }}</strong> ({{ userToDelete.email }}) ?</p>
               <p class="warning">Cette action est définitive. L'utilisateur perdra immédiatement l'accès.</p>
+              <p class="warning">Son historique (dépenses, trajets, journal d'activité) est conservé ; ses messages échangés, conversations avec l'assistant et rapports programmés sont supprimés.</p>
+              <p class="form-error delete-error" *ngIf="deleteError">{{ deleteError }}</p>
             </div>
             <div class="popup-footer">
               <button class="btn-secondary" (click)="userToDelete = null">Annuler</button>
@@ -981,6 +983,7 @@ interface EditUserForm {
       font-size: 12px;
       margin-top: 8px;
     }
+    .delete-popup .popup-body p.delete-error { margin: 12px 0 0; color: var(--adm-red-ink); font-size: 12px; }
 
     .action-btn.primary {
       background: rgba(79, 70, 229, 0.10);
@@ -1076,6 +1079,7 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
 
   // Delete confirmation
   userToDelete: SystemUser | null = null;
+  deleteError = '';
 
   get selectedRole(): Role | undefined {
     if (!this.editForm?.roleId) return undefined;
@@ -1291,12 +1295,14 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
 
   // ─── Delete ───────────────────────────────────────────────────────────
   askDelete(user: SystemUser) {
+    this.deleteError = '';
     this.userToDelete = user;
   }
 
   confirmDelete() {
     if (!this.userToDelete) return;
     const id = this.userToDelete.id;
+    this.deleteError = '';
     this.adminService.deleteUser(id).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.usersSubject.next(this.currentUsers.filter(u => u.id !== id));
@@ -1305,7 +1311,9 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
       },
       error: (err) => {
         console.error('Delete user failed:', err);
-        this.userToDelete = null;
+        // La fenêtre se refermait sans rien dire : un refus (propre compte, base) passait
+        // pour un clic sans effet. Elle reste ouverte avec le message de l'API.
+        this.deleteError = err?.error?.message || 'Suppression impossible';
         this.cdr.detectChanges();
       }
     });

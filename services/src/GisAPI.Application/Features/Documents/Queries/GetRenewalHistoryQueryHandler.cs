@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Documents.Commands;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -36,8 +37,16 @@ public class GetRenewalHistoryQueryHandler : IRequestHandler<GetRenewalHistoryQu
             c.Date,
             c.ExpiryDate,
             c.DocumentNumber,
-            c.Description,
-            null,
+            // Le fournisseur a sa propre colonne (migration 047). La description
+            // est un libellé libre (« Renouvellement Assurance - X ») affiché tel
+            // quel dans les dépenses : la servir comme fournisseur donnait
+            // « Renouvellement Assurance - QA-Assureur » dans l'historique. Les
+            // lignes antérieures à la migration n'ont que la description : leur
+            // fournisseur y est relu plutôt que de s'effacer.
+            string.IsNullOrWhiteSpace(c.Provider)
+                ? RenewDocumentCommandHandler.ProviderFromDescription(c.Type, c.Description)
+                : c.Provider,
+            c.Notes,
             c.DocumentUrl
         )).ToList();
     }

@@ -59,21 +59,14 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<
 
         var users = await query.OrderBy(u => u.FirstName).ToListAsync(ct);
 
-        // Load assigned vehicles for mapping
-        var vehicleIds = users
-            .Where(u => u.UserVehicles.Any())
-            .SelectMany(u => u.UserVehicles.Select(uv => uv.VehicleId))
-            .Distinct()
-            .ToList();
-
-        var vehicles = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId && vehicleIds.Contains(v.Id))
-            .Select(v => new { v.Id, v.Name, v.Plate, v.AssignedDriverId })
-            .ToListAsync(ct);
-
+        // Pas de « véhicule affecté » pour un employé. Il était déduit de
+        // vehicles.assigned_driver_id == users.id, or cette colonne est une clé
+        // étrangère vers drivers(id) : la fiche affichait le véhicule du chauffeur
+        // qui porte par hasard le même numéro. Aucun lien employé ↔ chauffeur
+        // n'existe depuis le découplage (drivers.user_id n'est ni mappé ni renseigné).
+        // Les véhicules visibles par l'employé restent dans AssignedVehicleIds (user_vehicles).
         return users.Select(u =>
         {
-            var assignedVehicle = vehicles.FirstOrDefault(v => v.AssignedDriverId == u.Id);
             var userVehicleIds = u.UserVehicles.Select(uv => uv.VehicleId).ToArray();
 
             return new EmployeeDto(
@@ -91,9 +84,9 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<
                 u.CIN,
                 u.DateOfBirth,
                 u.HireDate,
-                assignedVehicle?.Id,
-                assignedVehicle?.Name,
-                assignedVehicle?.Plate,
+                null,
+                null,
+                null,
                 userVehicleIds.Length > 0 ? userVehicleIds : null
             );
         }).ToList();

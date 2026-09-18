@@ -110,14 +110,16 @@ public class FuelPricesController : ControllerBase
     /// Import fuel prices from Excel file
     /// </summary>
     [HttpPost("import")]
-    public async Task<ActionResult<ImportResultDto>> ImportFuelPrices(IFormFile file)
+    public async Task<ActionResult<ImportResultDto>> ImportFuelPrices(IFormFile? file)
     {
+        // Paramètre nullable (DEF-056) : non nullable, MVC refusait la requête avant ce
+        // contrôle avec son message anglais « The file field is required. ».
         if (file == null || file.Length == 0)
-            return BadRequest("No file uploaded");
+            return BadRequest(new { message = "Aucun fichier reçu." });
 
         var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (extension != ".xlsx" && extension != ".xls")
-            return BadRequest("Invalid file format. Please upload an Excel file (.xlsx or .xls)");
+            return BadRequest(new { message = "Format non supporté : envoyez un fichier Excel (.xlsx ou .xls)." });
 
         try
         {
@@ -174,7 +176,7 @@ public class FuelPricesController : ControllerBase
             }
 
             if (rows.Count == 0)
-                return BadRequest("No valid data found in the Excel file");
+                return BadRequest(new { message = "Aucune ligne de prix valide dans le fichier." });
 
             var result = await _mediator.Send(new ImportFuelPricesCommand(rows));
             return Ok(result);
@@ -182,7 +184,8 @@ public class FuelPricesController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error importing fuel prices from Excel file");
-            return BadRequest($"Error processing file: {ex.Message}");
+            // Détail technique journalisé ci-dessus, pas renvoyé au client.
+            return BadRequest(new { message = "Import impossible : vérifiez que le fichier suit le modèle d'import des prix carburant." });
         }
     }
 

@@ -1,11 +1,28 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Services;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.VehicleMaintenance.Commands;
+
+/// <summary>
+/// Messages des 404 d'un modèle ou d'un véhicule introuvable (ou hors société).
+/// « Marquer fait » et « Déclarer des entretiens gratuits » levaient une
+/// InvalidOperationException (« Template not found: … ») qui tombait en 500 anonyme
+/// (recette GPA, DEF-031) ; l'écran Entretiens et la fiche véhicule affichent
+/// <c>err.error.message</c> tel quel.
+/// </summary>
+internal static class EntretienIntrouvable
+{
+    public const string Modele =
+        "Ce modèle d'entretien est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.";
+
+    public const string Vehicule =
+        "Ce véhicule est introuvable : il a peut-être été supprimé. Rechargez la page puis recommencez.";
+}
 
 public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMaintenanceTemplateCommand, int>
 {
@@ -30,14 +47,26 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
         var template = await _context.MaintenanceTemplates
             .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken);
 
+        // Refus métier (400 lisible) plutôt qu'une erreur 500 anonyme : le cas
+        // réel est un modèle ou un véhicule supprimé pendant que le panneau
+        // « Affecter » était ouvert, et l'écran affiche ce message tel quel.
         if (template == null)
-            throw new InvalidOperationException($"Template not found: {request.TemplateId}");
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce modèle d'entretien n'existe plus. Rechargez la page puis recommencez l'affectation.");
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
 
         if (vehicle == null)
-            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce véhicule n'existe plus. Rechargez la page puis recommencez l'affectation.");
+
+        // Le filtre multi-tenant est contourné pour l'administrateur système : sans cette
+        // comparaison, le modèle d'une société pouvait être affecté au véhicule d'une autre.
+        // Message distinct : le véhicule existe, « n'existe plus » aurait été faux.
+        if (vehicle.CompanyId != template.CompanyId)
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce véhicule n'appartient pas à la société de ce modèle d'entretien : affectation refusée.");
 
         // Calypso 7 (P-maint-bis): use the smart mileage resolver instead of
         // raw vehicle.Mileage. The resolver cascades GPS odometer → manual
@@ -51,6 +80,10 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
         {
             VehicleId = request.VehicleId,
             TemplateId = request.TemplateId,
+            // Société du véhicule, pas celle de l'appelant : SaveChanges la remplit sinon avec
+            // la société du jeton, et l'échéancier créé par un administrateur système pour une
+            // autre société disparaissait des listes et des statistiques de cette société.
+            CompanyId = vehicle.CompanyId,
             NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
             NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
             Status = "upcoming"
@@ -165,19 +198,47 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
 
     public async Task<int> Handle(MarkMaintenanceDoneCommand request, CancellationToken cancellationToken)
     {
-        var companyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set");
+        var companyId = _tenantService.CompanyId
+            ?? throw new DomainException("Aucune société n'est associée à votre compte : entretien non enregistré.");
 
+        // Filtre société explicite, comme pour le fournisseur ci-dessous : le filtre
+        // multi-tenant est contourné pour l'administrateur système, qui pouvait sinon
+        // enregistrer un entretien (et sa dépense) sur le véhicule d'une autre société.
         var template = await _context.MaintenanceTemplates
-            .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken);
-
-        if (template == null)
-            throw new InvalidOperationException($"Template not found: {request.TemplateId}");
+            .FirstOrDefaultAsync(t => t.Id == request.TemplateId && t.CompanyId == companyId, cancellationToken)
+            ?? throw new NotFoundException(EntretienIntrouvable.Modele);
 
         var vehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken)
+            ?? throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
-        if (vehicle == null)
-            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
+        // Un compteur ne recule pas — même règle que les pleins
+        // (CreateFuelEntryCommandHandler). Un kilométrage inférieur à
+        // vehicles.mileage était accepté et NextDueKm recalculé EN ARRIÈRE :
+        // « 4 500 » tapé au lieu de « 45 000 » plaçait la prochaine échéance à
+        // 14 500 km, l'entretien passait aussitôt « en retard ». Contrairement au
+        // plein, le zéro n'est pas exempté : ici le kilométrage est obligatoire et
+        // sert d'ancre à l'échéance, 0 sur un véhicule à 80 000 km produirait
+        // exactement ce recul. Un véhicule neuf à 0 km passe toujours.
+        // Contrôle AVANT toute écriture : rien n'est enregistré en cas de refus.
+        if (request.Mileage < vehicle.Mileage)
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
+                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+        }
+
+        // Le fournisseur doit appartenir à la société de l'appelant : le filtre
+        // multi-tenant est contourné pour l'administrateur système, et un
+        // identifiant périmé (fournisseur supprimé depuis l'ouverture de l'écran)
+        // doit donner un message clair plutôt qu'une erreur serveur.
+        if (request.SupplierId.HasValue
+            && !await _context.Suppliers.AnyAsync(
+                s => s.Id == request.SupplierId.Value && s.CompanyId == companyId, cancellationToken))
+        {
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Le fournisseur choisi n'existe plus. Rechargez la page et sélectionnez-le à nouveau.");
+        }
 
         // Get or create schedule FIRST (we need to know if a free benefit applies)
         var schedule = await _context.VehicleMaintenanceSchedules
@@ -222,10 +283,16 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         await _context.SaveChangesAsync(cancellationToken);
 
         // Update schedule
+        // L'intervalle personnalisé du véhicule (PUT schedules/{id}/intervals) prime
+        // sur celui du modèle, comme dans UpdateScheduleIntervals, le rebase et
+        // MaintenanceSchedulerService. Seul le modèle était lu ici : le réglage
+        // restait en base mais était ignoré dès le premier entretien réalisé.
+        var intervalKm = schedule.CustomIntervalKm ?? template.IntervalKm;
+        var intervalMonths = schedule.CustomIntervalMonths ?? template.IntervalMonths;
         schedule.LastDoneDate = request.Date;
         schedule.LastDoneKm = request.Mileage;
-        schedule.NextDueKm = template.IntervalKm.HasValue ? request.Mileage + template.IntervalKm.Value : null;
-        schedule.NextDueDate = template.IntervalMonths.HasValue ? request.Date.AddMonths(template.IntervalMonths.Value) : null;
+        schedule.NextDueKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : null;
+        schedule.NextDueDate = intervalMonths.HasValue ? request.Date.AddMonths(intervalMonths.Value) : null;
         // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
         // already-loaded template (the schedule was fetched without Include
         // so schedule.Template was null inside CalculateStatus, falling back
@@ -499,20 +566,22 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
 
     public async Task<int> Handle(DeclareFreeMaintenancesCommand request, CancellationToken cancellationToken)
     {
+        // Refus métier en DomainException / 404 : les InvalidOperationException tombaient
+        // en 500 anonyme et la fiche véhicule perdait le message (recette GPA, DEF-031).
         if (request.Count <= 0)
-            throw new InvalidOperationException("Le nombre d'entretiens gratuits doit être supérieur à zéro.");
+            throw new DomainException("Le nombre d'entretiens gratuits doit être supérieur à zéro.");
 
         var template = await _context.MaintenanceTemplates
-            .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken);
-
-        if (template == null)
-            throw new InvalidOperationException($"Template not found: {request.TemplateId}");
+            .FirstOrDefaultAsync(t => t.Id == request.TemplateId, cancellationToken)
+            ?? throw new NotFoundException(EntretienIntrouvable.Modele);
 
         var vehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken);
+            .FirstOrDefaultAsync(v => v.Id == request.VehicleId, cancellationToken)
+            ?? throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
-        if (vehicle == null)
-            throw new InvalidOperationException($"Vehicle not found: {request.VehicleId}");
+        // Même garde qu'à l'affectation : filtre multi-tenant contourné pour l'administrateur système.
+        if (vehicle.CompanyId != template.CompanyId)
+            throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
         // Find existing schedule OR create a new one
         var schedule = await _context.VehicleMaintenanceSchedules
@@ -531,6 +600,8 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
             {
                 VehicleId = request.VehicleId,
                 TemplateId = request.TemplateId,
+                // Société du véhicule, pas celle du jeton : même raison qu'à l'affectation.
+                CompanyId = vehicle.CompanyId,
                 NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
                 NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
                 Status = "upcoming",
@@ -583,11 +654,13 @@ public class UpdateFreeMaintenanceCommandHandler : IRequestHandler<UpdateFreeMai
 
         if (schedule == null) return false;
 
+        // DomainException (400) : en InvalidOperationException ces refus sortaient en 500
+        // et leur message français était perdu (recette GPA, DEF-031).
         if (request.FreeUsesTotal < 0 || request.FreeUsesRemaining < 0)
-            throw new InvalidOperationException("Les compteurs d'entretiens gratuits ne peuvent pas être négatifs.");
+            throw new DomainException("Les compteurs d'entretiens gratuits ne peuvent pas être négatifs.");
 
         if (request.FreeUsesRemaining > request.FreeUsesTotal)
-            throw new InvalidOperationException("Le nombre d'entretiens gratuits restants ne peut pas dépasser le total.");
+            throw new DomainException("Le nombre d'entretiens gratuits restants ne peut pas dépasser le total.");
 
         schedule.FreeUsesTotal = request.FreeUsesTotal;
         schedule.FreeUsesRemaining = request.FreeUsesRemaining;

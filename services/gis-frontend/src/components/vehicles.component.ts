@@ -11,6 +11,7 @@ import { Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { VehiclePopupComponent } from './shared/vehicle-popup.component';
 import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.component';
+import { costCreditFamily, normalizeCostType } from './vehicle-costs.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 // Calypso 7: VehicleInfoComponent has been folded into VehiclePopupComponent.
@@ -30,7 +31,8 @@ interface VehicleExtended extends Vehicle {
 interface VehicleExpense {
   id: string;
   date: Date;
-  type: 'fuel' | 'maintenance' | 'insurance' | 'repair' | 'other';
+  /** Type brut de vehicle_costs (fuel, entretien, amende, credit_note…). */
+  type: string;
   description: string;
   amount: number;
   mileage?: number;
@@ -506,6 +508,16 @@ interface VehicleTrip {
                   <span class="expense-label">Réparations</span>
                   <span class="expense-amount">{{ formatCurrency(monthlyExpenses.repair) }}</span>
                 </div>
+                <div class="expense-row" *ngIf="monthlyExpenses.other">
+                  <span class="expense-icon">🧾</span>
+                  <span class="expense-label">Autres</span>
+                  <span class="expense-amount">{{ formatCurrency(monthlyExpenses.other) }}</span>
+                </div>
+                <div class="expense-row" *ngIf="monthlyExpenses.credits">
+                  <span class="expense-icon">↩️</span>
+                  <span class="expense-label">Avoirs et remb.</span>
+                  <span class="expense-amount credit">−{{ formatCurrency(monthlyExpenses.credits) }}</span>
+                </div>
                 <div class="expense-row total">
                   <span class="expense-icon">💰</span>
                   <span class="expense-label">Total</span>
@@ -528,7 +540,7 @@ interface VehicleTrip {
                   <span class="doc-icon">🛡️</span>
                   <div class="doc-info">
                     <span class="doc-type">Assurance</span>
-                    <span class="doc-expiry">{{ selectedDetailVehicle.insuranceExpiry ? formatDate(selectedDetailVehicle.insuranceExpiry) : 'Non renseignee' }}</span>
+                    <span class="doc-expiry">{{ selectedDetailVehicle.insuranceExpiry ? formatExpiryDate(selectedDetailVehicle.insuranceExpiry) : 'Non renseignee' }}</span>
                   </div>
                   <span class="doc-badge" [class]="getInsuranceStatus(selectedDetailVehicle)">{{ getInsuranceAlertText(selectedDetailVehicle) }}</span>
                 </div>
@@ -536,7 +548,7 @@ interface VehicleTrip {
                   <span class="doc-icon">🔧</span>
                   <div class="doc-info">
                     <span class="doc-type">Visite technique</span>
-                    <span class="doc-expiry">{{ $any(selectedDetailVehicle).technicalInspectionExpiry ? formatDate($any(selectedDetailVehicle).technicalInspectionExpiry) : 'Non renseignee' }}</span>
+                    <span class="doc-expiry">{{ $any(selectedDetailVehicle).technicalInspectionExpiry ? formatExpiryDate($any(selectedDetailVehicle).technicalInspectionExpiry) : 'Non renseignee' }}</span>
                   </div>
                   <span class="doc-badge" [class]="getTechnicalStatus(selectedDetailVehicle)">{{ getTechnicalAlertText(selectedDetailVehicle) }}</span>
                 </div>
@@ -721,7 +733,7 @@ interface VehicleTrip {
 
                 <div class="fm-field">
                   <label class="fm-label">Note interne <span class="fm-label-opt">(optionnel)</span></label>
-                  <textarea class="fm-input fm-textarea" [(ngModel)]="freeMaintForm_notes" name="notes" rows="2" placeholder="Ex: Offert à l'achat du véhicule le 12/03/2026 chez Peugeot Tunis"></textarea>
+                  <textarea class="fm-input fm-textarea" [(ngModel)]="freeMaintForm_notes" name="notes" rows="2" placeholder="Ex: Offert à l'achat du véhicule le 12/03/2026 chez Peugeot Lyon"></textarea>
                 </div>
               </div>
 
@@ -1500,6 +1512,8 @@ interface VehicleTrip {
       font-size: 13px;
       font-weight: 600;
     }
+
+    .expense-row .expense-amount.credit { color: #047857; }
 
     /* Document Alerts */
     .doc-alerts-list { display:flex; flex-direction:column; gap:6px; }
@@ -2554,7 +2568,10 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     fuel: 0,
     maintenance: 0,
     insurance: 0,
-    repair: 0
+    repair: 0,
+    other: 0,
+    /** Avoirs et remboursements d'assurance, en positif : déduits du total. */
+    credits: 0
   };
   
   // Costs popup
@@ -3116,7 +3133,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
 
   generateMockTrips(): VehicleTrip[] {
     const trips: VehicleTrip[] = [];
-    const cities = ['Tunis Centre', 'La Marsa', 'Sousse', 'Sfax', 'Hammamet', 'Bizerte'];
+    const cities = ['Lyon Part-Dieu', 'Villeurbanne', 'Marseille', 'Lille', 'Bordeaux', 'Nantes'];
     for (let i = 0; i < 8; i++) {
       trips.push({
         id: `trip-${i}`,
@@ -3130,19 +3147,38 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     return trips.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
   }
 
+  /**
+   * « Dépenses du mois » : même ventilation que les totaux serveur (VehicleCostCategory).
+   * Seuls les codes exacts fuel/maintenance/insurance/repair étaient comptés : une amende,
+   * un « entretien » ou une « reparation » disparaissaient du total, et un avoir n'y était
+   * pas déduit. Le total est désormais le coût net du mois, crédits déduits.
+   */
   calculateMonthlyExpenses() {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    
-    this.monthlyExpenses = { fuel: 0, maintenance: 0, insurance: 0, repair: 0 };
-    
+
+    this.monthlyExpenses = { fuel: 0, maintenance: 0, insurance: 0, repair: 0, other: 0, credits: 0 };
+
     this.vehicleExpenses
       .filter(e => new Date(e.date) >= monthStart)
       .forEach(e => {
-        if (e.type in this.monthlyExpenses) {
-          this.monthlyExpenses[e.type as keyof typeof this.monthlyExpenses] += e.amount;
-        }
+        const bucket = this.expenseBucket(e.type);
+        const amount = Number(e.amount) || 0;
+        // Crédit en valeur absolue (déduit ensuite du total), comme VehicleCostCategory.SignedAmount.
+        this.monthlyExpenses[bucket] += bucket === 'credits' ? Math.abs(amount) : amount;
       });
+  }
+
+  /** Seau de « Dépenses du mois » : crédits (synonymes anciens compris) reconnus par la règle partagée de l'écran Coûts. */
+  private expenseBucket(type: string | null | undefined): keyof typeof this.monthlyExpenses {
+    if (costCreditFamily(type)) return 'credits';
+    switch (normalizeCostType(type)) {
+      case 'fuel': return 'fuel';
+      case 'maintenance': case 'entretien': return 'maintenance';
+      case 'insurance': return 'insurance';
+      case 'repair': case 'reparation': return 'repair';
+      default: return 'other';
+    }
   }
 
   calculateMonthlyDistance(): string {
@@ -3151,22 +3187,12 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   }
 
   getTotalMonthlyExpenses(): number {
-    return Object.values(this.monthlyExpenses).reduce((sum, val) => sum + val, 0);
+    const m = this.monthlyExpenses;
+    return m.fuel + m.maintenance + m.insurance + m.repair + m.other - m.credits;
   }
 
   setExpensesPeriod(period: 'month' | 'quarter' | 'year') {
     this.expensesPeriod = period;
-  }
-
-  getExpenseTypeLabel(type: string): string {
-    const labels: any = {
-      fuel: 'Carburant',
-      maintenance: 'Maintenance',
-      insurance: 'Assurance',
-      repair: 'Réparation',
-      other: 'Autre'
-    };
-    return labels[type] || type;
   }
 
   navigate(path: string) {
@@ -3418,12 +3444,21 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     return days <= 30;
   }
 
+  // Jours calendaires en UTC, comme /documents/expiries (ExpiryCalendar) : compté en jour
+  // local du navigateur, une échéance stockée à 23:59:59 UTC tombait le lendemain à UTC+1
+  // et la fiche annonçait un jour de plus que l'écran Échéances (recette GPA, DEF-035).
   getDaysUntilExpiry(expiryDate: Date | string): number {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
     const expiry = new Date(expiryDate);
-    expiry.setHours(0, 0, 0, 0);
-    return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const now = new Date();
+    const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.round((expiryDay - today) / (1000 * 60 * 60 * 24));
+  }
+
+  /** Date d'échéance lue sur le même jour UTC que le décompte, sinon « 21/09 » s'affichait à côté de « 7 j ». */
+  formatExpiryDate(date: Date | string): string {
+    if (!date) return '-';
+    return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
   }
 
   getInsuranceStatus(vehicle: any): string {

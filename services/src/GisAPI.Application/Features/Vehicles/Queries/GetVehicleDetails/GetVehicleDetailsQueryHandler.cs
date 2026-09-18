@@ -155,7 +155,12 @@ public class GetVehicleDetailsQueryHandler : IRequestHandler<GetVehicleDetailsQu
             
             // Metadata
             vehicle.CreatedAt,
-            vehicle.UpdatedAt
+            vehicle.UpdatedAt,
+
+            // Immobilisation
+            vehicle.IsImmobilized,
+            vehicle.ImmobilizationReason,
+            vehicle.ImmobilizationStartedAt
         );
     }
 

@@ -1,11 +1,13 @@
 import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subject, takeUntil } from 'rxjs';
+import { Observable, Subject, catchError, forkJoin, map, of, switchMap, takeUntil, tap } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
-import { ApiService } from '../services/api.service';
+import { ApiService, MarkMaintenanceDoneRequest, SupplierDto } from '../services/api.service';
+import { ToastService } from '../services/toast.service';
+import { PermissionService } from '../services/permission.service';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 interface MaintenanceTemplate {
@@ -36,6 +38,9 @@ interface InvoiceLine {
   newTemplateIntervalMonths: number | null;
 }
 
+/** Champs communs à toutes les lignes d'un même « Entretien effectué ». */
+type MarkDoneCommon = Omit<MarkMaintenanceDoneRequest, 'templateId' | 'cost' | 'applyFreeBenefit'>;
+
 interface VehicleMaintenanceStatus {
   vehicleId: string;
   vehicleName: string;
@@ -51,8 +56,10 @@ interface MaintenanceItem {
   lastDoneDate: Date | null;
   lastDoneKm: number | null;
   nextDueKm: number | null;
-  status: 'ok' | 'upcoming' | 'due' | 'overdue';
+  status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue';
   kmUntilDue: number | null;
+  // Échéancier en pause : statut figé côté serveur, exclu des alertes et des statistiques.
+  isPaused: boolean;
   // Free maintenance benefit
   freeUsesTotal?: number;
   freeUsesRemaining?: number;
@@ -71,7 +78,9 @@ interface FlatRow {
   lastDoneDate: Date | null;
   lastDoneKm: number | null;
   nextDueKm: number | null;
-  status: 'ok' | 'upcoming' | 'due' | 'overdue';
+  // 'inactive' : échéance d'un modèle désactivé, plus recalculée par le serveur.
+  // 'paused' : échéancier mis en pause, statut figé lui aussi.
+  status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue' | 'inactive' | 'paused';
   kmUntilDue: number | null;
   progressPercent: number;
   // Free maintenance benefit
@@ -111,9 +120,11 @@ interface FlatRow {
           <select class="filter-select" [(ngModel)]="statusFilter" (change)="rebuildRows()">
             <option value="">Tous les statuts</option>
             <option value="overdue">En retard</option>
+            <option value="critical">Critique</option>
             <option value="due">Imminent</option>
             <option value="upcoming">A venir</option>
             <option value="ok">OK</option>
+            <option value="paused">En pause</option>
           </select>
           <button class="btn-assign" (click)="openAssignPanel()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
@@ -133,7 +144,7 @@ interface FlatRow {
           </div>
           <div class="stat-item">
             <div class="stat-icon danger"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
-            <div class="stat-content"><span class="stat-value">{{ countByStatus('overdue') + countByStatus('due') }}</span><span class="stat-label">Urgents</span></div>
+            <div class="stat-content"><span class="stat-value">{{ countByStatus('overdue') + countByStatus('critical') + countByStatus('due') }}</span><span class="stat-label">Urgents</span></div>
           </div>
           <div class="stat-item">
             <div class="stat-icon warning"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
@@ -363,9 +374,19 @@ interface FlatRow {
 
             <div class="field-row">
               <div class="field"><label>Date *</label><input type="date" [(ngModel)]="markData.date"></div>
-              <div class="field"><label>Kilometrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000"></div>
+              <div class="field"><label>Kilometrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000" min="0" [class.invalid]="isMileageBelowVehicle()"></div>
             </div>
-            <div class="field"><label>Fournisseur / Garage</label><input [(ngModel)]="markData.supplier" placeholder="Nom du prestataire..."></div>
+            <div class="field-error" *ngIf="isMileageBelowVehicle()">
+              Inférieur au kilométrage actuel du véhicule ({{ formatKm(markData.vehicleMileage) }}). Un compteur ne recule pas : vérifiez la valeur.
+            </div>
+            <div class="field" *ngIf="canUseSuppliers">
+              <label>Fournisseur / Garage</label>
+              <select [(ngModel)]="markData.supplierId">
+                <option [ngValue]="null">Non renseigné</option>
+                <option *ngFor="let s of suppliers" [ngValue]="s.id">{{ s.name }}{{ s.city ? ' — ' + s.city : '' }}</option>
+              </select>
+              <div class="field-hint" *ngIf="suppliersLoaded && suppliers.length === 0">Aucun fournisseur actif : ajoutez vos garages dans le module Fournisseurs.</div>
+            </div>
             <div class="invoice-section">
               <h4 class="sub-title">Detail de la facture</h4>
               <div class="invoice-lines">
@@ -431,7 +452,7 @@ interface FlatRow {
             </div>
             <div class="field"><label>Notes</label><textarea [(ngModel)]="markData.notes" rows="2" placeholder="Remarques..."></textarea></div>
           </div>
-          <div class="panel-foot"><button class="btn-cancel" (click)="closeMarkDone()">Annuler</button><button class="btn-save green" (click)="confirmMarkDone()" [disabled]="!isMarkValid()">Confirmer</button></div>
+          <div class="panel-foot"><button class="btn-cancel" (click)="closeMarkDone()">Annuler</button><button class="btn-save green" (click)="confirmMarkDone()" [disabled]="!isMarkValid() || isMarkSubmitting">{{ isMarkSubmitting ? 'Enregistrement…' : 'Confirmer' }}</button></div>
         </div>
       </div>
 
@@ -503,7 +524,7 @@ interface FlatRow {
           <div class="panel-foot">
             <span class="foot-info" *ngIf="addToVehicleData.selectedTemplateIds.length > 0">{{ addToVehicleData.selectedTemplateIds.length }} selectionne(s)</span>
             <button class="btn-cancel" (click)="closeAddToVehicle()">Annuler</button>
-            <button class="btn-save purple" (click)="confirmAddToVehicle()" [disabled]="addToVehicleData.selectedTemplateIds.length === 0">Ajouter</button>
+            <button class="btn-save purple" (click)="confirmAddToVehicle()" [disabled]="addToVehicleData.selectedTemplateIds.length === 0 || isAssignSubmitting">{{ isAssignSubmitting ? 'Affectation…' : 'Ajouter' }}</button>
           </div>
         </div>
       </div>
@@ -532,6 +553,9 @@ interface FlatRow {
             <div class="history-estimated" *ngIf="!historyLoading && historyLogs.length > 0 && historyEstimatedCost > 0">
               Coût estimé: <strong>{{ historyEstimatedCost | appCurrency }}</strong>
             </div>
+            <div class="history-total" *ngIf="!historyLoading && historyLogs.length > 0">
+              {{ historyLogs.length }} intervention{{ historyLogs.length > 1 ? 's' : '' }} — Total réel : <strong>{{ historyTotal | appCurrency }}</strong>
+            </div>
             <div class="history-list" *ngIf="!historyLoading && historyLogs.length > 0">
               <div class="history-item" *ngFor="let log of historyLogs">
                 <div class="history-dot"></div>
@@ -542,13 +566,15 @@ interface FlatRow {
                     <span class="history-cost" title="Coût réel">Réel: {{ log.actualCost | appCurrency }}</span>
                     <span class="history-cost-estimated" *ngIf="historyEstimatedCost > 0" title="Coût estimé">Estimé: {{ historyEstimatedCost | appCurrency }}</span>
                     <span class="history-supplier" *ngIf="log.supplierName">{{ log.supplierName }}</span>
+                    <span class="history-same" *ngIf="isSameAsAnotherLog(log)"
+                          title="Même date, même kilométrage et même montant qu'une autre intervention : vérifiez qu'il ne s'agit pas d'une double saisie.">Saisie identique</span>
                   </div>
                   <div class="history-notes" *ngIf="log.notes">{{ log.notes }}</div>
                 </div>
               </div>
             </div>
             <div class="empty-state small" *ngIf="!historyLoading && historyLogs.length === 0">
-              <p>Aucun historique pour cet entretien</p>
+              <p>{{ historyLoadFailed ? "L'historique n'a pas pu être chargé. Fermez puis rouvrez pour réessayer." : 'Aucun historique pour cet entretien' }}</p>
             </div>
           </div>
           <div class="panel-foot">
@@ -635,6 +661,9 @@ interface FlatRow {
     .main-table tbody tr.overdue:hover { background:#fee2e2; }
     .main-table tbody tr.due { background:#fffbeb; }
     .main-table tbody tr.due:hover { background:#fef3c7; }
+    .main-table tbody tr.critical { background:#fff7ed; }
+    .main-table tbody tr.critical:hover { background:#ffedd5; }
+    .main-table tbody tr.inactive td, .main-table tbody tr.paused td { color:#94a3b8; }
     .main-table tbody td { padding:10px 14px; font-size:12px; color:#475569; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
     .main-table tbody tr:last-child td { border-bottom:none; }
     .col-vehicle { min-width:180px; }
@@ -652,6 +681,8 @@ interface FlatRow {
     .vehicle-avatar.upcoming { background:#3b82f6; }
     .vehicle-avatar.due { background:#f59e0b; }
     .vehicle-avatar.overdue { background:#dc2626; }
+    .vehicle-avatar.critical { background:#ea580c; }
+    .vehicle-avatar.inactive, .vehicle-avatar.paused { background:#cbd5e1; }
     .cell-name { display:block; font-size:12px; font-weight:600; color:#1e293b; }
     .cell-plate { font-family:monospace; font-size:10px; color:#94a3b8; }
     .cell-maint-name { font-weight:500; color:#1e293b; }
@@ -676,21 +707,29 @@ interface FlatRow {
     .progress-fill.upcoming { background:#3b82f6; }
     .progress-fill.due { background:#f59e0b; }
     .progress-fill.overdue { background:#dc2626; }
+    .progress-fill.critical { background:#ea580c; }
+    .progress-fill.inactive, .progress-fill.paused { background:#cbd5e1; }
     .progress-pct { font-size:11px; font-weight:600; min-width:30px; }
     .progress-pct.ok { color:#16a34a; }
     .progress-pct.upcoming { color:#3b82f6; }
     .progress-pct.due { color:#d97706; }
     .progress-pct.overdue { color:#dc2626; }
+    .progress-pct.critical { color:#ea580c; }
+    .progress-pct.inactive, .progress-pct.paused { color:#94a3b8; }
     .cell-km { font-weight:500; white-space:nowrap; }
     .cell-km.ok { color:#16a34a; }
     .cell-km.upcoming { color:#3b82f6; }
     .cell-km.due { color:#d97706; }
     .cell-km.overdue { color:#dc2626; }
+    .cell-km.critical { color:#ea580c; }
+    .cell-km.inactive, .cell-km.paused { color:#94a3b8; }
     .status-tag { padding:3px 8px; border-radius:3px; font-size:10px; font-weight:600; white-space:nowrap; }
     .status-tag.ok { background:#dcfce7; color:#16a34a; }
     .status-tag.upcoming { background:#dbeafe; color:#2563eb; }
     .status-tag.due { background:#fef3c7; color:#d97706; }
     .status-tag.overdue { background:#fee2e2; color:#dc2626; }
+    .status-tag.critical { background:#ffedd5; color:#c2410c; }
+    .status-tag.inactive, .status-tag.paused { background:#f1f5f9; color:#64748b; }
     .cell-date { font-size:11px; color:#94a3b8; }
     .btn-act { width:28px; height:28px; border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer; border:1px solid #e2e8f0; background:white; transition:all .15s; }
     .btn-act.done { color:#16a34a; }
@@ -749,6 +788,8 @@ interface FlatRow {
     .btn-save.orange:disabled { background:#fef3c7; color:#a8a29e; cursor:not-allowed; }
     .history-supplier { font-size:12px; color:#7c3aed; font-weight:500; background:#f5f3ff; padding:2px 8px; border-radius:3px; }
     .history-notes { font-size:11px; color:#94a3b8; margin-top:4px; font-style:italic; }
+    .history-total { padding:8px 12px; background:#f0fdf4; border-left:3px solid #16a34a; border-radius:4px; font-size:12px; color:#14532d; margin-bottom:12px; }
+    .history-same { font-size:12px; color:#b45309; font-weight:500; background:#fff7ed; padding:2px 8px; border-radius:3px; cursor:help; }
 
     /* Fields */
     .field { margin-bottom:14px; }
@@ -756,6 +797,9 @@ interface FlatRow {
     .field input, .field select, .field textarea { width:100%; padding:8px 10px; border:1px solid #e2e8f0; border-radius:3px; font-size:12px; color:#1e293b; }
     .field input:focus, .field select:focus, .field textarea:focus { outline:none; border-color:#3b82f6; }
     .field-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .field input.invalid { border-color:#dc2626; }
+    .field-error { margin:-6px 0 14px; padding:6px 8px; background:#fef2f2; border-left:3px solid #dc2626; border-radius:3px; font-size:11px; line-height:1.4; color:#b91c1c; }
+    .field-hint { margin-top:5px; font-size:10px; color:#64748b; }
     .field.toggle label { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; color:#1e293b; }
     .field.toggle input { display:none; width:auto; }
     .switch { width:36px; height:20px; background:#e2e8f0; border-radius:10px; position:relative; transition:background .2s; }
@@ -946,8 +990,14 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   expanded: string[] = [];
   vehicleSearchQuery = '';
   isMarkOpen = false;
+  isMarkSubmitting = false;
   markData: any = this.getEmptyMark();
+  // Fournisseurs actifs de la société, proposés dans « Entretien effectué ».
+  canUseSuppliers = false;
+  suppliers: SupplierDto[] = [];
+  suppliersLoaded = false;
   isAddToVehicleOpen = false;
+  isAssignSubmitting = false;
   addToVehicleData: any = this.getEmptyAddToVehicle();
   allVehicles: {id: string; name: string; plate: string; mileage: number}[] = [];
   showModels = false;
@@ -956,6 +1006,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   isHistoryOpen = false;
   historyLoading = false;
   historyLogs: any[] = [];
+  historyLoadFailed = false;
+  /** Clés date|km|montant portées par plusieurs journaux : signalées, jamais fusionnées. */
+  private historySameKeys = new Set<string>();
   historyVehicleName = '';
   historyVehiclePlate = '';
   historyTemplateName = '';
@@ -971,17 +1024,23 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   soonItems: any[] = [];
   okItems: any[] = [];
 
-  constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef, private userPrefs: UserPreferencesService) {}
+  constructor(private apiService: ApiService, private ngZone: NgZone, private cdr: ChangeDetectorRef, private userPrefs: UserPreferencesService,
+              private toast: ToastService, private permissionService: PermissionService) {}
 
   get currencyCode(): string { return this.userPrefs.current.currency; }
 
-  ngOnInit() { this.loadTemplates(); this.loadVehicles(); this.loadAllVehicles(); }
+  ngOnInit() {
+    // /api/suppliers exige le module Fournisseurs (abonnement + droit utilisateur) :
+    // sans lui, le champ est masqué plutôt que de proposer une liste vide.
+    this.canUseSuppliers = this.permissionService.hasModuleAccess('suppliers');
+    this.loadTemplates(); this.loadVehicles(); this.loadAllVehicles();
+  }
 
   getEmptyForm() { return { name:'', description:'', category:'', priority:'medium', intervalKm:null, intervalMonths:null, estimatedCost:0, isActive:true, warningKm:1000, warningDays:30, criticalKm:0, criticalDays:0 }; }
   getEmptyMark() {
     return {
       vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'',
-      date:new Date().toISOString().split('T')[0], mileage:null, supplier:'', notes:'',
+      date:new Date().toISOString().split('T')[0], mileage:null, vehicleMileage:0, supplierId:null as number | null, notes:'',
       freeUsesRemaining: 0, freeUsesTotal: 0, freeSource: '', freeExpiryDate: null, applyFreeBenefit: false,
       invoiceLines: [] as InvoiceLine[]
     };
@@ -1037,6 +1096,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
               nextDueKm: m.nextDueKm ?? null,
               status: (m.status as any) || 'ok',
               kmUntilDue: m.kmUntilDue ?? null,
+              isPaused: !!m.isPaused,
               freeUsesTotal: m.freeUsesTotal ?? 0,
               freeUsesRemaining: m.freeUsesRemaining ?? 0,
               freeSource: m.freeSource,
@@ -1060,10 +1120,15 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         const intervalKm = tpl?.intervalKm || 10000;
         const used = intervalKm - (m.kmUntilDue ?? intervalKm);
         const pct = Math.min(100, Math.max(0, (used / intervalKm) * 100));
+        // Modèle désactivé : le serveur ne recalcule plus son statut, qui reste figé.
+        // La ligne est gardée (son historique reste accessible) mais ne compte plus
+        // parmi les urgences, comme dans les alertes. Même règle pour un échéancier en
+        // pause : /alerts et /stats l'excluent, « Urgents » le comptait encore (DEF-042).
+        const status = tpl && !tpl.isActive ? 'inactive' : m.isPaused ? 'paused' : m.status;
         rows.push({
           vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage,
           templateId: m.templateId, templateName: m.templateName, scheduleId: m.scheduleId, lastDoneDate: m.lastDoneDate, lastDoneKm: m.lastDoneKm, nextDueKm: m.nextDueKm,
-          status: m.status, kmUntilDue: m.kmUntilDue, progressPercent: pct,
+          status, kmUntilDue: m.kmUntilDue, progressPercent: pct,
           freeUsesTotal: m.freeUsesTotal,
           freeUsesRemaining: m.freeUsesRemaining,
           freeSource: m.freeSource,
@@ -1084,10 +1149,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.statusFilter) r = r.filter(row => row.status === this.statusFilter);
     if (this.templateFilter) r = r.filter(row => row.templateId === this.templateFilter);
     // Sort
-    const statusOrder: Record<string, number> = { overdue: 0, due: 1, upcoming: 2, ok: 3 };
+    const statusOrder: Record<string, number> = { overdue: 0, critical: 1, due: 2, upcoming: 3, ok: 4, paused: 5, inactive: 6 };
     r.sort((a, b) => {
       let va: any, vb: any;
-      if (this.sortColumn === 'status') { va = statusOrder[a.status] ?? 4; vb = statusOrder[b.status] ?? 4; }
+      if (this.sortColumn === 'status') { va = statusOrder[a.status] ?? 7; vb = statusOrder[b.status] ?? 7; }
       else if (this.sortColumn === 'kmUntilDue') { va = a.kmUntilDue ?? 99999; vb = b.kmUntilDue ?? 99999; }
       else if (this.sortColumn === 'vehicleName') { va = a.vehicleName; vb = b.vehicleName; }
       else if (this.sortColumn === 'templateName') { va = a.templateName; vb = b.templateName; }
@@ -1122,8 +1187,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   //   ok       -> aucune action proche
   //   upcoming -> echeance future, pas urgent ("A prevoir")
   //   due      -> echeance dans la fenetre de prevenance ("Imminent")
+  //   critical -> sous le seuil critique du modele ("Critique"), plus urgent que due
   //   overdue  -> echeance depassee ("En retard")
-  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A prevoir', due:'Imminent', overdue:'En retard' }[s] || s; }
+  getStatusLabel(s: string) { return { ok:'OK', upcoming:'A prevoir', due:'Imminent', critical:'Critique', overdue:'En retard', inactive:'Désactivé', paused:'En pause' }[s] || s; }
   formatDate(d: Date) { return new Date(d).toLocaleDateString('fr-FR'); }
   getCount(v: VehicleMaintenanceStatus, s: string) { return v.maintenanceItems.filter(m => m.status === s).length; }
   toggleVehicle(id: string) { this.expanded.includes(id) ? this.expanded = this.expanded.filter(x => x !== id) : this.expanded.push(id); }
@@ -1155,16 +1221,48 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       criticalKm: toIntOrUndefined(this.form.criticalKm),
       criticalDays: toIntOrUndefined(this.form.criticalDays)
     };
+    // En échec, le formulaire reste ouvert avec la saisie et le motif s'affiche.
+    const onError = (err: any) => this.toast.error('Modèle non enregistré', this.saveErrorMessage(err), 10000);
     if (this.editing) {
-      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
+      this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: onError });
     } else {
-      this.apiService.createMaintenanceTemplate(d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: (err) => console.error(err) });
+      this.apiService.createMaintenanceTemplate(d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: onError });
     }
   }
-  deleteTemplate(t: MaintenanceTemplate) { 
-    if (confirm('Supprimer ce modele?')) { 
-      this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeDetail(); }, error: (err) => console.error(err) });
-    } 
+  /**
+   * La suppression d'un modèle emportait en base (ON DELETE CASCADE) l'historique
+   * des entretiens réalisés, alors que leurs dépenses restaient. Le serveur la
+   * refuse désormais (409) dès qu'un entretien a été réalisé : on propose alors
+   * de désactiver le modèle, ce qui ne perd aucune donnée.
+   */
+  deleteTemplate(t: MaintenanceTemplate) {
+    const vehicles = this.getTemplateCount(t.id);
+    const question = vehicles > 0
+      ? `Supprimer le modèle « ${t.name} » ?\n\nIl est affecté à ${vehicles} véhicule${vehicles > 1 ? 's' : ''} : ces échéances seront retirées.`
+      : `Supprimer le modèle « ${t.name} » ?`;
+    if (!confirm(question)) return;
+    this.apiService.deleteMaintenanceTemplate(parseInt(t.id)).pipe(takeUntil(this.destroy$)).subscribe({
+      // Les échéances du modèle disparaissent avec lui : le tableau doit suivre.
+      next: () => { this.loadTemplates(); this.loadVehicles(); this.closeDetail(); this.toast.success('Modèle supprimé', `« ${t.name} » a été supprimé.`); },
+      error: (err) => {
+        if (err?.status === 409) { this.offerTemplateDeactivation(t, err?.error?.message); return; }
+        this.toast.error('Modèle non supprimé', this.saveErrorMessage(err), 10000);
+      }
+    });
+  }
+
+  /** Suppression refusée pour cause d'historique : désactiver le modèle à la place. */
+  private offerTemplateDeactivation(t: MaintenanceTemplate, serverMessage?: string) {
+    const reason = serverMessage || `Le modèle « ${t.name} » a déjà servi : le supprimer effacerait l'historique de ses entretiens.`;
+    if (!t.isActive) { this.toast.warning('Suppression impossible', reason, 10000); return; }
+    if (!confirm(`${reason}\n\nDésactiver le modèle « ${t.name} » maintenant ?`)) return;
+    this.apiService.updateMaintenanceTemplate(parseInt(t.id), { isActive: false }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.loadTemplates(); this.closeDetail();
+        this.toast.success('Modèle désactivé', `« ${t.name} » n'est plus proposé ni surveillé. Son historique et ses dépenses sont conservés.`, 8000);
+      },
+      error: (err) => this.toast.error('Modèle non désactivé', this.saveErrorMessage(err), 10000)
+    });
   }
 
   openMarkDone(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
@@ -1180,7 +1278,9 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       estimatedCost: tpl?.estimatedCost ?? 0,
       date: new Date().toISOString().split('T')[0],
       mileage: v.currentMileage,
-      supplier: '',
+      // vehicles.mileage : plancher du kilométrage saisi (un compteur ne recule pas).
+      vehicleMileage: v.currentMileage || 0,
+      supplierId: null,
       notes: '',
       // Free benefit context (read by the yellow banner)
       freeUsesRemaining: m.freeUsesRemaining ?? 0,
@@ -1201,6 +1301,17 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       }]
     };
     this.isMarkOpen = true;
+    this.loadSuppliers();
+  }
+
+  /** Rechargée à chaque ouverture : un garage ajouté entre-temps apparaît sans recharger la page. */
+  private loadSuppliers() {
+    if (!this.canUseSuppliers) return;
+    this.apiService.getSuppliers({ isActive: true, pageSize: 500 }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (result) => { this.suppliers = result.items || []; this.suppliersLoaded = true; this.cdr.detectChanges(); },
+      // Liste facultative : en cas d'échec le champ reste sur « Non renseigné », sans bloquer la saisie.
+      error: (err) => console.error('Error loading suppliers:', err)
+    });
   }
 
   /**
@@ -1250,7 +1361,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   removeFromRow(row: FlatRow) {
     if (!confirm('Retirer cet entretien ?')) return;
     if (row.scheduleId) {
-      this.apiService.removeMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) });
+      this.apiService.removeMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({
+        next: () => this.loadVehicles(),
+        error: (err) => this.toast.error('Entretien non retiré', this.saveErrorMessage(err), 10000)
+      });
     }
   }
 
@@ -1268,14 +1382,20 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
                  "À utiliser si l'odomètre du tracker n'était pas câblé au moment de l'assignation.")) return;
     this.apiService.rebaseMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.loadVehicles(),
-      error: (err) => {
-        console.error('rebase failed', err);
-        alert("Erreur lors du recalcul. Voir la console pour les détails.");
-      }
+      error: (err) => this.toast.error('Échéance non recalculée', this.saveErrorMessage(err), 10000)
     });
   }
 
-  closeMarkDone() { this.isMarkOpen = false; this.markData = this.getEmptyMark(); }
+  closeMarkDone() {
+    if (this.isMarkSubmitting) return; // les appels en cours doivent pouvoir rendre compte de leur résultat
+    this.isMarkOpen = false; this.markData = this.getEmptyMark();
+  }
+  /** Même règle que le serveur (MarkMaintenanceDoneCommandHandler) : un compteur ne recule pas. */
+  isMileageBelowVehicle(): boolean {
+    const km = this.markData.mileage;
+    return km != null && km !== '' && Number(km) < (this.markData.vehicleMileage ?? 0);
+  }
+  formatKm(km: number | null | undefined): string { return `${(km ?? 0).toLocaleString('fr-FR')} km`; }
   isMarkValid() {
     // Calypso 7 (P-maint-couche3): mileage = 0 is a legitimate value for a
     // brand-new vehicle whose tracker has no FMS odometer wired. The previous
@@ -1285,6 +1405,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     // mileage including 0.
     if (!this.markData.date) return false;
     if (this.markData.mileage == null || this.markData.mileage < 0) return false;
+    if (this.isMileageBelowVehicle()) return false;
     // Calypso 6 (P6.3): accept price === 0 (free maintenance under warranty).
     // Previously `l.price` was truthy-checked, which rejected a legitimate 0 TND line.
     const hasExisting = this.markData.invoiceLines.some((l: InvoiceLine) => l.templateId && l.price != null);
@@ -1315,64 +1436,99 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   }
   removeInvoiceLine(i: number) { if (this.markData.invoiceLines.length > 1) this.markData.invoiceLines.splice(i, 1); }
   getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((s: number, l: any) => s + (l.price || 0), 0); }
+  /**
+   * Une ligne de facture = un enregistrement. Les erreurs étaient avalées
+   * (`error: onDone`) : la modale se fermait et se rafraîchissait comme si tout
+   * avait réussi, alors qu'un refus du serveur (compteur qui recule, droits…)
+   * n'avait rien enregistré. Désormais un échec s'affiche en toast et la modale
+   * reste ouverte avec les SEULES lignes en échec : les lignes réussies en sont
+   * retirées, sinon un nouvel essai les enregistrerait deux fois (coût,
+   * historique, crédit gratuit consommé deux fois).
+   */
   confirmMarkDone() {
+    if (this.isMarkSubmitting || !this.isMarkValid()) return;
     const vehicleId = parseInt(this.markData.vehicleId);
     // Calypso 6 (P6.3): keep lines with price === 0 (warranty / free maintenance).
     // Using `l.price != null` so 0 DT is persisted instead of silently dropped.
-    const existingLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.templateId && l.price != null);
-    const newTplLines = this.markData.invoiceLines.filter((l: InvoiceLine) => l.isNewTemplate && l.newTemplateName && l.price != null);
-    const totalLines = existingLines.length + newTplLines.length;
-    if (totalLines === 0) { this.closeMarkDone(); return; }
-
-    let done = 0;
-    const onDone = () => { done++; if (done === totalLines) { this.loadTemplates(); this.loadVehicles(); this.closeMarkDone(); } };
+    const lines = (this.markData.invoiceLines as InvoiceLine[]).filter(l =>
+      l.price != null && (!!l.templateId || (l.isNewTemplate && !!l.newTemplateName)));
+    if (lines.length === 0) { this.closeMarkDone(); return; }
 
     // Free benefit: only apply to the SAME template that has the credit (other lines go through at normal price).
     const parentTemplateId = this.markData.templateId;
     const applyFreeBenefit = !!this.markData.applyFreeBenefit && (this.markData.freeUsesRemaining ?? 0) > 0;
+    const isFreeLine = (l: InvoiceLine) => applyFreeBenefit && l.templateId === parentTemplateId;
+    const common: MarkDoneCommon = {
+      vehicleId,
+      date: this.markData.date,
+      mileage: this.markData.mileage,
+      supplierId: this.markData.supplierId ?? undefined,
+      notes: this.markData.notes || undefined
+    };
 
-    for (const line of existingLines) {
-      // Don't store zero in lastPaidPrices when the line is free — keep the real price memory
-      if (!applyFreeBenefit || line.templateId !== parentTemplateId) {
-        this.lastPaidPrices.set(line.templateId!, line.price!);
+    // Chaque appel émet null en cas de succès, l'erreur sinon : forkJoin attend toutes les lignes.
+    const saves = lines.map(line => {
+      const save$: Observable<unknown> = line.templateId
+        ? this.apiService.markMaintenanceDone({ ...common, templateId: parseInt(line.templateId), cost: line.price!, applyFreeBenefit: isFreeLine(line) })
+        : this.createTemplateAndMarkDone(line, common);
+      return save$.pipe(map(() => null), catchError(err => of(err)));
+    });
+
+    this.isMarkSubmitting = true;
+    forkJoin(saves).pipe(takeUntil(this.destroy$)).subscribe(results => {
+      this.isMarkSubmitting = false;
+      const succeeded = lines.filter((_, i) => results[i] === null);
+      const errors = results.filter(r => r !== null);
+      for (const line of succeeded) {
+        // Don't store zero in lastPaidPrices when the line is free — keep the real price memory
+        if (line.templateId && !isFreeLine(line)) this.lastPaidPrices.set(line.templateId, line.price!);
       }
-      const isTargetLine = applyFreeBenefit && line.templateId === parentTemplateId;
-      this.apiService.markMaintenanceDone({
-        vehicleId,
-        templateId: parseInt(line.templateId!),
-        date: this.markData.date,
-        mileage: this.markData.mileage,
-        cost: line.price!,
-        notes: this.markData.notes || undefined,
-        applyFreeBenefit: isTargetLine
-      }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
-    }
+      // Même en échec : un modèle a pu être créé, une ligne enregistrée.
+      this.loadTemplates(); this.loadVehicles();
+      if (errors.length === 0) { this.closeMarkDone(); return; }
 
-    for (const line of newTplLines) {
-      this.apiService.createMaintenanceTemplate({
-        name: line.newTemplateName, description: '', category: line.newTemplateCategory || 'Autre',
-        priority: 'medium', intervalKm: line.newTemplateIntervalKm || undefined, intervalMonths: line.newTemplateIntervalMonths || undefined,
-        estimatedCost: line.price!, isActive: true
-      }).pipe(takeUntil(this.destroy$)).subscribe({
-        next: (tplId: number) => {
-          this.apiService.assignMaintenanceTemplate(vehicleId, tplId).pipe(takeUntil(this.destroy$)).subscribe({
-            next: () => {
-              this.apiService.markMaintenanceDone({
-                vehicleId,
-                templateId: tplId,
-                date: this.markData.date,
-                mileage: this.markData.mileage,
-                cost: line.price!,
-                notes: this.markData.notes || undefined,
-                applyFreeBenefit: false // new templates can't have free benefits
-              }).pipe(takeUntil(this.destroy$)).subscribe({ next: onDone, error: onDone });
-            },
-            error: onDone
-          });
-        },
-        error: onDone
-      });
-    }
+      this.markData.invoiceLines = (this.markData.invoiceLines as InvoiceLine[]).filter(l => !succeeded.includes(l));
+      if (succeeded.some(isFreeLine)) {
+        this.markData.freeUsesRemaining = Math.max(0, (this.markData.freeUsesRemaining ?? 0) - 1);
+        this.markData.applyFreeBenefit = false;
+      }
+      const n = succeeded.length;
+      const title = n > 0
+        ? `${n} ligne${n > 1 ? 's' : ''} enregistrée${n > 1 ? 's' : ''}, ${errors.length} en échec`
+        : 'Entretien non enregistré';
+      this.toast.error(title, [...new Set(errors.map(e => this.saveErrorMessage(e)))].join(' '), 10000);
+      this.cdr.detectChanges();
+    });
+  }
+
+  /**
+   * Ligne « + Créer un nouveau modèle » : création, affectation au véhicule, puis
+   * entretien effectué. Dès sa création, la ligne pointe sur le modèle créé : si
+   * la suite échoue, un nouvel essai ne recrée pas un doublon du modèle.
+   */
+  private createTemplateAndMarkDone(line: InvoiceLine, common: MarkDoneCommon): Observable<unknown> {
+    return this.apiService.createMaintenanceTemplate({
+      name: line.newTemplateName, description: '', category: line.newTemplateCategory || 'Autre',
+      priority: 'medium', intervalKm: line.newTemplateIntervalKm || undefined, intervalMonths: line.newTemplateIntervalMonths || undefined,
+      estimatedCost: line.price!, isActive: true
+    }).pipe(
+      tap(tplId => { line.templateId = String(tplId); line.isNewTemplate = false; line.description = line.newTemplateName; }),
+      switchMap(tplId => this.apiService.assignMaintenanceTemplate(common.vehicleId, tplId).pipe(map(() => tplId))),
+      // new templates can't have free benefits
+      switchMap(tplId => this.apiService.markMaintenanceDone({ ...common, templateId: tplId, cost: line.price!, applyFreeBenefit: false }))
+    );
+  }
+
+  /** Motif lisible d'un refus : le message métier du serveur (4xx) tel quel, sinon un texte en français. */
+  private saveErrorMessage(err: any): string {
+    if (err?.status === 0) return 'Serveur injoignable : vérifiez la connexion puis réessayez.';
+    const serverMessage = err?.error?.errors?.[0]?.errorMessage || err?.error?.message;
+    if (err?.status < 500 && serverMessage) return serverMessage;
+    // Un 404 sans message (NotFound() nu : échéance, modèle ou véhicule supprimé entre-temps)
+    // tombait dans « Erreur serveur » alors que rien n'a planté (recette GPA, DEF-031).
+    if (err?.status === 404) return 'Élément introuvable : il a peut-être été supprimé entre-temps. Rechargez la page.';
+    if (err?.status >= 400 && err?.status < 500) return 'Opération refusée : vérifiez les valeurs saisies puis réessayez.';
+    return "Erreur serveur : l'opération n'a pas abouti. Réessayez ; si le problème persiste, contactez le support.";
   }
 
   openHistory(row: FlatRow) {
@@ -1381,26 +1537,42 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     this.historyTemplateName = row.templateName;
     this.historyEstimatedCost = this.getTemplateEstimatedCost(row.templateId);
     this.historyLogs = [];
+    this.historySameKeys = new Set<string>();
+    this.historyLoadFailed = false;
     this.historyLoading = true;
     this.isHistoryOpen = true;
     this.apiService.getMaintenanceLogs(parseInt(row.vehicleId), parseInt(row.templateId)).pipe(takeUntil(this.destroy$)).subscribe({
       next: (logs) => {
-        // Dedup by (doneDate + doneKm + actualCost) — prevents duplicates from accidental double-submit
+        // Chaque journal est affiché, sans dédoublonnage. Fusionner les lignes de
+        // même date, kilométrage et montant masquait de vraies interventions
+        // (forfait répété, ou double saisie que l'on vient justement chercher ici)
+        // et faussait le total, alors que Dépenses et « Coûts maintenance » les
+        // montrent toutes. Les doublons probables sont signalés à la place ; la
+        // double soumission est déjà bloquée à la saisie (isMarkSubmitting).
+        const list = logs || [];
         const seen = new Set<string>();
-        const deduped: any[] = [];
-        for (const log of (logs || [])) {
-          const key = `${log.doneDate}|${log.doneKm}|${log.actualCost}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            deduped.push(log);
-          }
+        const same = new Set<string>();
+        for (const log of list) {
+          const key = this.historyLogKey(log);
+          if (seen.has(key)) same.add(key); else seen.add(key);
         }
-        this.ngZone.run(() => { this.historyLogs = deduped; this.historyLoading = false; this.cdr.detectChanges(); });
+        this.ngZone.run(() => { this.historyLogs = list; this.historySameKeys = same; this.historyLoading = false; this.cdr.detectChanges(); });
       },
-      error: (err) => { console.error(err); this.historyLoading = false; }
+      error: (err) => {
+        // Sans ce signal, un échec s'affichait « Aucun historique » : l'utilisateur
+        // croyait sa saisie perdue.
+        this.historyLoadFailed = true; this.historyLoading = false;
+        this.toast.error('Historique non chargé', this.saveErrorMessage(err), 10000);
+        this.cdr.detectChanges();
+      }
     });
   }
-  closeHistory() { this.isHistoryOpen = false; this.historyLogs = []; }
+  closeHistory() { this.isHistoryOpen = false; this.historyLogs = []; this.historySameKeys = new Set<string>(); }
+
+  private historyLogKey(log: any): string { return `${log.doneDate}|${log.doneKm}|${log.actualCost}`; }
+  isSameAsAnotherLog(log: any): boolean { return this.historySameKeys.has(this.historyLogKey(log)); }
+  /** Total réel de TOUTES les interventions listées (écran et PDF). */
+  get historyTotal(): number { return this.historyLogs.reduce((s, l) => s + (Number(l.actualCost) || 0), 0); }
 
   private getTemplateEstimatedCost(templateId: string): number {
     const t = this.templates.find(x => x.id === templateId);
@@ -1413,7 +1585,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (!win) return;
 
     const estimated = this.historyEstimatedCost || 0;
-    const totalReal = this.historyLogs.reduce((s, l) => s + (Number(l.actualCost) || 0), 0);
+    const totalReal = this.historyTotal;
     const rows = this.historyLogs.map(l => {
       const real = Number(l.actualCost) || 0;
       const diff = real - estimated;
@@ -1503,7 +1675,10 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     this.addToVehicleData.selectedTemplateIds = [];
   }
   openAddToVehicle(v: VehicleMaintenanceStatus) { this.addToVehicleData = { vehicleId:v.vehicleId, vehicleName:v.vehicleName, vehiclePlate:v.vehiclePlate, vehicleMileage:v.currentMileage, selectedTemplateIds:[] }; this.isAddToVehicleOpen = true; }
-  closeAddToVehicle() { this.isAddToVehicleOpen = false; }
+  closeAddToVehicle() {
+    if (this.isAssignSubmitting) return; // les appels en cours doivent pouvoir rendre compte de leur résultat
+    this.isAddToVehicleOpen = false;
+  }
   getAvailableTemplatesForVehicle(): MaintenanceTemplate[] {
     const v = this.vehicleSchedules.find(x => x.vehicleId === this.addToVehicleData.vehicleId);
     const ids = v ? v.maintenanceItems.map(m => m.templateId) : [];
@@ -1513,21 +1688,41 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   isTemplateSelected(id: string): boolean { return this.addToVehicleData.selectedTemplateIds.includes(id); }
   selectAllTemplates() { this.addToVehicleData.selectedTemplateIds = this.getAvailableTemplatesForVehicle().map(t => t.id); }
   deselectAllTemplates() { this.addToVehicleData.selectedTemplateIds = []; }
+  /**
+   * Les échecs d'affectation étaient comptés comme des succès (la branche error
+   * incrémentait le même compteur) : la modale se fermait sans message alors que
+   * le serveur avait refusé. Même règle que « Entretien effectué » : un échec
+   * s'affiche et la modale reste ouverte avec les SEULS modèles non affectés.
+   */
   confirmAddToVehicle() {
-    if (this.addToVehicleData.selectedTemplateIds.length === 0) return;
+    if (this.isAssignSubmitting || this.addToVehicleData.selectedTemplateIds.length === 0) return;
     const vid = parseInt(this.addToVehicleData.vehicleId);
-    let done = 0; const total = this.addToVehicleData.selectedTemplateIds.length;
-    for (const tid of this.addToVehicleData.selectedTemplateIds) {
-      this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } },
-        error: () => { done++; if (done === total) { this.loadVehicles(); this.closeAddToVehicle(); } }
-      });
-    }
+    const templateIds: string[] = [...this.addToVehicleData.selectedTemplateIds];
+    // Chaque appel émet null en cas de succès, l'erreur sinon : forkJoin attend toutes les affectations.
+    const saves = templateIds.map(tid => this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).pipe(
+      map(() => null), catchError(err => of(err))));
+
+    this.isAssignSubmitting = true;
+    forkJoin(saves).pipe(takeUntil(this.destroy$)).subscribe(results => {
+      this.isAssignSubmitting = false;
+      this.loadVehicles(); // même en échec partiel : les affectations réussies doivent apparaître
+      const failedIds = templateIds.filter((_, i) => results[i] !== null);
+      if (failedIds.length === 0) { this.closeAddToVehicle(); return; }
+
+      this.addToVehicleData.selectedTemplateIds = failedIds;
+      const errors = results.filter(r => r !== null);
+      const n = templateIds.length - failedIds.length;
+      const title = n > 0
+        ? `${n} entretien${n > 1 ? 's' : ''} affecté${n > 1 ? 's' : ''}, ${failedIds.length} en échec`
+        : 'Affectation non enregistrée';
+      this.toast.error(title, [...new Set(errors.map(e => this.saveErrorMessage(e)))].join(' '), 10000);
+      this.cdr.detectChanges();
+    });
   }
 
   removeMaintenanceFromVehicle(v: VehicleMaintenanceStatus, m: MaintenanceItem) {
     if (!confirm('Retirer?')) return;
-    if (m.scheduleId) { this.apiService.removeMaintenanceSchedule(m.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadVehicles(), error: (err) => console.error(err) }); }
+    if (m.scheduleId) { this.apiService.removeMaintenanceSchedule(m.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({ next: () => this.loadVehicles(), error: (err) => this.toast.error('Entretien non retiré', this.saveErrorMessage(err), 10000) }); }
     else { v.maintenanceItems = v.maintenanceItems.filter(x => x.templateId !== m.templateId); this.rebuildRows(); }
   }
 

@@ -8,8 +8,12 @@ public class DomainException : Exception
 
 public class NotFoundException : DomainException
 {
-    public NotFoundException(string entityName, object key) 
+    public NotFoundException(string entityName, object key)
         : base($"Entity \"{entityName}\" ({key}) was not found.") { }
+
+    // Message affiché tel quel par les écrans (err.error.message) : faute de ce
+    // constructeur, quatre sous-classes existaient pour remplacer le gabarit anglais.
+    public NotFoundException(string message) : base(message) { }
 }
 
 public class ForbiddenAccessException : DomainException

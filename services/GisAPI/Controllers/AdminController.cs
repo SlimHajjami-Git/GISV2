@@ -908,8 +908,12 @@ public class AdminController : ControllerBase
         var last7 = now.AddDays(-7);
         var prev7 = now.AddDays(-14);
 
+        // Les refus de connexion (login_failed, EntityType « User ») ne sont pas un usage :
+        // comptés, une force brute gonflait « Connexions » et sa tendance.
+        const string failedLogin = GisAPI.Application.Features.Auth.Commands.Login.LoginCommandHandler.FailedLoginAction;
+
         var current = await _context.AuditLogs.AsNoTracking()
-            .Where(a => a.Timestamp >= last7 && a.EntityType != "")
+            .Where(a => a.Timestamp >= last7 && a.EntityType != "" && a.Action != failedLogin)
             .GroupBy(a => a.EntityType)
             .Select(g => new
             {
@@ -920,7 +924,7 @@ public class AdminController : ControllerBase
             .ToListAsync();
 
         var previous = await _context.AuditLogs.AsNoTracking()
-            .Where(a => a.Timestamp >= prev7 && a.Timestamp < last7 && a.EntityType != "")
+            .Where(a => a.Timestamp >= prev7 && a.Timestamp < last7 && a.EntityType != "" && a.Action != failedLogin)
             .GroupBy(a => a.EntityType)
             .Select(g => new { Module = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Module, x => x.Count);

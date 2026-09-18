@@ -448,7 +448,7 @@ type CompanyRole = Role & { userCount?: number };
                 <tr>
                   <th>Utilisateur</th>
                   <th>Email</th>
-                  <th>CIN</th>
+                  <th>Pièce d'identité</th>
                   <th>Rôle</th>
                   <th>Véhicules</th>
                   <th>Statut</th>
@@ -646,19 +646,19 @@ type CompanyRole = Role & { userCount?: number };
               <div class="form-grid">
                 <div class="form-group">
                   <label>Prénom <span class="required">*</span></label>
-                  <input type="text" [(ngModel)]="userForm.firstName" placeholder="Mohamed" />
+                  <input type="text" [(ngModel)]="userForm.firstName" placeholder="Jean" />
                 </div>
                 <div class="form-group">
                   <label>Nom <span class="required">*</span></label>
-                  <input type="text" [(ngModel)]="userForm.lastName" placeholder="Alami" />
+                  <input type="text" [(ngModel)]="userForm.lastName" placeholder="Dupont" />
                 </div>
                 <div class="form-group">
                   <label>Date de naissance</label>
                   <input type="date" [(ngModel)]="userForm.dateOfBirth" />
                 </div>
                 <div class="form-group">
-                  <label>CIN <span class="required">*</span></label>
-                  <input type="text" [(ngModel)]="userForm.cin" placeholder="AB123456" />
+                  <label>N° de pièce d'identité <span class="required">*</span></label>
+                  <input type="text" [(ngModel)]="userForm.cin" placeholder="12AB34567" />
                 </div>
               </div>
             </div>
@@ -682,7 +682,7 @@ type CompanyRole = Role & { userCount?: number };
                 </div>
                 <div class="form-group">
                   <label>Téléphone</label>
-                  <input type="tel" [(ngModel)]="userForm.phone" placeholder="+212 6XX XXX XXX" />
+                  <input type="tel" [(ngModel)]="userForm.phone" placeholder="+33 6 12 34 56 78" />
                 </div>
                 <div class="form-group">
                   <label>Rôle</label>

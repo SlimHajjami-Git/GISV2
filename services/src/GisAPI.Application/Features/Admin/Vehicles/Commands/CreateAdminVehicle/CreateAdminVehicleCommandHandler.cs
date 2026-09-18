@@ -1,6 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Admin.Vehicles.Queries.GetAdminVehicles;
 using GisAPI.Application.Features.Admin.Vehicles.Services;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -18,6 +19,12 @@ public class CreateAdminVehicleCommandHandler : IRequestHandler<CreateAdminVehic
         var company = await _context.Societes.FindAsync(new object[] { r.CompanyId }, ct);
         if (company == null)
             return new CreateAdminVehicleResult(false, "Société non trouvée");
+
+        // Même règle que l'espace client (DEF-037) : l'administration créait un
+        // second « GA-214-RK » dans la société.
+        var plateClash = await VehicleWriteRules.FindPlateClashAsync(_context, r.CompanyId, r.Plate, null, null, ct);
+        if (plateClash != null)
+            return new CreateAdminVehicleResult(false, VehicleWriteRules.AdminPlateClashMessage(plateClash));
 
         var vehicle = new Vehicle
         {

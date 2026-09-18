@@ -157,7 +157,7 @@ declare let L: any;
             </div>
             <div class="field">
               <label>Nom *</label>
-              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Tunis - Sousse">
+              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Lyon - Marseille">
             </div>
             <div class="field-row">
               <div class="field">
@@ -1348,7 +1348,10 @@ export class ToursComponent implements OnInit, OnDestroy {
     forkJoin({
       vehicles: this.apiService.getVehicles(),
       drivers: this.apiService.getDrivers(),
-      geofences: this.apiService.getGeofences()
+      // Les zones ne servent qu'aux points de passage et dépendent du module Géofences, qu'un plan
+      // Tournées n'inclut pas forcément : sans ce repli, son 403 ferait échouer tout le forkJoin et
+      // l'écran Tournées resterait vide.
+      geofences: this.apiService.getGeofences().pipe(catchError(() => of([])))
     }).subscribe({
       next: (data) => {
         this.vehicles = data.vehicles || [];

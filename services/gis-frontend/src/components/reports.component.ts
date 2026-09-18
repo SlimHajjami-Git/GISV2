@@ -14,13 +14,40 @@ import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
-import { libelleMoisIncomplet, libellePerimetreParc } from './dashboard-gpa.helpers';
+import { libellePerimetreParc } from './dashboard-gpa.helpers';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
 import * as L from 'leaflet';
 
 Chart.register(...registerables);
+
+/** Barre « Répartition des coûts » du rapport IA : parts positives et crédits déduits hors barre. */
+export interface AiCostBreakdownView {
+  items: { label: string; value: number; pct: number; color: string }[];
+  credits: number;
+}
+
+/**
+ * fleetSummary.totalCosts est NET des avoirs et remboursements (costBreakdown.credits) :
+ * pris pour base, les parts dépassaient 100 % dès que les crédits dépassaient les autres
+ * frais, et la barre tronquée ne montrait pas la déduction. Base = somme des parts
+ * positives ; credits absent (API antérieure) = 0.
+ */
+export function buildAiCostBreakdown(cb: any): AiCostBreakdownView {
+  const num = (v: any) => Number(v) || 0;
+  const parts = [
+    { label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
+    { label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
+    { label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
+    { label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
+  ];
+  const positiveTotal = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
+  return {
+    items: parts.map(p => ({ ...p, pct: positiveTotal > 0 ? Math.max(0, p.value) / positiveTotal * 100 : 0 })),
+    credits: Math.max(0, num(cb?.credits))
+  };
+}
 
 @Component({
   selector: 'app-reports',
@@ -220,7 +247,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       name: 'Véhicules les plus coûteux',
       type: 'cost-ranking',
       icon: '🏆',
-      description: 'Top 10 du parc par coût au km',
+      description: 'Top 10 du parc par coût total',
       category: 'costs'
     },
     {
@@ -400,6 +427,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // Rapports de coûts (04/09/2026). R1 « Coût d'exploitation » et R3 « Véhicules
   // les plus coûteux » partagent le même DTO et le même bloc HTML (drapeau isRanking).
   operatingCost: OperatingCostReportDto | null = null;
+  /** Dernier rapport de coûts refusé en 400 (période inversée) : l'écran invite à corriger
+   *  la saisie au lieu de « réessayez dans un instant ». */
+  costReportInputError = false;
   costEvolution: VehicleCostEvolutionDto | null = null;
   /** Mois cliqué (graphe ou tableau) dont le détail par catégorie est affiché ; défaut = mois le plus élevé. */
   selectedEvolutionMonth: MonthlyVehicleCostDto | null = null;
@@ -589,10 +619,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       next: (drivers) => this.drivers = drivers,
       error: (err) => console.error('Error loading drivers:', err)
     });
-    this.apiService.getDepartments().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (departments) => { this.departments = departments; this.cdr.detectChanges(); },
-      error: (err) => console.error('Error loading departments:', err)
-    });
+    // Les départements ne servent qu'à un filtre facultatif et viennent du module Gestion de
+    // flotte : un plan qui ne l'inclut pas répond désormais 403. Liste vide, sans bruit console.
+    this.apiService.getDepartments().pipe(
+      catchError(() => of([])),
+      takeUntil(this.destroy$)
+    ).subscribe(departments => { this.departments = departments; this.cdr.detectChanges(); });
   }
 
   onDriverFilterChange() {
@@ -1655,7 +1687,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading stops report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des arrêts') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1684,7 +1716,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading stops report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des arrêts' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des arrêts') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1713,7 +1745,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading trips report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des trajets') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -1742,7 +1774,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading trips report:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport des trajets' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport des trajets') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -2827,7 +2859,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.mileageReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -2940,7 +2972,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           console.error('Error loading mileage reports:', err);
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3128,7 +3160,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.mileagePeriodReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport kilométrique par période' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport kilométrique par période') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3164,6 +3196,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const allResults: any[] = [];
     let completedRequests = 0;
     const totalVehicles = this.vehicles.length;
+    // Refus de saisie (400, période inversée) : chaque appel le reçoit. Ignoré, il
+    // laissait un tableau vide lu comme « aucun kilométrage » (recette du 16/09/2026).
+    let refusSaisie = '';
+    const terminer = () => this.ngZone.run(() => {
+      if (allResults.length === 0 && refusSaisie) {
+        this.tableData = [];
+        this.chartData = [];
+        this.statisticsData = { 'Erreur': refusSaisie };
+        this.reportGenerated = true;
+        this.loading = false;
+        this.cdr.detectChanges();
+        return;
+      }
+      this.processMileagePeriodAllVehicles(allResults, start, end);
+      this.reportGenerated = true;
+      this.loading = false;
+      this.activeTab = 'table';
+      this.currentPage = 1;
+      this.cdr.detectChanges();
+      this.appRef.tick();
+      setTimeout(() => this.createChart(), 100);
+    });
 
     if (totalVehicles === 0) {
       this.ngZone.run(() => {
@@ -3203,34 +3257,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
             });
           }
           completedRequests++;
-
-          if (completedRequests === totalVehicles) {
-            this.ngZone.run(() => {
-              this.processMileagePeriodAllVehicles(allResults, start, end);
-              this.reportGenerated = true;
-              this.loading = false;
-              this.activeTab = 'table';
-              this.currentPage = 1;
-              this.cdr.detectChanges();
-              this.appRef.tick();
-              setTimeout(() => this.createChart(), 100);
-            });
-          }
+          if (completedRequests === totalVehicles) terminer();
         },
-        error: () => {
+        error: (err) => {
+          if (!refusSaisie) refusSaisie = this.messageErreurRapport(err, '');
           completedRequests++;
-          if (completedRequests === totalVehicles) {
-            this.ngZone.run(() => {
-              this.processMileagePeriodAllVehicles(allResults, start, end);
-              this.reportGenerated = true;
-              this.loading = false;
-              this.activeTab = 'table';
-              this.currentPage = 1;
-              this.cdr.detectChanges();
-              this.appRef.tick();
-              setTimeout(() => this.createChart(), 100);
-            });
-          }
+          if (completedRequests === totalVehicles) terminer();
         }
       });
     });
@@ -3490,7 +3522,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.monthlyReport = null;
           this.tableData = [];
           this.chartData = [];
-          this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel' };
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport mensuel') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -3538,7 +3570,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             this.monthlyCostReport = null;
             this.tableData = [];
             this.chartData = [];
-            this.statisticsData = { 'Erreur': 'Impossible de charger le rapport mensuel des coûts' };
+            this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger le rapport mensuel des coûts') };
             this.reportGenerated = true;
             this.loading = false;
             this.cdr.detectChanges();
@@ -3564,8 +3596,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         'KM Total': this.formatNumber(report.totalKm) + ' km',
         'Litres Total': this.formatNumber(report.totalFuelLiters) + ' L',
         'Coût Carburant': this.formatCurrency(report.totalFuelCostDzd),
-        'Consommation Moyenne': report.totalKm > 0
-          ? ((report.totalFuelLiters / report.totalKm) * 100).toFixed(2) + ' L/100km'
+        // Ratio du serveur, sur les seuls véhicules à distance mesurée.
+        'Consommation Moyenne': report.consumptionPer100Km != null
+          ? this.formatDecimal(report.consumptionPer100Km) + ' L/100km'
           : 'N/A'
       };
     }
@@ -3575,6 +3608,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
       ...v,
       type: this.monthlyCostReportType
     }));
+  }
+
+  /**
+   * Info-bulle de la colonne KM du rapport mensuel : d'où vient le kilométrage,
+   * ou pourquoi il n'y en a pas. Même vocabulaire que le rapport mensuel flotte.
+   */
+  kmMensuelTitre(v: VehicleMonthlyCost): string {
+    switch (v.kmSource) {
+      case 'gps': return 'Distance mesurée par le boîtier GPS';
+      case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
+      default: return 'Kilométrage non mesurable sur le mois : les relevés compteur saisis ne permettent pas de calculer une distance (un seul relevé, compteur inchangé ou relevés incohérents)';
+    }
   }
 
   /**
@@ -3648,7 +3693,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       case 'gps': return 'Distance mesurée par le boîtier GPS';
       case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)'
         + (v.reliableDistance ? '' : ' — incertain : rupture de compteur ou relevé écarté');
-      default: return 'Kilométrage non mesurable ce mois : moins de deux relevés compteur';
+      default: return 'Kilométrage non mesurable sur le mois';
     }
   }
 
@@ -5861,12 +5906,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     // Montant : formate pour le PDF, brut pour les tableurs.
     const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
-    // Ratio a deux decimales : idem.
-    const rt = (v: any) => pourPdf ? this.formatDecimal(Number(v) || 0) : n2(v);
+    // Ratio a deux decimales : idem. NULL = pas de distance mesuree, donc pas de
+    // ratio : « — » au PDF et cellule VIDE au tableur, jamais 0 — un zero se
+    // remoyenne ensuite comme une mesure.
+    const rt = (v: any) => v == null ? (pourPdf ? '—' : '') : (pourPdf ? this.formatDecimal(Number(v)) : n2(v));
     // Volume : une decimale.
     const lt = (v: any) => pourPdf ? this.formatLitres(Number(v) || 0) : n2(v);
-    // Distance : le PDF porte l’unite, le tableur non.
-    const km = (v: any) => pourPdf ? this.formatNumber(Number(v) || 0) + ' km' : n2(v);
+    // Distance : le PDF porte l’unite, le tableur non ; NULL = non mesuree.
+    const km = (v: any) => v == null
+      ? (pourPdf ? 'non mesuré' : '')
+      : (pourPdf ? this.formatNumber(Number(v)) + ' km' : n2(v));
 
     const columns = isCosts
       ? [
@@ -5930,12 +5979,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // juste avant de cliquer sur Exporter.
           'Litres': String(pourPdf ? this.formatLitres(r.totalFuelLiters) + ' L' : n2(r.totalFuelLiters)),
           'Coût carburant': String(mt(r.totalFuelCostDzd)),
+          // Ratio du serveur, sur les seuls vehicules a distance mesuree : les
+          // litres d’un vehicule « non mesure » gonflaient la moyenne. Sans
+          // kilometre mesure, pas de moyenne — et surtout pas 0.
           'Conso. moyenne': String(
-            r.totalKm > 0
+            r.consumptionPer100Km != null
               ? (pourPdf
-                  ? this.formatDecimal((r.totalFuelLiters / r.totalKm) * 100) + ' L/100km'
-                  : n2((r.totalFuelLiters / r.totalKm) * 100))
-              : (pourPdf ? '-' : 0))
+                  ? this.formatDecimal(r.consumptionPer100Km) + ' L/100km'
+                  : n2(r.consumptionPer100Km))
+              : (pourPdf ? '—' : ''))
         };
 
     return {
@@ -5947,10 +5999,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       orientation: 'landscape',
       // Les intitules de colonnes sont abreges pour tenir sur une seule ligne :
       // cette note dit ce qu’ils recouvrent. « E+R » surtout, qui ne se devine
-      // pas quand on decouvre le rapport.
-      footnote: isCosts
-        ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.`
-        : undefined,
+      // pas quand on decouvre le rapport. Suit la regle du kilometrage : sans
+      // distance mesurable dans le mois, il n’y a pas de ratio au kilometre.
+      footnote: (isCosts
+        ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.   `
+        : '* ')
+        + 'Km « non mesuré » : kilométrage non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
     };
   }
 
@@ -7569,6 +7623,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort by date descending
     repairs.sort((a, b) => new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime());
 
+    // Réparations annulées : listées avec leur statut, mais hors des montants et des
+    // graphes, comme dans les rapports calculés par le serveur. Elles étaient
+    // additionnées au coût total. Statut comparé sans casse partout : une valeur
+    // ancienne (« Completed ») n'entrait dans aucun compteur.
+    const statusOf = (r: any) => String(r.status ?? '').trim().toLowerCase();
+    const costed = repairs.filter(r => statusOf(r) !== 'cancelled');
+
     // Build vehicle name map
     const vehicleMap = new Map<number, string>();
     // Recette du 10/09/2026 : c’est la PLAQUE qui identifie le vehicule dans
@@ -7618,7 +7679,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // pneumatique 196,80 pour 4. La mecanique pese 70 % de la facture pour
     // 42 % des interventions : c’est exactement ce qu’un gestionnaire cherche.
     const parTypeDePanne = new Map();
-    repairs.forEach(repair => {
+    costed.forEach(repair => {
       const cle = repair.repairType || 'autre';
       const cumul = parTypeDePanne.get(cle) || { cout: 0, nombre: 0 };
       cumul.cout += repair.totalCost || 0;
@@ -7637,7 +7698,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     // Secondary chart - costs by vehicle
     const costsByVehicle: { [key: string]: number } = {};
-    repairs.forEach(repair => {
+    costed.forEach(repair => {
       // Plaque ici aussi : le graphe et le tableau doivent designer les
       // vehicules de la meme facon, sinon on ne peut pas les rapprocher.
       const vehicleName = repair.vehiclePlate || vehicleMap.get(repair.vehicleId) || repair.vehicleName || `Véhicule ${repair.vehicleId}`;
@@ -7654,11 +7715,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }));
 
     // Statistics
-    const totalCost = repairs.reduce((sum, r) => sum + (r.totalCost || 0), 0);
-    const totalLaborCost = repairs.reduce((sum, r) => sum + (r.laborCost || 0), 0);
-    const totalPartsCost = repairs.reduce((sum, r) => sum + (r.partsCost || 0), 0);
-    const completedCount = repairs.filter(r => r.status === 'completed' || r.status === 'done').length;
-    const pendingCount = repairs.filter(r => r.status === 'pending' || r.status === 'in_progress').length;
+    const totalCost = costed.reduce((sum, r) => sum + (r.totalCost || 0), 0);
+    const totalLaborCost = costed.reduce((sum, r) => sum + (r.laborCost || 0), 0);
+    const totalPartsCost = costed.reduce((sum, r) => sum + (r.partsCost || 0), 0);
+    const completedCount = repairs.filter(r => statusOf(r) === 'completed' || statusOf(r) === 'done').length;
+    const pendingCount = repairs.filter(r => statusOf(r) === 'pending' || statusOf(r) === 'in_progress').length;
+    const cancelledCount = repairs.length - costed.length;
 
     this.statisticsData = {
       'Total réparations': repairs.length.toString(),
@@ -7667,6 +7729,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '📦 Pièces': this.formatCurrency(totalPartsCost),
       '✅ Complétées': completedCount.toString(),
       '⏳ En cours': pendingCount.toString(),
+      ...(cancelledCount > 0 ? { '❌ Annulées (hors coûts)': cancelledCount.toString() } : {}),
       'Véhicules': new Set(repairs.map(r => r.vehicleId)).size.toString()
     };
   }
@@ -7695,7 +7758,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'done': '✅ Complétée',
       'cancelled': '❌ Annulée'
     };
-    return statuses[status] || status || '⏳ En attente';
+    return statuses[String(status ?? '').trim().toLowerCase()] || status || '⏳ En attente';
   }
 
   // ==================== MAINTENANCE REPORT ====================
@@ -7917,6 +7980,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return max > 0 ? (value / max) * 100 : 0;
   }
 
+  private aiCostBreakdownCache: { source: any; value: AiCostBreakdownView } | null = null;
+
+  /**
+   * Barre « Répartition des coûts » du rapport IA (calcul : buildAiCostBreakdown).
+   * Mémorisée par rapport : un nouveau tableau à chaque détection de changements
+   * referait les segments.
+   */
+  get aiCostBreakdown(): AiCostBreakdownView {
+    const cb = this.aiFleetReport?.charts?.costBreakdown;
+    if (this.aiCostBreakdownCache && this.aiCostBreakdownCache.source === cb) return this.aiCostBreakdownCache.value;
+
+    const value = buildAiCostBreakdown(cb);
+    this.aiCostBreakdownCache = { source: cb, value };
+    return value;
+  }
+
   get aiMaxFuel(): number {
     return Math.max(...(this.aiFleetReport?.charts?.topFuelConsumers?.map((f: any) => f.value) || [1]), 1);
   }
@@ -7998,6 +8077,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Message d'un refus de saisie (400) renvoyé par l'API — « La date de début doit
+   * précéder la date de fin. », « Mois invalide… » —, sinon le libellé générique.
+   * Une période inversée affichait « Impossible de charger le rapport », lu comme une
+   * panne, ou un rapport vide lu comme « aucune activité » (recette du 16/09/2026).
+   */
+  messageErreurRapport(err: any, defaut: string): string {
+    const message = err?.status === 400 ? err?.error?.message : null;
+    return typeof message === 'string' && message.trim() ? message : defaut;
+  }
+
   /** Bornes YYYY-MM-DD envoyées au backend ; repli = mois courant si les dates manquent. */
   private costReportRange(startDate?: Date, endDate?: Date): { from: string; to: string } {
     const now = new Date();
@@ -8019,6 +8109,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeOperatingCostReport(vehicleId: number | undefined, startDate: Date | undefined, endDate: Date | undefined, ranking: boolean) {
     this.loading = true;
+    this.costReportInputError = false;
     this.operatingCost = null;
     if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
 
@@ -8044,7 +8135,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.operatingCost = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': ranking ? 'Impossible de charger le classement des véhicules' : "Impossible de charger le rapport de coût d'exploitation" };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, ranking ? 'Impossible de charger le classement des véhicules' : "Impossible de charger le rapport de coût d'exploitation") };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -8053,13 +8145,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
   }
 
-  /** Véhicules plaçables sur le graphe : ceux qui ont un coût au km (distance mesurable). */
+  /** Véhicules plaçables sur le graphe. R1 : ceux qui ont un coût au km (distance mesurable).
+   *  R3 : tous, le classement se lisant au coût total. */
   private operatingCostChartRows(): VehicleOperatingCostDto[] {
-    return (this.operatingCost?.vehicles || []).filter(v => v.costPerKm != null);
+    const vehicles = this.operatingCost?.vehicles || [];
+    return this.isRanking ? vehicles : vehicles.filter(v => v.costPerKm != null);
   }
 
   hasOperatingCostChartData(): boolean {
     return this.operatingCostChartRows().length > 0;
+  }
+
+  /**
+   * Légende du graphe R3 « Véhicules les plus coûteux ». La couleur des barres suit l'écart au
+   * km (colonne « Écart »), pas leur longueur : un véhicule qui roule peu sort rouge avec un
+   * coût total faible, à gauche de la verticale grise, qui mesure autre chose (moyenne du coût
+   * TOTAL par véhicule). Question de Karim du 17/09/2026, une entrée par ligne, texte court.
+   */
+  operatingCostChartLegend(): string {
+    const cur = this.getCurrencyCode();
+    const parKm = this.operatingCost?.averageCostPerKm;
+    const vc = this.operatingCost?.vehicleCount ?? 0;
+    const moyenneVehicule = vc > 0 && this.operatingCost
+      ? this.userPrefs.formatCurrency(this.operatingCost.totalCost / vc, 0)
+      : null;
+    const parts: string[] = [];
+    if (moyenneVehicule) parts.push(`Ligne grise : moyenne par véhicule (${moyenneVehicule})`);
+    if (parKm != null) parts.push(`parc : ${this.formatCostPerKm(parKm)} ${cur}/km`);
+    return parts.length ? parts.join('. ') + '.' : '';
   }
 
   /** Hauteur du graphe à barres horizontales : 28 px par véhicule, 240 px minimum. */
@@ -8068,7 +8181,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** Barres horizontales « Classement par coût d'exploitation » : valeur au bout de chaque barre et
-   *  verticale pointillée rouge « Moyenne flotte » (plugin inline sur l'axe x, cf. drawComparisonConsoChart). */
+   *  verticale pointillée rouge « Moyenne flotte » (plugin inline sur l'axe x, cf. drawComparisonConsoChart).
+   *  R3 « Véhicules les plus coûteux » trace le coût TOTAL, dans l'ordre du tableau : en €/km, ses
+   *  barres paraissaient désordonnées face à un classement au coût total (recette du 16/09/2026).
+   *  Sa verticale « Moyenne par véhicule » est grise : la couleur des barres suit l'écart au km. */
   drawOperatingCostChart() {
     if (this.operatingCostChart) { this.operatingCostChart.destroy(); this.operatingCostChart = undefined; }
     const canvas = this.operatingCostCanvasRef?.nativeElement;
@@ -8080,13 +8196,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const ranking = this.isRanking;
     const cur = this.getCurrencyCode();
-    const avg = report.averageCostPerKm;
+    // R3 : moyenne par véhicule analysé, sur tout le parc comme les KPI.
+    const avg = ranking
+      ? (report.vehicleCount > 0 ? report.totalCost / report.vehicleCount : null)
+      : report.averageCostPerKm;
     const fmt3 = (n: number) => this.formatCostPerKm(n);
-    const values = rows.map(v => Number(v.costPerKm));
+    const valueLabel = (n: number) => ranking ? this.userPrefs.formatCurrency(n, 0) : `${fmt3(n)} ${cur}/km`;
+    const values = rows.map(v => Number(ranking ? v.totalCost : v.costPerKm));
     const maxValue = Math.max(...values, avg ?? 0, 0.001);
-    // Même signe que la colonne « Écart vs moyenne » (valeur brute du serveur), pas une comparaison sur des arrondis
+    // Même signe que la colonne « Écart » du tableau (écart au km, valeur brute du serveur), dans les deux
+    // rapports : en R3, colorer selon la moyenne par véhicule montrait en rouge un véhicule vert dans le tableau.
     const isAbove = (v: VehicleOperatingCostDto) => (v.deviationFromAveragePct ?? 0) > 0;
+    // Ligne rouge = repère de la couleur des barres (R1). En R3 la moyenne par véhicule ne pilote pas la
+    // couleur : neutre, pour ne pas laisser croire qu'une barre qui la dépasse devrait être rouge.
+    const avgColor = ranking ? '#64748b' : '#dc2626';
 
     const valueAndAvgPlugin = {
       id: 'operatingCostValueAndAvg',
@@ -8102,13 +8227,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.textAlign = 'left';
         c.textBaseline = 'middle';
         meta.data.forEach((bar: any, i: number) => {
-          c.fillText(`${fmt3(values[i])} ${cur}/km`, bar.x + 6, bar.y);
+          c.fillText(valueLabel(values[i]), bar.x + 6, bar.y);
         });
         c.restore();
         if (avg == null) return;
         const x = xScale.getPixelForValue(avg);
         c.save();
-        c.strokeStyle = '#dc2626';
+        c.strokeStyle = avgColor;
         c.lineWidth = 1.5;
         c.setLineDash([5, 5]);
         c.beginPath();
@@ -8117,12 +8242,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
         c.stroke();
         c.setLineDash([]);
         c.font = 'bold 11px sans-serif';
-        c.fillStyle = '#dc2626';
+        c.fillStyle = avgColor;
         const alignRight = x > (area.left + area.right) / 2;
         c.textAlign = alignRight ? 'right' : 'left';
         c.textBaseline = 'top';
         // Dessinée dans la marge haute (layout.padding.top) pour ne pas chevaucher la première barre
-        c.fillText(`Moyenne flotte : ${fmt3(avg)} ${cur}/km`, alignRight ? x - 5 : x + 5, area.top - 15);
+        c.fillText(ranking ? `Moyenne par véhicule : ${valueLabel(avg)}` : `Moyenne flotte : ${valueLabel(avg)}`, alignRight ? x - 5 : x + 5, area.top - 15);
         c.restore();
       }
     };
@@ -8154,9 +8279,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
             callbacks: {
               label: (item) => {
                 const v = rows[item.dataIndex];
-                const lines = [`${fmt3(Number(v.costPerKm))} ${cur}/km`, `Coût total : ${this.formatCurrency(v.totalCost)}`];
+                const parKm = v.costPerKm == null ? 'Coût au km non mesurable' : `${fmt3(Number(v.costPerKm))} ${cur}/km`;
+                const total = `Coût total : ${this.formatCurrency(v.totalCost)}`;
+                const lines = ranking ? [total, parKm] : [parKm, total];
                 if (v.distanceKm != null) lines.push(`Kilométrage : ${this.formatNumber(v.distanceKm)} km`);
-                if (v.deviationFromAveragePct != null) lines.push(`Écart vs moyenne : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
+                // L'écart porte sur le coût au km, même quand les barres montrent le coût total.
+                if (v.deviationFromAveragePct != null) lines.push(`${ranking ? 'Écart au km vs moyenne' : 'Écart vs moyenne'} : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
                 return lines;
               }
             }
@@ -8166,7 +8294,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           x: {
             beginAtZero: true,
             suggestedMax: maxValue * 1.35,
-            title: { display: true, text: `${cur}/km` },
+            title: { display: true, text: ranking ? `Coût total (${cur})` : `${cur}/km` },
             grid: { color: 'rgba(148,163,184,.25)' }
           },
           y: { grid: { display: false }, ticks: { font: { size: 11 } } }
@@ -8180,6 +8308,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeCostEvolutionReport(vehicleId: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
+    this.costReportInputError = false;
     this.costEvolution = null;
     this.selectedEvolutionMonth = null;
     if (this.evolutionChart) { this.evolutionChart.destroy(); this.evolutionChart = undefined; }
@@ -8207,7 +8336,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.costEvolution = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': err?.status === 404 ? 'Véhicule introuvable dans votre société' : "Impossible de charger l'évolution des coûts de ce véhicule" };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': err?.status === 404 ? 'Véhicule introuvable dans votre société' : this.messageErreurRapport(err, "Impossible de charger l'évolution des coûts de ce véhicule") };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -8237,10 +8367,48 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return !!this.costEvolution?.months?.some(m => m.isPartial);
   }
 
-  /** « en cours » pour le mois calendaire actuel, « incomplet » pour un mois
-   *  tronqué par la période (premier mois d'une période qui commence le 15). */
-  evolutionMoisIncomplet(m: { year: number; month: number }): string {
-    return libelleMoisIncomplet(m.year, m.month);
+  /**
+   * Quelle BORNE tronque un mois incomplet. Le serveur ne renvoie qu'un drapeau
+   * isPartial ; l'écran annonçait « en cours » dans tous les cas, donc rien du
+   * tout pour un mois coupé par la date de début — le seul mois qui, lui, est
+   * bel et bien terminé (recette du 13/09/2026).
+   * Les dates sont lues telles qu'écrites (les dix premiers caractères ISO) :
+   * passer par `new Date()` ferait glisser le jour d'un fuseau à l'autre.
+   */
+  private partialMonthBounds(m: MonthlyVehicleCostDto): { debut: boolean; fin: boolean } {
+    const ymd = (iso: string | null | undefined) => {
+      const p = (iso || '').slice(0, 10).split('-').map(Number);
+      return p.length === 3 && p.every(n => Number.isFinite(n)) ? { y: p[0], m: p[1], d: p[2] } : null;
+    };
+    const debutPeriode = ymd(this.costEvolution?.startDate);
+    const finPeriode = ymd(this.costEvolution?.endDate);   // dernier jour INCLUS
+    const dernierJourDuMois = new Date(Date.UTC(m.year, m.month, 0)).getUTCDate();
+    return {
+      debut: !!debutPeriode && debutPeriode.y === m.year && debutPeriode.m === m.month && debutPeriode.d > 1,
+      fin: !!finPeriode && finPeriode.y === m.year && finPeriode.m === m.month && finPeriode.d < dernierJourDuMois
+    };
+  }
+
+  /** Badge d'un mois incomplet, au plus court : « en cours », « début tronqué », « fin tronquée ». */
+  partialMonthBadge(m: MonthlyVehicleCostDto): string {
+    const { debut, fin } = this.partialMonthBounds(m);
+    if (debut && fin) return 'partiel';
+    if (debut) return 'début tronqué';
+    if (fin) {
+      const now = new Date();
+      return m.year === now.getFullYear() && m.month === now.getMonth() + 1 ? 'en cours' : 'fin tronquée';
+    }
+    // Le serveur fait foi : bornes illisibles côté écran, le mois reste signalé.
+    return 'incomplet';
+  }
+
+  /** Info-bulle du même badge : la phrase complète, bornes nommées. */
+  partialMonthTitle(m: MonthlyVehicleCostDto): string {
+    const { debut, fin } = this.partialMonthBounds(m);
+    if (debut && fin) return 'La période ne couvre qu’une partie de ce mois : elle commence après le 1er et s’arrête avant la fin.';
+    if (debut) return 'La période commence après le 1er de ce mois : le début du mois n’est pas compté.';
+    if (fin) return 'La période s’arrête avant la fin de ce mois.';
+    return 'La période ne couvre pas ce mois en entier.';
   }
 
   /** Lignes du bloc de détail : le mois sélectionné, sinon toute la période. */
@@ -8255,7 +8423,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
   evolutionDetailLabel(): string {
     const sel = this.selectedEvolutionMonth;
-    if (sel) return sel.monthName + (sel.isPartial ? ` (${this.evolutionMoisIncomplet(sel)})` : '');
+    if (sel) return sel.monthName + (sel.isPartial ? ` (${this.partialMonthBadge(sel)})` : '');
     const mois = this.costEvolution?.months ?? [];
     if (!mois.length) return '';
     const premier = mois[0].monthName, dernier = mois[mois.length - 1].monthName;
@@ -8345,8 +8513,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.evolutionChart = new Chart(ctx, {
       type: 'bar',
-      // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (en cours) ».
-      data: { labels: months.map(m => m.isPartial ? [m.monthName, `(${this.evolutionMoisIncomplet(m)})`] : m.monthName), datasets },
+      // Libellé sur deux lignes pour un mois incomplet : « Sept. 2026 » / « (incomplet) ».
+      // « (en cours) » était faux pour un mois tronqué par la date de début.
+      data: { labels: months.map(m => m.isPartial ? [m.monthName, '(incomplet)'] : m.monthName), datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -8485,6 +8654,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   executeRepairFrequencyReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
+    this.costReportInputError = false;
     this.repairFrequency = null;
     if (this.repairFreqChart) { this.repairFreqChart.destroy(); this.repairFreqChart = undefined; }
     if (this.repairTypeChart) { this.repairTypeChart.destroy(); this.repairTypeChart = undefined; }
@@ -8520,7 +8690,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.repairFrequency = null;
           this.resetGenericReportData();
-          this.statisticsData = { 'Erreur': 'Impossible de charger la fréquence des réparations' };
+          this.costReportInputError = err?.status === 400;
+          this.statisticsData = { 'Erreur': this.messageErreurRapport(err, 'Impossible de charger la fréquence des réparations') };
           this.reportGenerated = true;
           this.loading = false;
           this.cdr.detectChanges();
@@ -8965,7 +9136,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * R2 : le récapitulatif mensuel + les 4 KPI (le détail du mois cliqué reste à
    * l’écran). Recette du 11/09/2026 : valeurs formatées dans le PDF, brutes pour
    * les tableurs ; largeurs mesurées à la police réelle ; ligne TOTAL ajoutée et
-   * mise en évidence ; mois en cours signalé.
+   * mise en évidence ; mois incomplet signalé, quelle que soit la borne qui le tronque.
    */
   private buildCostEvolutionExport(vehicleName: string, dateRange: string, format = 'pdf'): ReportExportConfig | null {
     const r = this.costEvolution;
@@ -8994,8 +9165,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
     const data: any[] = (r.months || []).map(m => ({
-      // Le mois en cours est dit tel dans le PDF ; le tableur garde le mois brut.
-      monthName: m.monthName + (pourPdf && m.isPartial ? ` (${this.evolutionMoisIncomplet(m)})` : ''),
+      // Un mois incomplet est dit tel dans le PDF, quelle que soit la borne qui
+      // le tronque ; le tableur garde le mois brut.
+      monthName: m.monthName + (pourPdf && m.isPartial ? ` (${this.partialMonthBadge(m)})` : ''),
       fuelCost: mt(m.fuelCost),
       maintenanceCost: mt(m.maintenanceCost),
       repairCost: mt(m.repairCost),
@@ -9038,11 +9210,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       columns,
       data,
       highlightLastRow: true,
-      // Dit pourquoi le mois en cours n’a pas de variation et n’entre pas
-      // dans les mois le plus et le moins élevés.
-      // Premier mois tronqué (période qui commence le 15) comme mois en cours.
+      // Dit pourquoi un mois incomplet n’a pas de variation et n’entre pas dans
+      // les mois le plus et le moins élevés. La note ne parlait que du mois en
+      // cours : un mois tronqué par la date de début n’était expliqué nulle part.
       footnote: incomplets.length
-        ? `* ${incomplets.map(m => `${m.monthName} (${this.evolutionMoisIncomplet(m)})`).join(' et ')} : la période ne couvre pas ${incomplets.length > 1 ? 'ces mois' : 'ce mois'} en entier. ${incomplets.length > 1 ? 'Ils ne sont comparés' : 'Il n’est comparé'} à aucun autre mois et n’${incomplets.length > 1 ? 'entrent' : 'entre'} pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+        ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
         : undefined,
     };
   }

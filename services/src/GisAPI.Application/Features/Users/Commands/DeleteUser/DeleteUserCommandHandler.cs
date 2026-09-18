@@ -1,3 +1,4 @@
+using GisAPI.Application.Common.Helpers;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -27,17 +28,37 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
         if (request.Id == currentUserId)
             throw new DomainException("Vous ne pouvez pas supprimer votre propre compte");
 
+        // Lecture sans suivi : le compte est supprimé en SQL, un SaveChanges ultérieur
+        // ne doit rien avoir à réécrire à son sujet.
         var user = await _context.Users
+            .AsNoTracking()
             .FirstOrDefaultAsync(u => u.Id == request.Id && u.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Utilisateur", request.Id);
 
-        // Remove vehicle assignments first
-        var assignments = await _context.UserVehicles
-            .Where(uv => uv.UserId == request.Id)
-            .ToListAsync(ct);
-        _context.UserVehicles.RemoveRange(assignments);
+        // Tant que la suppression échouait en 23503, un compte qui s'était connecté était
+        // protégé de fait. Le droit « Utilisateurs » ne doit pas pour autant ôter un compte
+        // système ni laisser la société sans administrateur.
+        var role = await _context.Roles
+            .AsNoTracking()
+            .Where(r => r.Id == user.RoleId)
+            .Select(r => new { r.IsCompanyAdmin, r.IsSystemRole })
+            .FirstOrDefaultAsync(ct);
+        if (role?.IsSystemRole == true && !_tenantService.IsSystemAdmin)
+            throw new ForbiddenAccessException("Un compte administrateur système ne peut pas être supprimé depuis cet écran");
 
-        _context.Users.Remove(user);
-        await _context.SaveChangesAsync(ct);
+        var isCompanyAdmin = role?.IsCompanyAdmin == true || user.AccessLevel == "admin";
+        if (isCompanyAdmin)
+        {
+            var otherAdmin = await _context.Users
+                .AsNoTracking()
+                .AnyAsync(u => u.CompanyId == companyId && u.Id != user.Id
+                            && (u.AccessLevel == "admin" || u.Role.IsCompanyAdmin), ct);
+            if (!otherAdmin)
+                throw new DomainException("Impossible de supprimer le dernier administrateur de la société");
+        }
+
+        // Un Users.Remove simple levait 23503 (500) dès la première connexion du compte :
+        // audit_logs et une douzaine d'autres tables le référencent sans cascade.
+        await UserDeletionHelper.DeleteAsync(_context, user.Id, ct);
     }
 }

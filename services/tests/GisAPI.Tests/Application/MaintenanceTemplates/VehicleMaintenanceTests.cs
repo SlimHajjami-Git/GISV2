@@ -173,6 +173,12 @@ public class VehicleMaintenanceTests
         using var context = TestDbContextFactory.Create();
         // Rôle "admin" => voit tout le parc : la portée par véhicule ne filtre rien ici.
         var tenantService = TestDbContextFactory.CreateMockTenantService(companyId: 1);
+        // Les statistiques ne comptent que les échéanciers d'un modèle actif :
+        // les modèles doivent donc exister, comme l'impose la clé étrangère en base.
+        context.MaintenanceTemplates.AddRange(
+            new MaintenanceTemplate { Id = 1, Name = "Vidange", Category = "Moteur", Priority = "medium", IntervalKm = 10000, CompanyId = 1 },
+            new MaintenanceTemplate { Id = 2, Name = "Freins", Category = "Freinage", Priority = "high", IntervalKm = 30000, CompanyId = 1 }
+        );
         context.VehicleMaintenanceSchedules.AddRange(
             new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, Status = "overdue", CompanyId = 1 },
             new VehicleMaintenanceSchedule { Id = 2, VehicleId = 1, TemplateId = 2, Status = "due", CompanyId = 1 },

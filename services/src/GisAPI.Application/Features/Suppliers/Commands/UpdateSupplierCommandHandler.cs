@@ -40,6 +40,12 @@ public class UpdateSupplierCommandHandler : IRequestHandler<UpdateSupplierComman
         if (request.Notes != null) supplier.Notes = request.Notes;
         if (request.IsActive.HasValue) supplier.IsActive = request.IsActive.Value;
 
+        // La fiche Fournisseurs envoie sa liste de services à chaque enregistrement ;
+        // elle était ignorée ici, si bien qu'une modification des services revenait
+        // à l'ancienne liste au rechargement. Absente (null) = inchangée.
+        if (request.Services != null)
+            await SupplierServiceCodes.RemplacerAsync(_context, supplier.Id, request.Services, cancellationToken);
+
         supplier.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(cancellationToken);

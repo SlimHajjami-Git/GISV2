@@ -4,9 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Costs;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Services;
 using MediatR;
 
@@ -140,7 +142,7 @@ public class CostsController : ControllerBase
     /// </summary>
     [HttpPost("scan-invoice")]
     [RequestSizeLimit(12_000_000)]
-    public async Task<IActionResult> ScanInvoice(IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> ScanInvoice(IFormFile? file, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "Aucun fichier reçu." });
@@ -279,6 +281,12 @@ public class CostsController : ControllerBase
                 // dans le panneau de détail de la dépense.
                 c.ReceiptUrl,
                 c.DetailsJson,
+                // Détail d'un plein : l'écran Coûts modifie par PUT, qui remplace ces
+                // colonnes par ce qu'il reçoit. Absentes de la liste, elles repartaient
+                // à null et la modification d'un plein effaçait ses litres et son prix au litre.
+                c.FuelType,
+                c.Liters,
+                c.PricePerLiter,
                 c.CreatedAt,
                 // Calypso 7 — link to the accident timeline that produced
                 // this cost (Phase 5 repair / Phase 6 insurance refund).
@@ -325,19 +333,29 @@ public class CostsController : ControllerBase
         if (scope is not null)
             scoped = scoped.Where(c => scope.Contains(c.VehicleId));
 
-        var costs = await scoped
+        var byType = await scoped
             .GroupBy(c => c.Type)
             .Select(g => new
             {
                 Type = g.Key,
                 Total = g.Sum(c => c.Amount),
-                Count = g.Count()
+                Count = g.Count(),
+                Liters = g.Sum(c => c.Liters ?? 0m)
             })
             .ToListAsync(ct);
 
-        var totalFuel = await scoped
-            .Where(c => c.Type == "fuel")
-            .SumAsync(c => c.Liters ?? 0, ct);
+        // Avoir fournisseur et remboursement d'assurance : stockés en positif, ce sont
+        // des crédits (décision du 16/09/2026). La somme brute les AJOUTAIT au total,
+        // qui contredisait alors l'écran Dépenses, le tableau de bord et les rapports.
+        var costs = byType
+            .Select(t => new { t.Type, Total = VehicleCostCategory.SignedAmount(t.Type, t.Total), t.Count })
+            .ToList();
+
+        // Litres des pleins selon la ventilation des rapports : un plein ancien « carburant »
+        // est du carburant là-bas, la comparaison au seul code « fuel » l'ignorait ici.
+        var totalFuel = byType
+            .Where(t => VehicleCostCategory.IsFuel(t.Type))
+            .Sum(t => t.Liters);
 
         return Ok(new
         {
@@ -353,6 +371,14 @@ public class CostsController : ControllerBase
     {
         var companyId = GetCompanyId();
         var userId = GetUserId();
+
+        // Catégorie hors liste refusée (DEF-040) : « xyz » était enregistré et devenait
+        // une catégorie fantôme dans le résumé et les rapports. Un synonyme connu est
+        // enregistré sous son code, pour être ventilé comme lui.
+        var type = VehicleCostRules.StoredType(cost.Type);
+        if (type is null)
+            return BadRequest(new { message = VehicleCostRules.UnknownTypeMessage(cost.Type) });
+        cost.Type = type;
 
         // Portée véhicules en ÉCRITURE : le véhicule visé doit exister dans la
         // société ET être visible par l'appelant. Sans ce contrôle, un employé
@@ -377,6 +403,11 @@ public class CostsController : ControllerBase
         {
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }
+
+        // Montant nul ou négatif refusé (DEF-050) : -50 était enregistré et venait en
+        // déduction de tous les totaux sans être identifiable comme un remboursement.
+        if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
+            return BadRequest(new { message = amountError });
 
         _context.VehicleCosts.Add(cost);
         await _context.SaveChangesAsync(ct);
@@ -415,7 +446,22 @@ public class CostsController : ControllerBase
         if (cost == null)
             return NotFound();
 
-        cost.Type = updated.Type;
+        // Même liste que la création (DEF-040), sauf pour une catégorie ancienne
+        // laissée telle quelle : une ligne historique hors liste reste modifiable, et
+        // sa catégorie n'est pas réécrite sans que l'utilisateur l'ait changée.
+        var type = string.Equals(updated.Type, cost.Type, StringComparison.Ordinal)
+            ? cost.Type
+            : VehicleCostRules.StoredType(updated.Type);
+        if (type is null)
+            return BadRequest(new { message = VehicleCostRules.UnknownTypeMessage(updated.Type) });
+
+        // Montant recalculé seulement si les litres ou le prix au litre changent : les deux
+        // colonnes sont arrondies au centime, et un plein créé à 45,678 L × 2,205 (100,72)
+        // relu à 45,68 × 2,21 donnait 100,95 — renvoyer le plein tel quel pour corriger sa
+        // description en aurait changé le montant.
+        var fuelDetailChanged = updated.Liters != cost.Liters || updated.PricePerLiter != cost.PricePerLiter;
+
+        cost.Type = type;
         cost.Description = updated.Description;
         cost.Amount = updated.Amount;
         cost.Date = updated.Date;
@@ -426,11 +472,15 @@ public class CostsController : ControllerBase
         cost.Liters = updated.Liters;
         cost.PricePerLiter = updated.PricePerLiter;
 
-        // Recalculate for fuel
-        if (cost.Type == "fuel" && cost.Liters.HasValue && cost.PricePerLiter.HasValue)
+        if (fuelDetailChanged && VehicleCostCategory.IsFuel(cost.Type)
+            && cost.Liters.HasValue && cost.PricePerLiter.HasValue)
         {
             cost.Amount = cost.Liters.Value * cost.PricePerLiter.Value;
         }
+
+        // Même contrôle que la création (DEF-050) ; rien n'est enregistré en cas de refus.
+        if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
+            return BadRequest(new { message = amountError });
 
         await _context.SaveChangesAsync(ct);
 

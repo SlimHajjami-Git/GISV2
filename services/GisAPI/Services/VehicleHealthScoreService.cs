@@ -1,4 +1,7 @@
+using System.Globalization;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Documents;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -77,10 +80,12 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         var sixMonthsAgo = now.AddMonths(-6);
         var thirtyDaysAgo = now.AddDays(-30);
 
-        // 1 requête : entretiens par (véhicule, statut).
+        // 1 requête : entretiens par (véhicule, statut). Un échéancier en pause ou d'un
+        // gabarit désactivé n'est plus recalculé : son statut reste figé (souvent « overdue »)
+        // et retirait des points au score. Même périmètre que /vehicle-maintenance/stats.
         var schedRows = await context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => vehicleIds.Contains(s.VehicleId))
+            .Where(s => vehicleIds.Contains(s.VehicleId) && !s.IsPaused && s.Template!.IsActive)
             .GroupBy(s => new { s.VehicleId, s.Status })
             .Select(g => new { g.Key.VehicleId, g.Key.Status, Count = g.Count() })
             .ToListAsync(ct);
@@ -88,10 +93,13 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             .GroupBy(x => x.VehicleId)
             .ToDictionary(g => g.Key, g => g.ToDictionary(x => x.Status ?? "", x => x.Count));
 
-        // 1 requête : réparations des 6 derniers mois par véhicule.
+        // 1 requête : réparations des 6 derniers mois par véhicule. Une réparation annulée
+        // n'a pas eu lieu : comptée, elle retirait des points « Réparations » et pouvait
+        // classer le véhicule « à surveiller ». Casse et espaces ignorés (statuts anciens).
         var repairCounts = (await context.Repairs
             .AsNoTracking()
-            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= sixMonthsAgo)
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= sixMonthsAgo
+                     && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .GroupBy(r => r.VehicleId)
             .Select(g => new { VehicleId = g.Key, Count = g.Count() })
             .ToListAsync(ct))
@@ -125,7 +133,7 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
 
         var schedules = await context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.VehicleId == vehicle.Id)
+            .Where(s => s.VehicleId == vehicle.Id && !s.IsPaused && s.Template!.IsActive)
             .Select(s => s.Status)
             .ToListAsync(ct);
         var statusCounts = schedules
@@ -133,9 +141,11 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             .ToDictionary(g => g.Key, g => g.Count());
 
         var sixMonthsAgo = now.AddMonths(-6);
+        // Même périmètre que le calcul de flotte : réparations annulées exclues.
         var recentRepairs = await context.Repairs
             .AsNoTracking()
-            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo)
+            .Where(r => r.VehicleId == vehicle.Id && r.RepairDate >= sixMonthsAgo
+                     && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .CountAsync(ct);
 
         var thirtyDaysAgo = now.AddDays(-30);
@@ -189,21 +199,7 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         factors.Add(new HealthFactor { Name = "Réparations", Score = repairScore, MaxScore = 20, Detail = $"{recentRepairs} en 6 mois" });
 
         // ═══ FACTOR 3: Document Validity (15 pts) ═══
-        int docScore = 15;
-        var in30Days = now.AddDays(30);
-
-        if (vehicle.InsuranceExpiry.HasValue)
-        {
-            if (vehicle.InsuranceExpiry.Value < now) { docScore -= 5; result.Warnings.Add("Assurance expirée"); }
-            else if (vehicle.InsuranceExpiry.Value < in30Days) { docScore -= 2; result.Warnings.Add($"Assurance expire le {vehicle.InsuranceExpiry.Value:dd/MM/yyyy}"); }
-        }
-        if (vehicle.TechnicalInspectionExpiry.HasValue)
-        {
-            if (vehicle.TechnicalInspectionExpiry.Value < now) { docScore -= 5; result.Warnings.Add("Contrôle technique expiré"); }
-            else if (vehicle.TechnicalInspectionExpiry.Value < in30Days) { docScore -= 2; result.Warnings.Add($"Contrôle technique expire le {vehicle.TechnicalInspectionExpiry.Value:dd/MM/yyyy}"); }
-        }
-        if (vehicle.TaxExpiry.HasValue && vehicle.TaxExpiry.Value < now) { docScore -= 3; result.Warnings.Add("Vignette expirée"); }
-        docScore = Math.Max(0, docScore);
+        var docScore = DocumentScore(vehicle, now, result.Warnings);
         factors.Add(new HealthFactor { Name = "Documents", Score = docScore, MaxScore = 15, Detail = docScore == 15 ? "Tous à jour" : "À vérifier" });
 
         // ═══ FACTOR 4: Alerts & Driving Behavior (20 pts) ═══
@@ -243,4 +239,33 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
 
         return result;
     }
+
+    /// <summary>
+    /// Points « Documents » (sur 15) et avertissements associés. Statut en jours
+    /// calendaires UTC (<see cref="ExpiryCalendar"/>), comme l'écran Échéances : la
+    /// comparaison d'instants retirait les points d'un document « expiré » dès le
+    /// jour même de son échéance, et la date avertie pouvait tomber au lendemain.
+    /// </summary>
+    internal static int DocumentScore(Vehicle vehicle, DateTime now, List<string> warnings)
+    {
+        var today = now.Date;
+        int docScore = 15;
+
+        switch (ExpiryCalendar.Status(vehicle.InsuranceExpiry, today))
+        {
+            case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Assurance expirée"); break;
+            case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Assurance expire le {ExpiryDay(vehicle.InsuranceExpiry!.Value)}"); break;
+        }
+        switch (ExpiryCalendar.Status(vehicle.TechnicalInspectionExpiry, today))
+        {
+            case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Contrôle technique expiré"); break;
+            case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Contrôle technique expire le {ExpiryDay(vehicle.TechnicalInspectionExpiry!.Value)}"); break;
+        }
+        if (ExpiryCalendar.Status(vehicle.TaxExpiry, today) == ExpiryCalendar.Expired) { docScore -= 3; warnings.Add("Vignette expirée"); }
+
+        return Math.Max(0, docScore);
+    }
+
+    private static string ExpiryDay(DateTime expiry) =>
+        ExpiryCalendar.Day(expiry).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
 }

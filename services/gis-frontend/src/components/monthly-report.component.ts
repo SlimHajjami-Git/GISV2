@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
-import { ApiService, MonthlyFleetReport, MonthlyCostReport, DepartmentCostGroup, ChartData, MultiSeriesChartData, Kpi, FleetAlert } from '../services/api.service';
+import { ApiService, MonthlyFleetReport, MonthlyCostReport, DepartmentCostGroup, ChartData, MultiSeriesChartData, Kpi, FleetAlert, ComparisonMetric } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent } from './shared/ui';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
@@ -104,6 +104,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     this.apiService.getMonthlyFleetReport(this.selectedYear, this.selectedMonth).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.report = data;
+        this.comparaisonMoisPrecedent = this.construireComparaisonMoisPrecedent(data);
         this.loading = false;
         setTimeout(() => this.createCharts(), 100);
       },
@@ -147,7 +148,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
         this.createLineChart('distanceTrend', this.distanceTrendChartRef, this.report.charts.dailyDistanceTrend);
         break;
       case 'costs':
-        this.createPieChart('costDistribution', this.costDistributionChartRef, this.report.charts.costDistribution);
+        this.createPieChart('costDistribution', this.costDistributionChartRef, this.positiveSlices(this.report.charts.costDistribution));
         break;
       case 'maintenance':
         this.createBarChart('maintenanceCost', this.maintenanceCostChartRef, this.report.charts.maintenanceCostByType);
@@ -156,6 +157,27 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
         this.createBarChart('driverRanking', this.driverRankingChartRef, this.report.charts.driverRanking);
         break;
     }
+  }
+
+  /**
+   * Parts strictement positives d'un camembert. Un avoir fournisseur ou un remboursement
+   * d'assurance arrive en montant NÉGATIF (crédit déduit) : Chart.js le dessinait en valeur
+   * absolue, comme une dépense de plus. Même règle que le donut de reports.component ; le
+   * tableau « Répartition par catégorie » garde la ligne et le total net. Chaque part
+   * garde la couleur de son rang d'origine.
+   */
+  private positiveSlices(data: ChartData): ChartData {
+    if (!data?.values) return data;
+    const palette = data.colors?.length ? data.colors : ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+    const kept = data.values
+      .map((value, i) => ({ value: Number(value) || 0, label: data.labels[i], color: palette[i % palette.length] }))
+      .filter(s => s.value > 0);
+    return {
+      ...data,
+      labels: kept.map(s => s.label),
+      values: kept.map(s => s.value),
+      colors: kept.map(s => s.color)
+    };
   }
 
   private destroyCharts() {
@@ -287,6 +309,37 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     this.charts.set(id, chart);
   }
 
+  /** Libellé des indicateurs que seul un boîtier GPS mesure. */
+  readonly nonDisponible = 'Non disponible sans boîtier';
+
+  /**
+   * Parc d'au moins un véhicule, aucun équipé (offre GPA) : l'API rend null pour
+   * l'utilisation, les trajets, les heures de conduite et le score des conducteurs.
+   * L'écran les affichait à 0, lus comme des mesures (« 0 jour d'activité, 31
+   * jours d'inactivité ») à côté d'un kilométrage de plusieurs milliers de km.
+   */
+  get sansBoitier(): boolean {
+    return !!this.report && !this.report.fleetHasGps && this.report.fleetOverview.totalVehicles > 0;
+  }
+
+  /**
+   * Comparaison au mois précédent ; une métrique null n'est pas mesurée sans boîtier.
+   * Calculée une fois au chargement : en getter, elle rendait un nouveau tableau à
+   * chaque détection de changements et *ngFor recréait les quatre cartes à chaque fois.
+   */
+  comparaisonMoisPrecedent: { nom: string; metrique: ComparisonMetric | null }[] = [];
+
+  private construireComparaisonMoisPrecedent(report: MonthlyFleetReport): { nom: string; metrique: ComparisonMetric | null }[] {
+    const mom = report.monthOverMonth;
+    if (!mom) return [];
+    return [
+      { nom: 'Distance', metrique: mom.distance },
+      { nom: 'Carburant', metrique: mom.fuelConsumption },
+      { nom: 'Trajets', metrique: mom.trips ?? null },
+      { nom: 'Utilisation', metrique: mom.utilization ?? null }
+    ];
+  }
+
   // Helper methods
   getKpiStatus(kpi: Kpi): string {
     return kpi.status === 'OnTarget' ? 'success' : kpi.status === 'Above' ? 'warning' : 'danger';
@@ -308,7 +361,9 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     }
   }
 
-  formatNumber(value: number, decimals = 0): string {
+  // null = non mesuré (parc sans boîtier) : « — », jamais une exception ni un 0.
+  formatNumber(value: number | null | undefined, decimals = 0): string {
+    if (value == null) return '—';
     return value.toLocaleString('fr-FR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
   }
 
@@ -316,7 +371,18 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     return this.userPrefs.formatCurrency(value);
   }
 
-  formatPercent(value: number): string {
+  /**
+   * Unité d'un KPI telle que l'écran l'affiche. L'API la libelle dans la devise de la
+   * société (« EUR/km ») ; on la rend avec le même symbole que les montants voisins
+   * (« €/km »), qui passent par formatCurrency. Les autres unités (%, L/100km) restent.
+   */
+  uniteAffichee(unit: string | null | undefined): string {
+    if (!unit) return '';
+    return unit.replace(/^([A-Z]{3})(?=\/|$)/, code => UserPreferencesService.currencySymbol(code));
+  }
+
+  formatPercent(value: number | null | undefined): string {
+    if (value == null) return '—';
     return value.toFixed(1) + '%';
   }
 
@@ -350,7 +416,9 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     csv += `Distance totale (km),${this.report.executiveSummary.totalDistanceKm}\n`;
     csv += `Carburant consommé (L),${this.report.executiveSummary.totalFuelConsumedLiters}\n`;
     csv += `Coût opérationnel total,${this.report.executiveSummary.totalOperationalCost}\n`;
-    csv += `Taux d'utilisation,${this.report.executiveSummary.fleetUtilizationRate}%\n\n`;
+    csv += this.sansBoitier
+      ? `Taux d'utilisation,${this.nonDisponible}\n\n`
+      : `Taux d'utilisation,${this.report.executiveSummary.fleetUtilizationRate}%\n\n`;
 
     // Vehicle Utilization
     csv += 'UTILISATION PAR VÉHICULE\n';

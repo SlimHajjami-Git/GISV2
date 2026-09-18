@@ -26,11 +26,20 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
         // scope == null => administrateur de société : aucun filtre supplémentaire.
         var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
 
+        // « critical » est plus urgent que « due » : il sortait pourtant de cette
+        // liste (filtre limité à overdue/due) pendant que les statistiques le
+        // comptaient avec « due », si bien qu'un entretien critique restait
+        // invisible jusqu'à son dépassement (recette GPA, DEF-013).
+        // Même périmètre que GetMaintenanceStatsQueryHandler : ni pause, ni modèle
+        // désactivé — le recalcul des statuts les ignore, leur statut est figé.
         var query = _context.VehicleMaintenanceSchedules
             .Include(s => s.Template)
             .Include(s => s.Vehicle)
                 .ThenInclude(v => v!.GpsDevice)
-            .Where(s => s.CompanyId == companyId && (s.Status == "overdue" || s.Status == "due"));
+            .Where(s => s.CompanyId == companyId
+                     && !s.IsPaused
+                     && s.Template!.IsActive
+                     && (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"));
 
         if (scope is not null)
             query = query.Where(s => scope.Contains(s.VehicleId));
@@ -89,7 +98,7 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
                 daysUntilDue
             );
         })
-        .OrderBy(i => i.Status == "overdue" ? 0 : 1)
+        .OrderBy(i => i.Status == "overdue" ? 0 : i.Status == "critical" ? 1 : 2)
         .ThenBy(i => i.DaysUntilDue ?? int.MaxValue)
         .ToList();
     }
@@ -115,8 +124,11 @@ public class GetMaintenanceStatsQueryHandler : IRequestHandler<GetMaintenanceSta
         // pas. La restriction est appliquée AVANT l'agrégation.
         var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, cancellationToken);
 
+        // Modèle désactivé exclu, comme dans /alerts : un modèle qu'on ne peut plus
+        // supprimer parce qu'il a un historique se désactive, et ne doit plus
+        // peser sur les compteurs.
         var query = _context.VehicleMaintenanceSchedules
-            .Where(s => !s.IsPaused && s.CompanyId == companyId);
+            .Where(s => !s.IsPaused && s.CompanyId == companyId && s.Template!.IsActive);
 
         if (scope is not null)
             query = query.Where(s => scope.Contains(s.VehicleId));
@@ -326,9 +338,12 @@ public class GetMaintenanceLogsQueryHandler : IRequestHandler<GetMaintenanceLogs
         if (request.TemplateId.HasValue)
             query = query.Where(l => l.TemplateId == request.TemplateId.Value);
 
+        // Pas de plafond : cette liste est TOUT l'historique de la modale et la
+        // base de son total (écran et PDF). Tronquée à 50 lignes, elle faussait ce
+        // total sans aucun signal ; le volume reste borné par véhicule.
         var logs = await query
             .OrderByDescending(l => l.DoneDate)
-            .Take(50)
+            .ThenByDescending(l => l.Id)
             .ToListAsync(cancellationToken);
 
         return logs.Select(l => new MaintenanceLogDto(

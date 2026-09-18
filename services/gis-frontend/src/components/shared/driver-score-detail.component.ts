@@ -100,7 +100,7 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
               </div>
               <div class="ic-content">
-                <span class="ic-label">CIN</span>
+                <span class="ic-label">Pièce d'identité</span>
                 <span class="ic-value">{{ employee?.cin }}</span>
               </div>
             </div>
@@ -457,11 +457,18 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
     return Math.min(count * 5, 100);
   }
 
+  /** Jours calendaires UTC jusqu'à l'échéance du permis, comme /documents/expiries (DEF-035). */
+  private permitDaysLeft(permitExpiry: string | Date): number {
+    const expiry = new Date(permitExpiry);
+    const now = new Date();
+    const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.round((expiryDay - today) / (1000 * 60 * 60 * 24));
+  }
+
   getPermitStatusClass(): string {
     if (!this.employee?.permitExpiry) return 'ok';
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const expiry = new Date(this.employee.permitExpiry); expiry.setHours(0, 0, 0, 0);
-    const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const days = this.permitDaysLeft(this.employee.permitExpiry);
     if (days < 0) return 'expired';
     if (days <= 15) return 'critical';
     if (days <= 30) return 'warning';
@@ -470,9 +477,7 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
 
   getPermitDeadlineText(): string {
     if (!this.employee?.permitExpiry) return '';
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const expiry = new Date(this.employee.permitExpiry); expiry.setHours(0, 0, 0, 0);
-    const days = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const days = this.permitDaysLeft(this.employee.permitExpiry);
     if (days < 0) return 'Expiré';
     if (days === 0) return "Expire aujourd'hui";
     if (days <= 30) return `Expire dans ${days}j`;

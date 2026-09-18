@@ -91,7 +91,7 @@ export interface CompanyOption {
                 </div>
                 <div class="form-group">
                   <label for="plate">Plaque *</label>
-                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: ABC-1234" />
+                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" />
                 </div>
               </div>
 
@@ -247,7 +247,7 @@ export interface CompanyOption {
                   id="gpsSimNumberExisting"
                   name="gpsSimNumberExisting"
                   [(ngModel)]="formData.gpsSimNumber"
-                  placeholder="Ex: +216 50 123 456"
+                  placeholder="Ex: +33 6 12 34 56 78"
                 />
               </div>
               <div class="form-group">
@@ -282,7 +282,7 @@ export interface CompanyOption {
                   id="gpsSimNumber"
                   name="gpsSimNumber"
                   [(ngModel)]="formData.gpsSimNumber"
-                  placeholder="Ex: +216 50 123 456"
+                  placeholder="Ex: +33 6 12 34 56 78"
                 />
               </div>
 
@@ -1629,7 +1629,12 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       leasingMonthlyPayment: v.leasingMonthlyPayment ?? null,
       leasingDurationMonths: v.leasingDurationMonths ?? null,
       leasingStartDate: v.leasingStartDate ? String(v.leasingStartDate).substring(0, 10) : '',
-      leasingPaymentDay: v.leasingPaymentDay ?? null,
+      // Jour ancien hors 1..28 (un 31 était accepté) : la liste ne pouvait pas
+      // l'afficher alors que l'échéancier tombait déjà le 28. Ramené à la valeur
+      // réellement appliquée, que le serveur accepte.
+      leasingPaymentDay: v.leasingPaymentDay == null
+        ? null
+        : Math.min(Math.max(Number(v.leasingPaymentDay) || 1, 1), this.paymentDays.length),
       registrationDate: v.registrationDate ? String(v.registrationDate).substring(0, 10) : ''
     };
   }

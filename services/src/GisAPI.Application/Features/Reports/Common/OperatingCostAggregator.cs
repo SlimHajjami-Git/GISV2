@@ -73,6 +73,19 @@ public sealed class OperatingCostData
     public required IReadOnlyList<VehicleCostData> Vehicles { get; init; }
     public required IReadOnlyList<RepairRow> Repairs { get; init; }
 
+    /// <summary>
+    /// Taille du parc du rapport : société, portée de l'appelant et département,
+    /// AVANT le filtre véhicule. Filtré sur un véhicule, le rapport annonçait
+    /// « 1 véhicule sur 1 » au lieu de « 1 sur 12 » (recette du 16/09/2026).
+    /// </summary>
+    public required int FleetSize { get; init; }
+
+    /// <summary>
+    /// Au moins un véhicule de ce parc porte un boîtier. Sans boîtier (offre GPA),
+    /// parler de « trajets GPS » au client n'a pas de sens.
+    /// </summary>
+    public required bool FleetHasGps { get; init; }
+
     /// <summary>Tous les mois couverts par la période, dans l'ordre, mois vides compris.</summary>
     public IEnumerable<(int Year, int Month)> MonthsInRange()
     {
@@ -162,10 +175,10 @@ public static class OperatingCostAggregator
             vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
         if (departmentId.HasValue)
             vehiclesQuery = vehiclesQuery.Where(v => v.DepartmentId == departmentId.Value);
-        if (vehicleId.HasValue)
-            vehiclesQuery = vehiclesQuery.Where(v => v.Id == vehicleId.Value);
 
-        var vehicles = await vehiclesQuery
+        // Le parc est lu AVANT le filtre véhicule, qui s'applique en mémoire : sa
+        // taille et son équipement décrivent le périmètre, pas la sélection.
+        var fleet = await vehiclesQuery
             .OrderBy(v => v.Id)
             .Select(v => new
             {
@@ -179,6 +192,11 @@ public static class OperatingCostAggregator
             })
             .ToListAsync(ct);
 
+        var vehicles = vehicleId.HasValue
+            ? fleet.Where(v => v.Id == vehicleId.Value).ToList()
+            : fleet;
+        var fleetHasGps = fleet.Any(v => v.GpsDeviceId.HasValue);
+
         if (vehicles.Count == 0)
         {
             return new OperatingCostData
@@ -186,7 +204,9 @@ public static class OperatingCostAggregator
                 StartUtc = startUtc,
                 EndExclusiveUtc = endExclusiveUtc,
                 Vehicles = Array.Empty<VehicleCostData>(),
-                Repairs = Array.Empty<RepairRow>()
+                Repairs = Array.Empty<RepairRow>(),
+                FleetSize = fleet.Count,
+                FleetHasGps = fleetHasGps
             };
         }
 
@@ -371,7 +391,9 @@ public static class OperatingCostAggregator
             StartUtc = startUtc,
             EndExclusiveUtc = endExclusiveUtc,
             Vehicles = result,
-            Repairs = repairs
+            Repairs = repairs,
+            FleetSize = fleet.Count,
+            FleetHasGps = fleetHasGps
         };
     }
 

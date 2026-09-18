@@ -47,5 +47,7 @@ public record RepairStatsDto(
     decimal TotalCost,
     decimal AverageCost,
     decimal TotalLaborCost,
-    decimal TotalPartsCost
+    decimal TotalPartsCost,
+    // Annulées : comptées dans TotalRepairs, exclues des montants (comme les rapports).
+    int CancelledRepairs = 0
 );

@@ -17,9 +17,17 @@ public class VehicleCost : TenantEntity
     ///   <item><c>"insurance_refund"</c> — auto-inserted when an accident's
     ///     Phase 6 (insurance settlement) records an approved amount.
     ///     Rendered as a credit (green/negative) in the /depenses UI.</item>
+    ///   <item><c>"credit_note"</c> — avoir fournisseur (décision du 16/09/2026) :
+    ///     écran Dépenses, scan d'un avoir, import Excel.</item>
     /// </list>
     /// Existing values (fuel, maintenance, document renewal, …) remain
     /// unchanged — only new values are added.
+    ///
+    /// <para>CRÉDITS : <c>insurance_refund</c> et <c>credit_note</c> sont stockés en
+    /// <see cref="Amount"/> POSITIF (un montant ≤ 0 est refusé, DEF-050) et DÉDUITS des
+    /// coûts. Tout lecteur qui additionne des dépenses passe par
+    /// <c>VehicleCostCategory.SignedAmount</c> / <c>SignedTotalAsync</c> : une somme brute
+    /// de <see cref="Amount"/> ajoute le crédit au lieu de le retrancher.</para>
     /// </summary>
     public string Type { get; set; } = string.Empty;
     public string? Description { get; set; }
@@ -43,10 +51,27 @@ public class VehicleCost : TenantEntity
     public int? CreatedByUserId { get; set; }
     public User? CreatedByUser { get; set; }
 
-    // Document renewal fields
+    /// <summary>
+    /// Renouvellement de document (assurance, visite technique, vignette…) :
+    /// nouvelle échéance du document payé, fournisseur et notes saisis dans la
+    /// fenêtre de renouvellement. Colonnes <c>expiry_date</c>, <c>provider</c> et
+    /// <c>notes</c> ajoutées par la migration 047 — avant elles ces propriétés
+    /// n'avaient aucune colonne derrière et la saisie disparaissait sans message
+    /// (recette GPA du 11/09/2026). Null sur toute autre dépense.
+    /// </summary>
     public DateTime? ExpiryDate { get; set; }
-    public string? DocumentNumber { get; set; }
-    public string? DocumentUrl { get; set; }
+    public string? Provider { get; set; }
+    public string? Notes { get; set; }
+
+    /// <summary>
+    /// Numéro de pièce et justificatif d'un renouvellement : ce sont
+    /// <see cref="ReceiptNumber"/> et <see cref="ReceiptUrl"/>, les seules
+    /// colonnes de cette nature. Alias en LECTURE SEULE : tant qu'ils étaient des
+    /// propriétés autonomes, tout écran qui les lisait recevait null (écrans
+    /// Échéances compris) et tout code qui les écrivait perdait la saisie.
+    /// </summary>
+    public string? DocumentNumber => ReceiptNumber;
+    public string? DocumentUrl => ReceiptUrl;
 
     /// <summary>
     /// Calypso 7 — back-reference to the accident that produced this

@@ -35,6 +35,7 @@
         <option value="amende">⚠️ Amende</option>
         <option value="repair">🚧 Réparation accident</option>
         <option value="insurance_refund">💸 Remboursement assurance</option>
+        <option value="credit_note">🧾 Avoir fournisseur</option>
       </select>
       <input type="month" class="filter-month" [(ngModel)]="filterMonth" (change)="filterExpenses()">
       <!-- Échéances d'acquisition planifiées non échues : hors dépenses par
@@ -126,6 +127,9 @@
                   <select class="sm-input" [(ngModel)]="scan.category">
                     @for (c of scanCategories; track c.value) { <option [value]="c.value">{{ c.label }}</option> }
                   </select>
+                  @if (scanLeftCreditNote()) {
+                    <small class="sm-warn">Facture négative : hors « Avoir fournisseur », le montant compte comme une dépense.</small>
+                  }
                 </div>
                 <div class="sm-field">
                   <label class="sm-label">Date <span class="sm-req">*</span></label>
@@ -137,7 +141,15 @@
                     <input class="sm-input sm-input-amount" type="number" step="0.001" min="0" [(ngModel)]="scan.amount" placeholder="0.000">
                     <span class="sm-currency">{{ currencyCode }}</span>
                   </div>
+                  @if (scanAmountInvalid()) {
+                    <small class="sm-warn">Montant supérieur à zéro requis.</small>
+                  }
                 </div>
+                @if (scanIsDetectedCreditNote()) {
+                  <div class="sm-field sm-field-full">
+                    <small class="sm-warn">Facture négative détectée : enregistrée comme avoir fournisseur, déduite des coûts.</small>
+                  </div>
+                }
                 <div class="sm-field">
                   <label class="sm-label">Fournisseur</label>
                   <input class="sm-input" type="text" [(ngModel)]="scan.supplierName" placeholder="Garage, station, assureur…">
@@ -267,6 +279,11 @@
             @if (getNotCountedCount() > 0) {
               <span class="stat-hint">+ {{ getNotCountedCount() }} non comptée(s)</span>
             }
+            <!-- Historique plus long que ce que l'écran sait charger : le total
+                 affiché n'est qu'une partie, il faut le dire. -->
+            @if (listTruncated) {
+              <span class="stat-hint">liste tronquée — total partiel</span>
+            }
           </span>
         </div>
       </div>
@@ -314,6 +331,7 @@
                 <option value="peage">🛣️ Péage</option>
                 <option value="stationnement">🅿️ Stationnement</option>
                 <option value="amende">⚠️ Amende</option>
+                <option value="credit_note">🧾 Avoir fournisseur</option>
                 <option value="autre">📦 Autre</option>
               </select>
             </div>
@@ -478,7 +496,7 @@
               </button>
             </div>
             <div class="new-template-form" *ngIf="showCreateInsurance">
-              <input type="text" [(ngModel)]="newInsuranceName" placeholder="Nom de l'assureur (ex: STAR, GAT...)">
+              <input type="text" [(ngModel)]="newInsuranceName" placeholder="Nom de l'assureur (ex: AXA, Macif...)">
               <input type="text" [(ngModel)]="newInsurancePhone" placeholder="Téléphone">
               <button class="btn-add-line" (click)="createInsuranceProvider()">Créer</button>
             </div>
@@ -516,6 +534,7 @@
                 <input type="number" [(ngModel)]="formAmount" min="0" step="0.01">
               </div>
             </div>
+            <p class="xd-hint" *ngIf="selectedCategory === 'credit_note'">Montant en positif : l'avoir est déduit des coûts.</p>
           </div>
 
           <div class="form-row" *ngIf="selectedCategory === 'carburant' || selectedCategory === 'entretien'">
@@ -544,8 +563,8 @@
       </thead>
       <tbody>
         @for (e of filteredExpenses; track e.id) {
-          <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isRefund"
-              [class.pay-skipped]="e.paymentStatus === 'skipped'" [class.pay-future]="e.isFuture">
+          <tr [class.accident-linked]="e.accidentEventId" [class.refund]="e.isCredit"
+              [class.pay-skipped]="e.paymentStatus === 'skipped' || e.repairCancelled" [class.pay-future]="e.isFuture">
             <td>{{ e.date | date:'dd/MM/yyyy' }}</td>
             <td><span class="plate-badge">{{ e.vehiclePlate }}</span></td>
             <td>
@@ -557,13 +576,13 @@
                  class="accident-badge"
                  [routerLink]="['/rapport-accident', e.accidentEventId]"
                  (click)="$event.stopPropagation()"
-                 [title]="e.isRefund ? 'Remboursement assurance — voir le rapport' : 'Réparation après accident — voir le rapport'">
+                 [title]="e.category === 'insurance_refund' ? 'Remboursement assurance — voir le rapport' : 'Réparation après accident — voir le rapport'">
                 🚗 Accident #{{ e.accidentEventId }}
               </a>
             </td>
             <td class="label-cell">
               {{ e.label }}
-              <!-- Échéance d'acquisition : statut de paiement (règle serveur). -->
+              <!-- Échéance d'acquisition : statut de paiement (règle serveur) ; réparation annulée : « Annulée », hors totaux. -->
               @if (paymentBadge(e); as badge) {
                 <span class="pay-badge {{ badge.cls }}" [title]="e.note || ''">{{ badge.text }}</span>
               }
@@ -573,8 +592,8 @@
                 </a>
               }
             </td>
-            <td class="total-cell" [class.refund-amount]="e.isRefund">
-              {{ e.isRefund ? '−' : '' }}{{ e.totalAmount | appCurrency }}
+            <td class="total-cell" [class.refund-amount]="e.isCredit">
+              {{ e.isCredit ? '−' : '' }}{{ displayedAmount(e) | appCurrency }}
             </td>
             <td class="actions-cell">
               <button class="btn-action detail" (click)="openDetailPanel(e); $event.stopPropagation()" title="Détail dépense">
@@ -653,9 +672,9 @@
     </div>
     <div class="slide-panel-body xd-body" *ngIf="detailExpense">
       <!-- En-tête : catégorie + montant + méta -->
-      <div class="xd-hero" [class.xd-hero-refund]="detailExpense.isRefund">
+      <div class="xd-hero" [class.xd-hero-refund]="detailExpense.isCredit">
         <span class="xd-cat">{{ getCategoryIcon(detailExpense.category) }} {{ getCategoryLabel(detailExpense.category) }}</span>
-        <div class="xd-amount">{{ detailExpense.totalAmount | appCurrency }}</div>
+        <div class="xd-amount">{{ detailExpense.isCredit ? '−' : '' }}{{ displayedAmount(detailExpense) | appCurrency }}</div>
         <div class="xd-hero-meta">
           <span class="xd-pill">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -715,6 +734,11 @@
           <span class="xd-row-label">Source</span>
           <span class="xd-row-value">{{ detailExpense.sourceTable === 'fuelentries' ? 'Entrée carburant' : detailExpense.sourceTable === 'repairs' ? 'Réparation' : detailExpense.sourceTable === 'acquisition_payment' ? 'Échéance d\'acquisition' : 'Coût véhicule' }}</span>
         </div>
+        <div class="xd-row" *ngIf="detailExpense.repairCancelled">
+          <span class="xd-row-label">Statut</span>
+          <span class="xd-row-value"><span class="pay-badge skipped">Annulée</span></span>
+        </div>
+        <p class="xd-hint" *ngIf="detailExpense.repairCancelled">Réparation annulée : exclue des totaux et des rapports de coûts.</p>
       </div>
 
       <!-- Échéance d'acquisition : statut et paiement -->

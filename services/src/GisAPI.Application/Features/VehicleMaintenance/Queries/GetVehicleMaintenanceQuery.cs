@@ -35,7 +35,11 @@ public record MaintenanceItemDto(
     int FreeUsesRemaining = 0,
     string? FreeSource = null,
     DateTime? FreeExpiryDate = null,
-    string? FreeNotes = null
+    string? FreeNotes = null,
+    // Échéancier en pause : son statut n'est plus recalculé et reste figé. Sans ce
+    // drapeau, l'écran Entretiens comptait dans « Urgents » un statut que /alerts et
+    // /stats ignorent déjà (recette GPA, DEF-042).
+    bool IsPaused = false
 );
 
 public record MaintenanceStatsDto(

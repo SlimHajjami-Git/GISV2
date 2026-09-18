@@ -80,7 +80,7 @@ public class AcquisitionPaymentsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/receipt")]
     [RequestSizeLimit(12_000_000)]
-    public async Task<IActionResult> UploadReceipt(int id, IFormFile file, CancellationToken ct)
+    public async Task<IActionResult> UploadReceipt(int id, IFormFile? file, CancellationToken ct)
     {
         if (file == null || file.Length == 0)
             return BadRequest(new { message = "Aucun fichier reçu." });

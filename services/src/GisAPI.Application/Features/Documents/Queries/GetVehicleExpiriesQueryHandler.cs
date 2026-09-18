@@ -54,34 +54,28 @@ public class GetVehicleExpiriesQueryHandler : IRequestHandler<GetVehicleExpiries
         AddExpiry(expiries, vehicle, "registration", vehicle.RegistrationExpiry, today, costs);
         AddExpiry(expiries, vehicle, "transport_permit", vehicle.TransportPermitExpiry, today, costs);
 
-        return expiries.OrderBy(e => e.DaysUntilExpiry).ToList();
+        // Même ordre que la liste des échéances : les non renseignées (-1 jour) en fin.
+        return expiries
+            .OrderBy(e => ExpiryCalendar.StatusRank(e.Status))
+            .ThenBy(e => e.DaysUntilExpiry)
+            .ToList();
     }
 
     private void AddExpiry(List<VehicleExpiryDto> expiries, Domain.Entities.Vehicle vehicle,
         string type, DateTime? expiryDate, DateTime today, List<Domain.Entities.VehicleCost> costs)
     {
-        var daysUntil = expiryDate.HasValue
-            ? (int)(expiryDate.Value.Date - today).TotalDays
-            : int.MaxValue;
-
-        var status = expiryDate switch
-        {
-            null => "unknown",
-            _ when expiryDate.Value.Date < today => "expired",
-            _ when daysUntil <= 30 => "expiring_soon",
-            _ => "ok"
-        };
-
         var lastRenewal = costs.FirstOrDefault(c => c.Type == type);
 
+        // Jours calendaires (ExpiryCalendar) : l'heure stockée ne décale ni le
+        // compte ni la date affichée.
         expiries.Add(new VehicleExpiryDto(
             vehicle.Id,
             vehicle.Name,
             vehicle.Plate,
             type,
-            expiryDate,
-            status,
-            daysUntil == int.MaxValue ? -1 : daysUntil,
+            ExpiryCalendar.Day(expiryDate),
+            ExpiryCalendar.Status(expiryDate, today),
+            expiryDate.HasValue ? ExpiryCalendar.DaysUntil(expiryDate.Value, today) : -1,
             lastRenewal?.Date,
             lastRenewal?.Amount,
             lastRenewal?.DocumentNumber

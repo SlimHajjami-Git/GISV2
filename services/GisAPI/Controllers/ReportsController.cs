@@ -19,6 +19,7 @@ using GisAPI.Application.Features.Reports.Queries.GetOperatingCostReport;
 using GisAPI.Application.Features.Reports.Queries.GetVehicleCostEvolution;
 using GisAPI.Application.Features.Reports.Queries.GetVehicleCostRanking;
 using GisAPI.Application.Features.Reports.Queries.GetRepairFrequencyReport;
+using GisAPI.Application.Features.Reports.Common;
 
 namespace GisAPI.Controllers;
 
@@ -43,6 +44,16 @@ public class ReportsController : ControllerBase
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+
+    // Libellés français : les rapports répondaient « Vehicle not found » au milieu
+    // d'une API en français (recette du 16/09/2026).
+    private NotFoundObjectResult VehiculeIntrouvable() =>
+        NotFound(new { message = VehiculeIntrouvableException.Libelle });
+
+    // Même refus que le tableau de bord GPA : une période inversée rendait un
+    // rapport vide, indiscernable d'une période sans activité.
+    private BadRequestObjectResult PeriodeInversee() =>
+        BadRequest(new { message = ReportRequestRules.InvertedPeriodMessage });
 
     /// <summary>Active/desactive l'envoi du rapport journalier par email pour l'utilisateur courant.</summary>
     [HttpPut("daily-fleet-report/preference")]
@@ -431,7 +442,7 @@ public class ReportsController : ControllerBase
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetDailyActivityReportQuery(
             vehicleId,
@@ -475,6 +486,11 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
+
         var companyId = GetCompanyId();
 
         // Verify vehicle belongs to company
@@ -482,10 +498,7 @@ public class ReportsController : ControllerBase
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
-
-        var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
-        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetMileageReportQuery(vehicleId, start, end));
 
@@ -503,6 +516,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetMileageReportsQuery(start, end, vehicleIds));
 
@@ -557,16 +572,18 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? endDate = null,
         [FromQuery] int minStopDurationSeconds = 60)
     {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
+
         var companyId = GetCompanyId();
 
         var vehicleExists = await _context.Vehicles
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
-
-        var start = startDate?.Date ?? DateTime.UtcNow.Date;
-        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetStopsReportQuery(
             vehicleId, start, end, minStopDurationSeconds));
@@ -586,6 +603,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date;
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetStopsReportAllVehiclesQuery(
             start, end, vehicleIds, minStopDurationSeconds));
@@ -604,16 +623,18 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        var start = startDate?.Date ?? DateTime.UtcNow.Date;
+        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
+
         var companyId = GetCompanyId();
 
         var vehicleExists = await _context.Vehicles
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
-
-        var start = startDate?.Date ?? DateTime.UtcNow.Date;
-        var end = endDate?.Date ?? DateTime.UtcNow.Date;
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetTripsReportQuery(
             vehicleId, start, end));
@@ -632,6 +653,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date;
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetTripsReportAllVehiclesQuery(
             start, end, vehicleIds));
@@ -654,15 +677,6 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? endDate = null,
         [FromQuery] string periodType = "day")
     {
-        var companyId = GetCompanyId();
-
-        // Verify vehicle belongs to company
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
-
-        if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
-
         // Parse period type
         var period = periodType.ToLower() switch
         {
@@ -691,6 +705,18 @@ public class ReportsController : ControllerBase
         {
             start = DateTime.UtcNow.Date.AddMonths(-12);
         }
+
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
+
+        var companyId = GetCompanyId();
+
+        // Verify vehicle belongs to company
+        var vehicleExists = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+
+        if (!vehicleExists)
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetMileagePeriodReportQuery(vehicleId, start, end, period));
 
@@ -757,6 +783,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetOperatingCostReportQuery(start, end, vehicleId, departmentId));
         return Ok(result);
@@ -769,6 +797,12 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        var today = DateTime.UtcNow.Date;
+        var start = startDate?.Date ?? new DateTime(today.Year, today.Month, 1).AddMonths(-11);
+        var end = endDate?.Date ?? today;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
+
         var companyId = GetCompanyId();
 
         // Verify vehicle belongs to company
@@ -776,17 +810,13 @@ public class ReportsController : ControllerBase
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (!vehicleExists)
-            return NotFound(new { message = "Vehicle not found" });
-
-        var today = DateTime.UtcNow.Date;
-        var start = startDate?.Date ?? new DateTime(today.Year, today.Month, 1).AddMonths(-11);
-        var end = endDate?.Date ?? today;
+            return VehiculeIntrouvable();
 
         var result = await _mediator.Send(new GetVehicleCostEvolutionQuery(vehicleId, start, end));
         return Ok(result);
     }
 
-    /// <summary>R3 — Top N des véhicules les plus coûteux au km (KPI sur tout le parc).</summary>
+    /// <summary>R3 — Top N des véhicules les plus coûteux, par coût total (KPI sur tout le parc).</summary>
     [HttpGet("costs/ranking")]
     public async Task<ActionResult<OperatingCostReportDto>> GetVehicleCostRanking(
         [FromQuery] DateTime? startDate = null,
@@ -796,6 +826,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetVehicleCostRankingQuery(start, end, top, departmentId));
         return Ok(result);
@@ -811,6 +843,8 @@ public class ReportsController : ControllerBase
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date.AddDays(-30);
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
+        if (ReportRequestRules.IsInverted(start, end))
+            return PeriodeInversee();
 
         var result = await _mediator.Send(new GetRepairFrequencyReportQuery(start, end, vehicleId, departmentId));
         return Ok(result);

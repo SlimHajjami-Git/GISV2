@@ -122,7 +122,7 @@ import { environment } from '../../environments/environment';
               <h3>Alert Recipients</h3>
               <div class="form-group">
                 <label>Admin Email Recipients</label>
-                <textarea [(ngModel)]="settings.alertEmails" rows="3" placeholder="admin@Calypso.tn&#10;support@Calypso.tn"></textarea>
+                <textarea [(ngModel)]="settings.alertEmails" rows="3" placeholder="admin@exemple.fr&#10;support@exemple.fr"></textarea>
                 <span class="form-hint">One email per line</span>
               </div>
             </div>
@@ -656,7 +656,7 @@ export class AdminSettingsComponent implements OnInit {
 
   settings = {
     platformName: 'Calypso',
-    supportEmail: 'support@Calypso.tn',
+    supportEmail: 'support@exemple.fr',
     defaultLanguage: 'fr',
     defaultTimezone: 'Africa/Tunis',
     sessionTimeout: 60,
@@ -666,7 +666,7 @@ export class AdminSettingsComponent implements OnInit {
     notifyServiceDown: true,
     notifyPayment: true,
     notifySubscriptionExpiry: true,
-    alertEmails: 'admin@Calypso.tn\nsupport@Calypso.tn',
+    alertEmails: 'admin@exemple.fr\nsupport@exemple.fr',
 
     minPasswordLength: 8,
     passwordExpiry: 90,
@@ -679,9 +679,10 @@ export class AdminSettingsComponent implements OnInit {
     invoicePrefix: 'INV-',
     paymentTerms: 30,
     companyName: 'Calypso Technology',
-    companyAddress: '123 Tech Avenue\nTunis, Tunisia 1000',
-    taxId: 'TN12345678',
-    companyPhone: '+216 71 123 456',
+    // Valeurs de démonstration : l'offre vise l'export, ces exemples doivent rester français.
+    companyAddress: '12 rue de la République\n69003 Lyon, France',
+    taxId: 'FR12345678901',
+    companyPhone: '+33 1 23 45 67 89',
 
     rateLimit: 100,
     burstLimit: 50,

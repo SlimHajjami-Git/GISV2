@@ -1,4 +1,6 @@
+using System.Globalization;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Documents;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -85,12 +87,61 @@ public class PredictiveAlertService : BackgroundService
         _ => null
     };
 
+    /// <summary>Sous ce nombre de jours restants (inclus), le rappel d'échéance est urgent.</summary>
+    internal const int UrgentExpiryDays = 15;
+
+    /// <summary>
+    /// Jours restants et priorité d'une échéance, ou null au-delà de
+    /// <see cref="ExpiryCalendar.ExpiringSoonDays"/>. Jours calendaires UTC
+    /// (<see cref="ExpiryCalendar"/>), comme l'écran Échéances : la comparaison
+    /// d'instants tronquait les jours (« expire dans 6 jours » quand l'écran en
+    /// affichait 7) et déclarait expiré un document le jour même de son échéance.
+    /// </summary>
+    internal static (int Days, string Priority)? ExpiryUrgency(DateTime expiry, DateTime todayUtc)
+    {
+        var days = ExpiryCalendar.DaysUntil(expiry, todayUtc);
+        if (days > ExpiryCalendar.ExpiringSoonDays) return null;
+        return (days, days <= UrgentExpiryDays ? "urgent" : "normal");
+    }
+
+    internal static (string Message, string Priority)? DocumentExpiryAlert(
+        string name, string vehicleName, string? plate, DateTime expiry, DateTime todayUtc)
+    {
+        if (ExpiryUrgency(expiry, todayUtc) is not { } urgency) return null;
+        var (days, priority) = urgency;
+
+        var target = $"{vehicleName} ({plate})";
+        var message = days switch
+        {
+            < 0 => $"{name} expiré(e) pour {target} depuis le {ExpiryDay(expiry)}",
+            0 => $"{name} expire aujourd'hui pour {target}",
+            _ => $"{name} expire dans {days} jour(s) pour {target}"
+        };
+        return (message, priority);
+    }
+
+    internal static (string Message, string Priority)? DriverPermitExpiryAlert(
+        string fullName, DateTime expiry, DateTime todayUtc)
+    {
+        if (ExpiryUrgency(expiry, todayUtc) is not { } urgency) return null;
+        var (days, priority) = urgency;
+
+        var message = days switch
+        {
+            < 0 => $"Permis conducteur expiré pour {fullName} depuis le {ExpiryDay(expiry)}",
+            0 => $"Permis conducteur expire aujourd'hui pour {fullName}",
+            _ => $"Permis conducteur expire dans {days} jour(s) pour {fullName}"
+        };
+        return (message, priority);
+    }
+
+    private static string ExpiryDay(DateTime expiry) =>
+        ExpiryCalendar.Day(expiry).ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+
     private async Task CheckDocumentExpiry(GisDbContext context, INotificationService notifService,
         IAlertEmailDispatcher alertDispatcher, Vehicle vehicle, int companyId, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
-        var in15Days = now.AddDays(15);
-        var in30Days = now.AddDays(30);
+        var today = DateTime.UtcNow.Date;
 
         var docs = new List<(string Name, DateTime? Expiry)>
         {
@@ -105,26 +156,9 @@ public class PredictiveAlertService : BackgroundService
         {
             if (!expiry.HasValue) continue;
 
-            string? message = null;
-            string priority = "normal";
-
-            if (expiry.Value < now)
-            {
-                message = $"{name} expiré(e) pour {vehicle.Name} ({vehicle.Plate}) depuis le {expiry.Value:dd/MM/yyyy}";
-                priority = "urgent";
-            }
-            else if (expiry.Value < in15Days)
-            {
-                var days = (int)(expiry.Value - now).TotalDays;
-                message = $"{name} expire dans {days} jour(s) pour {vehicle.Name} ({vehicle.Plate})";
-                priority = "urgent";
-            }
-            else if (expiry.Value < in30Days)
-            {
-                var days = (int)(expiry.Value - now).TotalDays;
-                message = $"{name} expire dans {days} jour(s) pour {vehicle.Name} ({vehicle.Plate})";
-                priority = "normal";
-            }
+            var alert = DocumentExpiryAlert(name, vehicle.Name, vehicle.Plate, expiry.Value, today);
+            string? message = alert?.Message;
+            string priority = alert?.Priority ?? "normal";
 
             if (message != null)
             {
@@ -170,9 +204,7 @@ public class PredictiveAlertService : BackgroundService
     private async Task CheckDriverPermitExpiry(GisDbContext context, INotificationService notifService,
         IAlertEmailDispatcher alertDispatcher, int companyId, CancellationToken ct)
     {
-        var now = DateTime.UtcNow;
-        var in15Days = now.AddDays(15);
-        var in30Days = now.AddDays(30);
+        var today = DateTime.UtcNow.Date;
 
         var drivers = await context.Drivers
             .IgnoreQueryFilters()
@@ -184,30 +216,10 @@ public class PredictiveAlertService : BackgroundService
 
         foreach (var driver in drivers)
         {
-            var expiry = driver.PermitExpiry!.Value;
-            string? message = null;
-            string priority = "normal";
             var fullName = $"{driver.FirstName} {driver.LastName}".Trim();
-
-            if (expiry < now)
-            {
-                message = $"Permis conducteur expiré pour {fullName} depuis le {expiry:dd/MM/yyyy}";
-                priority = "urgent";
-            }
-            else if (expiry < in15Days)
-            {
-                var days = Math.Max(0, (int)(expiry - now).TotalDays);
-                message = $"Permis conducteur expire dans {days} jour(s) pour {fullName}";
-                priority = "urgent";
-            }
-            else if (expiry < in30Days)
-            {
-                var days = (int)(expiry - now).TotalDays;
-                message = $"Permis conducteur expire dans {days} jour(s) pour {fullName}";
-                priority = "normal";
-            }
-
-            if (message == null) continue;
+            var alert = DriverPermitExpiryAlert(fullName, driver.PermitExpiry!.Value, today);
+            if (alert is null) continue;
+            var (message, priority) = alert.Value;
 
             // Dedup on (companyId, type, driver.Id) — same pattern as vehicle docs but keyed
             // on driver so two drivers in the same company don't race-condition each other.
@@ -241,11 +253,18 @@ public class PredictiveAlertService : BackgroundService
     private async Task CheckMaintenanceDue(GisDbContext context, INotificationService notifService,
         IAlertEmailDispatcher alertDispatcher, Vehicle vehicle, int companyId, CancellationToken ct)
     {
+        // Même périmètre que /vehicle-maintenance/alerts : ni pause, ni modèle
+        // désactivé. Le recalcul des statuts les ignore, leur statut reste figé ;
+        // l'écran conseille de désactiver un modèle pour qu'il ne soit « plus
+        // surveillé », il ne doit donc plus déclencher d'alerte (recette GPA, DEF-016).
         var schedules = await context.VehicleMaintenanceSchedules
             .IgnoreQueryFilters()
             .AsNoTracking()
             .Include(s => s.Template)
-            .Where(s => s.VehicleId == vehicle.Id && (s.Status == "due" || s.Status == "overdue" || s.Status == "critical"))
+            .Where(s => s.VehicleId == vehicle.Id
+                     && !s.IsPaused
+                     && s.Template!.IsActive
+                     && (s.Status == "due" || s.Status == "overdue" || s.Status == "critical"))
             .ToListAsync(ct);
 
         foreach (var schedule in schedules)

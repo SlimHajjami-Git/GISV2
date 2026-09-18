@@ -35,16 +35,25 @@ public class GetExpiryAlertsQueryHandler : IRequestHandler<GetExpiryAlertsQuery,
         var vehicles = await vehicleQuery.ToListAsync(cancellationToken);
 
         var today = DateTime.UtcNow.Date;
-        var threshold = today.AddDays(request.DaysThreshold);
         var alerts = new List<VehicleExpiryDto>();
 
-        // Les cinq échéances viennent de la liste partagée avec le tableau de
-        // bord GPA (même ordre qu'avant : le tri final par jours restants est
-        // stable, la réponse est inchangée).
+        // Les cinq échéances viennent de la liste partagée avec le tableau de bord GPA.
         foreach (var vehicle in vehicles)
         {
             foreach (var (type, expiry) in VehicleDocumentExpiries.Of(vehicle))
-                CheckAndAddAlert(alerts, vehicle, type, expiry, today, threshold);
+                CheckAndAddAlert(alerts, vehicle, type, expiry, today, request.DaysThreshold);
+        }
+
+        // Permis de conducteur : même périmètre que la liste des échéances et
+        // les compteurs, mêmes seuils que les documents véhicule. Sans eux, un
+        // permis expiré était compté mais jamais signalé.
+        var drivers = await DriverPermitExpiries.LoadAsync(_context, companyId, accessibleIds, cancellationToken);
+        foreach (var driver in drivers)
+        {
+            var daysUntil = ExpiryCalendar.DaysUntil(driver.PermitExpiry!.Value, today);
+            if (daysUntil > request.DaysThreshold) continue;
+
+            alerts.Add(DriverPermitExpiries.ToDto(driver, vehicles, AlertStatus(daysUntil), daysUntil));
         }
 
         return alerts
@@ -52,24 +61,25 @@ public class GetExpiryAlertsQueryHandler : IRequestHandler<GetExpiryAlertsQuery,
             .ToList();
     }
 
+    private static string AlertStatus(int daysUntil) =>
+        daysUntil < 0 ? ExpiryCalendar.Expired : ExpiryCalendar.ExpiringSoon;
+
     private void CheckAndAddAlert(List<VehicleExpiryDto> alerts, Domain.Entities.Vehicle vehicle,
-        string type, DateTime? expiryDate, DateTime today, DateTime threshold)
+        string type, DateTime? expiryDate, DateTime today, int daysThreshold)
     {
         if (!expiryDate.HasValue) return;
 
-        // Only include expired or expiring soon
-        if (expiryDate.Value.Date > threshold) return;
-
-        var daysUntil = (int)(expiryDate.Value.Date - today).TotalDays;
-        var status = daysUntil < 0 ? "expired" : "expiring_soon";
+        // Only include expired or expiring soon (jours calendaires, voir ExpiryCalendar)
+        var daysUntil = ExpiryCalendar.DaysUntil(expiryDate.Value, today);
+        if (daysUntil > daysThreshold) return;
 
         alerts.Add(new VehicleExpiryDto(
             vehicle.Id,
             vehicle.Name,
             vehicle.Plate,
             type,
-            expiryDate,
-            status,
+            ExpiryCalendar.Day(expiryDate),
+            AlertStatus(daysUntil),
             daysUntil,
             null,
             null,

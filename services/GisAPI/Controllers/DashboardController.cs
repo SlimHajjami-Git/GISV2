@@ -10,6 +10,8 @@ using GisAPI.Application.Features.Dashboard.Queries.GetDashboardCharts;
 using GisAPI.Application.Features.Dashboard.Queries.GetFleetStatistics;
 using GisAPI.Application.Features.Dashboard.Queries.GetGpaDashboard;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Reports.Common;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Services;
 using System.Security.Claims;
 
@@ -323,8 +325,10 @@ public class DashboardController : ControllerBase
             .ToList();
 
         // ── Immobilized vehicles (from maintenance schedules overdue/critical + vehicle status) ──
+        // Modèle désactivé exclu comme dans /vehicle-maintenance/alerts et /stats :
+        // le recalcul des statuts l'ignore, son statut est figé (recette GPA, DEF-016).
         var immobSchedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"))
             .Include(s => s.Vehicle)
             .Include(s => s.Template)
@@ -356,7 +360,7 @@ public class DashboardController : ControllerBase
         var monthEnd = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
 
         var immobRaw = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical") &&
                         s.NextDueDate.HasValue &&
                         s.NextDueDate.Value >= sixMonthsAgo &&
@@ -387,12 +391,12 @@ public class DashboardController : ControllerBase
         var mileageTrend = prevMileage > 0 ? Math.Round((double)(currentMileage - prevMileage) / (double)prevMileage * 100, 1) : 0;
 
         // Cost trend: compare current vs previous period costs
-        var currentCost = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-        var prevCost = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+        // Crédits déduits (avoir, remboursement d'assurance) : additionnés bruts, ils
+        // faisaient MONTER la tendance des coûts du mois où le fournisseur remboursait.
+        var currentCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd));
+        var prevCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd));
         var costTrend = prevCost > 0 ? Math.Round((double)(currentCost - prevCost) / (double)prevCost * 100, 1) : 0;
 
         var result = new
@@ -755,23 +759,23 @@ public class DashboardController : ControllerBase
             .CountAsync();
 
         // Maintenance stats (from VehicleMaintenanceSchedules — the active system)
+        // Même périmètre que /vehicle-maintenance/stats : ni pause, ni modèle désactivé.
         var upcomingMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "upcoming" || s.Status == "due"))
             .CountAsync();
 
         var overdueMaintenance = await _context.VehicleMaintenanceSchedules
             .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused &&
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical"))
             .CountAsync();
 
-        // Cost stats this month
-        var costsThisMonth = await _context.VehicleCosts
+        // Cost stats this month — net des crédits (avoir, remboursement d'assurance).
+        var costsThisMonth = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
             .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth)
-            .SumAsync(c => c.Amount);
+            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth));
 
         var fuelCostsThisMonth = await _context.VehicleCosts
             .AsNoTracking()
@@ -879,17 +883,21 @@ public class DashboardController : ControllerBase
             .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
 
         // 3. Réparations: from Repairs table (SocieteId = companyId)
+        // Une réparation annulée n'est pas un coût : les rapports de coûts et le tableau de
+        // bord GPA l'écartent déjà, cette synthèse l'additionnait encore. Casse et espaces
+        // ignorés : des statuts anciens « Cancelled » restent en base.
         var repairCost = await _context.Repairs
             .AsNoTracking()
-            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
+            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd
+                && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
-        var otherCost = await _context.VehicleCosts
+        // Avoir et remboursement d'assurance y sont DÉDUITS, comme dans les rapports de coûts.
+        var otherCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                && c.Type != "fuel" && c.Type != "maintenance")
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
+                && c.Type != "fuel" && c.Type != "maintenance"));
 
         var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 

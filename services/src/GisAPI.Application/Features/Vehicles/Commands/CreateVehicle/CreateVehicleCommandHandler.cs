@@ -23,7 +23,13 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
     public async Task<int> Handle(CreateVehicleCommand request, CancellationToken ct)
     {
         var companyId = _tenantService.CompanyId ?? 0;
-        
+
+        // Limite de la formule d'abord : si elle est atteinte, corriger la
+        // saisie ne servirait à rien.
+        await VehicleWriteRules.EnsureVehicleQuotaAsync(_context, companyId, ct);
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(_context, companyId, request.Plate, null, null, ct);
+
         var vehicle = new Vehicle
         {
             Name = request.Name,
@@ -37,7 +43,18 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
             FuelType = request.FuelType ?? "diesel",
             FuelTankCapacity = request.FuelTankCapacity,
             CompanyId = companyId,
-            Status = "available"
+            Status = "available",
+            // Contrat d'acquisition saisi dès la création : mêmes règles que la
+            // modification — champ absent = champ non renseigné, et le type
+            // d'acquisition reste « purchase » par défaut.
+            AcquisitionType = string.IsNullOrWhiteSpace(request.AcquisitionType) ? "purchase" : request.AcquisitionType,
+            PurchasePrice = request.PurchasePrice,
+            PurchaseDate = request.PurchaseDate,
+            LeasingMonthlyPayment = request.LeasingMonthlyPayment,
+            LeasingDurationMonths = request.LeasingDurationMonths,
+            LeasingStartDate = request.LeasingStartDate,
+            LeasingPaymentDay = request.LeasingPaymentDay,
+            RegistrationDate = request.RegistrationDate
         };
 
         // Handle GPS device assignment
@@ -83,6 +100,15 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
 
         _context.Vehicles.Add(vehicle);
         await _context.SaveChangesAsync(ct);
+
+        // Échéancier d'acquisition persisté (acquisition_payments) : généré dès
+        // la création, comme lors d'une modification du contrat. Après le premier
+        // SaveChanges, le véhicule a son id — indispensable aux lignes.
+        if (AcquisitionScheduleSync.HasSchedule(vehicle))
+        {
+            await AcquisitionScheduleSync.SyncAsync(_context, vehicle, ct);
+            await _context.SaveChangesAsync(ct);
+        }
 
         // Notify company admins about the new vehicle
         var actorId = _tenantService.UserId ?? 0;

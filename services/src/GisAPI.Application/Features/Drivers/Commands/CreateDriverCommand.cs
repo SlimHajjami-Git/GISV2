@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -71,6 +72,15 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
         };
         _context.Drivers.Add(driver);
         await _context.SaveChangesAsync(ct);
+
+        // L'affectation a deux jambes : vehicles.assigned_driver_id suit, sinon
+        // le chauffeur affecté ici reste invisible dans l'écran Véhicules.
+        // Le premier SaveChanges donne son id au chauffeur, exigé par le recalage.
+        if (driver.AssignedVehicleId.HasValue)
+        {
+            await VehicleDriverAssignment.SyncVehicleSideAsync(_context, driver, ct);
+            await _context.SaveChangesAsync(ct);
+        }
 
         // Notify company admins about the new driver
         var actorId = _tenantService.UserId ?? 0;

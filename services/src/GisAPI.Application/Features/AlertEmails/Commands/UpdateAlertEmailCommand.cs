@@ -18,14 +18,27 @@ public class UpdateAlertEmailCommandHandler : IRequestHandler<UpdateAlertEmailCo
 
     public async Task Handle(UpdateAlertEmailCommand request, CancellationToken ct)
     {
+        // Mêmes contrôles qu'à la création, faits AVANT de toucher la ligne suivie : une saisie
+        // refusée (HTTP 400) laisse intact le destinataire déjà enregistré.
+        var email = AlertEmailInput.NormalizeEmail(request.Email);
+        var alertType = AlertEmailInput.NormalizeAlertType(request.AlertType);
+
         var entity = await _context.AlertEmails
             .FirstOrDefaultAsync(a => a.Id == request.Id, ct);
 
         if (entity == null)
             throw new NotFoundException("AlertEmail", request.Id);
 
-        entity.Email = request.Email;
-        entity.AlertType = request.AlertType;
+        // Couple inchangé (casse de l'adresse mise à part) : rien de nouveau n'est créé. Sans
+        // cette exception, une ligne doublonnée avant le contrôle ne pourrait plus être
+        // enregistrée telle quelle.
+        var coupleInchange = entity.AlertType == alertType
+            && string.Equals(entity.Email.Trim(), email, StringComparison.OrdinalIgnoreCase);
+        if (!coupleInchange)
+            await AlertEmailInput.EnsureUniqueAsync(_context, entity.CompanyId, email, alertType, entity.Id, ct);
+
+        entity.Email = email;
+        entity.AlertType = alertType;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync(ct);

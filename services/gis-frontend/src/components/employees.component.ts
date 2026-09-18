@@ -178,11 +178,13 @@ export class EmployeesComponent implements OnInit, OnDestroy {
   // Permit deadline methods
   getDaysUntilPermitExpiry(driver: any): number {
     if (!driver.permitExpiry) return 999;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Jours calendaires UTC, comme /documents/expiries et la fiche véhicule (DEF-035) :
+    // en jour local, un permis stocké à 23:59:59 UTC comptait un jour de plus à UTC+1.
     const expiry = new Date(driver.permitExpiry);
-    expiry.setHours(0, 0, 0, 0);
-    return Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const now = new Date();
+    const expiryDay = Date.UTC(expiry.getUTCFullYear(), expiry.getUTCMonth(), expiry.getUTCDate());
+    const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    return Math.round((expiryDay - today) / (1000 * 60 * 60 * 24));
   }
 
   getPermitStatus(driver: any): string {

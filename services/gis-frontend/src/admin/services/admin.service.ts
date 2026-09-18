@@ -478,7 +478,8 @@ export class AdminService {
       }),
       catchError(err => {
         console.error('Login error:', err);
-        return throwError(() => new Error('Invalid credentials'));
+        // Le 429 garde son statut et son message, que l'écran de connexion affiche.
+        return throwError(() => err?.status === 429 ? err : new Error('Invalid credentials'));
       })
     );
   }

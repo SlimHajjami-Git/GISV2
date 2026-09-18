@@ -47,11 +47,11 @@ import { Vehicle } from '../../models/types';
             <div class="form-grid">
               <div class="form-group">
                 <label for="firstName">Prénom *</label>
-                <input type="text" id="firstName" name="firstName" [(ngModel)]="formData.firstName" required placeholder="Ex: Mohamed" />
+                <input type="text" id="firstName" name="firstName" [(ngModel)]="formData.firstName" required placeholder="Ex: Jean" />
               </div>
               <div class="form-group">
                 <label for="lastName">Nom *</label>
-                <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Ben Ali" />
+                <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Dupont" />
               </div>
               <div class="form-group">
                 <label for="email">Email</label>
@@ -59,11 +59,11 @@ import { Vehicle } from '../../models/types';
               </div>
               <div class="form-group">
                 <label for="phone">Téléphone</label>
-                <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+216 50 123 456" />
+                <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+33 6 12 34 56 78" />
               </div>
               <div class="form-group">
-                <label for="cin">N° CIN</label>
-                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12345678" />
+                <label for="cin">N° de pièce d'identité</label>
+                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12AB34567" />
               </div>
               <div class="form-group">
                 <label for="dateOfBirth">Date de naissance</label>

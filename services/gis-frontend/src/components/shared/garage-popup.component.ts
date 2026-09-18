@@ -89,7 +89,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group">
                 <label for="name">Nom *</label>
                 <input type="text" id="name" name="name" [(ngModel)]="formData.name" required
-                       placeholder="Ex: Garage Central Tunis" class="form-control"
+                       placeholder="Ex: Garage Central Lyon" class="form-control"
                        [class.invalid]="nameInput.invalid && nameInput.touched" #nameInput="ngModel">
                 <span class="error-message" *ngIf="nameInput.invalid && nameInput.touched">
                   Le nom est requis
@@ -115,7 +115,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group full">
                 <label for="address">Adresse *</label>
                 <input type="text" id="address" name="address" [(ngModel)]="formData.address" required
-                       placeholder="Ex: 45 Avenue Habib Bourguiba" class="form-control"
+                       placeholder="Ex: 45 avenue de la République" class="form-control"
                        [class.invalid]="addressInput.invalid && addressInput.touched" #addressInput="ngModel">
                 <span class="error-message" *ngIf="addressInput.invalid && addressInput.touched">
                   L'adresse est requise
@@ -127,7 +127,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group">
                 <label for="city">Ville *</label>
                 <input type="text" id="city" name="city" [(ngModel)]="formData.city" required
-                       placeholder="Ex: Tunis" class="form-control"
+                       placeholder="Ex: Lyon" class="form-control"
                        [class.invalid]="cityInput.invalid && cityInput.touched" #cityInput="ngModel">
                 <span class="error-message" *ngIf="cityInput.invalid && cityInput.touched">
                   La ville est requise
@@ -136,7 +136,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group">
                 <label for="postalCode">Code postal</label>
                 <input type="text" id="postalCode" name="postalCode" [(ngModel)]="formData.postalCode"
-                       placeholder="Ex: 1000" class="form-control">
+                       placeholder="Ex: 69003" class="form-control">
               </div>
             </div>
           </div>
@@ -154,7 +154,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group">
                 <label for="phone">Téléphone *</label>
                 <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" required
-                       placeholder="+216 XX XXX XXX" class="form-control"
+                       placeholder="+33 X XX XX XX XX" class="form-control"
                        [class.invalid]="phoneInput.invalid && phoneInput.touched" #phoneInput="ngModel">
                 <span class="error-message" *ngIf="phoneInput.invalid && phoneInput.touched">
                   Le téléphone est requis
@@ -163,7 +163,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group">
                 <label for="email">Email</label>
                 <input type="email" id="email" name="email" [(ngModel)]="formData.email"
-                       placeholder="contact@garage.tn" class="form-control">
+                       placeholder="contact@garage.fr" class="form-control">
               </div>
             </div>
 
@@ -171,7 +171,7 @@ export const SUPPLIER_TYPES = [
               <div class="form-group full">
                 <label for="contactName">Nom du contact</label>
                 <input type="text" id="contactName" name="contactName" [(ngModel)]="formData.contactName"
-                       placeholder="Ex: Mohamed Ben Ali" class="form-control">
+                       placeholder="Ex: Jean Dupont" class="form-control">
               </div>
             </div>
           </div>

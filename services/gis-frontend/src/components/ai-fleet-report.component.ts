@@ -130,9 +130,15 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                 <span class="cost-val">{{ c.value | appCurrency:0 }}</span>
                 <span class="cost-pct">{{ c.pct | number:'1.0-0' }}%</span>
               </div>
+              <div class="cost-item" *ngIf="costCredits > 0" title="Avoirs fournisseurs et remboursements au-delà des autres frais, déduits du total">
+                <div class="cost-dot credit"></div>
+                <span class="cost-label">Avoirs et remb.</span>
+                <span class="cost-val credit">−{{ costCredits | appCurrency:0 }}</span>
+                <span class="cost-pct"></span>
+              </div>
             </div>
             <div class="cost-bar">
-              <div *ngFor="let c of costItems" class="cost-seg" [style.width.%]="c.pct" [style.background]="c.color" [title]="c.label + ': ' + c.pct + '%'"></div>
+              <div *ngFor="let c of costItems" class="cost-seg" [style.width.%]="c.pct" [style.background]="c.color" [title]="c.label + ' : ' + (c.pct | number:'1.0-0') + ' %'"></div>
             </div>
           </div>
 
@@ -339,6 +345,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .cost-label { flex: 1; color: #64748b; }
     .cost-val { font-weight: 600; }
     .cost-pct { color: #94a3b8; font-size: 11px; width: 36px; text-align: right; }
+    .cost-dot.credit { background: transparent; box-shadow: inset 0 0 0 2px #16a34a; }
+    .cost-val.credit { color: #16a34a; }
     .cost-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; }
     .cost-seg { transition: width 0.5s; }
 
@@ -441,6 +449,7 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
   // Chart helpers
   healthItems: { label: string; count: number; pct: number; color: string }[] = [];
   costItems: { label: string; value: number; pct: number; color: string }[] = [];
+  costCredits = 0;
   maxFuel = 1;
   maxMileage = 1;
 
@@ -527,15 +536,20 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
       { label: 'Critique', count: hd.critical, pct: pct(hd.critical), color: '#ef4444' }
     ];
 
-    const cb = this.reportData.charts.costBreakdown;
-    const totalCost = (cb.fuel || 0) + (cb.maintenance || 0) + (cb.repairs || 0) + (cb.other || 0);
-    const cpct = (v: number) => totalCost > 0 ? (v / totalCost) * 100 : 0;
-    this.costItems = [
-      { label: 'Carburant', value: cb.fuel, pct: cpct(cb.fuel), color: '#f59e0b' },
-      { label: 'Maintenance', value: cb.maintenance, pct: cpct(cb.maintenance), color: '#3b82f6' },
-      { label: 'Reparations', value: cb.repairs, pct: cpct(cb.repairs), color: '#ef4444' },
-      { label: 'Autres', value: cb.other, pct: cpct(cb.other), color: '#94a3b8' }
+    // totalCosts est NET des avoirs et remboursements (costBreakdown.credits) : la barre se
+    // mesure sur les seules parts positives, une part négative (ligne ancienne) la faisait
+    // dépasser 100 %. La déduction s'affiche à part ; credits absent (API antérieure) = 0.
+    const cb = this.reportData.charts.costBreakdown || {};
+    const num = (v: any) => Number(v) || 0;
+    const parts = [
+      { label: 'Carburant', value: num(cb.fuel), color: '#f59e0b' },
+      { label: 'Maintenance', value: num(cb.maintenance), color: '#3b82f6' },
+      { label: 'Réparations', value: num(cb.repairs), color: '#ef4444' },
+      { label: 'Autres', value: num(cb.other), color: '#94a3b8' }
     ];
+    const positiveTotal = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
+    this.costItems = parts.map(p => ({ ...p, pct: positiveTotal > 0 ? Math.max(0, p.value) / positiveTotal * 100 : 0 }));
+    this.costCredits = Math.max(0, num(cb.credits));
 
     this.maxFuel = Math.max(...(this.reportData.charts.topFuelConsumers?.map((f: any) => f.value) || [1]), 1);
     this.maxMileage = Math.max(...(this.reportData.charts.mileageByVehicle?.map((m: any) => m.value) || [1]), 1);

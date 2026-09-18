@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -18,13 +19,19 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
 
     public async Task<Unit> Handle(PatchVehicleCommand request, CancellationToken cancellationToken)
     {
-        var companyId = _tenantService.CompanyId ?? throw new InvalidOperationException("Company ID not set");
+        // Véhicule absent ou d'une autre société : 404 comme GET/PUT/DELETE.
+        // InvalidOperationException tombait en 500 générique (recette GPA, DEF-031).
+        var companyId = _tenantService.CompanyId ?? 0;
 
         var vehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.Id && v.CompanyId == companyId, cancellationToken);
 
         if (vehicle == null)
-            throw new InvalidOperationException("Vehicle not found");
+            throw new NotFoundException("Vehicle", request.Id);
+
+        VehicleWriteRules.EnsurePaymentDay(request.LeasingPaymentDay, vehicle.LeasingPaymentDay);
+        await VehicleWriteRules.EnsurePlateAvailableAsync(
+            _context, vehicle.CompanyId, request.Plate, vehicle.Id, vehicle.Plate, cancellationToken);
 
         if (request.SpeedLimit.HasValue)
             vehicle.SpeedLimit = request.SpeedLimit.Value;
@@ -41,7 +48,20 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
         if (request.Plate != null) vehicle.Plate = request.Plate;
         if (request.Year.HasValue) vehicle.Year = request.Year;
         if (request.Color != null) vehicle.Color = request.Color;
-        if (request.Mileage.HasValue) vehicle.Mileage = request.Mileage.Value;
+        // Kilométrage : même garde que le PUT — un compteur ne recule pas. Sans
+        // elle, ce chemin (ouvert à l'API, pas au formulaire) laissait tomber le
+        // compteur à n'importe quelle valeur sans motif ni trace, alors qu'il sert
+        // de base aux entretiens et aux rapports. Une baisse assumée passe par
+        // PUT /api/vehicles/{id}/mileage, qui exige un motif et journalise.
+        if (request.Mileage is > 0)
+        {
+            if (request.Mileage.Value < vehicle.Mileage)
+                throw new GisAPI.Domain.Exceptions.DomainException(
+                    $"Le kilométrage saisi ({request.Mileage.Value:N0} km) est inférieur au kilométrage " +
+                    $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+
+            vehicle.Mileage = request.Mileage.Value;
+        }
         if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity;
 
         // Acquisition — l'empreinte des 7 champs est relevée avant/après :

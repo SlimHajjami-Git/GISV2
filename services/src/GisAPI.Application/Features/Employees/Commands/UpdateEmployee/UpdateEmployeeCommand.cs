@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Employees.Commands.CreateEmployee;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,11 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
 
     public async Task Handle(UpdateEmployeeCommand request, CancellationToken ct)
     {
+        // users.id n'est pas un id de chauffeur (vehicles.assigned_driver_id → drivers) :
+        // voir CreateEmployeeCommandHandler. Refus avant toute modification.
+        if (request.AssignVehicleId.HasValue)
+            throw new DomainException(CreateEmployeeCommandHandler.AffectationVehiculeRefusee);
+
         var user = await _context.Users.FindAsync(new object[] { request.Id }, ct);
         if (user == null)
             throw new DomainException("Employé introuvable");
@@ -58,29 +64,8 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
         if (!string.IsNullOrWhiteSpace(request.Status))
             user.Status = request.Status;
 
-        // Handle vehicle assignment
-        if (request.AssignVehicleId.HasValue)
-        {
-            // Unassign from current vehicle
-            var currentVehicle = await _context.Vehicles
-                .FirstOrDefaultAsync(v => v.AssignedDriverId == user.Id, ct);
-            if (currentVehicle != null && currentVehicle.Id != request.AssignVehicleId.Value)
-                currentVehicle.AssignedDriverId = null;
-
-            // Assign to new vehicle
-            var newVehicle = await _context.Vehicles.FindAsync(new object[] { request.AssignVehicleId.Value }, ct);
-            if (newVehicle != null)
-                newVehicle.AssignedDriverId = user.Id;
-        }
-        else
-        {
-            // Unassign from any vehicle
-            var currentVehicle = await _context.Vehicles
-                .FirstOrDefaultAsync(v => v.AssignedDriverId == user.Id, ct);
-            if (currentVehicle != null)
-                currentVehicle.AssignedDriverId = null;
-        }
-
+        // vehicles.assigned_driver_id n'est pas touché (clé vers drivers, pas users) :
+        // la désaffectation retirait le chauffeur dont l'id coïncidait avec celui de l'employé.
         await _context.SaveChangesAsync(ct);
     }
 }

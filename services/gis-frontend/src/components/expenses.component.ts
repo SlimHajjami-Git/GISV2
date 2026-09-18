@@ -2,13 +2,14 @@
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subject, takeUntil, forkJoin, of, catchError } from 'rxjs';
+import { Subject, takeUntil, forkJoin, of, catchError, expand, reduce, defer, EMPTY, Observable } from 'rxjs';
 import { ApiService, FuelTypeDto, FuelPriceFullDto, MaintenanceTemplateDto, VehiclePartDto, AcquisitionPaymentDto } from '../services/api.service';
 import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/pdf-export.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { AuthService } from '../services/auth.service';
+import { costCreditFamily } from './vehicle-costs.component';
 
 export interface Expense {
   id: string;
@@ -29,8 +30,8 @@ export interface Expense {
   // timeline (Phase 5 repair or Phase 6 insurance refund). The list shows
   // a small "🚗 Accident #X" badge and the row links back to the report.
   accidentEventId?: number | null;
-  /** True when the row is an insurance refund — UI renders amount as a credit (green). */
-  isRefund?: boolean;
+  /** Crédit (remboursement d'assurance, avoir fournisseur) : montant affiché en « − » et déduit des totaux. */
+  isCredit?: boolean;
 
   /** Justificatif (facture scannée) — image ou PDF servie par /uploads. */
   receiptUrl?: string | null;
@@ -56,6 +57,9 @@ export interface Expense {
   overdue?: boolean;
   /** Planifiée non échue — affichée seulement avec « Afficher les échéances à venir ». */
   isFuture?: boolean;
+
+  /** Réparation au statut « cancelled » : listée « Annulée », jamais comptée (règle des rapports de coûts). */
+  repairCancelled?: boolean;
 }
 
 export interface RepairPart {
@@ -168,6 +172,14 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   loading = false;
 
+  // ── Chargement des listes paginées (pleins, réparations) ───────────────────
+  /** Lignes demandées par appel. */
+  private static readonly PAGE_SIZE = 500;
+  /** Garde-fou : au-delà, on arrête de paginer et on le DIT (voir listTruncated). */
+  private static readonly MAX_PAGES = 40;
+  /** Vrai quand le garde-fou a coupé le chargement : totaux et filtres sont partiels. */
+  listTruncated = false;
+
   // ── Invoice scan (IA) — extract → review → save as a generic cost ──────────
   scanning = false;
   saving = false;
@@ -176,6 +188,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     vehicleId: string; category: string; date: string; amount: number;
     supplierName: string; invoiceNumber: string; description: string;
     vehiclePlate: string; confidence: string; receiptUrl: string;
+    /** Total lu négatif : pré-rempli en avoir fournisseur, montant en valeur absolue. */
+    creditNote: boolean;
     /** Lignes de la facture (détail extrait par l'IA, éditable). Enregistrées
      *  AVEC la dépense (details_json) — une facture reste UNE seule dépense,
      *  le détail décortiqué s'affiche dans le panneau de la dépense. */
@@ -191,7 +205,19 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     { value: 'parking', label: 'Stationnement' },
     { value: 'fine', label: 'Amende' },
     { value: 'other', label: 'Autre' },
+    { value: 'credit_note', label: 'Avoir fournisseur' },
   ];
+
+  /**
+   * Types enregistrés en montant POSITIF mais comptés en crédit — même liste que
+   * VehicleCostCategory côté serveur (tableau de bord, rapports de coûts).
+   */
+
+  isCreditType(type: string | null | undefined): boolean {
+    // Même règle que le serveur et l'écran Coûts : codes ET libellés anciens (« avoir »,
+    // « credit note », « Remb. assurance »…), sinon l'écart valait deux fois le montant.
+    return costCreditFamily(type) !== null;
+  }
 
   get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
 
@@ -281,11 +307,63 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     });
   }
 
+  /**
+   * Enchaîne les pages d'une liste paginée jusqu'à la dernière.
+   *
+   * L'écran additionne lui-même les lignes qu'il a chargées : une page unique
+   * rendait le total et le filtre par mois FAUX dès que l'historique dépassait
+   * cette page, sans aucun avertissement (société de test : 399 pleins en base,
+   * 200 chargés, 19 796 € affichés au lieu de 39 341, et pas une ligne pour
+   * octobre 2025 — recette du 13/09/2026). Au-delà du garde-fou, on marque la
+   * liste comme tronquée au lieu de laisser croire à un total complet.
+   */
+  private loadAllPages<T>(
+    fetch: (page: number) => Observable<{ items?: T[]; totalCount?: number }>
+  ): Observable<T[]> {
+    return defer(() => {
+      let page = 1;
+      let recues = 0;
+      return fetch(page).pipe(
+        // On compte NOUS-MÊME les lignes reçues : les listes du serveur ne
+        // nomment pas leur page de la même façon (pleins « pageNumber »,
+        // réparations « page ») et une page vide arrête la boucle quoi qu'il
+        // arrive.
+        expand(res => {
+          const lot = res?.items?.length ?? 0;
+          recues += lot;
+          if (lot === 0 || recues >= (res?.totalCount ?? 0)) return EMPTY;
+          if (page >= ExpensesComponent.MAX_PAGES) { this.listTruncated = true; return EMPTY; }
+          return fetch(++page);
+        }),
+        // Une page en échec (réseau, 500) faisait échouer le forkJoin entier :
+        // l'écran Dépenses se vidait sans un mot, alors que les pages déjà
+        // reçues sont exploitables. On garde ce qui est arrivé et on le DIT,
+        // comme la branche voisine des échéances d'acquisition qui retombe sur
+        // une liste vide plutôt que d'emporter les autres dépenses.
+        catchError((err) => {
+          // 403 : la liste relève d'un droit ou d'un module que l'écran Dépenses
+          // n'exige pas (il ne demande que la fonctionnalité costs, les pleins
+          // demandent le droit ET le module Carburant). Rien n'a été tronqué :
+          // ces lignes ne sont simplement pas visibles pour cet utilisateur, et
+          // l'avertissement « liste tronquée » serait faux.
+          if (err?.status === 403) return EMPTY;
+          console.error('Error loading paged list:', err);
+          this.listTruncated = true;
+          return EMPTY;   // reduce émet alors les pages déjà reçues
+        }),
+        reduce((acc: T[], res) => acc.concat(res?.items || []), [] as T[])
+      );
+    });
+  }
+
   private loadExpenses(): void {
+    this.listTruncated = false;
     forkJoin({
       costs: this.apiService.getCosts(),
-      fuelEntries: this.apiService.getFuelEntries({ pageSize: 200 }),
-      repairs: this.apiService.getRepairs({ pageSize: 200 }),
+      fuelEntries: this.loadAllPages<any>(page =>
+        this.apiService.getFuelEntries({ page, pageSize: ExpensesComponent.PAGE_SIZE })),
+      repairs: this.loadAllPages<any>(page =>
+        this.apiService.getRepairs({ page, pageSize: ExpensesComponent.PAGE_SIZE })),
       // Échéances d'acquisition (mensualités, apport, achat comptant) lues en
       // base : sans includeFuture le serveur ne renvoie que ce qui compte ou a
       // compté en dépense (payées, planifiées échues, ignorées échues).
@@ -301,7 +379,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         // phases 5 & 6 (type='repair' / 'insurance_refund' carry an
         // accidentEventId for the badge and the link to the report).
         (result.costs || []).forEach((c: any) => {
-          const isRefund = c.type === 'insurance_refund';
+          const isCredit = this.isCreditType(c.type);
           // Détail de la facture (scan IA) — JSON défensif : une valeur
           // corrompue ne doit jamais casser la liste.
           let details: Expense['details'];
@@ -325,7 +403,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             vehiclePlate: c.vehiclePlate || '',
             vehicleName: c.vehicleName || '',
             category: c.type || 'autre',
-            label: c.description || c.type,
+            label: c.description || this.getCategoryLabel(c.type),
             quantity: 1,
             unitPrice: c.amount,
             totalAmount: c.amount,
@@ -334,14 +412,14 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             createdAt: new Date(c.createdAt || c.date),
             sourceTable: 'costs',
             accidentEventId: c.accidentEventId ?? null,
-            isRefund,
+            isCredit,
             receiptUrl: c.receiptUrl || null,
             details: details?.length ? details : undefined,
           });
         });
 
         // FuelEntries
-        ((result.fuelEntries as any)?.items || []).forEach((f: any) => {
+        (result.fuelEntries || []).forEach((f: any) => {
           allExpenses.push({
             id: 'fuel_' + f.id,
             vehicleId: f.vehicleId || 0,
@@ -360,7 +438,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
         });
 
         // Repairs
-        ((result.repairs as any)?.items || []).forEach((r: any) => {
+        (result.repairs || []).forEach((r: any) => {
           allExpenses.push({
             id: 'repair_' + r.id,
             vehicleId: r.vehicleId,
@@ -374,7 +452,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             date: new Date(r.repairDate),
             description: r.notes,
             createdAt: new Date(r.createdAt || r.repairDate),
-            sourceTable: 'repairs'
+            sourceTable: 'repairs',
+            // Statut comparé sans casse ni espaces, comme l'écran Réparations : des
+            // valeurs anciennes « Cancelled » restent en base.
+            repairCancelled: (r.status || '').trim().toLowerCase() === 'cancelled'
           });
         });
 
@@ -761,7 +842,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     return {
       vehicleId: '', category: 'other', date: new Date().toISOString().split('T')[0],
       amount: 0, supplierName: '', invoiceNumber: '', description: '',
-      vehiclePlate: '', confidence: '', receiptUrl: '',
+      vehiclePlate: '', confidence: '', receiptUrl: '', creditNote: false,
       items: [] as Array<{ label: string; amount: number; category: string }>
     };
   }
@@ -816,11 +897,20 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             category: it?.category || x.category || 'other'
           }))
           .filter((it: any) => it.label || it.amount);
+        // Facture négative = avoir fournisseur (décision du 16/09/2026). Le serveur la
+        // convertit déjà (isCreditNote, montants positifs) ; un total encore négatif
+        // (API plus ancienne) est converti ici, sinon le montant reste bloqué sous zéro.
+        const total = Number(x.amountTTC ?? x.amountHT ?? 0) || 0;
+        const creditNote = x.isCreditNote === true || total < 0;
+        if (total < 0 && items.reduce((s: number, it: any) => s + it.amount, 0) < 0) {
+          items.forEach((it: any) => it.amount = -it.amount || 0);
+        }
         this.scan = {
           vehicleId: veh ? String(veh.id) : '',
-          category: x.category || 'other',
+          category: creditNote ? 'credit_note' : (x.category || 'other'),
           date: x.date || new Date().toISOString().split('T')[0],
-          amount: x.amountTTC ?? x.amountHT ?? 0,
+          amount: Math.abs(total),
+          creditNote,
           supplierName: x.supplierName || '',
           invoiceNumber: x.invoiceNumber || '',
           description: desc,
@@ -886,8 +976,29 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   removeScanItem(i: number): void { this.scan.items.splice(i, 1); }
 
+  // Montant strictement positif : le serveur refuse zéro et négatif (un avoir lu
+  // par l'IA à -120 activait le bouton pour un enregistrement voué au refus ; il est
+  // désormais converti à la lecture en avoir fournisseur positif). Le motif
+  // s'affiche sous le champ, sinon le bouton grisé reste inexpliqué.
+  scanAmountInvalid(): boolean {
+    return !(Number(this.scan.amount) > 0);
+  }
+
+  /** Avoir détecté et catégorie conservée : le message ne ment plus si l'utilisateur la change. */
+  scanIsDetectedCreditNote(): boolean {
+    return this.scan.creditNote && this.scan.category === 'credit_note';
+  }
+
+  /**
+   * Avoir détecté mais catégorie changée : le montant, passé en valeur absolue, partirait
+   * en DÉPENSE sans que rien ne le signale (relecture du 16/09/2026).
+   */
+  scanLeftCreditNote(): boolean {
+    return this.scan.creditNote && this.scan.category !== 'credit_note';
+  }
+
   canSaveScan(): boolean {
-    return !!this.scan.vehicleId && !!this.scan.amount && !this.saving;
+    return !!this.scan.vehicleId && !this.scanAmountInvalid() && !this.saving;
   }
 
   /** Libellé FR d'une catégorie de ligne (les lignes utilisent les catégories du scan). */
@@ -924,7 +1035,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
     this.apiService.createCost(data).subscribe({
       next: () => { this.saving = false; this.showScanReview = false; this.loadExpenses(); },
-      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert("L'enregistrement a échoué."); }
+      error: (err) => { this.saving = false; console.error('Error saving scanned cost:', err); alert(err?.error?.message || "L'enregistrement a échoué."); }
     });
   }
 
@@ -988,8 +1099,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
    * Une ligne entre dans les totaux (barre de stats, export PDF) si c'est une
    * dépense ordinaire, ou une échéance que le serveur dit « counted » (payée,
    * ou planifiée et échue). Les échéances ignorées et à venir sont exclues.
+   * Une réparation annulée aussi : comptée ici, le Total dépassait le tableau
+   * de bord et les rapports de coûts du montant annulé.
    */
   countsInTotals(e: Expense): boolean {
+    if (e.repairCancelled) return false;
     return !this.isAcquisition(e) || !!e.counted;
   }
 
@@ -1030,6 +1144,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
    * « À venir » (planifiée non échue, hors totaux), « Ignorée » (hors totaux).
    */
   paymentBadge(e: Expense, withYear = false): { cls: string; text: string } | null {
+    // Réparation annulée : même marque « hors totaux » qu'une échéance ignorée.
+    if (e.repairCancelled) return { cls: 'skipped', text: 'Annulée' };
     if (!this.isAcquisition(e)) return null;
     switch (e.paymentStatus) {
       case 'paid': {
@@ -1211,10 +1327,21 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     });
   }
 
-  getTotalAmount(): number { return this.countedExpenses().reduce((sum, e) => sum + e.totalAmount, 0); }
+  /**
+   * Montant signé d'une ligne : un crédit (remboursement d'assurance, avoir
+   * fournisseur) vient en déduction. Jusqu'au 16/09/2026 la ligne s'affichait en
+   * « − » mais le Total et le PDF l'ADDITIONNAIENT : un remboursement de 100
+   * gonflait le total de 100 au lieu de l'alléger, à l'inverse du tableau de bord
+   * et des rapports de coûts (VehicleCostCategory).
+   */
+  signedAmount(e: Expense): number { return e.isCredit ? -Math.abs(e.totalAmount) : e.totalAmount; }
+  /** Montant affiché après le signe « − » d'un crédit : jamais « −-120 » pour un avoir ancien saisi en négatif. */
+  displayedAmount(e: Expense): number { return e.isCredit ? Math.abs(e.totalAmount) : e.totalAmount; }
+
+  getTotalAmount(): number { return this.countedExpenses().reduce((sum, e) => sum + this.signedAmount(e), 0); }
   /** Nombre de lignes réellement comptées (même base que le Total et que l'export). */
   getCountedCount(): number { return this.countedExpenses().length; }
-  /** Lignes affichées mais non comptées (échéances à venir ou ignorées). */
+  /** Lignes affichées mais non comptées (échéances à venir ou ignorées, réparations annulées). */
   getNotCountedCount(): number { return this.filteredExpenses.length - this.getCountedCount(); }
   getUniqueVehiclesCount(): number { return new Set(this.countedExpenses().map(e => e.vehicleId)).size; }
   getAverageAmount(): number { const c = this.getUniqueVehiclesCount(); return c > 0 ? this.getTotalAmount() / c : 0; }
@@ -1232,37 +1359,27 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     const labels: Record<string, string> = {
       'carburant': 'Carburant', 'fuel': 'Carburant',
       'entretien': 'Entretien', 'maintenance': 'Entretien',
-      'reparation': 'Réparation',
+      'reparation': 'Réparation', 'réparation': 'Réparation',
       'insurance': 'Assurance', 'assurance': 'Assurance',
-      'technical_inspection': 'Visite technique',
-      'tax': 'Vignette',
+      'technical_inspection': 'Visite technique', 'visite_technique': 'Visite technique',
+      'tax': 'Vignette', 'vignette': 'Vignette', 'taxe': 'Vignette',
       'registration': 'Carte grise',
       'transport_permit': 'Autorisation transport',
       'peage': 'Péage', 'toll': 'Péage',
       'stationnement': 'Stationnement', 'parking': 'Parking',
-      'amende': 'Amende',
+      'amende': 'Amende', 'fine': 'Amende',
       'credit': 'Crédit / Leasing',
       'achat': 'Achat véhicule',
-      'autre': 'Autre',
+      'lavage': 'Lavage', 'wash': 'Lavage',
+      'autre': 'Autre', 'autres': 'Autre', 'other': 'Autre',
       // Calypso 7 — accident-driven categories.
       'repair': 'Réparation accident',
       'insurance_refund': 'Remb. assurance',
+      'credit_note': 'Avoir fournisseur',
     };
-    return labels[category] || category;
-  }
-
-  /**
-   * Calypso 7 — net total = expenses minus insurance refunds. Surfaced
-   * next to the gross total so the admin sees their actual out-of-pocket
-   * cost after insurance settlements.
-   */
-  getNetTotal(): number {
-    return this.countedExpenses().reduce((sum, e) => sum + (e.isRefund ? -e.totalAmount : e.totalAmount), 0);
-  }
-
-  /** Total of insurance refunds in the filtered window (positive number, for display). */
-  getRefundTotal(): number {
-    return this.countedExpenses().filter(e => e.isRefund).reduce((sum, e) => sum + e.totalAmount, 0);
+    // Un code inconnu (donnée ancienne, appel externe) s'affiche « Autre » et non
+    // brut : « xyz » apparaissait tel quel dans la liste et le PDF (DEF-040).
+    return labels[category] || 'Autre';
   }
 
   exportPdf(): void {
@@ -1271,16 +1388,18 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     const exported = this.countedExpenses();
     const byCategory = new Map<string, Expense[]>();
     for (const exp of exported) {
-      const cat = exp.category || 'autre';
+      // Groupé par libellé : deux codes inconnus (tous deux « Autre ») ou synonymes
+      // (« toll » et « peage ») ne font qu'une section du PDF.
+      const cat = this.getCategoryLabel(exp.category || 'autre');
       if (!byCategory.has(cat)) byCategory.set(cat, []);
       byCategory.get(cat)!.push(exp);
     }
 
     const groups: PdfGroup[] = [];
     byCategory.forEach((expenses, cat) => {
-      const total = expenses.reduce((s, e) => s + e.totalAmount, 0);
+      const total = expenses.reduce((s, e) => s + this.signedAmount(e), 0);
       groups.push({
-        groupLabel: this.getCategoryLabel(cat),
+        groupLabel: cat,
         groupSubtitle: `${expenses.length} entree(s)`,
         rows: expenses.map(e => {
           const status = this.isAcquisition(e) ? this.paymentStatusText(e) : '';
@@ -1288,7 +1407,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             date: e.date ? new Date(e.date).toLocaleDateString('fr-FR') : '-',
             vehicleName: `${e.vehicleName} (${e.vehiclePlate})`,
             label: (e.label || e.description || '-') + (status ? ` — ${status}` : ''),
-            amount: this.userPrefs.formatCurrency(e.totalAmount)
+            amount: this.userPrefs.formatCurrency(this.signedAmount(e))
           };
         }),
         subtotal: `${expenses.length} entrees - ${this.userPrefs.formatCurrency(total)}`

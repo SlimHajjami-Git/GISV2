@@ -150,16 +150,19 @@ public class ExecutiveSummaryDto
     public double TotalDistanceKm { get; set; }
     public double TotalFuelConsumedLiters { get; set; }
     public decimal TotalOperationalCost { get; set; }
-    public double FleetUtilizationRate { get; set; }
+    /// <summary>null pour un parc sans boîtier : non mesuré (voir <see cref="MonthlyFleetReportDto.FleetHasGps"/>).</summary>
+    public double? FleetUtilizationRate { get; set; }
     public double AverageFuelEfficiency { get; set; }
-    public int TotalTrips { get; set; }
+    /// <summary>null pour un parc sans boîtier : non mesuré.</summary>
+    public int? TotalTrips { get; set; }
 
     /// <summary>
     /// Somme des durées des trajets TERMINÉS de la période (table <c>trips</c>),
     /// arrondie à l'heure. C'était « jours actifs × 8 » : un véhicule vu cinq
-    /// minutes un jour comptait huit heures de conduite.
+    /// minutes un jour comptait huit heures de conduite. null pour un parc sans
+    /// boîtier : sans trajet enregistré, 0 h se lisait comme une mesure.
     /// </summary>
-    public int TotalDrivingHours { get; set; }
+    public int? TotalDrivingHours { get; set; }
 
     public List<string> KeyInsights { get; set; } = new();
     public List<string> Recommendations { get; set; } = new();
@@ -183,8 +186,13 @@ public class VehicleTypeSummaryDto
     public string Type { get; set; } = string.Empty;
     public int Count { get; set; }
     public double Percentage { get; set; }
-    public double TotalDistanceKm { get; set; }
-    public double AvgDistanceKm { get; set; }
+    /// <summary>
+    /// Parc équipé : distance des positions GPS. Parc sans boîtier : kilométrage
+    /// reconstitué des relevés saisis (celui du tableau par véhicule), moyenne sur
+    /// les seuls véhicules mesurés, null si aucun véhicule du type ne l'est.
+    /// </summary>
+    public double? TotalDistanceKm { get; set; }
+    public double? AvgDistanceKm { get; set; }
 }
 
 public class VehicleStatusSummaryDto
@@ -204,13 +212,19 @@ public class DepartmentSummaryDto
 
 // ==================== VEHICLE UTILIZATION ====================
 
+/// <summary>
+/// Utilisation mesurée par les boîtiers. Pour un parc sans boîtier, taux, distance
+/// journalière et jours d'activité / d'inactivité valent null et la tendance
+/// journalière est vide : « 0 jour d'activité, 31 jours d'inactivité » se lisait
+/// comme un parc à l'arrêt alors que le même rapport comptait 28 729 km.
+/// </summary>
 public class VehicleUtilizationDto
 {
-    public double OverallUtilizationRate { get; set; }
+    public double? OverallUtilizationRate { get; set; }
     public double AverageDailyUsageHours { get; set; }
-    public double AverageDailyDistanceKm { get; set; }
-    public int TotalOperatingDays { get; set; }
-    public int TotalIdleDays { get; set; }
+    public double? AverageDailyDistanceKm { get; set; }
+    public int? TotalOperatingDays { get; set; }
+    public int? TotalIdleDays { get; set; }
     public List<DailyUtilizationDto> DailyTrend { get; set; } = new();
     public List<VehicleUtilizationDetailDto> ByVehicle { get; set; } = new();
     public StatisticalMetricsDto Statistics { get; set; } = new();
@@ -362,7 +376,8 @@ public class DriverPerformanceDto
 {
     public int TotalDrivers { get; set; }
     public int ActiveDrivers { get; set; }
-    public double AveragePerformanceScore { get; set; }
+    /// <summary>Score tiré des vitesses GPS ; null pour un parc sans boîtier (non mesuré).</summary>
+    public double? AveragePerformanceScore { get; set; }
     public List<DriverMetricsDto> DriverMetrics { get; set; } = new();
     public List<DriverRankingDto> TopPerformers { get; set; } = new();
     public List<DriverRankingDto> NeedsImprovement { get; set; } = new();
@@ -413,7 +428,8 @@ public class DrivingEventSummaryDto
 /// </summary>
 public class OperationalEfficiencyDto
 {
-    public double IdleTimePercentage { get; set; }
+    /// <summary>Part des trames à l'arrêt ; null pour un parc sans boîtier (aucune trame).</summary>
+    public double? IdleTimePercentage { get; set; }
     public List<DailyEfficiencyDto> DailyTrend { get; set; } = new();
     public List<EfficiencyMetricDto> Metrics { get; set; } = new();
 }
@@ -478,15 +494,21 @@ public class VehicleCostDto
 
 // ==================== COMPARISONS ====================
 
+/// <summary>
+/// Comparaison à une autre période. Parc sans boîtier : la distance est le
+/// kilométrage reconstitué des relevés saisis et le carburant les litres achetés
+/// des deux périodes ; utilisation et trajets valent null (non mesurés). Ils
+/// s'affichaient « 0 → 0, stable » à côté d'un rapport qui comptait 3 221 km.
+/// </summary>
 public class PeriodComparisonDto
 {
     public string ComparisonPeriod { get; set; } = string.Empty;
     public ComparisonMetricDto Distance { get; set; } = new();
     public ComparisonMetricDto FuelConsumption { get; set; } = new();
     public ComparisonMetricDto Cost { get; set; } = new();
-    public ComparisonMetricDto Utilization { get; set; } = new();
+    public ComparisonMetricDto? Utilization { get; set; } = new();
     public ComparisonMetricDto Efficiency { get; set; } = new();
-    public ComparisonMetricDto Trips { get; set; } = new();
+    public ComparisonMetricDto? Trips { get; set; } = new();
 }
 
 public class ComparisonMetricDto

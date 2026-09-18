@@ -8,8 +8,6 @@ using GisAPI.Infrastructure;
 using GisAPI.Middleware;
 using GisAPI.Hubs;
 using GisAPI.Domain.Constants;
-using Microsoft.AspNetCore.RateLimiting;
-using System.Threading.RateLimiting;
 
 // Force Npgsql to return DateTime with Kind=Utc (fixes timezone serialization)
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -322,104 +320,12 @@ builder.Services.AddCors(options =>
     });
 });
 
-// ── Rate limiting for the PUBLIC AI assistant (pre-login, cost-bearing LLM) ──
-// Every route except /api/assistant is unlimited. For /api/assistant we apply a
-// CHAINED limiter (both parts must pass): a per-IP sliding window (spam/abuse)
-// AND a service-wide fixed window (a hard cost ceiling across all IPs). The IP
-// is resolved from X-Forwarded-For behind k3s/traefik — see
-// AssistantController.ResolveClientIp. Rejections return 429 + Retry-After.
-var aiPerIpPerMin  = builder.Configuration.GetValue<int?>("AiAssistant:RequestsPerMinutePerIp") ?? 10;
-var aiGlobalPerMin = builder.Configuration.GetValue<int?>("AiAssistant:GlobalRequestsPerMinute") ?? 90;
+// ── Rate limiting (routes anonymes ou coûteuses) ──
+// Politique entière dans GisAPI.Middleware.RateLimitPolicies (Middleware/RateLimitPolicies.cs) :
+// DEF-030 venait d'une route absente de la chaîne, les tests portent donc sur la
+// chaîne réellement branchée ici et non sur une copie.
 builder.Services.AddRateLimiter(options =>
-{
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-
-    static bool IsAssistant(HttpContext c) => c.Request.Path.StartsWithSegments("/api/assistant");
-    // Invoice scan hits the paid Groq VISION model per request — throttle per IP
-    // so an authenticated user (or a runaway client retry) can't drain cost/disk.
-    static bool IsInvoiceScan(HttpContext c) => c.Request.Path.StartsWithSegments("/api/costs/scan-invoice");
-    // L'inscription libre est la seule route d'écriture ouverte sans jeton : sans
-    // plafond, une boucle crée des milliers de sociétés et d'utilisateurs. Deux
-    // barrières : une par adresse IP, et une globale qui borne les dégâts d'un
-    // réseau de machines.
-    // Le renvoi de confirmation est plafonné avec l'inscription : sans cela, il
-    // servirait à noyer une boîte mail sous des courriels que NOUS envoyons.
-    static bool IsRegister(HttpContext c) =>
-        c.Request.Path.StartsWithSegments("/api/auth/register")
-        || c.Request.Path.StartsWithSegments("/api/auth/resend-confirmation");
-
-    options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
-        // -1) inscription libre : 3 par heure et par IP, 30 par heure au total
-        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-            IsRegister(ctx)
-                ? RateLimitPartition.GetFixedWindowLimiter(
-                    "register:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 3,
-                        Window = TimeSpan.FromHours(1),
-                        QueueLimit = 0
-                    })
-                : RateLimitPartition.GetNoLimiter("open")),
-        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-            IsRegister(ctx)
-                ? RateLimitPartition.GetFixedWindowLimiter(
-                    "register-global",
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 30,
-                        Window = TimeSpan.FromHours(1),
-                        QueueLimit = 0
-                    })
-                : RateLimitPartition.GetNoLimiter("open")),
-        // 0) invoice scan: per-IP fixed window (runs before auth, so partition by IP)
-        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-            IsInvoiceScan(ctx)
-                ? RateLimitPartition.GetFixedWindowLimiter(
-                    "scan:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = 12,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueLimit = 0
-                    })
-                : RateLimitPartition.GetNoLimiter("open")),
-        // 1) per-IP sliding window
-        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-            IsAssistant(ctx)
-                ? RateLimitPartition.GetSlidingWindowLimiter(
-                    "ip:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
-                    _ => new SlidingWindowRateLimiterOptions
-                    {
-                        PermitLimit = aiPerIpPerMin,
-                        Window = TimeSpan.FromMinutes(1),
-                        SegmentsPerWindow = 6,
-                        QueueLimit = 0
-                    })
-                : RateLimitPartition.GetNoLimiter("open")),
-        // 2) service-wide fixed window (cost safety net)
-        PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
-            IsAssistant(ctx)
-                ? RateLimitPartition.GetFixedWindowLimiter("assistant-global",
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = aiGlobalPerMin,
-                        Window = TimeSpan.FromMinutes(1),
-                        QueueLimit = 0
-                    })
-                : RateLimitPartition.GetNoLimiter("open")));
-
-    options.OnRejected = async (context, token) =>
-    {
-        context.HttpContext.Response.Headers["Retry-After"] = "30";
-        context.HttpContext.Response.ContentType = "application/json";
-        await context.HttpContext.Response.WriteAsJsonAsync(new
-        {
-            status = 429,
-            message = "Trop de questions en peu de temps. Patientez quelques instants avant de réessayer."
-        }, token);
-    };
-});
+    RateLimitPolicies.Configure(options, builder.Configuration));
 
 // In-memory cache for dashboard and reports
 builder.Services.AddMemoryCache();
@@ -437,6 +343,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
+
+// En-têtes de sécurité (DEF-051) : en tête du pipeline pour couvrir aussi les
+// erreurs, les refus 429, les fichiers /uploads et le hub SignalR.
+app.UseSecurityHeaders();
 
 // Exception handling middleware
 app.UseExceptionHandling();
@@ -469,8 +379,8 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseCors();
 
-// Rate limiter (public AI assistant). Path-scoped via a global limiter, so it
-// is safe here right after CORS and before auth.
+// Rate limiter (connexion, mot de passe oublié, inscription, scan, assistant IA).
+// Path-scoped via a global limiter, so it is safe here right after CORS and before auth.
 app.UseRateLimiter();
 
 app.UseAuthentication();

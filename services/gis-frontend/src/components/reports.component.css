@@ -2928,3 +2928,15 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   .dept-header { flex-wrap: wrap; }
   .repairs-link { margin-left: 0; }
 }
+
+/* Légende du graphe « Véhicules les plus coûteux » : une entrée par ligne, texte court et
+   discret, sans encadré (choix de Karim du 17/09/2026). La couleur des barres suit l'écart au
+   km, pas leur longueur ni la verticale grise, qui mesure la moyenne du coût TOTAL par véhicule :
+   sans légende, une barre courte en rouge paraissait incohérente. */
+.chart-color-legend { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; margin: 8px 16px 0; font-size: 11px; line-height: 1.3; color: #475569; }
+.chart-color-legend .ccl-item { display: grid; grid-template-columns: 9px 1fr; align-items: start; gap: 7px; }
+.chart-color-legend .ccl-dot { width: 8px; height: 8px; margin-top: 3px; border-radius: 2px; display: inline-block; }
+.chart-color-legend .ccl-above { background: rgba(239, 68, 68, .75); border: 1px solid #dc2626; }
+.chart-color-legend .ccl-below { background: rgba(59, 130, 246, .75); border: 1px solid #2563eb; }
+.chart-color-legend .ccl-line { width: 8px; height: 0; margin-top: 7px; border-top: 2px dashed #94a3b8; border-radius: 0; }
+.chart-color-legend .ccl-note { color: #64748b; }

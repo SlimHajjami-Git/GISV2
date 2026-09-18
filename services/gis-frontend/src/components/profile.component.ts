@@ -36,7 +36,10 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
   industry: 'transport',
   address: '',
   city: '',
-  country: 'TN',
+  // Belive GPA s'adresse d'abord à l'export : un compte créé sans préférences part en France
+  // plutôt qu'en Tunisie (décision de Karim du 18/09/2026). Le fuseau, lui, reste celui du
+  // serveur tant qu'aucune préférence n'est enregistrée.
+  country: 'FR',
   language: 'fr',
   timezone: 'Africa/Tunis',
   dateFormat: 'dd/MM/yyyy',
@@ -119,7 +122,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
               <div class="field-row">
                 <div class="field">
                   <label>Téléphone</label>
-                  <input type="tel" [(ngModel)]="profile.phone" placeholder="+216 XX XXX XXX">
+                  <input type="tel" [(ngModel)]="profile.phone" placeholder="+33 6 12 34 56 78">
                 </div>
                 <div class="field">
                   <label>Poste</label>
@@ -165,15 +168,15 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
               <div class="field-row">
                 <div class="field">
                   <label>Ville</label>
-                  <input type="text" [(ngModel)]="profile.city" placeholder="Tunis">
+                  <input type="text" [(ngModel)]="profile.city" placeholder="Lyon">
                 </div>
                 <div class="field">
                   <label>Pays</label>
                   <select [(ngModel)]="profile.country">
+                    <option value="FR">France</option>
                     <option value="TN">Tunisie</option>
                     <option value="MA">Maroc</option>
                     <option value="DZ">Algérie</option>
-                    <option value="FR">France</option>
                     <option value="SA">Arabie Saoudite</option>
                     <option value="AE">Émirats Arabes Unis</option>
                   </select>
@@ -1087,7 +1090,7 @@ export class ProfileComponent implements OnInit {
     industry: 'transport',
     address: '',
     city: '',
-    country: 'TN',
+    country: 'FR',
     language: 'fr',
     timezone: 'Africa/Tunis',
     currency: '',

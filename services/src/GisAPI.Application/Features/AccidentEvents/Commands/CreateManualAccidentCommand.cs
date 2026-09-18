@@ -79,10 +79,9 @@ public class CreateManualAccidentCommandHandler : IRequestHandler<CreateManualAc
                   : !string.IsNullOrWhiteSpace(vehicle.Name)  ? vehicle.Name
                   : $"Véhicule #{vehicle.Id}";
 
-        // Calypso 7 — manual creation pre-fills Phase 2 (initial damages)
-        // from the form. Phases 3-6 stay empty — the admin fills them as
-        // the real-world events unfold (expert visit, mechanic quote,
-        // repair, insurance settlement).
+        // La déclaration pré-remplit la phase 2 (dégâts initiaux) et recopie le n° de
+        // sinistre et le coût estimé, sans instruire les phases 3 à 6 : l'admin les
+        // saisit au fil du dossier (visite de l'expert, devis, réparation, assurance).
         var severity = NormaliseSeverity(request.Severity);
         var ev = new AccidentEvent
         {
@@ -110,7 +109,9 @@ public class CreateManualAccidentCommandHandler : IRequestHandler<CreateManualAc
             // Phase 2 — initial damages
             InitialDescription = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
             InitialSeverity = severity,
-            // Optional: seed Phase 6 if the admin already has a claim number / cost
+            // Références connues du déclarant, recopiées pour ne pas les ressaisir. Elles
+            // n'instruisent ni l'expertise ni le suivi assurance : la phase de la liste les
+            // ignore (DEF-045). Le montant n'a pas de colonne propre, d'où l'expertise.
             ClaimNumber = string.IsNullOrWhiteSpace(request.ClaimNumber) ? null : request.ClaimNumber.Trim(),
             ExpertEstimatedAmount = request.EstimatedCost,
             AdditionalNotes = string.IsNullOrWhiteSpace(request.InternalNotes) ? null : request.InternalNotes.Trim(),

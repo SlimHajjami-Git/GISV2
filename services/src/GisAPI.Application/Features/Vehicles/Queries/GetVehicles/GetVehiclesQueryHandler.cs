@@ -110,7 +110,11 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 v.LeasingStartDate,
                 v.LeasingPaymentDay,
                 v.PurchasePrice,
-                v.PurchaseDate
+                v.PurchaseDate,
+                // Immobilisation (bannière et bouton de levée de l'écran Véhicules)
+                v.IsImmobilized,
+                v.ImmobilizationReason,
+                v.ImmobilizationStartedAt
             ));
 
         var result = await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);

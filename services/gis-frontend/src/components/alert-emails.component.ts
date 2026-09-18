@@ -97,7 +97,7 @@ const ALERT_TYPE_KEYS_WITHOUT_GPS = ALL_ALERT_TYPE_KEYS.filter(k => k !== 'accid
               <div class="ae-form-actions">
                 <button class="ae-btn-primary"
                         (click)="createAlertEmail()"
-                        [disabled]="!newEmail.email || !newEmail.alertType">
+                        [disabled]="saving || !newEmail.email || !newEmail.alertType">
                   Enregistrer
                 </button>
                 <button class="ae-btn-ghost" (click)="cancelAdd()">Annuler</button>
@@ -182,7 +182,7 @@ const ALERT_TYPE_KEYS_WITHOUT_GPS = ALL_ALERT_TYPE_KEYS.filter(k => k !== 'accid
                     </td>
                     <td class="ae-actions">
                       <button class="ae-btn-primary" (click)="saveEdit()"
-                              [disabled]="!editEmail.email || !editEmail.alertType">Enregistrer</button>
+                              [disabled]="saving || !editEmail.email || !editEmail.alertType">Enregistrer</button>
                       <button class="ae-btn-ghost" (click)="cancelEdit()">Annuler</button>
                     </td>
                   </tr>
@@ -608,6 +608,10 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
 
   deletingItem: AlertEmail | null = null;
 
+  // Ajout ou modification en cours : un double clic envoyait deux requêtes, et la seconde,
+  // refusée en doublon (409), affichait une erreur pour une adresse bien enregistrée.
+  saving = false;
+
   testingId: number | null = null;
   toast: { kind: 'success' | 'error'; message: string } | null = null;
   private toastTimer: any;
@@ -681,12 +685,20 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   }
 
   createAlertEmail(): void {
-    if (!this.newEmail.email || !this.newEmail.alertType) return;
+    if (this.saving || !this.newEmail.email || !this.newEmail.alertType) return;
+    this.saving = true;
+    this.cdr.detectChanges();
     this.api.createAlertEmail(this.newEmail).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
+        this.saving = false;
         this.showAddForm = false;
         this.newEmail = { email: '', alertType: '' };
         this.loadAlertEmails();
+      },
+      // Formulaire laissé ouvert : l'utilisateur corrige sa saisie au lieu de la retaper.
+      error: (err) => {
+        this.saving = false;
+        this.showToast('error', this.apiErrorMessage(err, "L'adresse n'a pas pu être enregistrée."));
       }
     });
   }
@@ -709,12 +721,20 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
   }
 
   saveEdit(): void {
-    if (this.editingId === null || !this.editEmail.email || !this.editEmail.alertType) return;
+    if (this.saving || this.editingId === null || !this.editEmail.email || !this.editEmail.alertType) return;
+    this.saving = true;
+    this.cdr.detectChanges();
     this.api.updateAlertEmail(this.editingId, this.editEmail).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
+        this.saving = false;
         this.editingId = null;
         this.editEmail = { email: '', alertType: '' };
         this.loadAlertEmails();
+      },
+      // Ligne laissée en édition : l'utilisateur corrige sa saisie au lieu de la retaper.
+      error: (err) => {
+        this.saving = false;
+        this.showToast('error', this.apiErrorMessage(err, "La modification n'a pas pu être enregistrée."));
       }
     });
   }
@@ -755,6 +775,17 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.showToast('error', `Échec de l'envoi à ${item.email}`);
       }
     });
+  }
+
+  /**
+   * Le serveur refuse une adresse vide ou malformée (400, message en français) : sans ce
+   * relais, la saisie restait ouverte sans explication (recette du 16/09/2026).
+   */
+  // Seuls le refus de validation (400) et le doublon (409, même adresse déjà inscrite pour ce
+  // type) portent un message métier en français ; les autres erreurs du middleware sont en
+  // anglais et restent au message par défaut.
+  private apiErrorMessage(err: any, fallback: string): string {
+    return ((err?.status === 400 || err?.status === 409) && err?.error?.message) || fallback;
   }
 
   private showToast(kind: 'success' | 'error', message: string): void {

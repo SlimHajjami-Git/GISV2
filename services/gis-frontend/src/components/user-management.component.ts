@@ -307,7 +307,7 @@ interface VehicleOption {
                     </div>
                     <div class="form-group">
                       <label>Téléphone</label>
-                      <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
+                      <input type="tel" [(ngModel)]="userForm.phone" placeholder="+33 6 12 34 56 78">
                     </div>
                     <div class="form-group" *ngIf="!editingUser">
                       <label>Mot de passe *</label>
@@ -2486,7 +2486,8 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   }
 
   deleteUser(user: User) {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer ${user.name} ?`)) {
+    if (confirm(`Êtes-vous sûr de vouloir supprimer ${user.name} ?\n\n`
+      + `Son historique (dépenses, trajets, journal d'activité) est conservé ; ses messages échangés, conversations avec l'assistant et rapports programmés sont supprimés.`)) {
       this.apiService.deleteUser(user.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.toast.success('Succès', 'Utilisateur supprimé');

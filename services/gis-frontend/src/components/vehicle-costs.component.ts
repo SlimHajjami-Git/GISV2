@@ -2,11 +2,86 @@ import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
-import { Subject, takeUntil } from 'rxjs';
+import { Observable, Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { VehicleCost, Vehicle, Company } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+
+/**
+ * Crédits déduits des coûts : avoir fournisseur et remboursement d'assurance, montant
+ * POSITIF compté en crédit, comme VehicleCostCategory côté serveur. Codes, libellés et
+ * synonymes anciens (« avoir », « Remb. assurance »…) de la table ExpenseImportRow.Types :
+ * un synonyme ajouté là-bas s'ajoute ici. Exportée pour la fiche véhicule : une copie par
+ * composant divergerait au premier synonyme ajouté.
+ */
+const COST_CREDIT_FAMILIES = new Map<string, 'insurance_refund' | 'credit_note'>([
+  ['insurance_refund', 'insurance_refund'],
+  ['remboursement assurance', 'insurance_refund'],
+  ['remb. assurance', 'insurance_refund'],
+  ['credit_note', 'credit_note'],
+  ['avoir fournisseur', 'credit_note'],
+  ['avoir', 'credit_note'],
+  ['credit note', 'credit_note'],
+]);
+
+/** Type de dépense normalisé comme RepairTypeClassifier.Normalize : accents retirés, minuscules, espaces réduits. */
+export function normalizeCostType(type: string | null | undefined): string {
+  return (type || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** Code du crédit (insurance_refund, credit_note) d'un type de dépense ; null pour une dépense. */
+export function costCreditFamily(type: string | null | undefined): 'insurance_refund' | 'credit_note' | null {
+  // Map plutôt qu'objet : un type saisi « constructor » tombait sur Object.prototype et passait en crédit.
+  return COST_CREDIT_FAMILIES.get(normalizeCostType(type)) ?? null;
+}
+
+/**
+ * Postes Carburant, Entretien et Réparations des rapports (VehicleCostCategory.Classify) :
+ * codes, libellés et synonymes de la même table ExpenseImportRow.Types, normalisés. Un plein
+ * ancien « carburant » est du carburant dans les rapports ; comparé au seul code « fuel », il
+ * tombait ici en « Autres ». Un synonyme ajouté là-bas s'ajoute ici.
+ */
+const COST_CATEGORY_FAMILIES = new Map<string, 'fuel' | 'maintenance' | 'repair'>([
+  ['fuel', 'fuel'],
+  ['carburant', 'fuel'],
+  ['maintenance', 'maintenance'],
+  ['entretien', 'maintenance'],
+  ['repair', 'repair'],
+  ['reparation', 'repair'],
+  ['reparation accident', 'repair'],
+]);
+
+/** Poste (fuel, maintenance, repair) d'un type de dépense ; null pour les autres types et les crédits. */
+export function costCategoryFamily(type: string | null | undefined): 'fuel' | 'maintenance' | 'repair' | null {
+  return COST_CATEGORY_FAMILIES.get(normalizeCostType(type)) ?? null;
+}
+
+/**
+ * Détail du plein que l'écran Coûts envoie à POST et PUT /api/costs. PUT remplace litres,
+ * carburant et prix au litre par ce qu'il reçoit. Le prix au litre n'a pas de champ à
+ * l'écran : il est renvoyé tel quel tant que montant et litres ne changent pas ; sinon il ne
+ * correspond plus au plein, et PUT recalculerait le montant saisi à partir de ce prix.
+ * Hors carburant, les champs du plein sont masqués : un plein reclassé (péage, assurance)
+ * gardait ses litres, qui ressortaient dans l'export Excel des dépenses.
+ */
+export function fuelDetailToSave(
+  form: { type?: string | null; fuelType?: string | null; liters?: number | string | null },
+  amount: number,
+  original: { amount: number | string; liters?: number | string | null; pricePerLiter?: number | string | null } | null
+): { fuelType: string | null; liters: number | null; pricePerLiter: number | null } {
+  if (costCategoryFamily(form.type) !== 'fuel') {
+    return { fuelType: null, liters: null, pricePerLiter: null };
+  }
+  const liters = form.liters ? Number(form.liters) : null;
+  const pricePerLiter = original?.pricePerLiter != null
+    && amount === Number(original.amount)
+    && liters === (original.liters ? Number(original.liters) : null)
+    ? Number(original.pricePerLiter)
+    : null;
+  return { fuelType: form.fuelType || null, liters, pricePerLiter };
+}
 
 @Component({
   selector: 'app-vehicle-costs',
@@ -32,6 +107,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <option value="parking">Parking</option>
             <option value="fine">Amende</option>
             <option value="other">Autre</option>
+            <option value="credit_note">Avoir fournisseur</option>
+            <option value="insurance_refund">Remb. assurance</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterVehicle" (change)="filterCosts()">
             <option value="">Tous les véhicules</option>
@@ -163,12 +240,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                     <span class="vehicle-name">{{ getVehicleName(cost.vehicleId) }}</span>
                   </td>
                   <td>
-                    <span class="type-badge" [class]="cost.type">
+                    <span class="type-badge" [class]="creditFamily(cost.type) || categoryFamily(cost.type) || cost.type">
                       {{ getTypeLabel(cost.type) }}
                     </span>
                   </td>
                   <td class="description-cell">{{ cost.description }}</td>
-                  <td class="amount-cell">{{ cost.amount | appCurrency:0 }}</td>
+                  <td class="amount-cell" [class.credit]="isCredit(cost.type)">{{ isCredit(cost.type) ? '−' : '' }}{{ cost.amount | appCurrency:0 }}</td>
                   <td class="reference-cell">{{ cost.receiptNumber || '-' }}</td>
                   <td>
                     <div class="action-buttons">
@@ -220,7 +297,10 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
               <div class="form-grid">
                 <div class="form-group">
                   <label for="costVehicle">Véhicule *</label>
-                  <select id="costVehicle" [(ngModel)]="costForm.vehicleId" name="vehicleId" required>
+                  <!-- La modification (PUT) ne change jamais le véhicule d'une dépense. -->
+                  <select id="costVehicle" [(ngModel)]="costForm.vehicleId" name="vehicleId" required
+                          [disabled]="!!editingCost"
+                          [title]="editingCost ? vehicleLockedTitle : ''">
                     <option value="">Sélectionner</option>
                     @for (vehicle of vehicles; track vehicle.id) {
                       <option [value]="vehicle.id">{{ vehicle.name }}</option>
@@ -240,6 +320,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                     <option value="parking">Parking</option>
                     <option value="fine">Amende</option>
                     <option value="other">Autre</option>
+                    <option value="credit_note">Avoir fournisseur</option>
                   </select>
                 </div>
 
@@ -250,7 +331,10 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
                 <div class="form-group">
                   <label for="costAmount">Montant *</label>
-                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0" placeholder="0" />
+                  <input type="number" id="costAmount" [(ngModel)]="costForm.amount" name="amount" required min="0.01" step="0.01" placeholder="0" />
+                  @if (isCredit(costForm.type)) {
+                    <span class="form-hint">Montant en positif : il est déduit des coûts.</span>
+                  }
                 </div>
 
                 <div class="form-group full-width">
@@ -269,7 +353,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                 </div>
 
                 <!-- Fuel specific fields -->
-                @if (costForm.type === 'fuel') {
+                @if (categoryFamily(costForm.type) === 'fuel') {
                   <div class="form-group">
                     <label for="fuelType">Type carburant</label>
                     <select id="fuelType" [(ngModel)]="costForm.fuelType" name="fuelType">
@@ -287,9 +371,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                 }
               </div>
 
+              @if (saveError) {
+                <div class="save-error" role="alert">{{ saveError }}</div>
+              }
               <div class="popup-footer">
                 <button type="button" class="btn-secondary" (click)="closePopup()">Annuler</button>
-                <button type="submit" class="btn-primary">{{ editingCost ? 'Mettre à jour' : 'Enregistrer' }}</button>
+                <button type="submit" class="btn-primary" [disabled]="saving">{{ editingCost ? 'Mettre à jour' : 'Enregistrer' }}</button>
               </div>
             </form>
           </div>
@@ -571,6 +658,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .type-badge.parking { background: #cffafe; color: #0891b2; }
     .type-badge.fine { background: #fecaca; color: #b91c1c; }
     .type-badge.other { background: #f1f5f9; color: #64748b; }
+    .type-badge.repair, .type-badge.reparation { background: #ffedd5; color: #c2410c; }
+    .type-badge.credit_note, .type-badge.insurance_refund { background: #d1fae5; color: #047857; }
 
     .description-cell {
       max-width: 200px;
@@ -583,6 +672,14 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .amount-cell {
       font-weight: 600;
       color: #16a34a;
+      white-space: nowrap;
+    }
+
+    .amount-cell.credit { color: #047857; }
+
+    .form-hint {
+      font-size: 11px;
+      color: #64748b;
     }
 
     .reference-cell {
@@ -745,6 +842,15 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
       border-color: #3b82f6;
     }
 
+    .save-error {
+      padding: 8px 20px;
+      background: #fef2f2;
+      border-top: 1px solid #fecaca;
+      color: #b91c1c;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
     .popup-footer {
       padding: 14px 20px;
       border-top: 1px solid #e2e8f0;
@@ -801,6 +907,10 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   showPopup = false;
   editingCost: VehicleCost | null = null;
   costForm: any = {};
+  /** Refus de l'enregistrement : il n'était écrit que dans la console, la fenêtre se fermait. */
+  saveError: string | null = null;
+  saving = false;
+  readonly vehicleLockedTitle = "Le véhicule d'une dépense enregistrée ne se change pas";
 
   vehicleSummaries: any[] = [];
 
@@ -831,7 +941,9 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
     });
 
     this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (vehicles) => { this.vehicles = vehicles; this.cdr.detectChanges(); },
+      // La synthèse par véhicule part de la liste des véhicules : arrivée après les
+      // dépenses, elle laissait « Résumé par véhicule » vide.
+      next: (vehicles) => { this.vehicles = vehicles; this.calculateSummaries(); this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading vehicles:', err)
     });
   }
@@ -857,9 +969,15 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
     }
 
     this.costs = this.allCosts.filter(c => {
+      // Description facultative (colonne nullable, scan IA, import) : une seule
+      // dépense sans description faisait échouer toute la recherche.
       const matchesSearch = !this.searchQuery ||
-        c.description.toLowerCase().includes(this.searchQuery.toLowerCase());
-      const matchesType = !this.filterType || c.type === this.filterType;
+        (c.description || '').toLowerCase().includes(this.searchQuery.toLowerCase());
+      // Filtre d'un crédit ou d'un poste : ses lignes anciennes (« avoir », « carburant »…),
+      // comptées avec lui, sont listées avec lui.
+      const matchesType = !this.filterType || c.type === this.filterType
+        || costCreditFamily(c.type) === this.filterType
+        || costCategoryFamily(c.type) === this.filterType;
       const matchesVehicle = !this.filterVehicle || c.vehicleId === this.filterVehicle;
       const matchesPeriod = !startDate || new Date(c.date) >= startDate;
       return matchesSearch && matchesType && matchesVehicle && matchesPeriod;
@@ -877,35 +995,63 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
         fuelCost: 0,
         maintenanceCost: 0,
         otherCost: 0,
-        totalCost: 0
+        totalCost: 0,
+        count: 0
       });
     });
 
     this.allCosts.forEach(c => {
       const summary = summaryMap.get(c.vehicleId);
       if (summary) {
-        if (c.type === 'fuel') {
-          summary.fuelCost += c.amount;
-        } else if (c.type === 'maintenance') {
-          summary.maintenanceCost += c.amount;
+        const amount = this.signedAmount(c);
+        const family = costCategoryFamily(c.type);
+        if (family === 'fuel') {
+          summary.fuelCost += amount;
+        } else if (family === 'maintenance') {
+          summary.maintenanceCost += amount;
         } else {
-          summary.otherCost += c.amount;
+          summary.otherCost += amount;
         }
-        summary.totalCost += c.amount;
+        summary.totalCost += amount;
+        summary.count++;
       }
     });
 
+    // Un véhicule qui n'a qu'un avoir a un total négatif : il reste dans la synthèse.
     this.vehicleSummaries = Array.from(summaryMap.values())
-      .filter(s => s.totalCost > 0)
+      .filter(s => s.count > 0)
       .sort((a, b) => b.totalCost - a.totalCost);
   }
 
+  /**
+   * Avoir fournisseur et remboursement d'assurance (synonymes anciens compris) : crédits
+   * déduits, comme les totaux serveur. Additionnés bruts, ils gonflaient le total de
+   * l'écran du montant rendu.
+   */
+  creditFamily(type: string | null | undefined): string | null {
+    return costCreditFamily(type);
+  }
+
+  isCredit(type: string | null | undefined): boolean {
+    return this.creditFamily(type) !== null;
+  }
+
+  categoryFamily(type: string | null | undefined): string | null {
+    return costCategoryFamily(type);
+  }
+
+  signedAmount(c: VehicleCost): number {
+    // Crédit en valeur absolue, comme VehicleCostCategory.SignedAmount : un avoir ancien
+    // saisi à −120 ne doit pas devenir une dépense de +120.
+    return this.isCredit(c.type) ? -Math.abs(c.amount) : c.amount;
+  }
+
   getFuelCost(): number {
-    return this.allCosts.filter(c => c.type === 'fuel').reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.filter(c => costCategoryFamily(c.type) === 'fuel').reduce((sum, c) => sum + c.amount, 0);
   }
 
   getMaintenanceCost(): number {
-    return this.allCosts.filter(c => c.type === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.filter(c => costCategoryFamily(c.type) === 'maintenance').reduce((sum, c) => sum + c.amount, 0);
   }
 
   getInsuranceCost(): number {
@@ -913,14 +1059,18 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
   }
 
   getTotalCost(): number {
-    return this.allCosts.reduce((sum, c) => sum + c.amount, 0);
+    return this.allCosts.reduce((sum, c) => sum + this.signedAmount(c), 0);
   }
 
   getTypeLabel(type: string): string {
     const labels: any = {
       fuel: 'Carburant',
       maintenance: 'Maintenance',
+      repair: 'Réparation',
+      reparation: 'Réparation',
       insurance: 'Assurance',
+      insurance_refund: 'Remboursement assurance',
+      credit_note: 'Avoir fournisseur',
       technical_inspection: 'Visite technique',
       tax: 'Vignette/Taxe',
       registration: 'Carte grise',
@@ -930,7 +1080,8 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       fine: 'Amende',
       other: 'Autre'
     };
-    return labels[type] || type;
+    // Ligne ancienne au libellé d'un crédit ou d'un poste (« avoir », « carburant ») : même libellé que son code.
+    return labels[type] || labels[this.creditFamily(type) ?? ''] || labels[this.categoryFamily(type) ?? ''] || type;
   }
 
   getVehicleName(vehicleId: string): string {
@@ -959,6 +1110,7 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       fuelType: '',
       liters: 0
     };
+    this.saveError = null;
     this.showPopup = true;
   }
 
@@ -968,41 +1120,73 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       ...cost,
       dateStr: new Date(cost.date).toISOString().split('T')[0]
     };
+    this.saveError = null;
     this.showPopup = true;
   }
 
   closePopup() {
     this.showPopup = false;
     this.editingCost = null;
+    this.saveError = null;
   }
 
   saveCost() {
-    const costData: Partial<VehicleCost> = {
-      ...this.costForm,
-      date: new Date(this.costForm.dateStr),
-      companyId: this.company?.id
-    };
-    delete (costData as any).dateStr;
-
-    if (this.editingCost) {
-      // For editing, we don't have an update method, so we delete and recreate
-      this.apiService.deleteCost(parseInt(this.editingCost.id)).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
-            next: () => this.loadData(),
-            error: (err) => console.error('Error creating cost:', err)
-          });
-        },
-        error: (err) => console.error('Error deleting cost:', err)
-      });
-    } else {
-      this.apiService.createCost(costData).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => this.loadData(),
-        error: (err) => console.error('Error creating cost:', err)
-      });
+    if (this.saving) return;
+    const amount = Number(this.costForm.amount);
+    if (!this.costForm.vehicleId || !this.costForm.type || !this.costForm.dateStr) {
+      this.saveError = 'Renseignez le véhicule, le type et la date.';
+      return;
+    }
+    // Même règle que le serveur (montant > 0) : refusé là-bas, le message se perdait.
+    if (!(amount > 0)) {
+      this.saveError = 'Le montant doit être supérieur à zéro.';
+      return;
     }
 
-    this.closePopup();
+    const fuel = fuelDetailToSave(this.costForm, amount, this.editingCost);
+
+    // Champs que POST et PUT /api/costs lisent, et rien d'autre : le formulaire porte
+    // aussi les colonnes d'affichage de la liste. Le justificatif est renvoyé tel quel,
+    // PUT l'écraserait sinon.
+    const costData = {
+      vehicleId: Number(this.costForm.vehicleId),
+      type: this.costForm.type,
+      // Chaîne vide, jamais null : c'est ce que l'écran enregistrait avant.
+      description: this.costForm.description ?? '',
+      amount,
+      date: new Date(this.costForm.dateStr),
+      mileage: this.costForm.mileage ? Number(this.costForm.mileage) : null,
+      receiptNumber: this.costForm.receiptNumber || null,
+      receiptUrl: this.costForm.receiptUrl || null,
+      fuelType: fuel.fuelType,
+      liters: fuel.liters,
+      pricePerLiter: fuel.pricePerLiter
+    };
+
+    // Modification en place (PUT). Elle supprimait puis recréait la dépense : si la
+    // recréation était refusée (montant, catégorie ancienne), la dépense d'origine
+    // était perdue, avec le journal d'entretien qui la référençait.
+    const request$: Observable<unknown> = this.editingCost
+      ? this.apiService.updateCost(Number(this.editingCost.id), costData)
+      : this.apiService.createCost(costData);
+
+    this.saving = true;
+    this.saveError = null;
+    request$.pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.saving = false;
+        this.closePopup();
+        this.loadData();
+      },
+      error: (err) => {
+        this.saving = false;
+        this.saveError = err?.error?.message
+          || (err?.status === 404
+            ? 'Dépense introuvable : elle a peut-être été supprimée. Rechargez la page.'
+            : "La dépense n'a pas été enregistrée. Vérifiez les valeurs saisies puis réessayez.");
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   deleteCost(cost: VehicleCost) {

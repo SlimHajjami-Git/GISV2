@@ -18,7 +18,8 @@ export interface VehicleDocument {
   lastRenewalDate?: Date;
   lastRenewalCost?: number;
   reminderDays: number;
-  status: 'expired' | 'expiring_soon' | 'ok';
+  // 'unknown' : échéance jamais renseignée, désormais transmise par l'écran Échéances.
+  status: 'expired' | 'expiring_soon' | 'ok' | 'unknown';
   daysUntilExpiry: number;
 }
 
@@ -94,6 +95,11 @@ export interface RenewalFormData {
             <svg *ngIf="document?.status === 'ok'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
               <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <svg *ngIf="document?.status === 'unknown'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
             </svg>
           </div>
           <div class="status-text">
@@ -179,7 +185,7 @@ export interface RenewalFormData {
                       <div class="inline-form-group full">
                         <label>Adresse</label>
                         <input type="text" [(ngModel)]="newSupplier.address" name="newSupplierAddress" 
-                               placeholder="Ex: 45 Avenue Habib Bourguiba" class="form-control">
+                               placeholder="Ex: 45 avenue de la République" class="form-control">
                       </div>
                     </div>
 
@@ -187,12 +193,12 @@ export interface RenewalFormData {
                       <div class="inline-form-group">
                         <label>Ville</label>
                         <input type="text" [(ngModel)]="newSupplier.city" name="newSupplierCity" 
-                               placeholder="Ex: Tunis" class="form-control">
+                               placeholder="Ex: Lyon" class="form-control">
                       </div>
                       <div class="inline-form-group">
                         <label>Code postal</label>
                         <input type="text" [(ngModel)]="newSupplier.postalCode" name="newSupplierPostalCode" 
-                               placeholder="Ex: 1000" class="form-control">
+                               placeholder="Ex: 69003" class="form-control">
                       </div>
                     </div>
                   </div>
@@ -210,12 +216,12 @@ export interface RenewalFormData {
                       <div class="inline-form-group">
                         <label>Téléphone</label>
                         <input type="tel" [(ngModel)]="newSupplier.phone" name="newSupplierPhone" 
-                               placeholder="+216 XX XXX XXX" class="form-control">
+                               placeholder="+33 X XX XX XX XX" class="form-control">
                       </div>
                       <div class="inline-form-group">
                         <label>Email</label>
                         <input type="email" [(ngModel)]="newSupplier.email" name="newSupplierEmail" 
-                               placeholder="contact@example.tn" class="form-control">
+                               placeholder="contact@exemple.fr" class="form-control">
                       </div>
                     </div>
                   </div>
@@ -247,7 +253,7 @@ export interface RenewalFormData {
               <div class="form-group">
                 <label for="documentNumber">{{ getDocumentNumberLabel() }}</label>
                 <input type="text" id="documentNumber" name="documentNumber" [(ngModel)]="formData.documentNumber"
-                       [placeholder]="getDocumentNumberPlaceholder()" class="form-control">
+                       [placeholder]="getDocumentNumberPlaceholder()" class="form-control" maxlength="100">
               </div>
               <div class="form-group">
                 <label for="newExpiryDate">Nouvelle date d'expiration <span class="required-star">*</span></label>
@@ -271,7 +277,7 @@ export interface RenewalFormData {
             <div class="form-row">
               <div class="form-group full">
                 <label for="notes">Notes / Remarques</label>
-                <textarea id="notes" name="notes" [(ngModel)]="formData.notes" rows="2"
+                <textarea id="notes" name="notes" [(ngModel)]="formData.notes" rows="2" maxlength="1000"
                           placeholder="Informations complémentaires..." class="form-control"></textarea>
               </div>
             </div>
@@ -411,6 +417,7 @@ export interface RenewalFormData {
     .status-banner.expired { background: #fef2f2; }
     .status-banner.expiring_soon { background: #fffbeb; }
     .status-banner.ok { background: #f0fdf4; }
+    .status-banner.unknown { background: #f8fafc; }
 
     .status-icon {
       width: 36px;
@@ -424,6 +431,7 @@ export interface RenewalFormData {
     .status-banner.expired .status-icon { background: #fee2e2; color: #dc2626; }
     .status-banner.expiring_soon .status-icon { background: #fef3c7; color: #d97706; }
     .status-banner.ok .status-icon { background: #dcfce7; color: #16a34a; }
+    .status-banner.unknown .status-icon { background: #e2e8f0; color: #64748b; }
 
     .status-text {
       display: flex;
@@ -1076,6 +1084,7 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       case 'expired': return `Expiré depuis ${Math.abs(this.document.daysUntilExpiry)} jour(s)`;
       case 'expiring_soon': return `Expire dans ${this.document.daysUntilExpiry} jour(s)`;
       case 'ok': return 'Document en règle';
+      case 'unknown': return 'Échéance non renseignée';
       default: return '';
     }
   }
@@ -1083,8 +1092,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
   getProviderPlaceholder(): string {
     if (!this.document) return 'Nom du fournisseur';
     switch (this.document.type) {
-      case 'insurance': return 'Ex: CNIA Saada, Wafa Assurance...';
-      case 'tax': return 'Ex: Recette des finances';
+      case 'insurance': return 'Ex: AXA, Macif, Groupama...';
+      case 'tax': return 'Ex: Trésor public';
       case 'technical_inspection': return 'Ex: Centre de contrôle technique';
       default: return 'Nom du fournisseur';
     }
@@ -1113,10 +1122,12 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
   formatDate(date: Date | undefined): string {
     if (!date) return '-';
+    // Jour UTC, comme le décompte des jours restants (DEF-035).
     return new Date(date).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     });
   }
 
@@ -1166,7 +1177,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       error: (err) => {
         console.error('Error renewing document:', err);
         this.saving = false;
-        alert('Erreur lors du renouvellement. Veuillez réessayer.');
+        // Un 400 porte le refus métier en français (saisie trop longue, etc.).
+        alert((err?.status === 400 && err?.error?.message) || 'Erreur lors du renouvellement. Veuillez réessayer.');
       }
     });
   }

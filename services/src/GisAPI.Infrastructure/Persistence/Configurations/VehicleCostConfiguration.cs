@@ -29,6 +29,13 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
         builder.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
 
+        // Renouvellement de document — colonnes de la migration 047. Sans ce
+        // mapping, échéance, fournisseur et notes saisis dans la fenêtre de
+        // renouvellement n'allaient nulle part et l'historique les rendait null.
+        builder.Property(e => e.ExpiryDate).HasColumnName("expiry_date");
+        builder.Property(e => e.Provider).HasColumnName("provider").HasMaxLength(200);
+        builder.Property(e => e.Notes).HasColumnName("notes").HasMaxLength(1000);
+
         // Calypso 7 — back-reference to the originating accident (Phase 5
         // repair or Phase 6 insurance refund). Null on every cost row that
         // was entered manually or by another module.
@@ -46,8 +53,8 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
             .WithMany(v => v.Costs)
             .HasForeignKey(e => e.VehicleId);
 
-        // Ignore unmapped properties (not yet in database)
-        builder.Ignore(e => e.ExpiryDate);
+        // DocumentNumber / DocumentUrl ne sont que des alias de lecture de
+        // receipt_number / receipt_url : aucune colonne propre à mapper.
         builder.Ignore(e => e.DocumentNumber);
         builder.Ignore(e => e.DocumentUrl);
         builder.Ignore(e => e.Societe);

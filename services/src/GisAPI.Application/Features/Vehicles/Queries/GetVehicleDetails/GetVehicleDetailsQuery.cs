@@ -65,7 +65,14 @@ public record VehicleDetailsDto(
     
     // Metadata
     DateTime CreatedAt,
-    DateTime UpdatedAt
+    DateTime UpdatedAt,
+
+    // Immobilisation : la fiche doit la restituer, sans quoi le véhicule paraît
+    // libre après rechargement alors que ses alertes sont coupées
+    // (recette GPA du 11/09/2026).
+    bool IsImmobilized = false,
+    string? ImmobilizationReason = null,
+    DateTime? ImmobilizationStartedAt = null
 );
 
 public record VehicleGpsDeviceDto(

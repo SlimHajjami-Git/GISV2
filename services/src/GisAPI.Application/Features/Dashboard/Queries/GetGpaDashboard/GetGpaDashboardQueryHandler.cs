@@ -378,8 +378,11 @@ public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery,
             {
                 if (expiry is null) continue;
 
-                var day = expiry.Value.Date;
-                var days = (day - today).Days;
+                // Jour UTC de l'échéance (ExpiryCalendar), comme l'écran Échéances :
+                // .Date prenait le jour LOCAL de l'instant relu par Npgsql legacy, et
+                // une échéance saisie à 23:59:59 UTC tombait au lendemain hors UTC.
+                var day = ExpiryCalendar.Day(expiry.Value);
+                var days = ExpiryCalendar.DaysUntil(expiry.Value, today);
                 if (days > DocumentWindowDays) continue;
 
                 var label = VehicleDocumentExpiries.Label(type);

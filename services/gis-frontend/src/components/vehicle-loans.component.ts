@@ -367,7 +367,7 @@ interface CompanyUser {
                 </div>
                 <div class="form-group">
                   <label>Destination</label>
-                  <input type="text" [(ngModel)]="borrowForm.destination" placeholder="Ex: Tunis" />
+                  <input type="text" [(ngModel)]="borrowForm.destination" placeholder="Ex: Lyon" />
                 </div>
               </div>
               <div class="form-group">

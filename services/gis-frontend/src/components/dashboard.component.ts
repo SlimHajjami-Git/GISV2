@@ -304,8 +304,8 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
         </div>
         <div class="rows" *ngIf="deadlines.length">
           <div *ngFor="let d of deadlines" class="row">
-            <span class="plate">{{ d.vehiclePlate || d.vehicleName }}</span>
-            <div class="grow"><div class="t1">{{ docLabel(d.documentType) }}</div><div class="t2 num">{{ d.expiryDate | date:'dd/MM/yyyy' }}</div></div>
+            <span class="plate dl-who" [title]="deadlineWho(d)">{{ deadlineWho(d) }}</span>
+            <div class="grow"><div class="t1">{{ docLabel(d.documentType) }}</div><div class="t2 num">{{ d.expiryDate | date:'dd/MM/yyyy':'UTC' }}</div></div>
             <span class="due" [ngClass]="dueCls(d)">{{ daysLabel(d) }}</span>
           </div>
         </div>
@@ -1109,6 +1109,8 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
     .gpa-list .bar i{background:var(--acc-cyan)}
     .gpa-list .val{min-width:76px;text-align:right}
     .plate.xs{font-size:10px;padding:1px 5px;border-radius:5px;margin-right:6px;min-width:0}
+    /* Échéances : un nom de chauffeur est plus long qu'une plaque (nom complet en info-bulle). */
+    .plate.dl-who{max-width:132px;overflow:hidden;text-overflow:ellipsis}
 
     /* Évolution mensuelle : barres empilées en HTML (texte jamais déformé) */
     .gpa-evo .head-right{gap:12px}
@@ -1358,10 +1360,13 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get fuelAllowed():boolean{return this.permissionService.hasModuleAccess('carburant');}
   realFuelDenied=false;
 
-  // Échéances à venir (assurance / vignette / visite technique) — réutilise /documents/alerts.
+  // Échéances à venir — réutilise /documents/alerts : assurance, vignette, visite technique,
+  // carte grise, autorisation de transport et permis de conducteur (ligne au nom du chauffeur).
   deadlines: VehicleExpiryDto[] = [];
   get deadlinesOverdue():number{ return this.deadlines.filter(d=>(d.daysUntilExpiry??0)<0).length; }
-  docLabel(t:string):string{ return ({insurance:'Assurance',tax:'Vignette',technical_inspection:'Visite technique'} as Record<string,string>)[t] || t; }
+  docLabel(t:string):string{ return ({insurance:'Assurance',tax:'Vignette',technical_inspection:'Visite technique',registration:'Carte grise',transport_permit:'Autorisation',driver_permit:'Permis de conduire'} as Record<string,string>)[t] || 'Document'; }
+  /** Une ligne de permis porte le chauffeur dans vehicleName et « Permis B » à la place de la plaque : la pastille nomme le chauffeur. */
+  deadlineWho(d:VehicleExpiryDto):string{ return (d.documentType==='driver_permit' ? d.vehicleName : (d.vehiclePlate || d.vehicleName)) || '—'; }
   dueCls(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'red':n<=30?'amber':'green'; }
   daysLabel(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?((-n)+' j retard'):(n+' j'); }
   loadDeadlines(){

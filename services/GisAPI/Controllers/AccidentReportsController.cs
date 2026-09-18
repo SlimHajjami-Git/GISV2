@@ -27,6 +27,7 @@ namespace GisAPI.Controllers;
 ///   <item><c>POST   /:id/confirm               </c> — Phase 2 trigger (status → confirmed)</item>
 ///   <item><c>POST   /:id/dismiss               </c> — false alarm</item>
 ///   <item><c>POST   /manual                    </c> — create a manually-declared accident</item>
+///   <item><c>DELETE /:id                       </c> — suppression définitive du dossier (admin / droit Sinistres)</item>
 ///   <item><c>PATCH  /:id/initial-damages       </c> — Phase 2 form fields</item>
 ///   <item><c>PATCH  /:id/expert                </c> — Phase 3</item>
 ///   <item><c>PATCH  /:id/mechanic-quote        </c> — Phase 4</item>
@@ -145,6 +146,37 @@ public class AccidentReportsController : ControllerBase
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
+    // ── Suppression du dossier ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Suppression définitive d'un dossier de sinistre (demande du 18/09/2026) :
+    /// documents et tiers partent avec lui, fichiers compris ; les dépenses déjà
+    /// enregistrées restent dans Dépenses, simplement détachées du dossier.
+    /// Garde propre à la route : ce contrôleur n'est visé par aucune clé du
+    /// PermissionMiddleware, la commande refuse donc elle-même (403) un compte
+    /// sans droit Sinistres ni statut d'administrateur.
+    /// </summary>
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> Delete(int id, CancellationToken ct)
+    {
+        var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+        try
+        {
+            var result = await _mediator.Send(new DeleteAccidentEventCommand(id, uploadsRoot), ct);
+            return Ok(new
+            {
+                message = result.DetachedCosts > 0
+                    ? $"Dossier de sinistre {result.Reference} supprimé. {result.DetachedCosts} dépense(s) restent dans Dépenses."
+                    : $"Dossier de sinistre {result.Reference} supprimé.",
+                detachedCosts = result.DetachedCosts
+            });
+        }
+        catch (NotFoundException) { return NotFound(new { message = "Dossier de sinistre introuvable." }); }
+        // Avant DomainException : ForbiddenAccessException en hérite, l'ordre fait le code HTTP.
+        catch (ForbiddenAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
+        catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
+    }
+
     // ── Phase commands ─────────────────────────────────────────────────────
 
     [HttpPatch("{id:int}/initial-damages")]
@@ -243,7 +275,7 @@ public class AccidentReportsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/upload-pdf")]
     [RequestSizeLimit(20_000_000)]
-    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile file, CancellationToken ct)
+    public async Task<ActionResult<object>> UploadPdf(int id, [FromForm] IFormFile? file, CancellationToken ct)
     {
         var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: ".pdf", maxSize: 20_000_000, ct);
         if (error != null) return error;
@@ -260,7 +292,7 @@ public class AccidentReportsController : ControllerBase
     /// </summary>
     [HttpPost("{id:int}/documents")]
     [RequestSizeLimit(50_000_000)]
-    public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile file, [FromForm] string? documentType, CancellationToken ct)
+    public async Task<ActionResult<object>> AddDocument(int id, [FromForm] IFormFile? file, [FromForm] string? documentType, CancellationToken ct)
     {
         var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: null, maxSize: 50_000_000, ct);
         if (error != null) return error;
@@ -430,8 +462,10 @@ public class AccidentReportsController : ControllerBase
     private async Task<(AccidentEvent? Ev, ActionResult? Error)> ValidateUploadAsync(
         int id, IFormFile? file, string? allowedExt, long maxSize, CancellationToken ct)
     {
+        // IFormFile? dans les actions (DEF-056) : non nullable, MVC refusait la requête
+        // avant l'action avec son message anglais et ce contrôle n'était jamais atteint.
         if (file == null || file.Length == 0)
-            return (null, BadRequest(new { message = "Fichier requis" }));
+            return (null, BadRequest(new { message = "Aucun fichier reçu." }));
         if (file.Length > maxSize)
             return (null, BadRequest(new { message = $"Fichier trop volumineux (max {maxSize / 1_000_000} Mo)" }));
         if (allowedExt != null)
