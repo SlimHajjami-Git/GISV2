@@ -143,6 +143,88 @@ public class KilometrageDateEtPorteeTests
         echeance.NextDueKm.Should().Be(98_000, "recaler sur un passage plus ancien avancerait l'alerte à tort");
     }
 
+    // ── Saisie après coup sur un véhicule sans relevé (contre-vérification du 18/09/2026) ──
+
+    private static VehicleMaintenanceSchedule Echeance(DateTime lastDone, int lastKm, int nextKm) => new()
+    {
+        Id = 1, VehicleId = VehiculeId, TemplateId = ModeleId, CompanyId = CompanyId,
+        LastDoneDate = lastDone, LastDoneKm = lastKm, NextDueKm = nextKm,
+        NextDueDate = lastDone.AddMonths(12), Status = "ok"
+    };
+
+    [Fact]
+    public async Task Saisie_apres_coup_sous_le_dernier_passage_connu_est_refusee_meme_sans_releve()
+    {
+        using var ctx = Contexte(mileage: 45_000);               // véhicule GPS, aucun relevé saisi
+        ctx.VehicleMaintenanceSchedules.Add(Echeance(Aujourdhui.AddDays(-60), 40_000, 50_000));
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = () => new MarkMaintenanceDoneCommandHandler(ctx, Admin())
+            .Handle(Entretien(Aujourdhui.AddDays(-1), 4_500), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*40*000 km*Un compteur ne recule pas*");
+        ctx.MaintenanceLogs.Should().BeEmpty();
+        ctx.VehicleCosts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Premier_entretien_apres_coup_invérifiable_et_deja_depasse_ne_pose_pas_d_echeance_km()
+    {
+        using var ctx = Contexte(mileage: 45_000);               // aucun relevé, aucune échéance
+        var logId = await new MarkMaintenanceDoneCommandHandler(ctx, Admin())
+            .Handle(Entretien(Aujourdhui.AddDays(-1), 4_500), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.MaintenanceLogs.FindAsync(logId))!.DoneKm.Should().Be(4_500, "l'historique garde la saisie");
+        var echeance = await ctx.VehicleMaintenanceSchedules.AsNoTracking().SingleAsync();
+        echeance.NextDueKm.Should().BeNull("14 500 km serait déjà dépassé : faute de frappe probable, pas d'alerte à tort");
+        echeance.NextDueDate.Should().NotBeNull("l'échéance à la date reste posée");
+        echeance.Status.Should().NotBe("overdue");
+    }
+
+    [Fact]
+    public async Task Premier_entretien_apres_coup_plausible_pose_l_echeance_km()
+    {
+        using var ctx = Contexte(mileage: 18_593);               // cas réel HERTZ : fait à 10 000, saisi après coup
+        await new MarkMaintenanceDoneCommandHandler(ctx, Admin())
+            .Handle(Entretien(Aujourdhui.AddDays(-36), 10_000), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var echeance = await ctx.VehicleMaintenanceSchedules.AsNoTracking().SingleAsync();
+        echeance.LastDoneKm.Should().Be(10_000);
+        echeance.NextDueKm.Should().Be(20_000);
+    }
+
+    [Fact]
+    public async Task Saisie_apres_coup_sous_le_compteur_ne_recule_jamais_l_echeance_km()
+    {
+        using var ctx = Contexte(mileage: 18_593);
+        // Échéance ancrée à l'affectation (18 593 + 10 000), dernier passage connu très ancien.
+        ctx.VehicleMaintenanceSchedules.Add(Echeance(Aujourdhui.AddDays(-400), 2_000, 28_593));
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await new MarkMaintenanceDoneCommandHandler(ctx, Admin())
+            .Handle(Entretien(Aujourdhui.AddDays(-36), 10_000), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var echeance = await ctx.VehicleMaintenanceSchedules.AsNoTracking().SingleAsync();
+        echeance.NextDueKm.Should().Be(28_593, "20 000 reculerait l'échéance sur une saisie invérifiable");
+        echeance.LastDoneDate!.Value.Date.Should().Be(Aujourdhui.AddDays(-36), "la date du passage est bien enregistrée");
+    }
+
+    [Theory]
+    [InlineData(0, 90_000, 80_000, 0, null, 90_000, true)]        // saisie du jour : toujours
+    [InlineData(-5, 90_000, 80_000, 0, null, 100_000, true)]      // après coup AU-DESSUS du compteur : toujours
+    [InlineData(-5, 4_500, 45_000, 0, null, 14_500, false)]       // invérifiable et déjà dépassée
+    [InlineData(-5, 40_000, 45_000, 0, null, 50_000, true)]       // invérifiable mais plausible
+    [InlineData(-5, 40_000, 45_000, 38_000, 60_000, 50_000, false)] // ne recule jamais
+    [InlineData(-5, 4_500, 45_000, 4_000, null, 14_500, true)]    // vérifiée par un relevé (4 000 à cette date)
+    public void Regle_de_l_echeance_km(int jours, int km, int compteur, int plancherReleves, int? actuelle, int? nouvelle, bool attendu)
+        => MarkMaintenanceDoneCommandHandler.EcheanceKmApplicable(Aujourdhui.AddDays(jours), km, compteur, plancherReleves, actuelle, nouvelle)
+            .Should().Be(attendu);
+
     // ── Plancher daté : pleins (saisie et import en masse) ───────────────────────
 
     private static CreateFuelEntryCommand Plein(DateTime date, long km, string plaque = "AB-123-CD") =>

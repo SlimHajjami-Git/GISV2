@@ -208,6 +208,26 @@ public class RemoveMaintenanceScheduleCommandHandler : IRequestHandler<RemoveMai
 
 public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenanceDoneCommand, int>
 {
+    /// <summary>
+    /// L'échéance au kilométrage peut-elle être recalée sur cet entretien ? Toujours pour une
+    /// saisie du jour ou au-dessus du compteur courant (le plancher a déjà écarté la faute de
+    /// frappe). Pour une saisie APRÈS COUP sous le compteur courant, le kilométrage n'est
+    /// vérifiable que par les relevés : l'échéance ne recule alors jamais, et sans aucun relevé
+    /// elle n'est pas posée si elle serait déjà dépassée à l'enregistrement — « 4 500 » tapé
+    /// pour « 45 000 » ferait partir des alertes « en retard » à tort (contre-vérification du
+    /// 18/09/2026). L'entretien reste dans l'historique et les dépenses dans tous les cas.
+    /// </summary>
+    public static bool EcheanceKmApplicable(
+        DateTime date, int km, int compteurCourant, int plancherReleves, int? echeanceActuelle, int? nouvelleEcheance)
+    {
+        if (!nouvelleEcheance.HasValue) return true;                    // pas d'intervalle km : rien à protéger
+        var apresCoupSousCompteur = date.Date < DateTime.UtcNow.Date && km < compteurCourant;
+        if (!apresCoupSousCompteur) return true;
+        if (echeanceActuelle.HasValue && nouvelleEcheance.Value < echeanceActuelle.Value) return false; // ne recule jamais
+        if (plancherReleves == 0 && nouvelleEcheance.Value <= compteurCourant) return false;           // invérifiable et déjà dépassée
+        return true;
+    }
+
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
 
@@ -251,7 +271,20 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         // un entretien du jour se compare au compteur courant, un entretien passé au
         // relevé connu à sa date — sinon toute saisie après coup était refusée.
         // Contrôle AVANT toute écriture : rien n'est enregistré en cas de refus.
-        var plancher = await VehicleMileage.FloorAtAsync(_context, companyId, vehicle, request.Date, cancellationToken);
+        var plancherReleves = await VehicleMileage.FloorAtAsync(_context, companyId, vehicle, request.Date, cancellationToken);
+        // Le dernier passage connu de CET entretien, s'il date d'avant (ou du jour de) la saisie,
+        // est lui aussi un relevé : un entretien du 10 ne peut pas être sous celui du 01
+        // (contre-vérification du 18/09/2026 : chez HERTZ, 250 véhicules sur 280 n'ont aucun
+        // relevé saisi, le plancher daté tombait à 0 et « 4 500 » pour « 45 000 » passait).
+        var dernierPassage = await _context.VehicleMaintenanceSchedules
+            .AsNoTracking()
+            .Where(s => s.VehicleId == request.VehicleId && s.TemplateId == request.TemplateId)
+            .Select(s => new { s.LastDoneDate, s.LastDoneKm })
+            .FirstOrDefaultAsync(cancellationToken);
+        var plancher = plancherReleves;
+        if (dernierPassage?.LastDoneDate is DateTime dernierLe && dernierLe.Date <= request.Date.Date
+            && (dernierPassage.LastDoneKm ?? 0) > plancher)
+            plancher = dernierPassage.LastDoneKm!.Value;
         if (request.Mileage < plancher)
         {
             throw new GisAPI.Domain.Exceptions.DomainException(
@@ -332,9 +365,14 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         if (!anterieurAuDernier)
         {
             schedule.LastDoneDate = request.Date;
-            schedule.LastDoneKm = request.Mileage;
-            schedule.NextDueKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : null;
             schedule.NextDueDate = intervalMonths.HasValue ? request.Date.AddMonths(intervalMonths.Value) : null;
+            var echeanceKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : (int?)null;
+            if (EcheanceKmApplicable(request.Date, request.Mileage, vehicle.Mileage, plancherReleves,
+                    schedule.NextDueKm, echeanceKm))
+            {
+                schedule.LastDoneKm = request.Mileage;
+                schedule.NextDueKm = echeanceKm;
+            }
             // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
             // already-loaded template (the schedule was fetched without Include
             // so schedule.Template was null inside CalculateStatus, falling back
