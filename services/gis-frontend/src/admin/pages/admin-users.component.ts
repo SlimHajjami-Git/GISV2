@@ -180,7 +180,7 @@ interface EditUserForm {
                 </div>
                 <div class="form-field">
                   <label>Téléphone</label>
-                  <input type="tel" [(ngModel)]="editForm.phone" placeholder="+216 …" />
+                  <input type="tel" [(ngModel)]="editForm.phone" placeholder="+33 6 12 34 56 78" />
                 </div>
                 <div class="form-field">
                   <label>Statut</label>

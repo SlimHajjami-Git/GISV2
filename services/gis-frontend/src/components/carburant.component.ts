@@ -157,7 +157,7 @@ interface ColumnMapping {
                 </div>
                 <div class="form-group">
                   <label>Prix par Litre</label>
-                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" placeholder="Ex: 12.450" step="0.001" min="0">
+                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" placeholder="Ex: 1.750" step="0.001" min="0">
                 </div>
                 <div class="form-group">
                   <label>Date Facture <span class="required">*</span></label>
@@ -165,7 +165,7 @@ interface ColumnMapping {
                 </div>
                 <div class="form-group">
                   <label>Montant Total <span class="required">*</span></label>
-                  <input type="number" [(ngModel)]="manualEntry.totalAmount" (ngModelChange)="onTotalAmountEdit()" class="form-control" placeholder="Ex: 568.45" step="0.01" min="0">
+                  <input type="number" [(ngModel)]="manualEntry.totalAmount" (ngModelChange)="onTotalAmountEdit()" class="form-control" placeholder="Ex: 79.63" step="0.01" min="0">
                   <small class="form-hint">Renseignez volume + prix (calcul auto) OU saisissez directement le montant total.</small>
                 </div>
                 <!-- Le plein est le moment où le conducteur lit le compteur. Sans

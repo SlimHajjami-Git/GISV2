@@ -280,11 +280,11 @@ import { RegionService } from '../services/region.service';
           <div class="form-row">
             <div class="form-group">
               <label for="firstName">Prénom</label>
-              <input type="text" id="firstName" name="firstName" [(ngModel)]="firstName" placeholder="Sonia" required />
+              <input type="text" id="firstName" name="firstName" [(ngModel)]="firstName" placeholder="Jean" required />
             </div>
             <div class="form-group">
               <label for="lastName">Nom</label>
-              <input type="text" id="lastName" name="lastName" [(ngModel)]="lastName" placeholder="Ben Salah" required />
+              <input type="text" id="lastName" name="lastName" [(ngModel)]="lastName" placeholder="Dupont" required />
             </div>
           </div>
 
@@ -299,7 +299,7 @@ import { RegionService } from '../services/region.service';
             <div class="form-group">
               <label for="companyName">Nom de la société</label>
               <input type="text" id="companyName" name="companyName" [(ngModel)]="companyName"
-                     placeholder="Transports Ben Salah" required />
+                     placeholder="Transports Dupont" required />
               <small class="hint">Le nom sous lequel vous serez facturé.</small>
             </div>
           }

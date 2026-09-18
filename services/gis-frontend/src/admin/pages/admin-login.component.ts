@@ -40,7 +40,7 @@ import { AdminService } from '../services/admin.service';
                 id="email"
                 [(ngModel)]="email"
                 name="email"
-                placeholder="admin@Calypso.tn"
+                placeholder="admin@exemple.fr"
                 required
               />
             </div>

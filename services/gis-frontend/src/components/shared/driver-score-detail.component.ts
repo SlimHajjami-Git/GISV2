@@ -100,7 +100,7 @@ import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../mo
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
               </div>
               <div class="ic-content">
-                <span class="ic-label">CIN</span>
+                <span class="ic-label">Pièce d'identité</span>
                 <span class="ic-value">{{ employee?.cin }}</span>
               </div>
             </div>

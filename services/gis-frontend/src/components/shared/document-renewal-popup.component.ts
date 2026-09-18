@@ -185,7 +185,7 @@ export interface RenewalFormData {
                       <div class="inline-form-group full">
                         <label>Adresse</label>
                         <input type="text" [(ngModel)]="newSupplier.address" name="newSupplierAddress" 
-                               placeholder="Ex: 45 Avenue Habib Bourguiba" class="form-control">
+                               placeholder="Ex: 45 avenue de la République" class="form-control">
                       </div>
                     </div>
 
@@ -193,12 +193,12 @@ export interface RenewalFormData {
                       <div class="inline-form-group">
                         <label>Ville</label>
                         <input type="text" [(ngModel)]="newSupplier.city" name="newSupplierCity" 
-                               placeholder="Ex: Tunis" class="form-control">
+                               placeholder="Ex: Lyon" class="form-control">
                       </div>
                       <div class="inline-form-group">
                         <label>Code postal</label>
                         <input type="text" [(ngModel)]="newSupplier.postalCode" name="newSupplierPostalCode" 
-                               placeholder="Ex: 1000" class="form-control">
+                               placeholder="Ex: 69003" class="form-control">
                       </div>
                     </div>
                   </div>
@@ -216,12 +216,12 @@ export interface RenewalFormData {
                       <div class="inline-form-group">
                         <label>Téléphone</label>
                         <input type="tel" [(ngModel)]="newSupplier.phone" name="newSupplierPhone" 
-                               placeholder="+216 XX XXX XXX" class="form-control">
+                               placeholder="+33 X XX XX XX XX" class="form-control">
                       </div>
                       <div class="inline-form-group">
                         <label>Email</label>
                         <input type="email" [(ngModel)]="newSupplier.email" name="newSupplierEmail" 
-                               placeholder="contact@example.tn" class="form-control">
+                               placeholder="contact@exemple.fr" class="form-control">
                       </div>
                     </div>
                   </div>
@@ -1092,8 +1092,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
   getProviderPlaceholder(): string {
     if (!this.document) return 'Nom du fournisseur';
     switch (this.document.type) {
-      case 'insurance': return 'Ex: CNIA Saada, Wafa Assurance...';
-      case 'tax': return 'Ex: Recette des finances';
+      case 'insurance': return 'Ex: AXA, Macif, Groupama...';
+      case 'tax': return 'Ex: Trésor public';
       case 'technical_inspection': return 'Ex: Centre de contrôle technique';
       default: return 'Nom du fournisseur';
     }

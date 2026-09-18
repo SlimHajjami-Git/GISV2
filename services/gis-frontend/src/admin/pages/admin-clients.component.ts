@@ -168,11 +168,11 @@ import { environment } from '../../environments/environment';
                   </div>
                   <div class="form-group">
                     <label>Email société</label>
-                    <input type="email" [(ngModel)]="clientForm.email" placeholder="contact@societe.tn" />
+                    <input type="email" [(ngModel)]="clientForm.email" placeholder="contact@societe.fr" />
                   </div>
                   <div class="form-group">
                     <label>Téléphone</label>
-                    <input type="tel" [(ngModel)]="clientForm.phone" placeholder="+216 XX XXX XXX" />
+                    <input type="tel" [(ngModel)]="clientForm.phone" placeholder="+33 1 23 45 67 89" />
                   </div>
                   <div class="form-group">
                     <label>Type de société <span class="required">*</span></label>
@@ -300,14 +300,14 @@ import { environment } from '../../environments/environment';
                   <div class="form-group">
                     <label>Email de la société <span class="required">*</span></label>
                     <input type="email" [(ngModel)]="wizardData.companyEmail" 
-                           placeholder="contact@societe.tn"
+                           placeholder="contact@societe.fr"
                            [class.error]="wizardErrors['companyEmail']" />
                     <span class="error-text" *ngIf="wizardErrors['companyEmail']">{{ wizardErrors['companyEmail'] }}</span>
                   </div>
                   <div class="form-group">
                     <label>Téléphone <span class="required">*</span></label>
                     <input type="tel" [(ngModel)]="wizardData.companyPhone" 
-                           placeholder="+216 XX XXX XXX"
+                           placeholder="+33 1 23 45 67 89"
                            [class.error]="wizardErrors['companyPhone']" />
                     <span class="error-text" *ngIf="wizardErrors['companyPhone']">{{ wizardErrors['companyPhone'] }}</span>
                   </div>
@@ -505,7 +505,7 @@ import { environment } from '../../environments/environment';
                 <div class="form-group">
                   <label>Téléphone <span class="required">*</span></label>
                   <input type="tel" [(ngModel)]="wizardData.adminPhone" 
-                         placeholder="+216 XX XXX XXX"
+                         placeholder="+33 6 12 34 56 78"
                          [class.error]="wizardErrors['adminPhone']" />
                   <span class="error-text" *ngIf="wizardErrors['adminPhone']">{{ wizardErrors['adminPhone'] }}</span>
                 </div>
@@ -513,7 +513,7 @@ import { environment } from '../../environments/environment';
                 <div class="form-group">
                   <label>Adresse e-mail (identifiant de connexion) <span class="required">*</span></label>
                   <input type="email" [(ngModel)]="wizardData.adminEmail" 
-                         placeholder="admin@societe.tn"
+                         placeholder="admin@societe.fr"
                          [class.error]="wizardErrors['adminEmail']" />
                   <span class="error-text" *ngIf="wizardErrors['adminEmail']">{{ wizardErrors['adminEmail'] }}</span>
                 </div>

@@ -733,7 +733,7 @@ interface VehicleTrip {
 
                 <div class="fm-field">
                   <label class="fm-label">Note interne <span class="fm-label-opt">(optionnel)</span></label>
-                  <textarea class="fm-input fm-textarea" [(ngModel)]="freeMaintForm_notes" name="notes" rows="2" placeholder="Ex: Offert à l'achat du véhicule le 12/03/2026 chez Peugeot Tunis"></textarea>
+                  <textarea class="fm-input fm-textarea" [(ngModel)]="freeMaintForm_notes" name="notes" rows="2" placeholder="Ex: Offert à l'achat du véhicule le 12/03/2026 chez Peugeot Lyon"></textarea>
                 </div>
               </div>
 
@@ -3133,7 +3133,7 @@ export class VehiclesComponent implements OnInit, OnDestroy {
 
   generateMockTrips(): VehicleTrip[] {
     const trips: VehicleTrip[] = [];
-    const cities = ['Tunis Centre', 'La Marsa', 'Sousse', 'Sfax', 'Hammamet', 'Bizerte'];
+    const cities = ['Lyon Part-Dieu', 'Villeurbanne', 'Marseille', 'Lille', 'Bordeaux', 'Nantes'];
     for (let i = 0; i < 8; i++) {
       trips.push({
         id: `trip-${i}`,

@@ -880,9 +880,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
       },
       error: () => {
         this.vehicles = [
-          { id: 1, name: 'Peugeot 208', plateNumber: '245 TUN 7890', mileage: 52000 },
-          { id: 2, name: 'Renault Clio', plateNumber: '189 TUN 4521', mileage: 78500 },
-          { id: 3, name: 'Citroen Berlingo', plateNumber: '312 TUN 1122', mileage: 125000 }
+          { id: 1, name: 'Peugeot 208', plateNumber: 'AB-123-CD', mileage: 52000 },
+          { id: 2, name: 'Renault Clio', plateNumber: 'CD-456-EF', mileage: 78500 },
+          { id: 3, name: 'Citroen Berlingo', plateNumber: 'EF-789-GH', mileage: 125000 }
         ];
       }
     });

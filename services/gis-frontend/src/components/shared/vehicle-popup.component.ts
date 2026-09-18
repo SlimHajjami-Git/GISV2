@@ -91,7 +91,7 @@ export interface CompanyOption {
                 </div>
                 <div class="form-group">
                   <label for="plate">Plaque *</label>
-                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: ABC-1234" />
+                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" />
                 </div>
               </div>
 
@@ -247,7 +247,7 @@ export interface CompanyOption {
                   id="gpsSimNumberExisting"
                   name="gpsSimNumberExisting"
                   [(ngModel)]="formData.gpsSimNumber"
-                  placeholder="Ex: +216 50 123 456"
+                  placeholder="Ex: +33 6 12 34 56 78"
                 />
               </div>
               <div class="form-group">
@@ -282,7 +282,7 @@ export interface CompanyOption {
                   id="gpsSimNumber"
                   name="gpsSimNumber"
                   [(ngModel)]="formData.gpsSimNumber"
-                  placeholder="Ex: +216 50 123 456"
+                  placeholder="Ex: +33 6 12 34 56 78"
                 />
               </div>
 

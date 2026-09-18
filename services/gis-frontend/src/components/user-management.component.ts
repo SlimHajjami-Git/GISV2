@@ -307,7 +307,7 @@ interface VehicleOption {
                     </div>
                     <div class="form-group">
                       <label>Téléphone</label>
-                      <input type="tel" [(ngModel)]="userForm.phone" placeholder="+216 XX XXX XXX">
+                      <input type="tel" [(ngModel)]="userForm.phone" placeholder="+33 6 12 34 56 78">
                     </div>
                     <div class="form-group" *ngIf="!editingUser">
                       <label>Mot de passe *</label>

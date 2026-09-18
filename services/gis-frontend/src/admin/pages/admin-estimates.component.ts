@@ -97,8 +97,8 @@ import { environment } from '../../environments/environment';
                   </select>
                 </label>
                 <label class="fld"><span>Nom du client *</span><input [(ngModel)]="form.clientName" placeholder="Société ou personne" /></label>
-                <label class="fld"><span>E-mail</span><input [(ngModel)]="form.clientEmail" type="email" placeholder="contact@client.tn" /></label>
-                <label class="fld"><span>Téléphone</span><input [(ngModel)]="form.clientPhone" placeholder="+216 …" /></label>
+                <label class="fld"><span>E-mail</span><input [(ngModel)]="form.clientEmail" type="email" placeholder="contact@client.fr" /></label>
+                <label class="fld"><span>Téléphone</span><input [(ngModel)]="form.clientPhone" placeholder="+33 1 23 45 67 89" /></label>
                 <label class="fld span-2"><span>Adresse</span><input [(ngModel)]="form.clientAddress" placeholder="Adresse de facturation" /></label>
               </div>
 

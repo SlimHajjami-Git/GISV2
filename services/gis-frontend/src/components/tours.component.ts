@@ -157,7 +157,7 @@ declare let L: any;
             </div>
             <div class="field">
               <label>Nom *</label>
-              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Tunis - Sousse">
+              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Lyon - Marseille">
             </div>
             <div class="field-row">
               <div class="field">
