@@ -29,7 +29,11 @@ public record OperatingCostReportDto(
     decimal TotalRepairCost,
     decimal TotalOtherCost,
     string DistanceNote,
-    List<VehicleOperatingCostDto> Vehicles);
+    List<VehicleOperatingCostDto> Vehicles,
+    // Avoirs fournisseurs et remboursements d'assurance de la période, en NÉGATIF
+    // (règle du 18/09/2026) : les quatre postes ci-dessus restent bruts, seul
+    // TotalCost est net. En fin de liste pour ne déplacer aucun argument existant.
+    decimal TotalCreditAmount = 0m);
 
 public record VehicleOperatingCostDto(
     int Rank,
@@ -44,8 +48,9 @@ public record VehicleOperatingCostDto(
     int OdometerBreaks,
     decimal FuelCost,
     decimal MaintenanceCost,
-    decimal RepairCost,
-    decimal OtherCost,
-    decimal TotalCost,
+    decimal RepairCost,                    // BRUT : les crédits ne s'y déduisent pas
+    decimal OtherCost,                     // BRUT également
+    decimal TotalCost,                     // NET : postes bruts + CreditAmount (négatif)
     decimal? CostPerKm,                    // TotalCost / DistanceKm, 3 décimales
-    decimal? DeviationFromAveragePct);     // (CostPerKm − moyenne) / moyenne × 100, 1 décimale
+    decimal? DeviationFromAveragePct,      // (CostPerKm − moyenne) / moyenne × 100, 1 décimale
+    decimal CreditAmount = 0m);            // avoirs et remboursements, en négatif

@@ -15,9 +15,10 @@ namespace GisAPI.Application.Features.AccidentEvents.Commands;
 ///
 /// <para>Les règles, décidées avec le client :</para>
 /// <list type="bullet">
-///   <item>L'argent reste — les <c>vehicle_costs</c> nés des phases (réparation,
-///     remboursement d'assurance) sont DÉTACHÉS, jamais supprimés : ils restent
-///     visibles dans Dépenses, comme le fait déjà la base (ON DELETE SET NULL).</item>
+///   <item>L'argent reste — la réparation née de la phase 5 (<c>repairs</c>) et le
+///     remboursement d'assurance (<c>vehicle_costs</c>) sont DÉTACHÉS, jamais
+///     supprimés : ils restent visibles dans Réparations et dans Dépenses, comme le
+///     fait déjà la base (ON DELETE SET NULL).</item>
 ///   <item>Les pièces du dossier partent — documents et tiers (cascade), ainsi que
 ///     les fichiers correspondants sous <c>uploads/</c>, comme la suppression d'un
 ///     document unitaire.</item>
@@ -38,6 +39,7 @@ public record DeleteAccidentEventCommand(int AccidentEventId, string? UploadsRoo
 /// <param name="Reference">Référence du dossier (<c>reference_code</c> ou <c>#id</c>), pour le message de retour.</param>
 /// <param name="DeletedNotifications">Entrées de la cloche retirées avec le dossier.</param>
 /// <param name="DetachedCosts">Dépenses conservées, désormais sans lien avec le dossier.</param>
+/// <param name="DetachedRepairs">Réparations conservées dans l'écran Réparations, détachées du dossier.</param>
 public record DeleteAccidentEventResult(
     int Id,
     string Reference,
@@ -45,7 +47,8 @@ public record DeleteAccidentEventResult(
     int DeletedThirdParties,
     int DeletedNotifications,
     int DetachedCosts,
-    int DeletedFiles);
+    int DeletedFiles,
+    int DetachedRepairs);
 
 public class DeleteAccidentEventCommandHandler : IRequestHandler<DeleteAccidentEventCommand, DeleteAccidentEventResult>
 {
@@ -107,6 +110,16 @@ public class DeleteAccidentEventCommandHandler : IRequestHandler<DeleteAccidentE
             .ToListAsync(ct);
         foreach (var cout in couts) cout.AccidentEventId = null;
 
+        // Même règle pour la réparation née de la phase 5 (migration 049) : elle reste
+        // dans l'écran Réparations et dans les rapports, simplement détachée. Écrit ici
+        // plutôt que laissé à la cascade ON DELETE SET NULL de la base.
+        // Filtre société EXPLICITE : repairs n'a pas de filtre de requête global, sa clé
+        // de cloisonnement est societe_id (même précaution que l'agrégateur des coûts).
+        var reparations = await _context.Repairs
+            .Where(r => r.AccidentEventId == ev.Id && r.SocieteId == companyId)
+            .ToListAsync(ct);
+        foreach (var reparation in reparations) reparation.AccidentEventId = null;
+
         // Les notifications du dossier n'ont aucune clé étrangère : sans ce retrait, la
         // cloche garderait « Accident détecté » et mènerait à un rapport sans données.
         var notifications = await _context.Notifications
@@ -131,11 +144,12 @@ public class DeleteAccidentEventCommandHandler : IRequestHandler<DeleteAccidentE
         _logger.LogWarning(
             "Sinistre {Reference} (#{AccidentId}, société {CompanyId}) supprimé par l'utilisateur {UserId} : "
             + "{Documents} document(s), {Tiers} tiers, {Notifications} notification(s), {Fichiers} fichier(s) ; "
-            + "{Couts} dépense(s) conservée(s) et détachée(s).",
-            reference, ev.Id, companyId, _tenant.UserId, documents, tiers, notifications.Count, fichiersSupprimes, couts.Count);
+            + "{Couts} dépense(s) et {Reparations} réparation(s) conservées et détachées.",
+            reference, ev.Id, companyId, _tenant.UserId, documents, tiers, notifications.Count, fichiersSupprimes,
+            couts.Count, reparations.Count);
 
         return new DeleteAccidentEventResult(
-            ev.Id, reference, documents, tiers, notifications.Count, couts.Count, fichiersSupprimes);
+            ev.Id, reference, documents, tiers, notifications.Count, couts.Count, fichiersSupprimes, reparations.Count);
     }
 
     /// <summary>

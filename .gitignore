@@ -67,3 +67,8 @@ prod-*.sql
 
 # Réglages Claude Code propres à chaque machine (jamais versionnés)
 .claude/settings.local.json
+
+# Fichiers déposés par les clients et rapports PDF produits par l'API : le dossier
+# se remplit à chaque régénération, un « git add -A » y embarquerait des documents
+# clients. Rien n'y est versionné (aucun fichier suivi aujourd'hui).
+services/GisAPI/uploads/

@@ -10,6 +10,7 @@ import {
 } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { Vehicle } from '../models/types';
+import { AuthService } from '../services/auth.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
@@ -25,7 +26,9 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
  *   - The "Ajouter un sinistre manuel" button opens an inline modal with
  *     vehicle picker + date + optional location + damages fields. On
  *     submit, the row is created with status='confirmed' and the user
- *     can immediately attach a PDF expert via the second step.
+ *     can immediately attach a PDF expert via the second step — en PIÈCE
+ *     JOINTE du dossier (`expert_report`), jamais dans `pdf_report_url`,
+ *     que la régénération du rapport écrase.
  */
 @Component({
   selector: 'app-accident-reports-list',
@@ -214,6 +217,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <div class="field">
               <label>PDF expert (facultatif)</label>
               <input type="file" accept="application/pdf" (change)="onFile($event)">
+              <p class="hint">Joint au dossier en pièce jointe, visible dans la fiche du sinistre. Le rapport PDF du sinistre, lui, est produit par Calypso.</p>
               <p class="hint" *ngIf="manualPdf">📎 {{ manualPdf.name }} ({{ formatBytes(manualPdf.size) }})</p>
             </div>
 
@@ -362,10 +366,18 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
   manualForm: ManualForm = this.emptyManualForm();
   manualPdf: File | null = null;
 
+  /**
+   * Déclarer un sinistre n'est pas réservé à un administrateur, JOINDRE une pièce à la
+   * fiche l'est : le message d'échec de l'envoi doit donc dire à chacun ce qu'il peut
+   * réellement faire.
+   */
+  isAdmin = false;
+
   constructor(
     private api: ApiService,
     private router: Router,
     private cdr: ChangeDetectorRef,
+    private auth: AuthService,
     private userPrefs: UserPreferencesService
   ) {}
 
@@ -373,6 +385,7 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
   get currencyCode(): string { return this.userPrefs.current.currency; }
 
   ngOnInit(): void {
+    this.isAdmin = !!this.auth.getCurrentUserSync()?.isCompanyAdmin;
     this.reload();
     this.api.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => { this.vehicles = vehicles as Vehicle[]; this.cdr.markForCheck(); },
@@ -587,12 +600,21 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
 
     this.api.createManualAccident(payload).pipe(takeUntil(this.destroy$)).subscribe({
       next: ({ accidentEventId }) => {
-        // If the user attached a PDF, upload it before closing.
+        // Le PDF fourni par le client est une PIÈCE JOINTE du dossier (type
+        // « expert_report »), jamais le rapport du dossier : pdf_report_url porte le
+        // rapport produit par Calypso, régénéré à chaque phase enregistrée — le
+        // document de l'expert y aurait été écrasé, et son fichier effacé.
         if (this.manualPdf) {
-          this.api.uploadAccidentReportPdf(accidentEventId, this.manualPdf).pipe(takeUntil(this.destroy$)).subscribe({
+          this.api.uploadAccidentDocument(accidentEventId, this.manualPdf, 'expert_report')
+            .pipe(takeUntil(this.destroy$)).subscribe({
             next: () => this.afterManualCreated(),
             error: () => {
-              alert('Sinistre créé, mais l\'envoi du PDF a échoué. Vous pouvez réessayer depuis la fiche.');
+              // La rubrique « Pièces jointes » de la fiche n'accepte un envoi que d'un
+              // administrateur : promettre cette action à tout le monde désignait, pour
+              // les autres, un bouton qu'ils ne verront jamais.
+              alert(this.isAdmin
+                ? 'Sinistre créé, mais l\'envoi du PDF a échoué. Vous pouvez le joindre depuis la fiche du sinistre, rubrique « Pièces jointes ».'
+                : 'Sinistre créé, mais l\'envoi du PDF a échoué. Demandez à un administrateur de le joindre au dossier.');
               this.afterManualCreated();
             }
           });

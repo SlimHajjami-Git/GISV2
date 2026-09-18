@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.AccidentEvents.Commands;
 using GisAPI.Application.Features.AccidentEvents.Queries;
 using GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
@@ -31,11 +32,12 @@ namespace GisAPI.Controllers;
 ///   <item><c>PATCH  /:id/initial-damages       </c> — Phase 2 form fields</item>
 ///   <item><c>PATCH  /:id/expert                </c> — Phase 3</item>
 ///   <item><c>PATCH  /:id/mechanic-quote        </c> — Phase 4</item>
-///   <item><c>PATCH  /:id/repair                </c> — Phase 5 (auto-syncs VehicleCost)</item>
-///   <item><c>PATCH  /:id/claim                 </c> — Phase 6 (auto-syncs VehicleCost as refund)</item>
+///   <item><c>PATCH  /:id/repair                </c> — Phase 5 (reporte le coût dans Réparations) ; 200 + avertissement</item>
+///   <item><c>PATCH  /:id/claim                 </c> — Phase 6 (reporte le remboursement dans Dépenses) ; 200 + avertissement</item>
 ///   <item><c>POST   /:id/third-parties         </c> — add a third party</item>
 ///   <item><c>DELETE /:id/third-parties/:tpId   </c> — remove a third party</item>
-///   <item><c>POST   /:id/upload-pdf            </c> — auto-generated PDF (Phase 2)</item>
+///   <item><c>POST   /:id/upload-pdf            </c> — rapport PDF produit par l'application (jamais un document du client)</item>
+///   <item><c>GET    /:id/pdf-status            </c> — date de génération du PDF vs dernière modification</item>
 ///   <item><c>POST   /:id/documents             </c> — multi-file upload typed by phase</item>
 ///   <item><c>DELETE /:id/documents/:docId      </c> — remove a document</item>
 ///   <item><c>POST   /simulate                  </c> — debug-only, user 1</item>
@@ -146,6 +148,23 @@ public class AccidentReportsController : ControllerBase
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
+    /// <summary>
+    /// Ce que la suppression d'un véhicule emporte : dossiers de sinistre conservés
+    /// (détachés), réparations et dépenses supprimées avec lui. Sert la fenêtre de
+    /// confirmation de l'écran d'administration des véhicules, qui n'annonçait rien.
+    ///
+    /// <para>Route sous <c>/api/admin</c> alors que l'action vit ici : l'écran qui
+    /// supprime est dans l'espace d'administration, et l'intercepteur Angular n'attache
+    /// <c>admin_token</c> qu'aux URL <c>/api/admin</c> (le repli croisé a été retiré,
+    /// c'était une faille). Le PermissionMiddleware y exige un administrateur système.</para>
+    /// </summary>
+    [HttpGet("/api/admin/vehicles/{vehicleId:int}/deletion-impact")]
+    public async Task<ActionResult<VehicleDeletionImpactDto>> VehicleDeletionImpact(int vehicleId, CancellationToken ct)
+    {
+        var impact = await _mediator.Send(new GetVehicleDeletionImpactQuery(vehicleId), ct);
+        return impact == null ? NotFound() : Ok(impact);
+    }
+
     // ── Suppression du dossier ─────────────────────────────────────────────
 
     /// <summary>
@@ -163,12 +182,16 @@ public class AccidentReportsController : ControllerBase
         try
         {
             var result = await _mediator.Send(new DeleteAccidentEventCommand(id, uploadsRoot), ct);
+            var conserves = new List<string>();
+            if (result.DetachedCosts > 0) conserves.Add($"{result.DetachedCosts} dépense(s) restent dans Dépenses");
+            if (result.DetachedRepairs > 0) conserves.Add($"{result.DetachedRepairs} réparation(s) restent dans Réparations");
             return Ok(new
             {
-                message = result.DetachedCosts > 0
-                    ? $"Dossier de sinistre {result.Reference} supprimé. {result.DetachedCosts} dépense(s) restent dans Dépenses."
+                message = conserves.Count > 0
+                    ? $"Dossier de sinistre {result.Reference} supprimé. {string.Join(", ", conserves)}."
                     : $"Dossier de sinistre {result.Reference} supprimé.",
-                detachedCosts = result.DetachedCosts
+                detachedCosts = result.DetachedCosts,
+                detachedRepairs = result.DetachedRepairs
             });
         }
         catch (NotFoundException) { return NotFound(new { message = "Dossier de sinistre introuvable." }); }
@@ -218,30 +241,44 @@ public class AccidentReportsController : ControllerBase
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
+    /// <summary>
+    /// Phase 5 — suivi de la réparation. Répond 200 avec un avertissement structuré
+    /// quand la ligne de réparation n'a PAS pu être écrite (véhicule du dossier
+    /// supprimé) : le 204 nu laissait croire que tout avait été reporté.
+    /// </summary>
     [HttpPatch("{id:int}/repair")]
-    public async Task<IActionResult> RegisterRepair(int id, [FromBody] RegisterRepairRequest req, CancellationToken ct)
+    public async Task<ActionResult<object>> RegisterRepair(int id, [FromBody] RegisterRepairRequest req, CancellationToken ct)
     {
         try
         {
-            await _mediator.Send(new RegisterRepairCommand(id, req.StartedAt, req.CompletedAt, req.ActualCost), ct);
-            return NoContent();
+            var result = await _mediator.Send(new RegisterRepairCommand(id, req.StartedAt, req.CompletedAt, req.ActualCost), ct);
+            return Ok(PhaseResponse(result));
         }
         catch (NotFoundException) { return NotFound(); }
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 
+    /// <summary>Phase 6 — suivi du sinistre assurance. Même avertissement que la phase 5.</summary>
     [HttpPatch("{id:int}/claim")]
-    public async Task<IActionResult> RegisterClaim(int id, [FromBody] RegisterClaimRequest req, CancellationToken ct)
+    public async Task<ActionResult<object>> RegisterClaim(int id, [FromBody] RegisterClaimRequest req, CancellationToken ct)
     {
         try
         {
-            await _mediator.Send(new RegisterClaimCommand(id, req.ClaimNumber, req.SubmittedAt,
+            var result = await _mediator.Send(new RegisterClaimCommand(id, req.ClaimNumber, req.SubmittedAt,
                 req.ApprovedAmount, req.Status, req.ThirdPartyInvolved), ct);
-            return NoContent();
+            return Ok(PhaseResponse(result));
         }
         catch (NotFoundException) { return NotFound(); }
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
+
+    /// <summary>Corps commun des phases 5 et 6 : l'écran n'affiche que <c>message</c>.</summary>
+    private static object PhaseResponse(PhaseSyncResult result) => new
+    {
+        message = result.Warning,
+        costSynced = result.Synced,
+        reason = result.Reason,
+    };
 
     // ── Third parties ──────────────────────────────────────────────────────
 
@@ -269,9 +306,12 @@ public class AccidentReportsController : ControllerBase
     // ── Documents ──────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Auto-generated PDF (Phase 2) — single PDF per accident, stored as
-    /// <c>pdf_report_url</c> on the row. Replaces any previously attached
-    /// auto-PDF.
+    /// Rapport PDF PRODUIT par l'application, enregistré dans <c>pdf_report_url</c> —
+    /// un seul par dossier, refait à chaque régénération. Un document fourni par le
+    /// client (rapport d'expert, devis…) ne passe JAMAIS par ici : il se joint au
+    /// dossier par <c>POST /:id/documents</c>, sinon la régénération le remplacerait.
+    /// Un dossier antérieur au correctif qui en porte encore un le voit rangé en pièce
+    /// jointe avant le remplacement du lien.
     /// </summary>
     [HttpPost("{id:int}/upload-pdf")]
     [RequestSizeLimit(20_000_000)]
@@ -280,9 +320,199 @@ public class AccidentReportsController : ControllerBase
         var (ev, error) = await ValidateUploadAsync(id, file, allowedExt: ".pdf", maxSize: 20_000_000, ct);
         if (error != null) return error;
 
-        var (publicUrl, _) = await SaveFileAsync(id, file!, ".pdf", ct);
+        // URL relevée AVANT le remplacement : le PDF est régénéré à chaque
+        // enregistrement de phase, et l'ancien fichier restait sur le disque à chaque
+        // fois (racine partagée avec le nœud TN). Même règle que la suppression d'un
+        // document : on n'efface qu'après avoir enregistré la nouvelle URL.
+        var ancienneUrl = ev!.PdfReportUrl;
+
+        // Déclaration MANUELLE antérieure au correctif : pdf_report_url peut porter le
+        // document du client, qu'aucune autre ligne ne référence. Il devient une pièce
+        // jointe AVANT que le lien ne change, sinon son fichier restait sur le disque
+        // sans être atteignable depuis l'écran.
+        var archiveEnPieceJointe = await ArchiverPdfDuClientAsync(ev, ancienneUrl, ct);
+
+        var (publicUrl, _) = await SaveFileAsync(id, file!, ".pdf", ct, PrefixeRapportGenere);
         await _mediator.Send(new AttachAccidentPdfCommand(id, publicUrl), ct);
-        return Ok(new { pdfReportUrl = publicUrl });
+        SupprimerAncienPdf(ev, ancienneUrl, publicUrl, archiveEnPieceJointe);
+
+        return Ok(new { pdfReportUrl = publicUrl, generatedAt = DateTime.UtcNow });
+    }
+
+    /// <summary>
+    /// Fraîcheur du PDF attaché : date de génération (horodatage du fichier) et date de
+    /// dernière modification du dossier. L'écran s'en sert pour dater le lien de
+    /// téléchargement et signaler un PDF plus ancien que les informations saisies.
+    /// </summary>
+    [HttpGet("{id:int}/pdf-status")]
+    public async Task<ActionResult<object>> PdfStatus(int id, CancellationToken ct)
+    {
+        var companyId = _tenantService.CompanyId;
+        if (companyId == null) return BadRequest(new { message = "Société non identifiée" });
+
+        var ev = await _context.AccidentEvents.AsNoTracking()
+            .Where(e => e.Id == id && e.CompanyId == companyId.Value)
+            .Select(e => new { e.VehicleId, e.PdfReportUrl, e.UpdatedAt })
+            .FirstOrDefaultAsync(ct);
+        if (ev == null) return NotFound();
+
+        // Même périmètre que la lecture du rapport : un employé restreint à quelques
+        // véhicules ne doit pas récupérer l'URL du PDF d'un autre dossier (les fichiers
+        // sont servis en statique). Portée nulle = administrateur, tout le parc.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (scope is not null && (ev.VehicleId == null || !scope.Contains(ev.VehicleId.Value)))
+            return NotFound();
+
+        var generatedAt = DateFichierPdf(id, ev.PdfReportUrl);
+        // Tolérance : l'URL est enregistrée juste APRÈS l'écriture du fichier, la date
+        // du dossier est donc toujours un peu postérieure à celle du PDF.
+        var perime = generatedAt != null && ev.UpdatedAt > generatedAt.Value.AddSeconds(30);
+
+        return Ok(new
+        {
+            pdfReportUrl = ev.PdfReportUrl,
+            generatedAt,
+            updatedAt = ev.UpdatedAt,
+            stale = perime,
+        });
+    }
+
+    /// <summary>Date d'écriture du PDF attaché, null s'il n'y en a pas ou si le fichier a disparu.</summary>
+    private DateTime? DateFichierPdf(int accidentId, string? fileUrl)
+    {
+        var chemin = CheminFichierDuDossier(accidentId, fileUrl);
+        if (chemin == null || !System.IO.File.Exists(chemin)) return null;
+        try { return System.IO.File.GetLastWriteTimeUtc(chemin); }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
+    /// <summary>
+    /// Chemin disque d'un fichier de CE dossier, ou null si l'URL pointe ailleurs :
+    /// même garde que la suppression d'un document, on ne sort jamais du dossier.
+    /// </summary>
+    private string? CheminFichierDuDossier(int accidentId, string? fileUrl)
+    {
+        var prefixe = $"/uploads/accident-reports/{accidentId}/";
+        if (string.IsNullOrEmpty(fileUrl) || !fileUrl.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase)) return null;
+        var nom = Path.GetFileName(fileUrl);
+        if (string.IsNullOrEmpty(nom)) return null;
+        return Path.Combine(_env.ContentRootPath, "uploads", "accident-reports", accidentId.ToString(), nom);
+    }
+
+    /// <summary>
+    /// Nom des fichiers PRODUITS par l'application, posé depuis le correctif du
+    /// 18/09/2026. Les fichiers antérieurs ne le portent pas, quelle que soit leur
+    /// origine : il dit « produit par Calypso », jamais « fourni par le client »
+    /// (voir <see cref="EstDocumentDuClient"/>).
+    /// </summary>
+    internal const string PrefixeRapportGenere = "rapport-";
+
+    /// <summary>Ce fichier a-t-il été produit par l'application ?</summary>
+    internal static bool EstRapportGenere(string? fileUrl) =>
+        Path.GetFileName(fileUrl ?? string.Empty)
+            .StartsWith(PrefixeRapportGenere, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// L'ancien <c>pdf_report_url</c> peut-il porter un document REMIS PAR LE CLIENT ?
+    ///
+    /// <para>Le préfixe ne suffit pas : il n'existe que depuis ce correctif, et tout
+    /// l'existant s'appelle « {guid}.pdf » — rapport produit par Calypso compris, puisque
+    /// la modale de décision en envoie un à la confirmation de chaque accident détecté.
+    /// Seule la déclaration MANUELLE a jamais offert un champ « PDF expert » : sur un
+    /// dossier d'origine « auto », l'ancien fichier est forcément un rapport généré.</para>
+    /// </summary>
+    private static bool EstDocumentDuClient(AccidentEvent ev, string? fileUrl) =>
+        !string.IsNullOrWhiteSpace(fileUrl)
+        && !EstRapportGenere(fileUrl)
+        && string.Equals(ev.Origin, "manual", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Range en pièce jointe le PDF que le dossier portait et que l'application n'a pas
+    /// produit (déclaration manuelle antérieure au correctif). Sans cela, la première
+    /// régénération — automatique après chaque phase enregistrée — remplaçait le lien et
+    /// le document du client n'était plus référencé nulle part. Idempotent : une pièce
+    /// jointe portant déjà ce fichier suffit.
+    ///
+    /// <para>Rend <c>true</c> quand le fichier est désormais référencé par une pièce
+    /// jointe : c'est la seule raison de le garder sur le disque, et
+    /// <see cref="SupprimerAncienPdf"/> s'y fie au lieu de refaire le test.</para>
+    /// </summary>
+    private async Task<bool> ArchiverPdfDuClientAsync(AccidentEvent ev, string? ancienneUrl, CancellationToken ct)
+    {
+        if (!EstDocumentDuClient(ev, ancienneUrl)) return false;
+
+        // Fichier disparu (purge de la racine uploads, remise à zéro d'une société,
+        // restauration partielle) : la pièce jointe n'aurait qu'un lien mort, recopié tel
+        // quel dans le tableau du PDF remis à l'assureur. Une URL hors du dossier
+        // (chemin null) n'est pas jugeable : on la range comme avant.
+        var chemin = CheminFichierDuDossier(ev.Id, ancienneUrl);
+        if (chemin != null && !System.IO.File.Exists(chemin))
+        {
+            _logger.LogWarning(
+                "UploadPdf: sinistre {AccidentId} — ancien PDF {FileUrl} introuvable sur le disque, aucune pièce jointe créée",
+                ev.Id, ancienneUrl);
+            return false;
+        }
+
+        var dejaJoint = await _context.AccidentEventDocuments
+            .AnyAsync(d => d.AccidentEventId == ev.Id && d.FileUrl == ancienneUrl, ct);
+        if (dejaJoint) return true;
+
+        // file_name est borné à 300 caractères, file_url à 500 comme pdf_report_url.
+        var nom = Path.GetFileName(ancienneUrl!);
+        if (nom.Length > 300) nom = nom[..300];
+        _context.AccidentEventDocuments.Add(new AccidentEventDocument
+        {
+            AccidentEventId = ev.Id,
+            // Type NEUTRE : le champ de la déclaration s'appelait « PDF expert », mais
+            // rien ne prouve que ce fichier-là en soit un. « Rapport d'expertise » serait
+            // recopié tel quel dans le PDF remis à l'assureur ; l'utilisateur reclasse.
+            DocumentType = "other",
+            FileName = string.IsNullOrWhiteSpace(nom) ? "document-du-dossier.pdf" : nom,
+            FileUrl = ancienneUrl!,
+            MimeType = "application/pdf",
+            UploadedByUserId = _tenantService.UserId,
+            UploadedAt = DateTime.UtcNow,
+        });
+        await _context.SaveChangesAsync(ct);
+
+        _logger.LogWarning(
+            "UploadPdf: sinistre {AccidentId} — ancien PDF {FileUrl} d'une déclaration manuelle, rangé en pièce jointe avant remplacement du lien",
+            ev.Id, ancienneUrl);
+        return true;
+    }
+
+    /// <summary>
+    /// Retire le PDF remplacé, une fois la nouvelle URL enregistrée.
+    /// <paramref name="archiveEnPieceJointe"/> vient de <see cref="ArchiverPdfDuClientAsync"/> :
+    /// refaire le test ici mentait au journal quand l'archivage avait renoncé.
+    /// </summary>
+    private void SupprimerAncienPdf(AccidentEvent ev, string? ancienneUrl, string nouvelleUrl, bool archiveEnPieceJointe)
+    {
+        if (string.IsNullOrEmpty(ancienneUrl) || string.Equals(ancienneUrl, nouvelleUrl, StringComparison.OrdinalIgnoreCase)) return;
+        var prefixe = $"/uploads/accident-reports/{ev.Id}/";
+        if (!ancienneUrl.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning("UploadPdf: ancien PDF {FileUrl} hors du dossier {Prefixe}, conservé", ancienneUrl, prefixe);
+            return;
+        }
+
+        // Seul le document qui vient d'être rangé en pièce jointe est conservé : il est
+        // désormais référencé par accident_event_documents. Tout le reste est un rapport
+        // remplacé, et le laisser sur le disque faisait grossir les uploads sans fin.
+        if (archiveEnPieceJointe)
+        {
+            _logger.LogWarning(
+                "UploadPdf: ancien PDF {FileUrl} conservé sur le disque (sinistre {AccidentId}), il est devenu une pièce jointe",
+                ancienneUrl, ev.Id);
+            return;
+        }
+
+        var uploadsRoot = Path.Combine(_env.ContentRootPath, "uploads");
+        var supprimes = ResetCompanyDataCommandHandler.DeleteFiles(uploadsRoot, new[] { ancienneUrl });
+        if (supprimes == 0)
+            _logger.LogWarning("UploadPdf: ancien PDF {FileUrl} introuvable ou non supprimé (sinistre {AccidentId})", ancienneUrl, ev.Id);
     }
 
     /// <summary>
@@ -481,12 +711,17 @@ public class AccidentReportsController : ControllerBase
         return (ev, null);
     }
 
+    /// <param name="prefixe">
+    /// Marque du fichier dans son nom (<see cref="PrefixeRapportGenere"/> pour un rapport
+    /// produit par l'application) : c'est ce qui distingue plus tard un document fourni
+    /// par le client, qu'aucune régénération ne doit effacer.
+    /// </param>
     private async Task<(string PublicUrl, string DiskPath)> SaveFileAsync(
-        int accidentId, IFormFile file, string ext, CancellationToken ct)
+        int accidentId, IFormFile file, string ext, CancellationToken ct, string? prefixe = null)
     {
         var uploadsDir = Path.Combine(_env.ContentRootPath, "uploads", "accident-reports", accidentId.ToString());
         if (!Directory.Exists(uploadsDir)) Directory.CreateDirectory(uploadsDir);
-        var uniqueName = $"{Guid.NewGuid()}{ext}";
+        var uniqueName = $"{prefixe}{Guid.NewGuid()}{ext}";
         var filePath = Path.Combine(uploadsDir, uniqueName);
         using (var stream = new FileStream(filePath, FileMode.Create))
         {

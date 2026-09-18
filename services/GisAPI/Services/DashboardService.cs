@@ -557,8 +557,11 @@ public class DashboardService : IDashboardService
     ///   • réparations = repairs, statut « cancelled » EXCLU — une réparation
     ///     annulée n'est pas une dépense, et les rapports de coûts l'excluent
     ///     déjà : la compter ici faisait diverger le total des deux écrans —,
-    ///     plus les dépenses de type « repair » ;
-    ///   • autres      = le reste des dépenses, remboursement d'assurance déduit
+    ///     plus les dépenses de type « repair », MOINS les avoirs et remboursements
+    ///     (règle du 18/09/2026 : ce bloc à quatre postes n'a pas la place d'une
+    ///     ligne de crédit, que les rapports détaillés portent à part). Le poste
+    ///     peut donc être négatif ; le borner à zéro ferait mentir le total ;
+    ///   • autres      = le reste des dépenses, BRUT
     ///     (ventilation <see cref="VehicleCostCategory"/>).
     /// Une seule définition, partagée par la période courante et la période
     /// précédente : sans cela le total et la flèche de tendance ne comparaient pas
@@ -600,17 +603,32 @@ public class DashboardService : IDashboardService
         // ajoutait en positif, alors que les rapports les rangent en Réparations
         // et en crédit ; la comparaison exacte « maintenance » laissait aussi
         // « Entretien » (casse) et « entretien » en « Autres ».
+        // Parts positive et négative séparées, comme VehicleCostCategory.SignedTotalAsync :
+        // un crédit se déduit ligne à ligne en valeur absolue, ce que la somme brute d'un
+        // type mélangé (un avoir ancien saisi à −120 et un autre à +30) ne permet pas.
+        // CASE plutôt que Math.Abs, que le fournisseur SQLite des tests ne traduit pas.
         var byType = await costs
             .GroupBy(c => c.Type)
-            .Select(g => new { Type = g.Key, Amount = g.Sum(c => c.Amount) })
+            .Select(g => new
+            {
+                Type = g.Key,
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
+            })
             .ToListAsync(ct);
 
         decimal maintenance = 0m, repair = 0m, other = 0m;
         foreach (var t in byType)
         {
-            var (category, sign) = VehicleCostCategory.Classify(t.Type);
-            var amount = sign * t.Amount;
-            switch (category)
+            // Crédit (avoir, remboursement) : déduit des RÉPARATIONS, pas d'« Autres »
+            // (règle du 18/09/2026) — ce bloc n'a que quatre postes.
+            if (VehicleCostCategory.IsCredit(t.Type))
+            {
+                repair -= t.Positive - t.Negative;
+                continue;
+            }
+            var amount = t.Positive + t.Negative;
+            switch (VehicleCostCategory.Classify(t.Type).Category)
             {
                 case CostCategory.Fuel: fuel += amount; break;
                 case CostCategory.Maintenance: maintenance += amount; break;

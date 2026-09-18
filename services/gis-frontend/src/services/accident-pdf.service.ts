@@ -1,225 +1,369 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { AccidentReportDto } from './api.service';
+import { PdfExportService } from './pdf-export.service';
+import { UserPreferencesService } from './user-preferences.service';
+
+/** Une ligne « libellé / valeur » d'un bloc du rapport. */
+type Ligne = [string, string];
 
 /**
- * Calypso 6 (P9) — generates the structured accident report PDF (Blob)
- * that gets attached to an `accident_events` row right after the admin
- * clicks "Confirmer" in the decision modal.
+ * Rapport de sinistre au format PDF, tel qu'il est remis à l'assureur.
  *
- * The document is intentionally simple and human-readable — it is meant
- * to be opened by the admin or forwarded to an insurance expert. The
- * damages section is left blank when the report is generated at confirm
- * time (the admin fills it on the /rapport-accident page afterwards).
+ * Recette Karim du 18/09/2026 : « après avoir terminé les informations dans le
+ * rapport, le fichier PDF n'a pas été généré avec les informations renseignées »
+ * et « mets le PDF avec l'entête comme les autres rapports ». Le document
+ * n'écrivait AUCUN champ des phases (expertise, devis, réparation, assurance,
+ * tiers, pièces jointes) et posait à la place un formulaire vierge en dur ; son
+ * en-tête rouge n'était celui d'aucun autre rapport de l'application.
  *
- * Reuses the same Helvetica-only fonts as `PdfExportService` — Helvetica
- * supports Latin-1 which covers French accents without needing an
- * embedded font file.
+ * Il reprend donc l'en-tête, la police et le pied de page de
+ * <see cref="PdfExportService"/>, et n'imprime une ligne « à compléter » que pour
+ * un bloc réellement vide.
  */
 @Injectable({ providedIn: 'root' })
 export class AccidentPdfService {
+  private readonly pdfExport = inject(PdfExportService);
+  private readonly prefs = inject(UserPreferencesService);
+
+  private readonly margin = 14;
+
   /**
-   * Build the accident report PDF as a Blob, ready to be uploaded.
-   * Never throws — falls back to a minimal "context unavailable" page
-   * if any data is missing so the auto-attach never blocks the modal.
-   *
+   * Version attendue : logo et police de marque chargés avant de dessiner.
+   * À préférer partout où l'appelant peut attendre (bouton « Régénérer le PDF »,
+   * régénération après l'enregistrement d'une phase).
+   */
+  async generateAsync(report: AccidentReportDto, opts?: { withLocation?: boolean }): Promise<Blob> {
+    const doc = this.newDocument();
+    const police = await this.pdfExport.prepareBrandDocument(doc);
+    return this.build(doc, police, report, opts);
+  }
+
+  /**
+   * Version synchrone, pour la génération automatique à la confirmation d'un
+   * accident : elle n'attend pas les ressources de marque et retombe sur
+   * Helvetica si elles ne sont pas encore chargées. Ne lève jamais sur une
+   * donnée manquante — un PDF incomplet vaut mieux qu'une confirmation bloquée.
+   */
+  generate(report: AccidentReportDto, opts?: { withLocation?: boolean }): Blob {
+    const doc = this.newDocument();
+    const police = this.pdfExport.applyBrandToDocument(doc);
+    return this.build(doc, police, report, opts);
+  }
+
+  private newDocument(): jsPDF {
+    return new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  }
+
+  /**
    * `opts.withLocation` (vrai par défaut) : faux pour une société sans boîtier
    * (offre GPA). Recette du 11/09/2026 : sans GPS, aucune coordonnée n'est ni
    * mesurée ni saisie — le PDF affichait 0,000000 / 0,000000 et un IMEI vide.
-   * On retire alors Latitude, Longitude, Localisation et « Boîtier GPS (IMEI) ».
+   * On retire alors Latitude, Longitude et « Boîtier GPS (IMEI) » ; le lieu
+   * DÉCLARÉ (commune, gouvernorat) reste, c'est souvent le seul du rapport.
    */
-  generate(report: AccidentReportDto, opts?: { withLocation?: boolean }): Blob {
+  private build(doc: jsPDF, police: string, report: AccidentReportDto, opts?: { withLocation?: boolean }): Blob {
     const withLocation = opts?.withLocation !== false;
-    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 14;
-    let cursorY = 18;
+    const titre = 'Rapport de sinistre';
 
-    // Header band ---------------------------------------------------------
-    doc.setFillColor(220, 38, 38); // red-600 — reflects accident severity
-    doc.rect(0, 0, pageWidth, 22, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(16);
-    doc.text("Rapport d'accident", margin, 14);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    doc.text(`Référence: ${report.referenceCode ?? `ACC-${report.id}`}`, pageWidth - margin, 14, { align: 'right' });
-    cursorY = 30;
+    const meta: string[] = [`Réf. ${report.referenceCode ?? `ACC-${report.id}`}`];
+    if (report.vehicleLabel) meta.push(`Véhicule : ${report.vehicleLabel}`);
+    if (report.incidentAt) meta.push(`Sinistre du ${this.dateHeure(report.incidentAt)}`);
 
-    // Identification section ---------------------------------------------
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text("Identification du véhicule", margin, cursorY);
-    cursorY += 5;
-
-    const idRows: [string, string][] = [
-      ['Véhicule', report.vehicleLabel ?? '—'],
-      ['Identifiant interne', report.vehicleId != null ? `#${report.vehicleId}` : '—'],
-    ];
-    if (withLocation) idRows.push(['Boîtier GPS (IMEI)', report.deviceUid || '—']);
-    autoTable(doc, {
-      startY: cursorY,
-      head: [],
-      body: idRows,
-      theme: 'plain',
-      styles: { font: 'helvetica', fontSize: 10, cellPadding: 1.5 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] }, 1: { textColor: [15, 23, 42] } },
-      margin: { left: margin, right: margin },
+    let y = this.pdfExport.drawBrandHeader(doc, {
+      title: titre,
+      meta,
+      rightNote: this.statutLabel(report.status),
     });
-    cursorY = (doc as any).lastAutoTable.finalY + 6;
 
-    // Incident context ---------------------------------------------------
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text("Contexte de l'accident", margin, cursorY);
-    cursorY += 5;
-
-    const incidentDate = report.incidentAt ? new Date(report.incidentAt) : null;
-    const dateLabel = incidentDate
-      ? `${incidentDate.toLocaleDateString('fr-FR')} à ${incidentDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-      : '—';
-    const locationParts = [report.locationCommune, report.locationGovernorate, report.locationRoadType]
-      .filter(Boolean)
-      .join(', ');
-
-    const ctxRows: [string, string][] = [['Date / heure', dateLabel]];
-    // Sans boîtier : le lieu DÉCLARÉ par le client (commune, gouvernorat) reste — c'est
-    // souvent le seul lieu du rapport remis à l'assureur ; seuls les champs GPS partent.
-    if (!withLocation && locationParts) ctxRows.push(['Lieu déclaré', locationParts]);
+    // ── Contexte ──────────────────────────────────────────────────────────
+    const lieu = [report.locationCommune, report.locationGovernorate, report.locationRoadType]
+      .filter(Boolean).join(', ');
+    const contexte: Ligne[] = [['Date et heure', this.dateHeure(report.incidentAt)]];
+    // Véhicule nommé DANS le corps, pas seulement dans l'en-tête : vehicle_label est
+    // nullable (instantané dénormalisé), et un dossier ancien ne le portait nulle part
+    // — le rapport remis à l'assureur ne disait alors pas de quel véhicule il parlait.
+    contexte.push(['Véhicule', report.vehicleLabel || (report.vehicleId != null ? `#${report.vehicleId}` : '—')]);
+    if (lieu) contexte.push(['Lieu', lieu]);
     if (withLocation) {
-      ctxRows.push(
-        ['Latitude', report.latitude?.toFixed(6) ?? '—'],
-        ['Longitude', report.longitude?.toFixed(6) ?? '—'],
-        ['Localisation', locationParts || '—'],
+      contexte.push(
+        ['Latitude', report.latitude != null ? report.latitude.toFixed(6) : '—'],
+        ['Longitude', report.longitude != null ? report.longitude.toFixed(6) : '—'],
+        ['Boîtier GPS (IMEI)', report.deviceUid || '—'],
+        ['Score de confiance', `${report.confidence ?? 0}/100`],
       );
     }
-    ctxRows.push(['Score de confiance', `${report.confidence ?? 0}/100`]);
-    autoTable(doc, {
-      startY: cursorY,
-      body: ctxRows,
-      theme: 'plain',
-      styles: { font: 'helvetica', fontSize: 10, cellPadding: 1.5 },
-      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55, textColor: [71, 85, 105] } },
-      margin: { left: margin, right: margin },
-    });
-    cursorY = (doc as any).lastAutoTable.finalY + 6;
+    if (report.weatherConditions) contexte.push(['Conditions météo', report.weatherConditions]);
+    if (report.roadConditions) contexte.push(['État de la chaussée', report.roadConditions]);
+    if (report.policeReportNumber) contexte.push(['N° de constat / PV', report.policeReportNumber]);
+    if (report.mileageAtAccident != null) contexte.push(['Kilométrage au sinistre', `${report.mileageAtAccident} km`]);
+    if (report.decidedByName) {
+      contexte.push(['Confirmé par', report.decidedAt
+        ? `${report.decidedByName} — ${this.dateHeure(report.decidedAt)}`
+        : report.decidedByName]);
+    }
+    if (report.towDetectedAt) contexte.push(['Remorquage détecté', this.dateHeure(report.towDetectedAt)]);
+    y = this.bloc(doc, police, y, 'Contexte du sinistre', contexte);
 
-    // Synthesis ----------------------------------------------------------
-    if (report.synthesisText) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Synthèse', margin, cursorY);
-      cursorY += 5;
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(10);
-      const lines = doc.splitTextToSize(report.synthesisText, pageWidth - 2 * margin);
-      doc.text(lines, margin, cursorY);
-      cursorY += lines.length * 5 + 4;
+    // ── Synthèse et chronologie (détection automatique) ───────────────────
+    if (report.synthesisText) y = this.paragraphe(doc, police, y, 'Synthèse', report.synthesisText);
+
+    if (report.story?.length) {
+      y = this.tableau(doc, police, y, 'Chronologie', [['Heure', 'Événement']],
+        report.story.map(s => [s.time, this.joindre(s.title, s.body)]),
+        { 0: { cellWidth: 26, fontStyle: 'bold' } });
     }
 
-    // Story timeline -----------------------------------------------------
-    if (report.story && report.story.length > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Chronologie', margin, cursorY);
-      cursorY += 5;
-      autoTable(doc, {
-        startY: cursorY,
-        head: [['Heure', 'Événement']],
-        body: report.story.map(s => [s.time, `${s.title}\n${s.body}`]),
-        theme: 'striped',
-        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
-        headStyles: { fillColor: [220, 38, 38], textColor: [255, 255, 255] },
-        columnStyles: { 0: { cellWidth: 28, fontStyle: 'bold' } },
-        margin: { left: margin, right: margin },
-      });
-      cursorY = (doc as any).lastAutoTable.finalY + 6;
+    if (report.indicators?.length) {
+      y = this.tableau(doc, police, y, 'Indicateurs techniques', [['Indicateur', 'Valeur']],
+        report.indicators.map(i => [i.label, this.joindre(i.value, i.hint)]),
+        { 0: { cellWidth: 60 } });
     }
 
-    // Indicators ---------------------------------------------------------
-    if (report.indicators && report.indicators.length > 0) {
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Indicateurs techniques', margin, cursorY);
-      cursorY += 5;
-      autoTable(doc, {
-        startY: cursorY,
-        head: [['Indicateur', 'Valeur']],
-        body: report.indicators.map(i => [i.label, i.hint ? `${i.value}\n${i.hint}` : i.value]),
-        theme: 'grid',
-        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
-        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255] },
-        margin: { left: margin, right: margin },
-      });
-      cursorY = (doc as any).lastAutoTable.finalY + 6;
+    if (report.reasons?.length) {
+      y = this.tableau(doc, police, y, 'Motifs du diagnostic', [['#', 'Observation']],
+        report.reasons.map((r, i) => [`${i + 1}`, this.joindre(r.title, r.text)]),
+        { 0: { cellWidth: 10, fontStyle: 'bold' } });
     }
 
-    // Reasons / diagnostic justification ---------------------------------
-    // The concordant observations that justify the "accident" verdict —
-    // data-driven (or LLM-refined, but always faithful to the numbers).
-    if (report.reasons && report.reasons.length > 0) {
-      if (cursorY > 235) { doc.addPage(); cursorY = 20; }
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(12);
-      doc.text('Motifs du diagnostic', margin, cursorY);
-      cursorY += 5;
-      autoTable(doc, {
-        startY: cursorY,
-        head: [['#', 'Observation']],
-        body: report.reasons.map((r, i) => [`${i + 1}`, `${r.title}\n${r.text}`]),
-        theme: 'striped',
-        styles: { font: 'helvetica', fontSize: 9, cellPadding: 2 },
-        headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255] },
-        columnStyles: { 0: { cellWidth: 10, fontStyle: 'bold' } },
-        margin: { left: margin, right: margin },
-      });
-      cursorY = (doc as any).lastAutoTable.finalY + 6;
+    // ── Les phases du dossier, dans l'ordre de la chronologie de l'écran ──
+    const degats: Ligne[] = [];
+    if (report.initialDescription) degats.push(['Description', report.initialDescription]);
+    if (report.initialSeverity) degats.push(['Gravité', this.graviteLabel(report.initialSeverity)]);
+    if (report.damagedZones?.length) degats.push(['Zones touchées', report.damagedZones.join(', ')]);
+    y = this.bloc(doc, police, y, 'Dégâts constatés', degats);
+
+    const expertise: Ligne[] = [];
+    if (report.expertVisitedAt) expertise.push(['Date de visite', this.date(report.expertVisitedAt)]);
+    if (report.expertName) expertise.push(['Expert', report.expertName]);
+    if (report.expertCompany) expertise.push(['Cabinet / compagnie', report.expertCompany]);
+    if (report.expertEstimatedAmount != null) expertise.push(['Montant estimé', this.montant(report.expertEstimatedAmount)]);
+    if (report.expertAssessment) expertise.push(['Appréciation', report.expertAssessment]);
+    y = this.bloc(doc, police, y, "Expertise d'assurance", expertise);
+
+    const devis: Ligne[] = [];
+    if (report.mechanicName) devis.push(['Garage', report.mechanicName]);
+    if (report.mechanicQuoteAt) devis.push(['Date du devis', this.date(report.mechanicQuoteAt)]);
+    if (report.mechanicQuotedAmount != null) devis.push(['Montant du devis', this.montant(report.mechanicQuotedAmount)]);
+    y = this.bloc(doc, police, y, 'Devis du garage', devis);
+
+    const reparation: Ligne[] = [];
+    if (report.repairStartedAt) reparation.push(['Début', this.date(report.repairStartedAt)]);
+    if (report.repairCompletedAt) reparation.push(['Fin', this.date(report.repairCompletedAt)]);
+    if (report.actualRepairCost != null) reparation.push(['Coût réel facturé', this.montant(report.actualRepairCost)]);
+    if (report.repairReference) reparation.push(['Fiche de réparation', report.repairReference]);
+    y = this.bloc(doc, police, y, 'Réparation', reparation);
+
+    const assurance: Ligne[] = [];
+    if (report.claimNumber) assurance.push(['N° de sinistre', report.claimNumber]);
+    if (report.claimSubmittedAt) assurance.push(['Déclaré le', this.date(report.claimSubmittedAt)]);
+    if (report.claimStatus) assurance.push(['Statut', this.claimStatusLabel(report.claimStatus)]);
+    if (report.claimApprovedAmount != null) assurance.push(['Montant approuvé', this.montant(report.claimApprovedAmount)]);
+    // « Tiers impliqué : Non » ne vaut que dans un bloc déjà renseigné : poussée
+    // inconditionnellement, cette ligne donnait à un bloc assurance VIDE l'air d'être
+    // rempli et lui volait sa mention « à compléter ».
+    if (report.thirdPartyInvolved || assurance.length > 0) {
+      assurance.push(['Tiers impliqué', report.thirdPartyInvolved ? 'Oui' : 'Non']);
+    }
+    y = this.bloc(doc, police, y, 'Sinistre assurance', assurance);
+
+    // ── Tiers et pièces jointes ──────────────────────────────────────────
+    if (report.thirdParties?.length) {
+      y = this.tableau(doc, police, y, 'Tiers impliqués',
+        [['Nom', 'Téléphone', 'Véhicule', 'Assurance']],
+        report.thirdParties.map(t => [
+          t.name || '—',
+          t.phone || '—',
+          [t.vehiclePlate, t.vehicleModel].filter(Boolean).join(' — ') || '—',
+          this.joindre(
+            [t.insuranceCompany, t.insuranceNumber].filter(Boolean).join(' · '),
+            t.insuranceExpiry ? `Échéance : ${this.date(t.insuranceExpiry)}` : null) || '—',
+        ]),
+        { 0: { cellWidth: 40 }, 1: { cellWidth: 28 } });
     }
 
-    // Damages placeholder ------------------------------------------------
-    // The PDF is generated at confirm time, BEFORE the admin fills the
-    // damages form. We render an empty section the admin can print and
-    // hand to an expert if they need a paper trail.
-    if (cursorY > 240) { doc.addPage(); cursorY = 20; }
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text("Évaluation des dégâts (à compléter)", margin, cursorY);
-    cursorY += 5;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    const blanks = [
-      'Description :',
-      '',
-      '',
-      '',
-      'Sévérité (légère / modérée / grave / totale) :',
-      '',
-      'Coût estimé de la réparation :',
-      '',
-      "N° de sinistre (assurance) :",
-      '',
-      'Notes internes :',
-      '',
-      '',
-    ];
-    blanks.forEach(line => {
-      doc.text(line, margin, cursorY);
-      cursorY += 6;
-    });
+    if (report.documents?.length) {
+      y = this.tableau(doc, police, y, 'Pièces jointes',
+        [['Pièce', 'Fichier', 'Ajoutée le']],
+        report.documents.map(d => [
+          this.documentLabel(d.documentType),
+          d.fileName || '—',
+          this.date(d.uploadedAt),
+        ]),
+        { 0: { cellWidth: 45 }, 2: { cellWidth: 28 } });
+    }
 
-    // Footer
-    doc.setFontSize(8);
-    doc.setTextColor(148, 163, 184);
-    doc.text(
-      `Généré automatiquement le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — Calypso GIS`,
-      pageWidth / 2,
-      doc.internal.pageSize.getHeight() - 8,
-      { align: 'center' }
-    );
+    if (report.additionalNotes) y = this.paragraphe(doc, police, y, 'Notes internes', report.additionalNotes);
+    if (report.witnesses) y = this.paragraphe(doc, police, y, 'Témoins', report.witnesses);
 
+    this.pdfExport.drawBrandFooter(doc, titre);
     return doc.output('blob');
+  }
+
+  // ── Briques de mise en page ────────────────────────────────────────────
+
+  /** Bloc « libellé / valeur ». Vide, il n'imprime qu'une ligne à compléter. */
+  private bloc(doc: jsPDF, police: string, y: number, titre: string, lignes: Ligne[]): number {
+    y = this.titre(doc, police, y, titre, lignes.length === 0 ? 14 : 24);
+    if (lignes.length === 0) {
+      doc.setFont(police, 'normal');
+      doc.setFontSize(9.5);
+      doc.setTextColor(130, 130, 130);
+      doc.text('Non renseigné — à compléter.', this.margin, y);
+      doc.setTextColor(0, 0, 0);
+      return y + 8;
+    }
+
+    autoTable(doc, {
+      startY: y,
+      body: lignes.map(([label, valeur]) => [this.net(label), this.net(valeur)]),
+      theme: 'plain',
+      styles: { font: police, fontSize: 9.5, cellPadding: 1.4, overflow: 'linebreak' },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 52, textColor: [71, 85, 105] },
+        1: { textColor: [15, 23, 42] },
+      },
+      margin: { left: this.margin, right: this.margin },
+    });
+    return this.finDuTableau(doc) + 6;
+  }
+
+  /** Tableau à en-têtes, aux couleurs de la charte. */
+  private tableau(
+    doc: jsPDF, police: string, y: number, titre: string,
+    tete: string[][], corps: string[][], colonnes?: Record<number, any>,
+  ): number {
+    y = this.titre(doc, police, y, titre, 26);
+    autoTable(doc, {
+      startY: y,
+      head: tete,
+      body: corps.map(ligne => ligne.map(cellule => this.net(cellule))),
+      theme: 'striped',
+      styles: { font: police, fontSize: 8.5, cellPadding: 1.8, overflow: 'linebreak' },
+      headStyles: { font: police, fillColor: this.pdfExport.brandColors.primary, textColor: [255, 255, 255] },
+      columnStyles: colonnes,
+      margin: { left: this.margin, right: this.margin },
+    });
+    return this.finDuTableau(doc) + 6;
+  }
+
+  /** Paragraphe libre (synthèse, appréciation, notes). */
+  private paragraphe(doc: jsPDF, police: string, y: number, titre: string, texte: string): number {
+    y = this.titre(doc, police, y, titre, 22);
+    doc.setFont(police, 'normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15, 23, 42);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const lignes: string[] = doc.splitTextToSize(this.net(texte), pageWidth - 2 * this.margin);
+    for (const ligne of lignes) {
+      y = this.saut(doc, y, 8);
+      doc.text(ligne, this.margin, y);
+      y += 5;
+    }
+    doc.setTextColor(0, 0, 0);
+    return y + 4;
+  }
+
+  /** Titre de section, précédé si besoin d'un saut de page. */
+  private titre(doc: jsPDF, police: string, y: number, texte: string, besoin: number): number {
+    y = this.saut(doc, y, besoin);
+    doc.setFont(police, 'bold');
+    doc.setFontSize(11.5);
+    doc.setTextColor(...this.pdfExport.brandColors.primary);
+    doc.text(this.net(texte), this.margin, y);
+    doc.setTextColor(0, 0, 0);
+    return y + 5;
+  }
+
+  /** Passe à la page suivante si la place restante ne suffit pas au bloc. */
+  private saut(doc: jsPDF, y: number, besoin: number): number {
+    const hauteurUtile = doc.internal.pageSize.getHeight() - 18;
+    if (y + besoin <= hauteurUtile) return y;
+    doc.addPage();
+    // Sous le bandeau réduit que le pied de page rappelle en haut des pages 2+.
+    return 22;
+  }
+
+  private finDuTableau(doc: jsPDF): number {
+    return (doc as any).lastAutoTable?.finalY ?? 22;
+  }
+
+  // ── Formats ────────────────────────────────────────────────────────────
+
+  /** Nettoyage commun aux PDF de marque (accents conservés, caractères hors police
+   *  retirés). Ligne à ligne : le nettoyage remplace les retours à la ligne par des
+   *  espaces, ce qui collerait le titre et le corps d'une cellule sur deux lignes. */
+  private net(valeur: unknown): string {
+    return String(valeur ?? '')
+      .split('\n')
+      .map(ligne => this.pdfExport.clean(ligne))
+      .filter(ligne => ligne.length > 0)
+      .join('\n');
+  }
+
+  private joindre(...parts: (string | null | undefined)[]): string {
+    return parts.filter(p => !!p && String(p).trim().length > 0).join('\n');
+  }
+
+  private date(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('fr-FR');
+  }
+
+  private dateHeure(iso: string | null | undefined): string {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '—';
+    return `${d.toLocaleDateString('fr-FR')} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  }
+
+  /** Montant dans la devise de la société (jamais un symbole en dur). */
+  private montant(valeur: number): string {
+    return this.prefs.formatCurrency(valeur);
+  }
+
+  private statutLabel(statut: string | null | undefined): string {
+    switch (statut) {
+      case 'confirmed': return 'Sinistre confirmé';
+      case 'dismissed': return 'Fausse alerte';
+      case 'pending': return 'En attente de décision';
+      default: return '';
+    }
+  }
+
+  private graviteLabel(gravite: string): string {
+    switch (gravite) {
+      case 'minor': return 'Légers';
+      case 'moderate': return 'Modérés';
+      case 'severe': return 'Graves';
+      case 'total': return 'Véhicule irréparable';
+      default: return gravite;
+    }
+  }
+
+  private claimStatusLabel(statut: string): string {
+    switch (statut) {
+      case 'pending': return 'En cours';
+      case 'approved': return 'Approuvé';
+      case 'partial': return 'Partiellement approuvé';
+      case 'rejected': return 'Rejeté';
+      case 'closed': return 'Clos';
+      default: return statut;
+    }
+  }
+
+  private documentLabel(type: string): string {
+    switch (type) {
+      case 'photo': return 'Photo des dégâts';
+      case 'expert_report': return "Rapport d'expertise";
+      case 'mechanic_quote': return 'Devis du garage';
+      case 'repair_invoice': return 'Facture de réparation';
+      case 'insurance_response': return "Réponse de l'assurance";
+      case 'police_report': return 'Constat / PV';
+      case 'detection_pdf': return 'Rapport de détection';
+      default: return 'Autre pièce';
+    }
   }
 }

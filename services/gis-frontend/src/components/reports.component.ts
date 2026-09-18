@@ -24,7 +24,7 @@ Chart.register(...registerables);
 
 /** Barre « Répartition des coûts » du rapport IA : parts positives et crédits déduits hors barre. */
 export interface AiCostBreakdownView {
-  items: { label: string; value: number; pct: number; color: string }[];
+  items: { key: string; label: string; value: number; pct: number; color: string }[];
   credits: number;
 }
 
@@ -33,20 +33,44 @@ export interface AiCostBreakdownView {
  * pris pour base, les parts dépassaient 100 % dès que les crédits dépassaient les autres
  * frais, et la barre tronquée ne montrait pas la déduction. Base = somme des parts
  * positives ; credits absent (API antérieure) = 0.
+ *
+ * Le rapport IA reste le SEUL bloc où les crédits sont nets dans « Autres » et ressortent
+ * ensuite en « credits » : il vient d'AiChatController, hors du périmètre des rapports
+ * détaillés de la règle du 18/09/2026. Son total, lui, est le même qu'ailleurs.
+ * Une part négative ne prend AUCUNE largeur — dessinée, elle le serait en valeur absolue,
+ * comme une dépense de plus — mais la légende garde son montant en « − », qui est
+ * précisément l'information : ce poste a rendu de l'argent.
  */
 export function buildAiCostBreakdown(cb: any): AiCostBreakdownView {
   const num = (v: any) => Number(v) || 0;
+  // Clé technique portée jusqu'au gabarit : l'info-bulle qui dit la déduction se
+  // posait sur une comparaison de libellé, qu'un raccourcissement aurait rompue
+  // sans erreur ni test rouge.
   const parts = [
-    { label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
-    { label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
-    { label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
-    { label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
+    { key: 'fuel', label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
+    { key: 'maintenance', label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
+    { key: 'repair', label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
+    { key: 'other', label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
   ];
   const positiveTotal = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
   return {
     items: parts.map(p => ({ ...p, pct: positiveTotal > 0 ? Math.max(0, p.value) / positiveTotal * 100 : 0 })),
     credits: Math.max(0, num(cb?.credits))
   };
+}
+
+/**
+ * Parts d'un camembert de coûts. Chart.js dessine une valeur négative en valeur
+ * ABSOLUE : un avoir ou un poste net négatif y prendrait la place d'une dépense de
+ * plus. Les parts ≤ 0 sont donc écartées du dessin, et les pourcentages des parts
+ * restantes sont mesurés sur elles seules, pour qu'ils fassent bien 100. Les parts
+ * écartées restent lisibles, avec leur signe, dans le tableau ou la légende à côté.
+ */
+export function partsCamembert<T extends { amount: number }>(parts: T[]): (T & { percent: number })[] {
+  const affichees = parts.filter(p => (Number(p.amount) || 0) > 0);
+  const base = affichees.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  if (base <= 0) return [];
+  return affichees.map(p => ({ ...p, percent: (Number(p.amount) || 0) / base * 100 }));
 }
 
 @Component({
@@ -3582,12 +3606,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   processMonthlyCostReport(report: MonthlyCostReport) {
     if (this.monthlyCostReportType === 'costs') {
+      // Mêmes chiffres que le bandeau de l'export : postes BRUTS, avoirs à part,
+      // total net — sans « Autres » la somme ne retombait pas sur le total.
       this.statisticsData = {
         'Période': report.reportPeriod,
         'KM Total': this.formatNumber(report.totalKm) + ' km',
         'Carburant': this.formatCurrency(report.totalFuelCostDzd),
         'Entretien': this.formatCurrency(report.totalMaintenanceCostDzd),
         'Réparation': this.formatCurrency(report.totalRepairCostDzd),
+        'Autres': this.formatCurrency(report.totalOtherCostDzd),
+        ...(this.aDesAvoirs(this.monthlyCostCredit())
+          ? { [this.libelleAvoirs]: this.formatCurrency(this.monthlyCostCredit()) } : {}),
         'Coût Total': this.formatCurrency(report.totalCostDzd)
       };
     } else {
@@ -3763,12 +3792,42 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return c.length > 1 ? ' ' + c : '';
   }
 
+  /**
+   * Légende du camembert « Répartition des coûts » : TOUTES les catégories, crédits
+   * compris, mais avec le pourcentage des seules parts DESSINÉES (celles qui sont
+   * positives), pour qu'il dise la même chose que l'anneau et que la colonne fasse
+   * 100. Le pourcentage du serveur, lui, rapporte chaque ligne au total NET : une
+   * assurance de 600 sur un total net de 500 y ressortait à « 120 % ». Une ligne de
+   * crédit n'a pas de part — ce n'est pas une dépense, c'est ce qui en est retranché.
+   */
+  mfCategoriesLegende(): { category: string; amount: number; percent: number | null }[] {
+    const cats = this.monthlyReport?.costAnalysis?.byCategory || [];
+    // Repérage par INDEX et non par libellé : deux catégories pourraient porter le même.
+    const dessinees = new Map(
+      partsCamembert(cats.map((c, i) => ({ i, amount: Number(c.amount) || 0 }))).map(p => [p.i, p.percent])
+    );
+    return cats.map((c, i) => ({
+      category: c.category,
+      amount: Number(c.amount) || 0,
+      percent: dessinees.get(i) ?? null
+    }));
+  }
+
   /** Donut « Répartition des coûts » : les catégories RÉELLES (costAnalysis.byCategory).
    *  Il remplace « Coûts de maintenance par période », qui répartissait chaque
    *  total à 25/30/20/25 % sur quatre semaines inventées. */
   drawMfCostDonut() {
     const canvas = this.mfCostDonutCanvasRef?.nativeElement;
-    const cats = this.monthlyReport?.costAnalysis?.byCategory || [];
+    // Lignes de CRÉDIT (« Remboursement assurance », « Avoir fournisseur ») écartées
+    // du dessin : leur montant est négatif et Chart.js le rendrait en valeur absolue,
+    // comme une dépense de plus. Elles restent dans la légende HTML à côté, avec leur
+    // signe. Filtrer la liste ELLE-MÊME, et pas seulement les valeurs : l'info-bulle
+    // se repère sur l'index du tableau. Le RANG d'origine est conservé : la couleur
+    // d'une catégorie inconnue se tire de la palette par son rang, et l'anneau ne
+    // doit pas la teinter autrement que la légende.
+    const cats = this.mfCategoriesLegende()
+      .map((c, rang) => ({ ...c, rang }))
+      .filter(c => c.percent !== null);
     if (!canvas || !cats.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -3778,8 +3837,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       data: {
         labels: cats.map(c => c.category),
         datasets: [{
-          data: cats.map(c => Math.max(0, Number(c.amount) || 0)),
-          backgroundColor: cats.map((c, i) => this.mfCouleurCategorie(c.category, i)),
+          data: cats.map(c => c.amount),
+          backgroundColor: cats.map(c => this.mfCouleurCategorie(c.category, c.rang)),
           borderColor: '#ffffff',
           borderWidth: 2,
           hoverOffset: 4
@@ -3795,9 +3854,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
           tooltip: {
             bodyFont: { family: police },
             callbacks: {
+              // Pourcentage RECALCULÉ sur les parts dessinées. Celui du serveur porte
+              // sur le total NET des crédits : avec 600 d'assurance et 400 d'avoirs
+              // pour un total de 500, il annonçait « 120 % » sur une part qui occupe
+              // les deux tiers de l'anneau.
               label: (item) => {
                 const c = cats[item.dataIndex];
-                return `${c.category} : ${this.formatCurrency(c.amount)} (${this.formatPct(c.percentage)})`;
+                return `${c.category} : ${this.formatCurrency(c.amount)} (${this.formatPct(c.percent ?? 0)})`;
               }
             }
           }
@@ -5926,6 +5989,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entretien ${cur}`, dataKey: 'maintenanceCost', weight: 2.1 },
           { header: `Répar. ${cur}`, dataKey: 'repairCost', weight: 1.9 },
           { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
+          // Colonne des crédits seulement s'il y en a : elle coûte 2,2 de largeur
+          // dans un tableau déjà à 11 colonnes, pour n'afficher sinon que des 0.
+          ...(this.aDesAvoirs(this.monthlyCostCredit())
+            ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.2 }] : []),
           { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
           { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.5 },
           { header: `Carb. ${cur}/100km`, dataKey: 'fuelPer100Km', weight: 2.5 },
@@ -5953,6 +6020,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(v.maintenanceCostDzd),
       repairCost: mt(v.repairCostDzd),
       otherCost: mt(v.otherCostDzd),
+      creditAmount: mt(v.creditAmountDzd),
       totalCost: mt(v.totalCostDzd),
       costPerKm: rt(v.costPerKm),
       fuelPer100Km: rt(v.fuelPer100Km),
@@ -5970,6 +6038,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
           'Carburant': String(mt(r.totalFuelCostDzd)),
           'Entretien': String(mt(r.totalMaintenanceCostDzd)),
           'Réparation': String(mt(r.totalRepairCostDzd)),
+          // « Autres » manquait à ce bandeau, et les avoirs s'y ajoutent depuis le
+          // 18/09/2026 : quatre chiffres bruts ne retombaient pas sur le total net,
+          // sans que le lecteur du PDF sache ce qui manquait entre les deux.
+          'Autres': String(mt(r.totalOtherCostDzd)),
+          ...(this.aDesAvoirs(this.monthlyCostCredit())
+            ? { [this.libelleAvoirs]: String(mt(this.monthlyCostCredit())) } : {}),
           'Coût total': String(mt(r.totalCostDzd))
         }
       : {
@@ -6003,6 +6077,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // distance mesurable dans le mois, il n’y a pas de ratio au kilometre.
       footnote: (isCosts
         ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.   `
+          // Les postes sont bruts, le total est net : sans cette phrase la ligne ne
+          // retombait pas sur ses colonnes dès qu'un avoir existait.
+          + (this.aDesAvoirs(this.monthlyCostCredit())
+            ? `${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; les autres postes restent bruts.   ` : '')
         : '* ')
         + 'Km « non mesuré » : kilométrage non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
     };
@@ -6115,6 +6193,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const parKm = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatCostPerKm(v) : n3(v));
     const pct = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatPct(v) : n1(v));
     const gps = r.fleetHasGps;
+    // Colonne des avoirs et remboursements seulement s'il y en a : elle coûte
+    // 2,3 de largeur dans un tableau déjà serré (recette à 1536 px).
+    const avoirs = this.aDesAvoirs(r.totals?.creditAmount);
 
     // Largeurs mesurées en Manrope : 168 mm pour 190 sans les colonnes GPS
     // (portrait), 193 mm avec (paysage).
@@ -6128,6 +6209,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entr. ${cur}`, dataKey: 'maintenance', weight: 2.0 },
           { header: `Répar. ${cur}`, dataKey: 'repair', weight: 2.0 },
           { header: `Autres ${cur}`, dataKey: 'other', weight: 2.0 },
+          ...(avoirs ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'credit', weight: 2.3 }] : []),
           { header: `Total ${cur}`, dataKey: 'total', weight: 2.1 },
           { header: `${cur}/km`, dataKey: 'perKm', weight: 1.4 },
           ...(gps ? [{ header: 'Util.', dataKey: 'util', weight: 1.4 }, { header: 'Trajets', dataKey: 'trips', weight: 1.3 }] : [])
@@ -6143,6 +6225,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entretiens (${cur})`, dataKey: 'maintenance' },
           { header: `Réparations (${cur})`, dataKey: 'repair' },
           { header: `Autres dépenses (${cur})`, dataKey: 'other' },
+          ...(avoirs ? [{ header: `Avoirs et remboursements (${cur})`, dataKey: 'credit' }] : []),
           { header: `Coût total (${cur})`, dataKey: 'total' },
           { header: `Coût au km (${cur}/km)`, dataKey: 'perKm' },
           ...(gps ? [{ header: 'Utilisation (%)', dataKey: 'util' }, { header: 'Trajets', dataKey: 'trips' }] : [])
@@ -6159,6 +6242,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenance: mt(v.maintenanceCost),
       repair: mt(v.repairCost),
       other: mt(v.otherCost),
+      credit: mt(v.creditAmount),
       total: mt(v.totalCost),
       perKm: parKm(v.costPerKm),
       util: pct(v.utilizationRate),
@@ -6176,6 +6260,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenance: mt(t.maintenanceCost),
       repair: mt(t.repairCost),
       other: mt(t.otherCost),
+      credit: mt(t.creditAmount),
       total: mt(t.totalCost),
       perKm: parKm(t.costPerKm),
       util: gps ? pct(r.utilization.overallUtilizationRate) : vide,
@@ -6201,7 +6286,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       highlightLastRow: true,
       footnote: pourPdf
         ? `* Km : boîtier GPS pour un véhicule équipé, sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) ; « — » = non mesurable ce mois. `
-          + `L/100 = litres aux 100 km ; Entr. = entretiens ; Répar. = réparations ; Autres = assurance, vignette, péages… `
+          + `L/100 = litres aux 100 km ; Entr. = entretiens ; Répar. = réparations ; Autres = assurance, vignette, péages… Ces postes sont BRUTS. `
+          + (avoirs ? `${this.libelleAvoirs} = ${this.infoBulleAvoirs}. ` : '')
           + `Les mensualités d’acquisition ne sont pas comptées.`
         : undefined,
     };
@@ -8021,7 +8107,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // setTimeout(…, 120), chart détruit en tête de chaque draw*().
 
   /** Couleurs des quatre catégories de dépense (barres empilées, donut, légendes, détail du mois). */
-  readonly costCategoryColors = { fuel: '#3b82f6', maintenance: '#22c55e', repair: '#f97316', other: '#a855f7', total: '#1e293b' };
+  readonly costCategoryColors = { fuel: '#3b82f6', maintenance: '#22c55e', repair: '#f97316', other: '#a855f7', credit: '#0d9488', total: '#1e293b' };
+
+  /**
+   * Avoirs fournisseurs et remboursements d'assurance (décision de Karim du
+   * 18/09/2026). Dans les rapports détaillés ils ne diminuent AUCUN poste : les
+   * postes restent bruts et ces crédits portent leur propre ligne, en négatif ;
+   * seul le coût total est net. Intitulé court, l'écran de recette fait 1536 px.
+   */
+  readonly libelleAvoirs = 'Avoirs et remb.';
+  readonly infoBulleAvoirs = "Avoirs fournisseurs et remboursements d'assurance, déduits du coût total";
+
+  /** Le rapport IA garde sa propre convention : « Autres » y est net des crédits. */
+  readonly infoBulleAutresIA =
+    "Autres dépenses du rapport IA : assurance, vignette, péages…, avoirs fournisseurs et "
+    + "remboursements d'assurance déduits. Les tableaux ci-dessus les montrent bruts, avec une "
+    + "ligne « Avoirs » à part. Même total.";
+
+  /** Vrai dès qu'un avoir ou un remboursement est à montrer : sans cela la
+   *  colonne s'ajouterait à un tableau déjà large pour n'afficher que des zéros. */
+  aDesAvoirs(montant: number | null | undefined): boolean {
+    return Math.abs(Number(montant) || 0) > 0.005;
+  }
 
   private readonly repairTypeColors: Record<string, string> = {
     electrique: '#eab308',
@@ -8420,6 +8527,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return this.evolutionDetailRows().reduce((s, c) => s + (Number(c.amount) || 0), 0);
   }
 
+  /** Une ligne d'avoirs figure dans la répartition affichée : les pourcentages des
+   *  postes portent alors sur les DÉPENSES brutes, pas sur le total, qui est net —
+   *  la ligne Total ne peut donc plus annoncer « 100 % ». */
+  evolutionDetailAvecAvoirs(): boolean {
+    return this.evolutionDetailRows().some(c => c.key === 'credit');
+  }
+
   /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
   evolutionDetailLabel(): string {
     const sel = this.selectedEvolutionMonth;
@@ -8450,27 +8564,40 @@ export class ReportsComponent implements OnInit, OnDestroy {
   evolutionCategoryTotals(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     const r = this.costEvolution;
     if (!r) return [];
-    return this.categoryBreakdown(r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost);
+    return this.categoryBreakdown(r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost,
+      r.totalCreditAmount ?? 0);
   }
 
   /** Détail du mois sélectionné (Catégorie | Montant | % du total). */
   evolutionMonthDetail(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     const m = this.selectedEvolutionMonth;
     if (!m) return [];
-    return this.categoryBreakdown(m.fuelCost, m.maintenanceCost, m.repairCost, m.otherCost);
+    return this.categoryBreakdown(m.fuelCost, m.maintenanceCost, m.repairCost, m.otherCost, m.creditAmount ?? 0);
   }
 
-  private categoryBreakdown(fuel: number, maintenance: number, repair: number, other: number) {
+  /**
+   * Les quatre postes BRUTS, puis les avoirs et remboursements en ligne à part,
+   * en négatif (18/09/2026). Les pourcentages se mesurent sur la somme des postes
+   * bruts et non sur le total net : sinon ils dépassaient 100 % dès qu'un crédit
+   * existait. La ligne de crédit n'a pas de pourcentage — ce n'est pas une part
+   * du coût, c'est ce qui en est retranché — et n'apparaît que si elle porte un
+   * montant. La somme de la colonne Montant redonne bien le coût net.
+   */
+  private categoryBreakdown(fuel: number, maintenance: number, repair: number, other: number, credit: number = 0) {
     const f = Number(fuel) || 0, m = Number(maintenance) || 0, r = Number(repair) || 0, o = Number(other) || 0;
-    const total = f + m + r + o;
-    const pct = (v: number) => total > 0 ? (v / total) * 100 : null;
+    const av = Number(credit) || 0;
+    const brut = f + m + r + o;
+    const pct = (v: number) => brut > 0 ? (v / brut) * 100 : null;
     const c = this.costCategoryColors;
-    return [
+    const lignes = [
       { key: 'fuel', label: 'Carburant', amount: f, pct: pct(f), color: c.fuel },
       { key: 'maintenance', label: 'Entretiens', amount: m, pct: pct(m), color: c.maintenance },
       { key: 'repair', label: 'Réparations', amount: r, pct: pct(r), color: c.repair },
       { key: 'other', label: 'Autres dépenses', amount: o, pct: pct(o), color: c.other }
     ];
+    if (this.aDesAvoirs(av))
+      lignes.push({ key: 'credit', label: this.libelleAvoirs, amount: av, pct: null, color: c.credit });
+    return lignes;
   }
 
   /** Barres EMPILÉES par catégorie + courbe Total ; clic sur un mois → détail à droite. */
@@ -8496,11 +8623,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const bar = (label: string, data: number[], color: string) => ({
       type: 'bar', label, data, backgroundColor: couleurs(color), stack: 'costs', borderRadius: 2, barPercentage: .7, categoryPercentage: .8
     });
+    // Avoirs et remboursements : une barre EMPILÉE de plus, en négatif, donc
+    // dessinée sous l'axe (Chart.js empile les valeurs négatives vers le bas —
+    // c'est le camembert, lui, qui les rendrait en valeur absolue). Ajoutée
+    // seulement s'il y a un crédit sur la période : sinon la légende porterait
+    // un poste toujours à zéro.
+    const avoirs = months.map(m => Number(m.creditAmount) || 0);
     const datasets: any[] = [
       bar('Carburant', months.map(m => m.fuelCost), c.fuel),
       bar('Entretiens', months.map(m => m.maintenanceCost), c.maintenance),
       bar('Réparations', months.map(m => m.repairCost), c.repair),
       bar('Autres dépenses', months.map(m => m.otherCost), c.other),
+      ...(this.aDesAvoirs(avoirs.reduce((s, v) => s + v, 0)) ? [bar(this.libelleAvoirs, avoirs, c.credit)] : []),
       {
         type: 'line', label: 'Total', data: months.map(m => m.totalCost),
         borderColor: c.total, backgroundColor: c.total, borderWidth: 2, tension: .3,
@@ -8549,9 +8683,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .join(' — ');
   }
 
-  /** Les trois postes de depense du rapport mensuel, avec leur part du total.
+  /** Les postes de depense du rapport mensuel, avec leur part du total.
    *  « Autres » n’est ajoute que s’il porte un montant : une part a zero dans
-   *  un camembert est une legende de plus a lire pour rien. */
+   *  un camembert est une legende de plus a lire pour rien.
+   *  Les postes sont BRUTS (18/09/2026) ; les avoirs et remboursements, qui sont
+   *  negatifs, n’entrent PAS dans ce camembert — Chart.js les dessinerait en
+   *  valeur absolue, comme une depense de plus. Ils se lisent dans la colonne
+   *  « Avoirs et remb. » du tableau. Les pourcentages portent donc sur les seules
+   *  parts dessinees et font 100 ; le camembert vaut alors le total BRUT, ce que
+   *  dit la carte. */
   monthlyCostCategoryTotals(): { key: string; label: string; amount: number; percent: number; color: string }[] {
     const r = this.monthlyCostReport;
     if (!r) return [];
@@ -8560,11 +8700,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { key: 'maintenance', label: 'Entretien', amount: r.totalMaintenanceCostDzd || 0, color: '#F59E0B' },
       { key: 'repair', label: 'Réparation', amount: r.totalRepairCostDzd || 0, color: '#EF4444' },
     ];
-    const autres = (r.totalCostDzd || 0) - postes.reduce((s, p) => s + p.amount, 0);
+    const autres = r.totalOtherCostDzd || 0;
     if (autres > 0.005) postes.push({ key: 'other', label: 'Autres', amount: autres, color: '#8B5CF6' });
-    const total = postes.reduce((s, p) => s + p.amount, 0);
-    if (total <= 0) return [];
-    return postes.filter(p => p.amount > 0).map(p => ({ ...p, percent: (p.amount / total) * 100 }));
+    return partsCamembert(postes);
+  }
+
+  /** Avoirs et remboursements du rapport « Coûts mensuels », en négatif. Repli sur
+   *  l’écart entre le total net et les postes quand l’API ne porte pas encore le champ. */
+  monthlyCostCredit(): number {
+    const r = this.monthlyCostReport;
+    if (!r) return 0;
+    if (r.totalCreditAmountDzd != null) return r.totalCreditAmountDzd;
+    return (r.totalCostDzd || 0) - (r.totalFuelCostDzd || 0) - (r.totalMaintenanceCostDzd || 0)
+      - (r.totalRepairCostDzd || 0) - (r.totalOtherCostDzd || 0);
   }
 
   /** Camembert de la sixieme carte du rapport mensuel. Format carte : pas de
@@ -8613,7 +8761,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
     const canvas = this.evolutionDonutCanvasRef?.nativeElement;
     if (!canvas) return;
-    const cats = this.evolutionCategoryTotals();
+    // Parts NÉGATIVES ou nulles écartées du camembert (voir partsCamembert) : la
+    // ligne des avoirs reste dans la légende à côté, avec son signe.
+    const cats = partsCamembert(this.evolutionCategoryTotals());
     const total = cats.reduce((s, x) => s + x.amount, 0);
     if (total <= 0) return;
     const ctx = canvas.getContext('2d');
@@ -9079,9 +9229,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const totalCol = { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2.3 };
     const perKmCol = { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.8 };
     const devCol = { header: 'Écart', dataKey: 'deviationPct', weight: 2.5 };
+    // Avoirs et remboursements : colonne ajoutée seulement s'il y en a, pour ne
+    // pas ajouter 2,4 de largeur à un PDF déjà calibré au millimètre.
+    const creditCols = this.aDesAvoirs(r.totalCreditAmount)
+      ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.4 }] : [];
     const columns = ranking
-      ? [{ header: '#', dataKey: 'rank', weight: 0.8 }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, devCol]
-      : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, totalCol, perKmCol, devCol];
+      ? [{ header: '#', dataKey: 'rank', weight: 0.8 }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, ...creditCols, devCol]
+      : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, ...creditCols, totalCol, perKmCol, devCol];
 
     const data: any[] = (r.vehicles || []).map(v => ({
       rank: v.rank,
@@ -9093,6 +9247,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(v.maintenanceCost),
       repairCost: mt(v.repairCost),
       otherCost: mt(v.otherCost),
+      creditAmount: mt(v.creditAmount),
       totalCost: mt(v.totalCost),
       costPerKm: v.costPerKm == null ? (pourPdf ? '—' : '') : parKm(v.costPerKm),
       deviationPct: v.deviationFromAveragePct == null ? (pourPdf ? '—' : '') : pct(v.deviationFromAveragePct)
@@ -9105,6 +9260,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(r.totalMaintenanceCost),
       repairCost: mt(r.totalRepairCost),
       otherCost: mt(r.totalOtherCost),
+      creditAmount: mt(r.totalCreditAmount),
       totalCost: mt(r.totalCost),
       costPerKm: r.averageCostPerKm == null ? (pourPdf ? '—' : '') : parKm(r.averageCostPerKm),
       deviationPct: pourPdf ? '—' : ''
@@ -9129,6 +9285,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // La derniere ligne est « TOTAL / MOYENNE » : elle se confondait avec
       // les lignes de vehicules.
       highlightLastRow: true,
+      // Les postes sont bruts, le total est net : dit seulement quand un crédit
+      // existe, sinon la note serait du bruit.
+      footnote: pourPdf && creditCols.length
+        ? `* ${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; carburant, entretiens, réparations et autres restent bruts.`
+        : undefined,
     };
   }
 
@@ -9155,12 +9316,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Largeurs mesurées (Manrope 7, 5 mm de marges internes) : la colonne la
     // plus exigeante est « Variation / mois préc. », 32,2 mm ; le tout fait
     // 159,5 mm pour 190, donc le PDF reste en portrait.
+    // Colonne des crédits seulement s'il y en a sur la période : elle prendrait
+    // 2,4 de largeur sur les 159,5 mm déjà mesurés, pour n'afficher que des 0.
+    const avoirs = this.aDesAvoirs(r.totalCreditAmount);
     const columns = [
       { header: 'Mois', dataKey: 'monthName', weight: 3.2 },
       { header: `Carburant ${cur}`, dataKey: 'fuelCost', weight: 2.2 },
       { header: `Entretiens ${cur}`, dataKey: 'maintenanceCost', weight: 2.2 },
       { header: `Réparations ${cur}`, dataKey: 'repairCost', weight: 2.4 },
       { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
+      ...(avoirs ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.4 }] : []),
       { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
       { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
@@ -9172,6 +9337,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(m.maintenanceCost),
       repairCost: mt(m.repairCost),
       otherCost: mt(m.otherCost),
+      creditAmount: mt(m.creditAmount),
       totalCost: mt(m.totalCost),
       variationPct: pct(m.variationPct)
     }));
@@ -9182,6 +9348,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(r.totalMaintenanceCost),
       repairCost: mt(r.totalRepairCost),
       otherCost: mt(r.totalOtherCost),
+      creditAmount: mt(r.totalCreditAmount),
       totalCost: mt(r.totalCost),
       variationPct: pourPdf ? '—' : ''
     });
@@ -9213,8 +9380,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // Dit pourquoi un mois incomplet n’a pas de variation et n’entre pas dans
       // les mois le plus et le moins élevés. La note ne parlait que du mois en
       // cours : un mois tronqué par la date de début n’était expliqué nulle part.
-      footnote: incomplets.length
-        ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+      footnote: (incomplets.length || avoirs)
+        ? [
+            incomplets.length
+              ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+              : '',
+            // Postes bruts, total net : sans cette phrase la ligne ne retombait
+            // pas sur ses colonnes dès qu'un avoir existait.
+            avoirs ? `${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; les quatre postes restent bruts.` : ''
+          ].filter(Boolean).join('   ')
         : undefined,
     };
   }

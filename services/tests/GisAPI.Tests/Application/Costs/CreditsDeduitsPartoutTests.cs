@@ -104,7 +104,10 @@ public class CreditsDeduitsPartoutTests
             new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             null, null, CancellationToken.None);
 
-        aggregate.Vehicles.Single().Total.Other.Should().Be(450m);
+        // Depuis le 18/09/2026 le crédit ne diminue plus « Autres » : il a son
+        // seau à lui. Seul le TOTAL est net, et il n'a pas bougé.
+        var total = aggregate.Vehicles.Single().Total;
+        (total.Other, total.Credit, total.Total).Should().Be((600m, -150m, 450m));
     }
 
     [Fact]
@@ -239,8 +242,13 @@ public class CreditsDeduitsPartoutTests
         couts.GetProperty("FuelThisMonth").GetDecimal().Should().Be(50m);
     }
 
+    /// <summary>
+    /// Règle du 18/09/2026 : les quatre postes d'un tableau de bord n'ont pas la place
+    /// d'une ligne de crédit, la déduction tombe donc sur « Réparations » — et « Autres »
+    /// reste BRUT, comme dans les rapports détaillés. Le total, lui, ne bouge pas.
+    /// </summary>
     [Fact]
-    public async Task La_synthese_des_couts_du_tableau_de_bord_deduit_les_credits_des_Autres()
+    public async Task La_synthese_des_couts_du_tableau_de_bord_deduit_les_credits_des_Reparations()
     {
         var annee = DateTime.UtcNow.Year;
         using var ctx = await ParcEnMemoireAsync(Depenses(new DateTime(annee, 1, 2, 10, 0, 0, DateTimeKind.Utc)));
@@ -249,8 +257,9 @@ public class CreditsDeduitsPartoutTests
 
         var synthese = Json(ok.Value);
         synthese.GetProperty("FuelCost").GetDecimal().Should().Be(50m);
-        synthese.GetProperty("OtherCost").GetDecimal().Should().Be(350m, "600 d'assurance − 150 − 100");
-        synthese.GetProperty("TotalCost").GetDecimal().Should().Be(400m);
+        synthese.GetProperty("OtherCost").GetDecimal().Should().Be(600m, "l'assurance reste brute");
+        synthese.GetProperty("RepairCost").GetDecimal().Should().Be(-250m, "aucune réparation, 150 d'avoir et 100 de remboursement");
+        synthese.GetProperty("TotalCost").GetDecimal().Should().Be(400m, "le total est le même qu'avant la règle");
     }
 
     [Fact]

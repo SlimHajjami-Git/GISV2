@@ -7,18 +7,32 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Reports.Common;
 
-/// <summary>Dépenses d'un véhicule sur un mois (ou sur la période entière).</summary>
-public sealed record CostBucket(decimal Fuel, decimal Maintenance, decimal Repair, decimal Other, int RepairCount)
+/// <summary>
+/// Dépenses d'un véhicule sur un mois (ou sur la période entière). Les quatre
+/// postes sont BRUTS : <paramref name="Credit"/> porte à part les avoirs
+/// fournisseurs et les remboursements d'assurance, en négatif (règle du
+/// 18/09/2026). Seul <see cref="Total"/> est net.
+/// </summary>
+public sealed record CostBucket(decimal Fuel, decimal Maintenance, decimal Repair, decimal Other, decimal Credit, int RepairCount)
 {
-    public static CostBucket Zero { get; } = new(0, 0, 0, 0, 0);
+    public static CostBucket Zero { get; } = new(0, 0, 0, 0, 0, 0);
 
-    public decimal Total => Fuel + Maintenance + Repair + Other;
+    public decimal Total => Fuel + Maintenance + Repair + Other + Credit;
+
+    /// <summary>
+    /// Réparations DIMINUÉES des crédits, pour les blocs à quatre postes des
+    /// tableaux de bord, qui n'ont pas la place d'une ligne de plus. Peut être
+    /// négatif (un mois qui rembourse plus qu'il ne répare) : à afficher tel quel,
+    /// le borner à zéro ferait mentir le total.
+    /// </summary>
+    public decimal RepairNetOfCredit => Repair + Credit;
 
     public CostBucket Plus(CostBucket other) => new(
         Fuel + other.Fuel,
         Maintenance + other.Maintenance,
         Repair + other.Repair,
         Other + other.Other,
+        Credit + other.Credit,
         RepairCount + other.RepairCount);
 }
 
@@ -108,8 +122,10 @@ public sealed class OperatingCostData
 ///   <item>Carburant = <c>fuel_entries</c> (InvoiceDate, TotalAmount) + <c>vehicle_costs</c> type <c>fuel</c>.</item>
 ///   <item>Entretiens = <c>vehicle_costs</c> type <c>maintenance</c> ou <c>entretien</c>.</item>
 ///   <item>Réparations = <c>repairs</c> (SocieteId, RepairDate, TotalCost, statut ≠ cancelled).</item>
-///   <item>Autres = <c>vehicle_costs</c> des autres types (même règle que le tableau de bord).
-///     Les mensualités d'acquisition sont EXCLUES (pas des dépenses d'exploitation).</item>
+///   <item>Autres = <c>vehicle_costs</c> des autres types, BRUTS (même règle que le tableau
+///     de bord). Les mensualités d'acquisition sont EXCLUES (pas des dépenses d'exploitation).</item>
+///   <item>Avoirs et remboursements = <c>vehicle_costs</c> de type <c>credit_note</c> ou
+///     <c>insurance_refund</c>, comptés en NÉGATIF dans leur seau à eux (18/09/2026).</item>
 ///   <item>Distance : véhicule sans boîtier → relevés compteur des pleins
 ///     (<see cref="OdometerDistance"/>) ; véhicule équipé → trajets GPS terminés, avec
 ///     repli compteur si aucun trajet ; sinon aucune distance.</item>
@@ -309,13 +325,18 @@ public static class OperatingCostAggregator
                 //   Montant seul, sans compter une intervention : RepairCount mesure
                 //   les passages à l’atelier de la table repairs, et une dépense
                 //   « repair » peut être la facture de l’une d’elles.
-                // - Remboursement d’assurance : enregistré en montant POSITIF par le
-                //   module Sinistres, et affiché en crédit par l’écran Dépenses.
-                //   L’additionner gonflait le coût du mois du montant remboursé au
-                //   lieu de l’alléger. On le soustrait : c’est un crédit.
-                var (category, sign) = VehicleCostCategory.Classify(c.Type);
-                var amount = sign * c.Amount;
-                switch (category)
+                // - CRÉDITS (remboursement d’assurance, avoir fournisseur) : enregistrés
+                //   en montant POSITIF, affichés en crédit par l’écran Dépenses. Depuis
+                //   le 18/09/2026 ils ne diminuent AUCUN poste ici — ils ont leur seau à
+                //   eux, que les rapports rendent en ligne « Avoirs et remboursements »
+                //   et que les tableaux de bord déduisent des Réparations. Noyés dans
+                //   « Autres », ils faisaient dire au document remis au client qu’un
+                //   remboursement de sinistre allégeait l’assurance.
+                //   SignedAmount plutôt que sign × montant : une ligne ancienne saisie
+                //   à −120 aurait sinon rendu le seau des crédits POSITIF.
+                var amount = VehicleCostCategory.SignedAmount(c.Type, c.Amount);
+                if (VehicleCostCategory.IsCredit(c.Type)) { acc.Credit += amount; continue; }
+                switch (VehicleCostCategory.Classify(c.Type).Category)
                 {
                     case CostCategory.Fuel: acc.Fuel += amount; break;
                     case CostCategory.Maintenance: acc.Maintenance += amount; break;
@@ -403,8 +424,9 @@ public static class OperatingCostAggregator
         public decimal Maintenance;
         public decimal Repair;
         public decimal Other;
+        public decimal Credit;
         public int RepairCount;
 
-        public CostBucket Freeze() => new(Fuel, Maintenance, Repair, Other, RepairCount);
+        public CostBucket Freeze() => new(Fuel, Maintenance, Repair, Other, Credit, RepairCount);
     }
 }

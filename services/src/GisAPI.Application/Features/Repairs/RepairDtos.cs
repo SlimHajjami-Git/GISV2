@@ -19,7 +19,11 @@ public record RepairDto(
     string? Notes,
     DateTime CreatedAt,
     List<RepairPartDto> Parts,
-    string? RepairType = null            // electrique | mecanique | freinage | pneumatique | carrosserie | autre
+    string? RepairType = null,           // electrique | mecanique | freinage | pneumatique | carrosserie | autre
+    // Sinistre à l'origine de la réparation (migration 049). Sans lui, l'écran Dépenses
+    // perdait le badge « Accident #N », son lien vers le dossier et le verrou qui
+    // empêche de supprimer une ligne pilotée par la phase 5.
+    int? AccidentEventId = null
 );
 
 public record RepairPartDto(

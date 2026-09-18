@@ -61,6 +61,9 @@ public class MonthlyCostReportDto : MonthlyCostGroupRatiosDto
     public decimal TotalMaintenanceCostDzd { get; set; }
     public decimal TotalRepairCostDzd { get; set; }
     public decimal TotalOtherCostDzd { get; set; }
+    /// <summary>Avoirs et remboursements du mois, en NÉGATIF (règle du 18/09/2026) :
+    /// les postes ci-dessus restent bruts, seul le total est net.</summary>
+    public decimal TotalCreditAmountDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     // Totaux du mois PRECEDENT. Sans eux, la ligne « Total » du tableau
@@ -89,12 +92,14 @@ public class MonthlyCostReportDto : MonthlyCostGroupRatiosDto
         TotalMaintenanceCostDzd = 0;
         TotalRepairCostDzd = 0;
         TotalOtherCostDzd = 0;
+        TotalCreditAmountDzd = 0;
         TotalCostDzd = TotalFuelCostDzd;
         foreach (var d in Departments)
         {
             d.TotalMaintenanceCostDzd = 0;
             d.TotalRepairCostDzd = 0;
             d.TotalOtherCostDzd = 0;
+            d.TotalCreditAmountDzd = 0;
             d.TotalCostDzd = d.TotalFuelCostDzd;
             foreach (var v in d.Vehicles) v.StripNonFuelCosts();
             d.ComputeRatios(d.Vehicles);
@@ -117,6 +122,8 @@ public class DepartmentCostGroupDto : MonthlyCostGroupRatiosDto
     public decimal TotalMaintenanceCostDzd { get; set; }
     public decimal TotalRepairCostDzd { get; set; }
     public decimal TotalOtherCostDzd { get; set; }
+    /// <summary>Avoirs et remboursements du département, en NÉGATIF (18/09/2026).</summary>
+    public decimal TotalCreditAmountDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     // Totaux du mois PRECEDENT. Sans eux, la ligne « Total » du tableau
@@ -160,8 +167,14 @@ public class VehicleMonthlyCostDto
     public decimal FuelCostDzd { get; set; }
     public decimal MaintenanceCostDzd { get; set; }
     public decimal RepairCostDzd { get; set; }
-    // Assurance, vignette, visite technique, carte grise, peage, reparation-accident…
+    // Assurance, vignette, visite technique, carte grise, peage… BRUT.
     public decimal OtherCostDzd { get; set; }
+    /// <summary>
+    /// Avoirs fournisseurs et remboursements d'assurance du mois, en NÉGATIF.
+    /// Décision du 18/09/2026 : ils ne diminuent plus « Autres », ils ont leur
+    /// colonne ; le total reste net.
+    /// </summary>
+    public decimal CreditAmountDzd { get; set; }
     public decimal TotalCostDzd { get; set; }
 
     // Fuel consumption (liters)
@@ -185,6 +198,7 @@ public class VehicleMonthlyCostDto
         MaintenanceCostDzd = 0;
         RepairCostDzd = 0;
         OtherCostDzd = 0;
+        CreditAmountDzd = 0;
         TotalCostDzd = FuelCostDzd;
         CostPerKm = Km > 0 ? FuelCostDzd / Km.Value : null;
         MaintenanceRepairPer100Km = Km > 0 ? 0 : null;

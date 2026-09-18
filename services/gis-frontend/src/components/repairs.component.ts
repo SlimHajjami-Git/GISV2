@@ -41,6 +41,12 @@ interface Repair {
   notes: string;
   /** Type d'intervention (electrique | mecanique | freinage | pneumatique | carrosserie | autre), optionnel. */
   repairType: string | null;
+  /**
+   * Sinistre à l'origine de la réparation (phase 5 du dossier, migration 049).
+   * Sans lui, l'écran laissait cliquer Supprimer sur une ligne que le serveur refuse
+   * de supprimer : la fenêtre se fermait, la ligne restait, le client y voyait un bug.
+   */
+  accidentEventId?: number | null;
   parts: RepairPart[];
 }
 
@@ -223,6 +229,12 @@ interface Vehicle {
                     <span class="repair-icon">🔧</span>
                     <span class="repair-ref">{{ repair.reference || '—' }}</span>
                   </div>
+                  <!-- Dossier de sinistre, sous la référence : le tableau tient déjà dix colonnes
+                       sur un écran de 1536 px, une colonne de plus ne passait pas. Texte court. -->
+                  <span class="accident-badge" *ngIf="repair.accidentEventId"
+                        [title]="'Réparation issue du dossier de sinistre #' + repair.accidentEventId">
+                    🚗 Sinistre #{{ repair.accidentEventId }}
+                  </span>
                 </td>
                 <td class="col-date">{{ repair.repairDate | date:'dd/MM/yyyy' }}</td>
                 <td class="col-vehicle">
@@ -258,7 +270,14 @@ interface Vehicle {
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
-                    <button class="btn-action delete" (click)="confirmDelete(repair); $event.stopPropagation()" title="Supprimer">
+                    <!-- Réparation née d'un sinistre : le serveur refuse la suppression (le retrait
+                         passe par la phase 5 du dossier). Verrou et motif, comme l'écran Dépenses. -->
+                    <button class="btn-action delete" (click)="confirmDelete(repair); $event.stopPropagation()"
+                            [disabled]="!!repair.accidentEventId"
+                            [title]="repair.accidentEventId
+                              ? 'Réparation du dossier de sinistre #' + repair.accidentEventId
+                                + ' : videz le coût réel dans la phase 5 du dossier pour la retirer.'
+                              : 'Supprimer'">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                       </svg>
@@ -499,6 +518,12 @@ interface Vehicle {
                 <span class="detail-label">N° Facture</span>
                 <span class="detail-value">{{ viewingRepair.invoiceNumber }}</span>
               </div>
+              <div class="detail-row" *ngIf="viewingRepair.accidentEventId">
+                <span class="detail-label">Dossier de sinistre</span>
+                <span class="detail-value">
+                  <span class="accident-badge">🚗 Sinistre #{{ viewingRepair.accidentEventId }}</span>
+                </span>
+              </div>
             </div>
 
             <div class="detail-section" *ngIf="viewingRepair.parts.length > 0">
@@ -553,6 +578,9 @@ interface Vehicle {
           </div>
           <p>Etes-vous sur de vouloir supprimer la reparation <strong>{{ repairToDelete?.reference }}</strong> ?</p>
           <p class="warning-text">Cette action est irreversible.</p>
+          <!-- Motif du refus renvoyé par le serveur (réparation née d'un sinistre, par exemple) :
+               sans lui la fenêtre se fermait sans un mot et la ligne restait à l'écran. -->
+          <div class="save-error" *ngIf="saveError" role="alert">{{ saveError }}</div>
           <div class="modal-actions">
             <button class="btn-cancel" (click)="cancelDelete()">Annuler</button>
             <button class="btn-delete" (click)="deleteRepair()">Supprimer</button>
@@ -655,6 +683,8 @@ interface Vehicle {
     .parts-badge { display:inline-block; background:#e2e8f0; color:#475569; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; }
     .parts-badge.empty { background:transparent; color:#cbd5e1; }
     .type-tag { display:inline-block; background:#eff6ff; color:#2563eb; border:1px solid #dbeafe; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:600; margin-bottom:3px; }
+    /* Même pilule que le badge « Accident » de l'écran Dépenses, en plus discret. */
+    .accident-badge { display:inline-block; margin-top:3px; background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; padding:1px 7px; border-radius:4px; font-size:10px; font-weight:600; white-space:nowrap; }
 
     td.num { text-align:right; font-variant-numeric:tabular-nums; font-family:monospace; }
     td.num.strong { font-weight:700; color:#16a34a; font-size:12.5px; }
@@ -673,7 +703,8 @@ interface Vehicle {
     .btn-action.edit { color:#f59e0b; }
     .btn-action.edit:hover { background:#fef3c7; border-color:#f59e0b; }
     .btn-action.delete { color:#dc2626; }
-    .btn-action.delete:hover { background:#fee2e2; border-color:#dc2626; }
+    .btn-action.delete:hover:not(:disabled) { background:#fee2e2; border-color:#dc2626; }
+    .btn-action:disabled { opacity:.4; cursor:not-allowed; }
 
     /* Column widths */
     .col-ref { min-width:140px; }
@@ -747,6 +778,7 @@ interface Vehicle {
 
     .panel-footer { display:flex; justify-content:flex-end; gap:10px; padding:16px 20px; border-top:1px solid #e2e8f0; background:#f8fafc; }
     .save-error { padding:8px 20px; background:#fef2f2; border-top:1px solid #fecaca; color:#b91c1c; font-size:12px; line-height:1.4; }
+    .modal-content .save-error { margin-top:12px; padding:8px 10px; border:1px solid #fecaca; border-radius:6px; }
     .btn-cancel { padding:8px 16px; background:white; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; cursor:pointer; }
     .btn-cancel:hover { background:#f1f5f9; }
     .btn-save { padding:8px 20px; background:#3b82f6; color:white; border:none; border-radius:6px; font-size:13px; font-weight:500; cursor:pointer; }
@@ -933,6 +965,8 @@ export class RepairsComponent implements OnInit, OnDestroy {
           invoiceNumber: r.invoiceNumber || '',
           notes: r.notes || '',
           repairType: r.repairType ?? null,
+          // Dossier de sinistre : sert au badge de la ligne et au verrou du bouton Supprimer.
+          accidentEventId: r.accidentEventId ?? null,
           parts: (r.parts || []).map(p => ({
             id: p.id,
             partName: p.partName,
@@ -1329,24 +1363,26 @@ export class RepairsComponent implements OnInit, OnDestroy {
   confirmDelete(repair: Repair) {
     this.repairToDelete = repair;
     this.showDeleteConfirm = true;
+    this.saveError = null;
   }
 
   cancelDelete() {
     this.repairToDelete = null;
     this.showDeleteConfirm = false;
+    this.saveError = null;
   }
 
   deleteRepair() {
     if (this.repairToDelete && this.repairToDelete.id) {
+      this.saveError = null;
       this.apiService.deleteRepair(this.repairToDelete.id).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.loadRepairs();
           this.cancelDelete();
         },
-        error: (err) => {
-          console.error('Error deleting repair:', err);
-          this.cancelDelete();
-        }
+        // Un refus du serveur (réparation née d'un sinistre) fermait la fenêtre sans un mot
+        // et la ligne restait : le client y voyait un bug. La fenêtre reste ouverte sur le motif.
+        error: (err) => this.showSaveError(err)
       });
     } else {
       this.cancelDelete();

@@ -30,7 +30,10 @@ public record VehicleCostEvolutionDto(
     decimal TotalOtherCost,
     decimal? TotalDistanceKm,
     string DistanceSource,
-    List<MonthlyVehicleCostDto> Months);
+    List<MonthlyVehicleCostDto> Months,
+    // Avoirs et remboursements de la période, en NÉGATIF (18/09/2026) : les postes
+    // ci-dessus restent bruts, TotalCost est net.
+    decimal TotalCreditAmount = 0m);
 
 public record MonthlyVehicleCostDto(
     int Year,
@@ -38,9 +41,10 @@ public record MonthlyVehicleCostDto(
     string MonthName,                      // "Sept. 2025"
     decimal FuelCost,
     decimal MaintenanceCost,
-    decimal RepairCost,
-    decimal OtherCost,
-    decimal TotalCost,
+    decimal RepairCost,                    // BRUT : les crédits ne s'y déduisent pas
+    decimal OtherCost,                     // BRUT également
+    decimal TotalCost,                     // NET : postes bruts + CreditAmount (négatif)
     decimal? DistanceKm,                   // km attribués au mois (relevé aval / trajets du mois)
     decimal? VariationPct,                 // vs mois précédent ; null le 1er mois, si précédent = 0, ou si l'un des deux mois est INCOMPLET
-    bool IsPartial = false);               // la période ne couvre pas le mois entier, par l'une OU l'autre borne (mois en cours, période personnalisée)
+    bool IsPartial = false,                // la période ne couvre pas le mois entier, par l'une OU l'autre borne (mois en cours, période personnalisée)
+    decimal CreditAmount = 0m);            // avoirs et remboursements du mois, en négatif

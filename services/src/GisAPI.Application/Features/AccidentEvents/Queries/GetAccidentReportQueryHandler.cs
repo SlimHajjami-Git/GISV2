@@ -51,6 +51,20 @@ public class GetAccidentReportQueryHandler
 
         if (ev == null) return null;
 
+        // Deux lectures légères, par identifiant : l'écran doit pouvoir dire que le
+        // dossier n'a plus de véhicule (ni réparation ni dépense ne peuvent alors être
+        // reportées) et citer la réparation née de la phase 5.
+        // Un vehicle_id ABSENT est le cas réel : la suppression d'un véhicule met
+        // accident_events.vehicle_id à NULL (VehicleDeletionHelper). Le traiter comme
+        // « véhicule présent » empêchait le bandeau de s'allumer une seule fois.
+        var vehicleExists = ev.VehicleId.HasValue && await _context.Vehicles
+            .AnyAsync(v => v.Id == ev.VehicleId.Value && v.CompanyId == ev.CompanyId, ct);
+        var repairReference = await _context.Repairs
+            .AsNoTracking()
+            .Where(r => r.AccidentEventId == ev.Id && r.SocieteId == ev.CompanyId)
+            .Select(r => r.Reference)
+            .FirstOrDefaultAsync(ct);
+
         string? decidedByName = null;
         if (ev.DecidedByUserId.HasValue)
         {
@@ -130,7 +144,11 @@ public class GetAccidentReportQueryHandler
             ThirdParties: ev.ThirdParties
                 .OrderBy(t => t.Id)
                 .Select(t => new AccidentReportThirdPartyDto(t.Id, t.Name, t.Phone, t.VehiclePlate, t.VehicleModel, t.InsuranceCompany, t.InsuranceNumber, t.InsuranceExpiry))
-                .ToList());
+                .ToList(),
+
+            UpdatedAt: ev.UpdatedAt,
+            VehicleExists: vehicleExists,
+            RepairReference: repairReference);
     }
 
     private static T? Deserialize<T>(string? json) where T : class

@@ -453,6 +453,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             description: r.notes,
             createdAt: new Date(r.createdAt || r.repairDate),
             sourceTable: 'repairs',
+            // La réparation d'un sinistre vit maintenant ici (phase 5, migration 049) :
+            // sans ce report, le badge « Accident #N », son lien vers le dossier et le
+            // verrou du bouton Supprimer disparaissaient avec la dépense qu'elle remplace.
+            accidentEventId: r.accidentEventId ?? null,
             // Statut comparé sans casse ni espaces, comme l'écran Réparations : des
             // valeurs anciennes « Cancelled » restent en base.
             repairCancelled: (r.status || '').trim().toLowerCase() === 'cancelled'

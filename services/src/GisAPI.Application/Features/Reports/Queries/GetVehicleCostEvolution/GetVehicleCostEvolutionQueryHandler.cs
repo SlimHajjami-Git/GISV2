@@ -73,7 +73,8 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
                 TotalCost: Math.Round(total, 2),
                 DistanceKm: km > 0 ? Math.Round(km, 2) : null,
                 VariationPct: variation.HasValue ? Math.Round(variation.Value, 1) : null,
-                IsPartial: incomplet));
+                IsPartial: incomplet,
+                CreditAmount: Math.Round(bucket.Credit, 2)));
 
             previousTotal = total;
             previousPartial = incomplet;
@@ -101,6 +102,7 @@ public class GetVehicleCostEvolutionQueryHandler : IRequestHandler<GetVehicleCos
             TotalOtherCost: Math.Round(vehicle.Total.Other, 2),
             TotalDistanceKm: vehicle.DistanceKm.HasValue ? Math.Round(vehicle.DistanceKm.Value, 2) : null,
             DistanceSource: vehicle.DistanceSource,
-            Months: months);
+            Months: months,
+            TotalCreditAmount: Math.Round(vehicle.Total.Credit, 2));
     }
 }

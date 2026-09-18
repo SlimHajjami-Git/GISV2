@@ -893,11 +893,43 @@ public class DashboardController : ControllerBase
             .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
 
         // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
-        // Avoir et remboursement d'assurance y sont DÉDUITS, comme dans les rapports de coûts.
-        var otherCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
+        // Une somme par type EN SQL (quelques lignes, jamais le détail), parts positive et
+        // négative séparées comme VehicleCostCategory.SignedTotalAsync : un avoir ancien
+        // saisi à −120 reste un crédit. Puis la ventilation partagée, en C#.
+        var parType = await _context.VehicleCosts
             .AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                && c.Type != "fuel" && c.Type != "maintenance"));
+                && c.Type != "fuel" && c.Type != "maintenance")
+            .GroupBy(c => c.Type)
+            .Select(g => new
+            {
+                Type = g.Key,
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
+            })
+            .ToListAsync();
+
+        var otherCost = 0m;
+        foreach (var t in parType)
+        {
+            // Crédit (avoir, remboursement) : déduit des RÉPARATIONS et non d'« Autres »
+            // (règle du 18/09/2026) — cette synthèse n'a que quatre postes, comme les
+            // autres tableaux de bord ; les rapports détaillés, eux, portent les crédits
+            // sur une ligne à part et laissent les quatre postes bruts. Total identique.
+            if (VehicleCostCategory.IsCredit(t.Type))
+            {
+                repairCost -= t.Positive - t.Negative;
+                continue;
+            }
+            var montant = t.Positive + t.Negative;
+            switch (VehicleCostCategory.Classify(t.Type).Category)
+            {
+                case CostCategory.Fuel: fuelCost += montant; break;
+                case CostCategory.Maintenance: maintenanceCost += montant; break;
+                case CostCategory.Repair: repairCost += montant; break;
+                default: otherCost += montant; break;
+            }
+        }
 
         var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 

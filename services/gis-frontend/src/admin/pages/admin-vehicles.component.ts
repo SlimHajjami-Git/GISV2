@@ -6,6 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, AdminVehicle, Client } from '../services/admin.service';
+import { ApiService, VehicleDeletionImpact } from '../../services/api.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
 import {
   gpsDeviceIdToSend, replayAfterReplacement, shouldProposeReplacement, trimIdentifier
@@ -304,7 +305,30 @@ import {
                   <span class="delete-vehicle-plate" *ngIf="vehicleToDelete.plate">{{ vehicleToDelete.plate }}</span>
                   <span class="delete-vehicle-mat" *ngIf="vehicleToDelete.gpsMat">MAT: {{ vehicleToDelete.gpsMat }}</span>
                 </div>
-                <p class="warning-text">Cette action est irreversible. Toutes les donnees associees seront perdues.</p>
+                <!-- La regle n'est pas uniforme : tout ce qui porte un vehicle_id NON NULL
+                     part avec le vehicule, les dossiers de sinistre sont detaches. La
+                     phrase generale reste, les compteurs ne font que la preciser. -->
+                <p class="warning-text">
+                  Cette action est irreversible. Toutes les donnees du vehicule (entretiens,
+                  planning, echeancier, documents, trajets) sont supprimees avec lui.
+                </p>
+                <ul class="delete-impact" *ngIf="deleteImpact">
+                  <li *ngIf="deleteImpact.repairs || deleteImpact.costs">
+                    Dont
+                    <b *ngIf="deleteImpact.repairs">{{ deleteImpact.repairs }} reparation(s)</b>
+                    <span *ngIf="deleteImpact.repairs && deleteImpact.costs"> et </span>
+                    <b *ngIf="deleteImpact.costs">{{ deleteImpact.costs }} depense(s)</b>
+                    — leurs montants quittent les rapports de couts.
+                  </li>
+                  <li *ngIf="deleteImpact.accidents">
+                    Conserves : <b>{{ deleteImpact.accidents }} dossier(s) de sinistre</b>, detaches du vehicule.
+                  </li>
+                  <li *ngIf="!deleteImpact.repairs && !deleteImpact.costs && !deleteImpact.accidents">
+                    Aucune reparation, depense ni dossier de sinistre rattache.
+                  </li>
+                </ul>
+                <p class="delete-impact-loading" *ngIf="!deleteImpact && !deleteImpactFailed">Verification des donnees rattachees…</p>
+                <p class="delete-impact-loading" *ngIf="deleteImpactFailed">Impossible de verifier les donnees rattachees.</p>
               </div>
             </div>
             <div class="modal-footer">
@@ -449,6 +473,11 @@ import {
     .delete-vehicle-plate { font-family: monospace; font-size: 13px; color: var(--adm-sub); }
     .delete-vehicle-mat { font-size: 12px; color: var(--adm-indigo-ink); font-weight: 600; }
     .warning-text { font-size: 13px; color: var(--adm-sub); margin: 0; }
+    /* Fenetre etroite (440px) : texte a gauche, puces serrees, aucun defilement horizontal. */
+    .delete-impact { margin: 10px 0 0; padding-left: 18px; text-align: left; font-size: 12.5px; color: var(--adm-sub); line-height: 1.45; }
+    .delete-impact li + li { margin-top: 4px; }
+    .delete-impact b { color: var(--adm-ink); font-weight: 600; }
+    .delete-impact-loading { margin: 10px 0 0; font-size: 12.5px; color: var(--adm-sub); font-style: italic; }
 
     @media (prefers-reduced-motion: reduce) {
       .stat-card, .table-container { animation: none; }
@@ -487,6 +516,10 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   showDeleteModal = false;
   selectedVehicle: AdminVehicle | null = null;
   vehicleToDelete: AdminVehicle | null = null;
+  /** Ce que la suppression emporte ou laisse (null tant que le compte n'est pas revenu). */
+  deleteImpact: VehicleDeletionImpact | null = null;
+  /** Compte non obtenu : sans ce drapeau la fenetre annoncait une verification sans fin. */
+  deleteImpactFailed = false;
 
   // Getter for the popup component - converts AdminVehicle to the format expected by VehiclePopupComponent
   get selectedVehicleForPopup(): any {
@@ -546,6 +579,7 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private adminService: AdminService,
+    private api: ApiService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -685,7 +719,31 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
   confirmDelete(vehicle: AdminVehicle) {
     this.vehicleToDelete = vehicle;
+    this.deleteImpact = null;
+    this.deleteImpactFailed = false;
     this.showDeleteModal = true;
+    // Ce que la suppression emporte vraiment : « toutes les données associées seront
+    // perdues » ne disait ni combien ni quoi. Trois COUNT, appelés à l'ouverture de la
+    // fenêtre. L'intercepteur n'attache admin_token qu'aux URL /api/admin, d'où la
+    // route (AccidentReportsController.VehicleDeletionImpact).
+    const demande = vehicle.id;
+    this.api.getVehicleDeletionImpact(demande)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        // Réponse d'un véhicule déjà refermé : en rouvrant la fenêtre sur un autre, elle
+        // aurait affiché les compteurs du premier devant une suppression irréversible.
+        next: (impact) => {
+          if (!impact || impact.vehicleId !== this.vehicleToDelete?.id) return;
+          this.deleteImpact = impact;
+          this.cdr.markForCheck();
+        },
+        // Compteurs d'appoint : leur absence ne doit pas empêcher la suppression, mais
+        // la fenêtre doit cesser d'annoncer une vérification en cours.
+        error: () => {
+          if (demande !== this.vehicleToDelete?.id) return;
+          this.deleteImpactFailed = true;
+          this.cdr.markForCheck();
+        },
+      });
   }
 
   deleteVehicle() {
@@ -910,6 +968,8 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   closeDeleteModal() {
     this.showDeleteModal = false;
     this.vehicleToDelete = null;
+    this.deleteImpact = null;
+    this.deleteImpactFailed = false;
   }
 
   resetForm() {

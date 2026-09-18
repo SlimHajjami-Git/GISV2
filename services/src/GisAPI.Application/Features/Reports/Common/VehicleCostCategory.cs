@@ -24,6 +24,13 @@ public enum CostCategory
 /// les comptaient toujours en « Autres », en positif. La même dépense de
 /// 1 143 400 (société 1, avril 2026) était « Réparations » dans un écran et
 /// « Autres » dans le voisin, et un remboursement R aurait écarté les totaux de 2R.</para>
+///
+/// <para>Décision de Karim du 18/09/2026 : un CRÉDIT (remboursement d'assurance,
+/// avoir fournisseur) ne diminue plus aucun poste des rapports détaillés — il y
+/// porte sa propre ligne « Avoirs et remboursements ». Les tableaux de bord, qui
+/// n'ont pas la place d'une ligne de plus, le déduisent des Réparations. Le total
+/// est le même des deux côtés : voir <see cref="IsCredit"/> et
+/// <see cref="CostBucket.RepairNetOfCredit"/>.</para>
 /// </summary>
 public static class VehicleCostCategory
 {
@@ -115,4 +122,13 @@ public static class VehicleCostCategory
     public static bool IsFuel(string? type) => Classify(type).Category == CostCategory.Fuel;
     public static bool IsMaintenance(string? type) => Classify(type).Category == CostCategory.Maintenance;
     public static bool IsRepair(string? type) => Classify(type).Category == CostCategory.Repair;
+
+    /// <summary>
+    /// Ligne de CRÉDIT (<c>insurance_refund</c>, <c>credit_note</c> et leurs libellés) :
+    /// elle allège le coût au lieu de l'alourdir. Prédicat à part du seau parce que les
+    /// écrans ne la rangent pas au même endroit depuis le 18/09/2026 — ligne propre dans
+    /// les rapports, déduction des Réparations dans les tableaux de bord —, alors que le
+    /// seau <see cref="CostCategory.Other"/> reste celui du type lui-même.
+    /// </summary>
+    public static bool IsCredit(string? type) => Classify(type).Sign < 0;
 }

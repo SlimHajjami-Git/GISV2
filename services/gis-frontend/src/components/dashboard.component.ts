@@ -13,6 +13,19 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard-gpa.helpers';
 
+/**
+ * Part d'un poste dans le total d'une carte de coûts. Un poste NÉGATIF — le poste
+ * « Réparations » du tableau de bord l'est dès qu'un remboursement dépasse les
+ * réparations du mois (règle du 18/09/2026) — n'est pas une part du total : il rend
+ * null, affiché « — », plutôt qu'un « 0 % » faux à côté d'un montant négatif. Sans
+ * total, pas de part non plus.
+ */
+export function partDuTotal(valeur:number|null|undefined,total:number|null|undefined):number|null{
+  const t=Number(total)||0, v=Number(valeur)||0;
+  if(t<=0||v<0) return null;
+  return Math.min(100,(v/t)*100);
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -288,8 +301,11 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
         </div>
         <div class="rows">
           <div *ngFor="let e of expItems" class="row">
-            <div class="lblc"><i [style.background]="e.color"></i><span>{{ e.name }}</span></div>
-            <div class="bar"><i [style.width.%]="maxExp ? (e.value/maxExp)*100 : 0" [style.background]="e.color"></i></div>
+            <div class="lblc" [title]="e.key === 'repair' ? infoBulleReparationsNettes : e.name"><i [style.background]="e.color"></i><span>{{ e.name }}</span></div>
+            <!-- Largeur sur la part POSITIVE : un poste net négatif (remboursement
+                 supérieur aux réparations) donnait une largeur négative, ignorée par
+                 le navigateur. Le montant, lui, garde son signe. -->
+            <div class="bar"><i [style.width.%]="maxExp ? (max0(e.value)/maxExp)*100 : 0" [style.background]="e.color"></i></div>
             <div class="val num">{{ e.value | appCurrency:0 }}</div>
           </div>
         </div>
@@ -329,11 +345,13 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
           <div class="head-txt"><div class="eyebrow">Finances</div><h2 title="Répartition des coûts d'exploitation">Répartition des coûts d'exploitation</h2></div>
         </div>
         <div class="rows" *ngIf="gpa?.costs as costs">
+          <!-- Un poste négatif (remboursement supérieur aux réparations) n'a ni barre
+               ni pourcentage : « — », et non « 0 % » en face d'un montant négatif. -->
           <div *ngFor="let c of gpaSplit" class="row">
-            <div class="lblc"><i [style.background]="c.color"></i><span>{{ c.name }}</span></div>
-            <div class="bar"><i [style.width.%]="c.pct" [style.background]="c.color"></i></div>
+            <div class="lblc" [title]="c.key === 'repair' ? infoBulleReparationsNettes : c.name"><i [style.background]="c.color"></i><span>{{ c.name }}</span></div>
+            <div class="bar"><i [style.width.%]="c.pct ?? 0" [style.background]="c.color"></i></div>
             <div class="val num">{{ c.value | appCurrency:2 }}</div>
-            <div class="pct num">{{ costs.total > 0 ? pctLabel(c.pct) : '—' }}</div>
+            <div class="pct num">{{ c.pct === null ? '—' : pctLabel(c.pct) }}</div>
           </div>
           <div class="row tot">
             <div class="lblc"><span>Total</span></div>
@@ -442,7 +460,11 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
       <section class="card acc-amber gpa-top anim" style="--i:5" *ngIf="!gpa || gpa.top5">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg></span>
-          <div class="head-txt"><div class="eyebrow">Entretien + réparation</div><h2 title="Top 5 des véhicules par coût d'entretien et réparation">Top 5 des véhicules par coût</h2></div>
+          <!-- Classement de ce qui a été FACTURÉ à l'atelier : un avoir ou un
+               remboursement n'en est pas retiré, alors que la carte « Répartition »
+               les déduit. L'info-bulle le dit, sinon l'écart entre les deux cartes
+               ne s'explique pas. -->
+          <div class="head-txt"><div class="eyebrow">Entretien + réparation</div><h2 title="Top 5 des véhicules par coût d'entretien et réparation — montants facturés, avant avoirs et remboursements">Top 5 des véhicules par coût</h2></div>
           <div class="head-right mlegend" *ngIf="gpa?.top5?.length">
             <span><i style="background:#059669"></i>Entretien</span><span><i style="background:#d97706"></i>Réparation</span>
           </div>
@@ -1073,6 +1095,12 @@ import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard
     .spend .lblc{display:flex;align-items:center;gap:8px;width:96px;flex:none}
     .spend .lblc i{width:9px;height:9px;border-radius:3px;flex:none}
     .spend .lblc span{font-size:11.5px;font-weight:600;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    /* Cartes de COÛTS seulement (pas « Répartition par type », dont les libellés
+       viennent du client et pourraient s'étaler) : « Réparations, remb. déduits »
+       doit se lire en entier — le poste porte la déduction des avoirs depuis le
+       18/09/2026 —, il passe donc sur deux lignes au lieu d'être coupé. */
+    .spend:not(.types) .lblc{width:106px}
+    .spend:not(.types) .lblc span{white-space:normal;line-height:1.25;overflow:visible;text-overflow:clip}
     .spend .bar{flex:1}
     .spend .val{min-width:86px;text-align:right}
 
@@ -1326,17 +1354,27 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   private fuelSeq=0;
   realFuel:any=null;
   consoRows:{plate:string;name:string;c:number|null;pct:number;liters:number;km:number|null}[]=[];
-  gpaSplit:{name:string;color:string;value:number;pct:number}[]=[];
+  gpaSplit:{key:string;name:string;color:string;value:number;pct:number|null}[]=[];
   gpaMonths:any[]=[];
   gpaTicks:{pct:number;label:string}[]=[];
   gpaTotal12=0; gpaPartiel=false; mHover=-1;
-  /** Mêmes teintes que la carte Dépenses de l'offre GPS. */
+  /** Libellé unique du poste net, partagé par les deux cartes de coûts. */
+  static readonly LIBELLE_REPARATIONS_NETTES='Réparations, remb. déduits';
+  /** Mêmes teintes que la carte Dépenses de l'offre GPS. « Réparations » y est NET
+   *  des avoirs et remboursements (règle du 18/09/2026 : ce bloc à quatre postes n'a
+   *  pas la place d'une ligne de crédit, que les rapports détaillés portent à part),
+   *  et le libellé le dit. Le poste peut donc être négatif. */
   readonly gpaSeries=[
     {key:'fuel',name:'Carburant',color:'#4f46e5'},
     {key:'maintenance',name:'Entretiens',color:'#059669'},
-    {key:'repair',name:'Réparations',color:'#d97706'},
+    {key:'repair',name:DashboardComponent.LIBELLE_REPARATIONS_NETTES,color:'#d97706'},
     {key:'other',name:'Autres',color:'#94a3b8'},
   ] as const;
+
+  /** Info-bulle commune aux postes « Réparations » des tableaux de bord. */
+  readonly infoBulleReparationsNettes =
+    "Réparations de la période, avoirs fournisseurs et remboursements d'assurance déduits ; "
+    + "le rapport « Coût d'exploitation réel » les montre bruts, avec une ligne de crédit à part. Même total.";
   accesRapides:{label:string;sub:string;route:string;acc:string;d:string[]}[]=[];
 
   scP=0;unP=0;fuP=0;alertsP=0;trP=0;drP=0;
@@ -1476,16 +1514,25 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
       cum+=s.value;
       return{...s,da2,offset2};
     });
+    // Chaque poste porte sa CLÉ : l'info-bulle qui explique la déduction se posait
+    // sur une comparaison du libellé, qu'un raccourcissement aurait rompue en
+    // silence — la carte GPA voisine, elle, se repérait déjà sur la clé.
     this.expItems=[
-      {name:'Carburant',color:'#4f46e5',value:this.fuelCost},
-      {name:'Entretien',color:'#059669',value:this.maintenanceCost},
-      {name:'Réparation',color:'#d97706',value:this.repairCost},
+      {key:'fuel',name:'Carburant',color:'#4f46e5',value:this.fuelCost},
+      {key:'maintenance',name:'Entretien',color:'#059669',value:this.maintenanceCost},
+      // Poste NET des avoirs et remboursements (18/09/2026), négatif si le mois
+      // rend plus qu'il ne répare : le libellé le dit, le montant reste tel quel.
+      {key:'repair',name:DashboardComponent.LIBELLE_REPARATIONS_NETTES,color:'#d97706',value:this.repairCost},
       // Mensualités de crédit/leasing échues + apports/achats : calculés par le
       // serveur (AcquisitionSchedule), mêmes règles que l'écran Dépenses.
-      {name:'Achats véhicule',color:'#0ea5e9',value:this.acquisitionCost},
-      {name:'Autres',color:'#94a3b8',value:this.otherCost},
+      {key:'acquisition',name:'Achats véhicule',color:'#0ea5e9',value:this.acquisitionCost},
+      {key:'other',name:'Autres',color:'#94a3b8',value:this.otherCost},
     ];
-    this.maxExp=Math.max(this.fuelCost,this.maintenanceCost,this.repairCost,this.acquisitionCost,this.otherCost,1);
+    // Échelle des barres sur les postes POSITIFS : un poste négatif n'a pas de
+    // largeur (une largeur en % négative est simplement ignorée par le navigateur,
+    // ce qui laissait la barre à sa taille précédente), et il ne doit pas non plus
+    // servir de maximum.
+    this.maxExp=Math.max(...this.expItems.map(e=>Math.max(0,e.value)),1);
     this.hItems=[
       {name:'Bon état',color:'#059669',value:this.healthData.healthy},
       {name:'Attention',color:'#d97706',value:this.healthData.attention},
@@ -1662,7 +1709,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     const tot=d.costs?.total??0;
     this.gpaSplit=d.costs?this.gpaSeries.map(s=>{
       const v=val(d.costs,s.key);
-      return {name:s.name,color:s.color,value:v,pct:tot>0?Math.max(0,Math.min(100,(v/tot)*100)):0};
+      return {key:s.key,name:s.name,color:s.color,value:v,pct:partDuTotal(v,tot)};
     }):[];
 
     const ms=d.monthly||[];
@@ -1707,6 +1754,9 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   nombre(v:number|null|undefined):string{ return Math.round(Number(v)||0).toLocaleString('fr-FR'); }
   l100(v:number|null|undefined):string{ return (Number(v)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
   pctLabel(p:number):string{ return p.toLocaleString('fr-FR',{maximumFractionDigits:1})+' %'; }
+  /** Part POSITIVE d'un montant : une largeur de barre en % négative est ignorée
+   *  par le navigateur, la barre gardait alors sa taille précédente. */
+  max0(v:number|null|undefined):number{ return Math.max(0,Number(v)||0); }
   joursLabel(n:number):string{ return n<0?`${-n} j retard`:n===0?"aujourd'hui":`${n} j`; }
 
   /** « dont 50 400 TND sur la période » : le coût complet du parc ne suit pas la

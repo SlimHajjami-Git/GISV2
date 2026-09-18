@@ -257,7 +257,10 @@ public class GetGpaDashboardQueryHandlerTests
             dashboard.Costs!.Total.Should().Be(report.TotalCost, "même définition que le rapport « Coût d'exploitation »");
             dashboard.Costs!.Fuel.Should().Be(report.TotalFuelCost);
             dashboard.Costs!.Maintenance.Should().Be(report.TotalMaintenanceCost);
-            dashboard.Costs!.Repair.Should().Be(report.TotalRepairCost);
+            // Décision du 18/09/2026 : le rapport garde ses postes BRUTS et sort les
+            // avoirs et remboursements sur une ligne à part ; le tableau de bord, qui
+            // n'a que quatre postes, les déduit des Réparations. Même total.
+            dashboard.Costs!.Repair.Should().Be(report.TotalRepairCost + report.TotalCreditAmount);
             dashboard.Costs!.Other.Should().Be(report.TotalOtherCost);
             (dashboard.Costs!.Fuel + dashboard.Costs!.Maintenance + dashboard.Costs!.Repair + dashboard.Costs!.Other)
                 .Should().Be(dashboard.Costs!.Total);
@@ -266,9 +269,10 @@ public class GetGpaDashboardQueryHandlerTests
         }
 
         var full = await RunAsync(ctx, Admin());
-        full.Costs.Should().Be(new GpaCostsDto(Fuel: 340m, Maintenance: 200m, Repair: 918m, Other: 500m, Total: 1_958m),
-            "carburant 100 + 200 + 40 ; entretien 120 + 80 ; réparations 468 + 150 + facture 300 (l'annulée exclue) ; " +
-            "assurance 600 − remboursement 100 ; rien de la société 2");
+        full.Costs.Should().Be(new GpaCostsDto(Fuel: 340m, Maintenance: 200m, Repair: 818m, Other: 600m, Total: 1_958m),
+            "carburant 100 + 200 + 40 ; entretien 120 + 80 ; réparations 468 + 150 + facture 300 (l'annulée exclue) " +
+            "MOINS le remboursement de 100, déduit ici faute de place pour une ligne de crédit ; " +
+            "assurance 600, brute ; rien de la société 2");
     }
 
     // ── Acquisitions ─────────────────────────────────────────────────────────
@@ -407,7 +411,10 @@ public class GetGpaDashboardQueryHandlerTests
         dashboard.Monthly!.Sum(m => m.Total).Should().Be(expected).And.Be(2_008m,
             "la période (1 958) + le plein de décembre 2025 (50) ; celui de septembre 2025 est hors fenêtre");
         dashboard.Monthly!.Single(m => m.Month == 12).Fuel.Should().Be(50m);
-        dashboard.Monthly!.Single(m => m is { Year: 2026, Month: 2 }).Other.Should().Be(500m, "assurance 600 − remboursement 100");
+        // Février 2026 : assurance 600 (brute) et remboursement 100 déduit des Réparations,
+        // faute de place pour une ligne de crédit dans ce bloc à quatre postes (18/09/2026).
+        var fevrier = dashboard.Monthly!.Single(m => m is { Year: 2026, Month: 2 });
+        (fevrier.Other, fevrier.Repair, fevrier.Total).Should().Be((600m, -100m, 500m));
 
         dashboard.Monthly!.Where(m => m.IsPartial).Should().ContainSingle()
             .Which.Should().Match<GpaMonthDto>(m => m.Year == 2026 && m.Month == 9);

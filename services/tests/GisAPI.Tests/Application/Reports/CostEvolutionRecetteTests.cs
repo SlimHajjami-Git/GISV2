@@ -125,7 +125,10 @@ public class CostEvolutionRecetteTests
             .Handle(new GetOperatingCostReportQuery(new DateTime(2026, 7, 1), new DateTime(2026, 9, 30)), CancellationToken.None);
 
         var v = rapport.Vehicles.Single();
-        v.OtherCost.Should().Be(350m, "600 d'assurance moins 250 remboursés, et non 850");
+        // Décision du 18/09/2026 : « Autres » reste BRUT et le remboursement porte sa
+        // propre ligne, en négatif. Seul le coût total est net — et il n'a pas changé.
+        v.OtherCost.Should().Be(600m, "l'assurance est affichée telle qu'elle a été facturée");
+        v.CreditAmount.Should().Be(-250m, "le remboursement est une ligne de crédit, pas une remise sur l'assurance");
         v.TotalCost.Should().Be(900m + 800m + 100m + 350m);
     }
 }

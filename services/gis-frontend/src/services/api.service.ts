@@ -1844,14 +1844,16 @@ export class ApiService {
     return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/mechanic-quote`, payload, { headers: this.getHeaders() });
   }
 
-  /** Phase 5 — repair tracking. Server auto-creates a VehicleCost row. */
-  registerAccidentRepair(id: number, payload: RegisterRepairRequest): Observable<void> {
-    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/repair`, payload, { headers: this.getHeaders() });
+  /** Phase 5 — suivi de la réparation. Le serveur crée ou met à jour la ligne de
+   *  l'écran Réparations, et signale dans la réponse ce qu'il n'a pas pu reporter. */
+  registerAccidentRepair(id: number, payload: RegisterRepairRequest): Observable<AccidentPhaseSyncResponse> {
+    return this.http.patch<AccidentPhaseSyncResponse>(`${this.API_URL}/accident-reports/${id}/repair`, payload, { headers: this.getHeaders() });
   }
 
-  /** Phase 6 — insurance claim follow-up. Server auto-creates a refund VehicleCost row. */
-  registerAccidentClaim(id: number, payload: RegisterClaimRequest): Observable<void> {
-    return this.http.patch<void>(`${this.API_URL}/accident-reports/${id}/claim`, payload, { headers: this.getHeaders() });
+  /** Phase 6 — suivi du sinistre assurance. Le serveur crée, met à jour ou retire la
+   *  dépense de remboursement selon le montant approuvé. */
+  registerAccidentClaim(id: number, payload: RegisterClaimRequest): Observable<AccidentPhaseSyncResponse> {
+    return this.http.patch<AccidentPhaseSyncResponse>(`${this.API_URL}/accident-reports/${id}/claim`, payload, { headers: this.getHeaders() });
   }
 
   /** Add a third party (other vehicle / driver involved). */
@@ -1882,25 +1884,33 @@ export class ApiService {
   }
 
   /**
-   * Calypso 6 (P9) — uploads the PDF report for an accident event.
-   * Used both for the auto-generated jsPDF blob (right after Confirm in
-   * the modal) and for an externally-supplied PDF (insurance expert).
-   * Multipart/form-data with field name "file".
+   * Calypso 6 (P9) — rapport PDF PRODUIT par l'application (jsPDF), enregistré dans
+   * `pdf_report_url` et refait à chaque régénération. Un document fourni par le client
+   * (rapport d'expert, devis…) passe par uploadAccidentDocument() : ici il serait
+   * remplacé, et son fichier effacé, à la première phase enregistrée.
+   * Multipart/form-data avec le champ « file ».
    */
-  uploadAccidentReportPdf(id: number, file: File | Blob, fileName?: string): Observable<{ pdfReportUrl: string }> {
+  uploadAccidentReportPdf(id: number, file: File | Blob, fileName?: string): Observable<{ pdfReportUrl: string; generatedAt: string }> {
     const formData = new FormData();
     formData.append('file', file, fileName ?? 'accident-report.pdf');
     // NB: do NOT set Content-Type manually — Angular sets the multipart
     // boundary automatically. We just need the auth token.
     const headers = this.getHeaders().delete('Content-Type');
-    return this.http.post<{ pdfReportUrl: string }>(`${this.API_URL}/accident-reports/${id}/upload-pdf`, formData, { headers });
+    return this.http.post<{ pdfReportUrl: string; generatedAt: string }>(`${this.API_URL}/accident-reports/${id}/upload-pdf`, formData, { headers });
+  }
+
+  /** Date de génération du PDF attaché et écart avec la dernière modification du
+   *  dossier : le lien de téléchargement doit être daté, et un PDF antérieur aux
+   *  informations saisies doit se voir. */
+  getAccidentPdfStatus(id: number): Observable<AccidentPdfStatus> {
+    return this.http.get<AccidentPdfStatus>(`${this.API_URL}/accident-reports/${id}/pdf-status`, { headers: this.getHeaders() });
   }
 
   /**
    * Calypso 6 (P9) — creates an accident the system did not auto-detect.
    * The admin fills the form (vehicle, date, optional location, damages)
-   * and the row lands as status='confirmed'. The caller can then attach
-   * an external PDF via uploadAccidentReportPdf().
+   * and the row lands as status='confirmed'. Un PDF fourni par le client se
+   * joint ensuite par uploadAccidentDocument(id, file, 'expert_report').
    */
   createManualAccident(payload: CreateManualAccidentRequest): Observable<{ accidentEventId: number }> {
     return this.http.post<{ accidentEventId: number }>(`${this.API_URL}/accident-reports/manual`, payload, { headers: this.getHeaders() });
@@ -1912,8 +1922,19 @@ export class ApiService {
    * enregistrées restent dans Dépenses, simplement détachées (`detachedCosts`).
    * Le serveur la réserve à un administrateur de société ou au droit Sinistres.
    */
-  deleteAccidentEvent(id: number): Observable<{ message: string; detachedCosts: number }> {
-    return this.http.delete<{ message: string; detachedCosts: number }>(`${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
+  deleteAccidentEvent(id: number): Observable<{ message: string; detachedCosts: number; detachedRepairs: number }> {
+    return this.http.delete<{ message: string; detachedCosts: number; detachedRepairs: number }>(
+      `${this.API_URL}/accident-reports/${id}`, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Ce que la suppression d'un véhicule emporte et ce qu'elle laisse : la fenêtre de
+   * confirmation de l'espace /admin l'annonce avant d'agir. Route sous /api/admin —
+   * l'intercepteur n'y attache le jeton d'administration que sur ces URL.
+   */
+  getVehicleDeletionImpact(vehicleId: number): Observable<VehicleDeletionImpact> {
+    return this.http.get<VehicleDeletionImpact>(
+      `${this.API_URL}/admin/vehicles/${vehicleId}/deletion-impact`, { headers: this.getHeaders() });
   }
 
   // ==================== MAINTENANCE TEMPLATES ====================
@@ -2720,6 +2741,8 @@ export interface MonthlyFleetVehicleRow {
   maintenanceCost: number;
   repairCost: number;
   otherCost: number;
+  /** Avoirs et remboursements, en NÉGATIF (18/09/2026) ; absent d'une API antérieure. */
+  creditAmount?: number;
   totalCost: number;
   costPerKm: number | null;
   utilizationRate: number | null;
@@ -2735,12 +2758,17 @@ export interface MonthlyFleetTotals {
   maintenanceCost: number;
   repairCost: number;
   otherCost: number;
+  /** Avoirs et remboursements du parc, en NÉGATIF ; absent d'une API antérieure. */
+  creditAmount?: number;
   totalCost: number;
   costPerKm: number | null;
 }
 
 // ==================== TABLEAU DE BORD GPA ====================
 
+/** `repair` est NET des avoirs et remboursements (règle du 18/09/2026 : ce bloc à
+ *  quatre postes n'a pas la place d'une ligne de crédit) et peut donc être négatif ;
+ *  `other` reste brut. Le `total` est celui des rapports. */
 export interface GpaDashboardCosts { fuel: number; maintenance: number; repair: number; other: number; total: number; }
 export interface GpaDashboardAlert {
   kind: 'maintenance' | 'document'; severity: 'critical' | 'warning'; title: string; detail: string | null;
@@ -2810,6 +2838,8 @@ export interface MonthlyCostReport extends MonthlyCostGroupRatios {
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
   totalOtherCostDzd: number;
+  /** Avoirs et remboursements du mois, en NÉGATIF (18/09/2026) ; absent d'une API antérieure. */
+  totalCreditAmountDzd?: number;
   totalCostDzd: number;
   departments: DepartmentCostGroup[];
   vehicles: VehicleMonthlyCost[];
@@ -2826,6 +2856,8 @@ export interface DepartmentCostGroup extends MonthlyCostGroupRatios {
   totalMaintenanceCostDzd: number;
   totalRepairCostDzd: number;
   totalOtherCostDzd: number;
+  /** Avoirs et remboursements du département, en NÉGATIF ; absent d'une API antérieure. */
+  totalCreditAmountDzd?: number;
   totalCostDzd: number;
   vehicles: VehicleMonthlyCost[];
 }
@@ -2847,6 +2879,8 @@ export interface VehicleMonthlyCost {
   maintenanceCostDzd: number;
   repairCostDzd: number;
   otherCostDzd: number;
+  /** Avoirs et remboursements du véhicule, en NÉGATIF ; absent d'une API antérieure. */
+  creditAmountDzd?: number;
   totalCostDzd: number;
   fuelLiters: number;
   fuelLitersPr: number;
@@ -2883,6 +2917,8 @@ export interface OperatingCostReportDto {
   totalMaintenanceCost: number;
   totalRepairCost: number;
   totalOtherCost: number;
+  /** Avoirs et remboursements de la période, en NÉGATIF (18/09/2026) ; absent d'une API antérieure. */
+  totalCreditAmount?: number;
   /** Phrase d'origine du kilométrage (relevés compteur / trajets GPS), affichée en note. */
   distanceNote: string;
   vehicles: VehicleOperatingCostDto[];
@@ -2903,6 +2939,8 @@ export interface VehicleOperatingCostDto {
   maintenanceCost: number;
   repairCost: number;
   otherCost: number;
+  /** Avoirs et remboursements du véhicule, en NÉGATIF ; absent d'une API antérieure. */
+  creditAmount?: number;
   totalCost: number;
   costPerKm: number | null;
   /** (costPerKm − moyenne) / moyenne × 100 ; null si l'un des deux est null. */
@@ -2926,6 +2964,8 @@ export interface VehicleCostEvolutionDto {
   totalMaintenanceCost: number;
   totalRepairCost: number;
   totalOtherCost: number;
+  /** Avoirs et remboursements de la période, en NÉGATIF ; absent d'une API antérieure. */
+  totalCreditAmount?: number;
   totalDistanceKm: number | null;
   distanceSource: string;
   months: MonthlyVehicleCostDto[];
@@ -2940,6 +2980,8 @@ export interface MonthlyVehicleCostDto {
   maintenanceCost: number;
   repairCost: number;
   otherCost: number;
+  /** Avoirs et remboursements du mois, en NÉGATIF ; absent d'une API antérieure. */
+  creditAmount?: number;
   totalCost: number;
   distanceKm: number | null;
   /** Variation vs mois précédent (%) ; null pour le 1er mois, si le précédent est à 0, ou si l'un des deux mois est incomplet. */
@@ -3257,6 +3299,9 @@ export interface CostAnalysis {
   maintenanceCost: number;
   insuranceCost: number;
   otherCosts: number;
+  /** Avoirs et remboursements, en NÉGATIF (18/09/2026) : cinquième terme dont la
+   *  somme avec les quatre postes bruts redonne le total. Absent d'une API antérieure. */
+  creditAmount?: number;
   costPerKm: number;
   costPerVehicle: number;
   byCategory: CostBreakdown[];
@@ -3841,6 +3886,44 @@ export interface AccidentReportDto {
   // Children
   documents: AccidentReportDocumentDto[];
   thirdParties: AccidentReportThirdPartyDto[];
+
+  /** Dernière modification du dossier — sert à repérer un PDF plus ancien que les
+   *  informations qu'il est censé porter. */
+  updatedAt: string | null;
+  /** Faux quand le véhicule du dossier a été supprimé : ni la réparation ni le
+   *  remboursement ne peuvent alors être reportés, l'écran doit le dire. */
+  vehicleExists: boolean;
+  /** Référence de la réparation créée par la phase 5 (écran Réparations). */
+  repairReference: string | null;
+}
+
+/** Réponse des phases 5 et 6 : elles enregistrent toujours, mais peuvent ne pas avoir
+ *  pu reporter la réparation ou le remboursement (véhicule supprimé). */
+export interface AccidentPhaseSyncResponse {
+  message: string | null;
+  costSynced: boolean;
+  reason: string | null;
+}
+
+/** Fraîcheur du PDF attaché à un dossier de sinistre. */
+export interface AccidentPdfStatus {
+  pdfReportUrl: string | null;
+  generatedAt: string | null;
+  updatedAt: string;
+  stale: boolean;
+}
+
+/**
+ * Ce que la suppression d'un véhicule emporte : les dossiers de sinistre survivent,
+ * détachés ; les réparations et les dépenses partent avec lui (vehicle_id NON NULL),
+ * comme les autres données du véhicule (entretiens, planning, échéancier, documents,
+ * trajets), qui ne sont pas comptées ici.
+ */
+export interface VehicleDeletionImpact {
+  vehicleId: number;
+  accidents: number;
+  repairs: number;
+  costs: number;
 }
 
 export interface AccidentReportDocumentDto {
@@ -4158,6 +4241,8 @@ export interface RepairDto {
   notes?: string;
   /** Type d'intervention (electrique | mecanique | freinage | pneumatique | carrosserie | autre), optionnel. */
   repairType?: string | null;
+  /** Sinistre à l'origine de la réparation (phase 5) : badge et lien vers le dossier. */
+  accidentEventId?: number | null;
   parts: RepairPartDto[];
   createdAt?: string;
   updatedAt?: string;

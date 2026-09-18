@@ -94,6 +94,26 @@ export class PdfExportService {
     return this.preloadLogo();
   }
 
+  /** Prépare un document composé DEHORS du service (rapport de sinistre, rapport de
+   *  tournée) : logo et polices chargés, puis la police de marque déclarée dans CE
+   *  document — le magasin de fichiers de jsPDF est porté par l'instance, une police
+   *  chargée pour un autre document n'y existe pas. Retourne le nom de police à passer
+   *  aux tableaux (autoTable), Helvetica si la marque n'a pas pu être chargée. */
+  async prepareBrandDocument(doc: jsPDF): Promise<string> {
+    await Promise.all([this.preloadLogo(), this.preloadFonts()]);
+    return this.applyBrandToDocument(doc);
+  }
+
+  /** Variante synchrone, pour un appelant qui ne peut pas attendre (génération
+   *  automatique du PDF à la confirmation d'un accident) : la police de marque n'est
+   *  déclarée que si elle est DÉJÀ chargée, sinon le document reste en Helvetica.
+   *  À appeler avant de dessiner : sans elle, un document composé hors du service
+   *  demanderait une police absente de son propre magasin de fichiers. */
+  applyBrandToDocument(doc: jsPDF): string {
+    this.applyBrandFont(doc);
+    return this.brandFont;
+  }
+
   /**
    * Dessine l'en-tête de marque commun à TOUS les PDF de l'application :
    * bandeau bleu Calypso, logo dans son cartouche blanc, titre, et ligne de

@@ -111,31 +111,45 @@ public class GetMonthlyCostReportQueryHandler : IRequestHandler<GetMonthlyCostRe
         //    un remboursement d'assurance est un CRÉDIT. Constat du 14/09/2026 :
         //    ce rapport les comptait en « Autres », en positif, quand les rapports
         //    de coûts les rangeaient en Réparations et en déduction.
+        //    Depuis le 18/09/2026 le crédit ne diminue plus « Autres » : il porte
+        //    sa propre colonne, comme dans « Coût d'exploitation réel ».
         var classified = costRows
             .Select(c => new
             {
                 c.VehicleId,
                 Category = VehicleCostCategory.Classify(c.Type).Category,
+                IsCredit = VehicleCostCategory.IsCredit(c.Type),
                 Amount = VehicleCostCategory.SignedAmount(c.Type, c.Amount)
             })
             .ToList();
 
-        var maintenanceLogs = classified
+        // Les quatre postes sont bâtis sur les seules DÉPENSES : un crédit a sa colonne et
+        // ne doit jamais tomber dans un poste, sous peine d'être compté deux fois. Le filtre
+        // est posé une fois ici plutôt que répété (et oublié) sur chaque poste.
+        var depenses = classified.Where(c => !c.IsCredit).ToList();
+
+        var maintenanceLogs = depenses
             .Where(c => c.Category == CostCategory.Maintenance)
             .Select(c => new { c.VehicleId, ActualCost = c.Amount })
             .ToList();
 
-        var fuelCosts = classified
+        var fuelCosts = depenses
             .Where(c => c.Category == CostCategory.Fuel)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        var otherByVehicle = classified
+        var otherByVehicle = depenses
             .Where(c => c.Category == CostCategory.Other)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
 
-        var repairExpensesByVehicle = classified
+        // Avoirs et remboursements : colonne à part, en négatif (18/09/2026).
+        var creditByVehicle = classified
+            .Where(c => c.IsCredit)
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
+
+        var repairExpensesByVehicle = depenses
             .Where(c => c.Category == CostCategory.Repair)
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
@@ -322,12 +336,16 @@ ORDER BY device_id, recorded_at DESC;
             var repairCost = repairByVehicle.GetValueOrDefault(vehicle.Id, 0)
                            + repairExpensesByVehicle.GetValueOrDefault(vehicle.Id, 0);
             var otherCost = otherByVehicle.GetValueOrDefault(vehicle.Id, 0);
-            var totalCost = fuelCost + maintCost + repairCost + otherCost;
+            var creditAmount = creditByVehicle.GetValueOrDefault(vehicle.Id, 0);
+            var totalCost = fuelCost + maintCost + repairCost + otherCost + creditAmount;
 
             // Only include vehicles with some activity — sans distance mesuree,
             // GetValueOrDefault vaut 0 : le vehicule reste hors du rapport tant
-            // qu'aucune depense ne l'y fait entrer, comme avant.
-            if (km.GetValueOrDefault() == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0 && otherCost == 0)
+            // qu'aucune depense ne l'y fait entrer, comme avant. Un avoir SEUL
+            // fait entrer le vehicule : sinon la ligne de credit manquerait au
+            // tableau alors que le total de la societe la porte.
+            if (km.GetValueOrDefault() == 0 && fuelCost == 0 && maintCost == 0 && repairCost == 0
+                && otherCost == 0 && creditAmount == 0)
                 continue;
 
             var row = new VehicleMonthlyCostDto
@@ -347,6 +365,7 @@ ORDER BY device_id, recorded_at DESC;
                 MaintenanceCostDzd = maintCost,
                 RepairCostDzd = repairCost,
                 OtherCostDzd = otherCost,
+                CreditAmountDzd = creditAmount,
                 TotalCostDzd = totalCost,
                 // Pas de distance mesuree, pas de ratio : « 0 » se lirait comme
                 // une consommation ou un cout au km reellement constates.
@@ -378,6 +397,7 @@ ORDER BY device_id, recorded_at DESC;
                 TotalMaintenanceCostDzd = g.Sum(v => v.MaintenanceCostDzd),
                 TotalRepairCostDzd = g.Sum(v => v.RepairCostDzd),
                 TotalOtherCostDzd = g.Sum(v => v.OtherCostDzd),
+                TotalCreditAmountDzd = g.Sum(v => v.CreditAmountDzd),
                 TotalCostDzd = g.Sum(v => v.TotalCostDzd),
                 Vehicles = g.OrderBy(v => v.VehicleName).ToList()
             })
@@ -401,6 +421,7 @@ ORDER BY device_id, recorded_at DESC;
             TotalMaintenanceCostDzd = vehicleRows.Sum(v => v.MaintenanceCostDzd),
             TotalRepairCostDzd = vehicleRows.Sum(v => v.RepairCostDzd),
             TotalOtherCostDzd = vehicleRows.Sum(v => v.OtherCostDzd),
+            TotalCreditAmountDzd = vehicleRows.Sum(v => v.CreditAmountDzd),
             TotalCostDzd = vehicleRows.Sum(v => v.TotalCostDzd),
             Departments = departmentGroups,
             Vehicles = vehicleRows.OrderBy(v => v.DepartmentName).ThenBy(v => v.VehicleName).ToList()

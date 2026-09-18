@@ -182,13 +182,17 @@ interface ImpactProfile {
               <span class="status-tow" *ngIf="towDetectedAtFormatted">
                 Remorquage détecté le {{ towDetectedAtFormatted }}
               </span>
-              <a *ngIf="pdfReportUrl" [href]="pdfReportUrl" target="_blank" class="status-pdf">
+              <a *ngIf="pdfReportUrl" [href]="pdfReportUrl" target="_blank" class="status-pdf"
+                 [class.is-stale]="pdfStale">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Télécharger le rapport PDF
+                Rapport PDF<span *ngIf="pdfGeneratedAtLabel"> du {{ pdfGeneratedAtLabel }}</span>
               </a>
+              <span class="status-stale" *ngIf="pdfStale && pdfReportUrl">
+                PDF antérieur à la dernière modification — régénérez-le
+              </span>
               <button *ngIf="isAdmin && status && status !== 'pending'" type="button"
                       class="status-pdf status-pdf-btn" (click)="regeneratePdf()" [disabled]="pdfBusy"
-                      title="Reconstruit le PDF à partir de l'état actuel (remorquage, phases…)">
+                      title="Reconstruit le PDF avec tout ce qui est saisi aujourd'hui : dégâts, expertise, devis, réparation, assurance, tiers et pièces jointes">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                 {{ pdfBusy ? 'Génération…' : 'Régénérer le PDF' }}
               </button>
@@ -202,6 +206,56 @@ interface ImpactProfile {
               </button>
             </div>
             <p class="status-error" *ngIf="pdfError">{{ pdfError }}</p>
+            <!-- Plus de véhicule sur le dossier (supprimé, ou jamais rattaché) : ni la
+                 réparation ni le remboursement ne peuvent être reportés, il faut le dire.
+                 La suppression d'un véhicule met vehicle_id à NULL : le bandeau parle des
+                 deux cas plutôt que d'affirmer une cause qu'il ne connaît pas. -->
+            <p class="status-warn" *ngIf="vehicleMissing">
+              Ce dossier n'est plus rattaché à un véhicule : les montants restent enregistrés ici,
+              mais ne sont plus reportés dans Réparations ni dans Dépenses.
+            </p>
+            <!-- Pièces jointes AUTRES que les photos (rapport d'expert, devis, facture,
+                 constat) : le document joint à la déclaration n'était affiché nulle part,
+                 donc introuvable une fois envoyé. Le rapport PDF du dossier, lui, reste
+                 le lien ci-dessus : ce sont deux choses différentes. -->
+            <div class="doc-block" *ngIf="attachments.length > 0 || canAttach">
+              <div class="doc-block-head">
+                <span class="doc-block-title">Pièces jointes</span>
+                <ng-container *ngIf="canAttach">
+                  <select class="doc-type" [(ngModel)]="attachmentType" [disabled]="attachmentBusy">
+                    <option value="expert_report">Rapport d'expertise</option>
+                    <option value="mechanic_quote">Devis du garage</option>
+                    <option value="repair_invoice">Facture de réparation</option>
+                    <option value="insurance_response">Réponse de l'assurance</option>
+                    <option value="police_report">Constat / PV</option>
+                    <option value="other">Autre pièce</option>
+                  </select>
+                  <button type="button" class="status-pdf status-pdf-btn"
+                          (click)="attachmentInput.click()" [disabled]="attachmentBusy">
+                    {{ attachmentBusy ? 'Envoi…' : 'Joindre un document' }}
+                  </button>
+                  <!-- Extensions de la liste blanche du serveur, une par une : « image/* »
+                       laissait passer un .heic (format par défaut d'un iPhone), refusé
+                       ensuite par « Format non supporté ». -->
+                  <input #attachmentInput type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp" hidden
+                         (change)="onAttachmentFile($event)">
+                </ng-container>
+              </div>
+              <ul class="doc-list" *ngIf="attachments.length > 0">
+                <li *ngFor="let d of attachments">
+                  <a [href]="d.fileUrl" target="_blank" rel="noopener">
+                    {{ documentLabel(d.documentType) }} — {{ d.fileName }}
+                  </a>
+                  <button type="button" class="doc-del" *ngIf="canAttach"
+                          (click)="removeAttachment(d)" [disabled]="attachmentBusy"
+                          title="Supprimer cette pièce jointe">×</button>
+                </li>
+              </ul>
+              <p class="doc-help" *ngIf="attachments.length === 0">
+                Aucune pièce jointe. PDF, Word, JPG, PNG, WebP ou GIF — 50 Mo au plus.
+              </p>
+              <p class="status-error" *ngIf="attachmentError">{{ attachmentError }}</p>
+            </div>
             <div class="status-actions" *ngIf="status === 'pending' && isAdmin">
               <p class="status-hint">
                 Décision requise. Vous pouvez confirmer ou signaler une fausse alerte :
@@ -403,7 +457,7 @@ interface ImpactProfile {
                 </span>
               </summary>
               <div class="phase-body">
-                <p class="phase-hint">💡 Une fois enregistrée, cette réparation apparaîtra automatiquement dans le module Dépenses.</p>
+                <p class="phase-hint">💡 Une fois enregistrée, cette réparation apparaîtra dans Réparations et dans Dépenses.</p>
                 <div class="phase-row">
                   <label class="phase-field">
                     <span>Début réparation</span>
@@ -526,7 +580,8 @@ interface ImpactProfile {
               </div>
             </details>
 
-            <p class="phase-feedback" *ngIf="phaseMessage" [class.is-error]="phaseMessage.type === 'error'">
+            <p class="phase-feedback" *ngIf="phaseMessage" [class.is-error]="phaseMessage.type === 'error'"
+               [class.is-warning]="phaseMessage.type === 'warning'">
               {{ phaseMessage.text }}
             </p>
           </section>
@@ -1058,6 +1113,8 @@ interface ImpactProfile {
     .phase-btn:disabled { opacity: 0.6; cursor: not-allowed; }
     .phase-feedback { margin: 12px 0 0; padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; background: #dcfce7; color: #166534; }
     .phase-feedback.is-error { background: #fee2e2; color: #991b1b; }
+    /* Enregistré, mais une partie n'a pas pu être reportée (véhicule supprimé). */
+    .phase-feedback.is-warning { background: #fef3c7; color: #92400e; }
     /* Photos des dégâts (phase 2) */
     .photo-block { margin: 4px 0 14px; }
     .photo-block-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
@@ -1102,6 +1159,10 @@ interface ImpactProfile {
     .status-pdf:hover { background: #fecaca; }
     .status-pdf-btn { border: none; cursor: pointer; margin-left: 8px; font-family: inherit; }
     .status-pdf-btn:disabled { opacity: 0.6; cursor: default; }
+    /* PDF plus ancien que le dossier : le lien se ternit et la raison se lit à côté. */
+    .status-pdf.is-stale { background: #fef3c7; color: #92400e; }
+    .status-pdf.is-stale:hover { background: #fde68a; }
+    .status-stale { font-size: 11px; color: #92400e; margin-left: 8px; }
     /* Suppression : discrète tant qu'on ne la vise pas, elle est définitive */
     .status-del-btn { background: #f1f5f9; color: #64748b; margin-left: 8px; }
     .status-del-btn:hover { background: #fee2e2; color: #dc2626; }
@@ -1246,6 +1307,38 @@ interface ImpactProfile {
       border-radius: 6px;
       font-size: 13px;
     }
+    .status-warn {
+      margin: 10px 0 0;
+      padding: 8px 10px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      color: #92400e;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    /* Pièces jointes du dossier (hors photos) — libellés courts, jamais de
+       défilement horizontal sur un écran de 1536 px. */
+    .doc-block { margin: 12px 0 0; padding-top: 10px; border-top: 1px dashed #e2e8f0; }
+    .doc-block-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .doc-block-title {
+      font-size: 11px; font-weight: 600; color: #475569;
+      text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .doc-type {
+      font-size: 12px; padding: 4px 6px; border: 1px solid #e2e8f0;
+      border-radius: 6px; background: white; color: #0f172a; max-width: 170px;
+    }
+    .doc-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+    .doc-list li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+    .doc-list a { color: #1d4ed8; text-decoration: none; overflow-wrap: anywhere; }
+    .doc-list a:hover { text-decoration: underline; }
+    .doc-del {
+      flex: none; width: 22px; height: 22px; border: none; border-radius: 6px;
+      background: #f1f5f9; color: #64748b; font-size: 14px; line-height: 1; cursor: pointer;
+    }
+    .doc-del:hover { background: #fee2e2; color: #b91c1c; }
+    .doc-del:disabled { opacity: .5; cursor: default; }
+    .doc-help { margin: 8px 0 0; font-size: 11px; color: #64748b; }
 
     /* Header */
     .doc-header {
@@ -1955,6 +2048,14 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   /** Busy + error state for the "Régénérer le PDF" action. */
   pdfBusy = false;
   pdfError: string | null = null;
+  /** Date de génération du PDF attaché, affichée à côté du lien de téléchargement. */
+  pdfGeneratedAtLabel: string | null = null;
+  /** PDF plus ancien que la dernière modification du dossier. */
+  pdfStale = false;
+  /** Une régénération a été demandée pendant la précédente : à refaire à sa suite. */
+  private pdfRedemande = false;
+  /** Le dossier n'est plus rattaché à un véhicule : plus aucun report possible. */
+  vehicleMissing = false;
 
   /** Fenêtre de confirmation de la suppression du dossier (demande du 18/09/2026). */
   deleteOpen = false;
@@ -1977,7 +2078,7 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
              thirdPartyInvolved: false };
   phaseOpen = { initial: true, expert: false, mechanic: false, repair: false, claim: false };
   phaseBusy: 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6' | null = null;
-  phaseMessage: { type: 'success' | 'error'; text: string } | null = null;
+  phaseMessage: { type: 'success' | 'error' | 'warning'; text: string } | null = null;
 
   /** Third parties involved (insurance counterparts) + inline add form. */
   thirdParties: AccidentReportThirdPartyDto[] = [];
@@ -1988,6 +2089,13 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   /** Photos des dégâts (documents de type 'photo'), envoyées une par une dès la sélection. */
   photos: AccidentReportDocumentDto[] = [];
   photoBusy = false;
+
+  /** Pièces jointes hors photos (rapport d'expert, devis, facture, constat). */
+  attachments: AccidentReportDocumentDto[] = [];
+  attachmentBusy = false;
+  attachmentError: string | null = null;
+  /** Type du prochain document joint — le champ de la déclaration est « PDF expert ». */
+  attachmentType = 'expert_report';
   /** Coupe la boucle d'envoi des photos si l'utilisateur quitte la page en cours de route. */
   private destroyed = false;
 
@@ -2149,6 +2257,10 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
     // Calypso 7 — populate the 5 phase forms from the unified DTO.
     this.pdfReportUrl = dto.pdfReportUrl ?? null;
+    // Un dossier sans véhicule n'empêche rien, mais il coupe le report des montants
+    // vers Réparations et Dépenses : la fiche l'annonce.
+    this.vehicleMissing = dto.vehicleExists === false;
+    this.refreshPdfStatus(dto.id);
     this.phase2 = {
       description: dto.initialDescription ?? '',
       severity: dto.initialSeverity ?? null,
@@ -2221,6 +2333,10 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
     this.thirdParties = dto.thirdParties ?? [];
     this.photos = (dto.documents ?? []).filter((d) => d.documentType === 'photo');
+    // Tout ce qui n'est pas une photo : rapport d'expert, devis, facture, constat. Ces
+    // pièces n'étaient affichées nulle part, un document joint à la déclaration devenait
+    // introuvable dans l'application.
+    this.attachments = (dto.documents ?? []).filter((d) => d.documentType !== 'photo');
 
     // The backend narrative is authoritative ONLY when it actually contains a
     // story — i.e. an auto-detected accident (StoryJson populated). A manually
@@ -2849,42 +2965,79 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * re-uploads a fresh PDF. Nothing is fabricated: it only renders what the
    * server returns.
    */
-  regeneratePdf(): void {
-    if (!this.accidentEventId || this.pdfBusy) return;
+  async regeneratePdf(opts?: { silencieux?: boolean }): Promise<void> {
+    if (!this.accidentEventId) return;
+    // Une régénération est déjà en cours : elle ne porte pas ce qui vient d'être
+    // enregistré. On la refait à sa suite au lieu d'abandonner en silence — le rapport
+    // restait sinon en retard d'une phase sans que rien ne le dise.
+    if (this.pdfBusy) {
+      this.pdfStale = true;
+      this.pdfRedemande = true;
+      return;
+    }
+    const id = this.accidentEventId;
     this.pdfBusy = true;
     this.pdfError = null;
-    const id = this.accidentEventId;
-    const sub = this.apiService.getAccidentReport(id).subscribe({
-      next: (dto) => {
-        try {
-          // Sans boîtier (offre GPA) : ni coordonnées ni IMEI dans le PDF.
-          const blob = this.accidentPdf.generate(dto, { withLocation: this.hasGpsSubscription });
-          const up = this.apiService
-            .uploadAccidentReportPdf(id, blob, `rapport-accident-${id}.pdf`)
-            .subscribe({
-              next: (res) => {
-                this.pdfReportUrl = res?.pdfReportUrl ?? this.pdfReportUrl;
-                this.pdfBusy = false;
-                this.cdr.markForCheck();
-              },
-              error: () => {
-                this.pdfBusy = false;
-                this.pdfError = 'Échec de la mise à jour du PDF. Veuillez réessayer.';
-                this.cdr.markForCheck();
-              },
-            });
-          this.subs.push(up);
-        } catch {
-          this.pdfBusy = false;
-          this.pdfError = 'Échec de la génération du PDF.';
-          this.cdr.markForCheck();
-        }
-      },
-      error: () => {
+    this.cdr.detectChanges();
+
+    try {
+      // L'état du SERVEUR fait foi : le PDF ne porte que ce qui est enregistré.
+      const dto = await firstValueFrom(this.apiService.getAccidentReport(id));
+      if (this.destroyed) return;
+      // Sans boîtier (offre GPA) : ni coordonnées ni IMEI dans le PDF.
+      const blob = await this.accidentPdf.generateAsync(dto, { withLocation: this.hasGpsSubscription });
+      if (this.destroyed) return;
+      const res = await firstValueFrom(this.apiService.uploadAccidentReportPdf(id, blob, `rapport-accident-${id}.pdf`));
+      if (this.destroyed) return;
+      this.pdfReportUrl = res?.pdfReportUrl ?? this.pdfReportUrl;
+      this.pdfGeneratedAtLabel = this.formatShortDateTime(res?.generatedAt) ?? this.formatShortDateTime(new Date().toISOString());
+      this.pdfStale = false;
+    } catch {
+      if (this.destroyed) return;
+      // Une phase enregistrée ne doit pas se solder par un échec bruyant : le
+      // dossier est à jour, seul le PDF ne l'est pas, et le bouton le refait.
+      this.pdfError = opts?.silencieux
+        ? "Le PDF n'a pas pu être mis à jour. Utilisez « Régénérer le PDF »."
+        : 'Échec de la mise à jour du PDF. Veuillez réessayer.';
+      this.pdfStale = true;
+    } finally {
+      if (!this.destroyed) {
         this.pdfBusy = false;
-        this.pdfError = 'Impossible de charger le rapport pour régénérer le PDF.';
+        this.cdr.detectChanges();
+      }
+    }
+
+    // Une demande arrivée pendant la génération : le rapport qui vient d'être écrit ne
+    // la porte pas.
+    if (this.pdfRedemande && !this.destroyed) {
+      this.pdfRedemande = false;
+      await this.regeneratePdf(opts);
+    }
+  }
+
+  /**
+   * Date de génération du PDF attaché (horodatage du fichier côté serveur) et
+   * écart avec la dernière modification du dossier. Sans elle, le lien
+   * « Télécharger le rapport PDF » ne disait pas de QUAND datait le document.
+   */
+  private refreshPdfStatus(id: number): void {
+    if (!this.pdfReportUrl) {
+      this.pdfGeneratedAtLabel = null;
+      this.pdfStale = false;
+      return;
+    }
+    // Une régénération en cours donnera la réponse la plus fraîche : interroger le
+    // serveur en même temps ferait clignoter « PDF antérieur » pour rien.
+    if (this.pdfBusy) return;
+    const sub = this.apiService.getAccidentPdfStatus(id).subscribe({
+      next: (statut) => {
+        if (this.pdfBusy) return;
+        this.pdfGeneratedAtLabel = this.formatShortDateTime(statut.generatedAt);
+        this.pdfStale = statut.stale;
         this.cdr.markForCheck();
       },
+      // Information d'appoint : son absence ne doit rien casser à l'écran.
+      error: () => { },
     });
     this.subs.push(sub);
   }
@@ -2972,6 +3125,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         this.newThirdParty = this.emptyThirdParty();
         this.thirdPartyBusy = false;
         this.cdr.markForCheck();
+        // Le PDF liste les tiers : il doit suivre, comme après une phase.
+        void this.regeneratePdf({ silencieux: true });
       },
       error: () => {
         this.thirdPartyBusy = false;
@@ -2991,6 +3146,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         this.thirdParties = this.thirdParties.filter((x) => x.id !== tp.id);
         this.thirdPartyBusy = false;
         this.cdr.markForCheck();
+        // Un tiers retiré doit disparaître du PDF : sans cette régénération, le
+        // document remis à l'assureur continuait de le nommer.
+        void this.regeneratePdf({ silencieux: true });
       },
       error: () => {
         this.thirdPartyBusy = false;
@@ -3058,6 +3216,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
       };
     }
     this.cdr.detectChanges();
+    // Une seule régénération pour tout le lot : le PDF liste les pièces jointes.
+    if (failed < files.length) void this.regeneratePdf({ silencieux: true });
   }
 
   removePhoto(p: AccidentReportDocumentDto): void {
@@ -3071,6 +3231,9 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
         this.photos = this.photos.filter((x) => x.id !== p.id);
         this.photoBusy = false;
         this.cdr.detectChanges();
+        // Même raison que pour un tiers retiré : la pièce supprimée reste listée
+        // dans « Pièces jointes » tant que le PDF n'est pas refait.
+        void this.regeneratePdf({ silencieux: true });
       },
       error: (err: any) => {
         this.photoBusy = false;
@@ -3078,6 +3241,88 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
           type: 'error',
           text: err?.error?.message || 'Impossible de supprimer la photo. Veuillez réessayer.',
         };
+        this.cdr.detectChanges();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  // ── Pièces jointes du dossier (hors photos) ───────────────────────────────
+  // Contre-relecture du 18/09/2026 : le « PDF expert » de la déclaration est
+  // rangé en pièce jointe pour ne plus écraser le rapport généré — encore
+  // faut-il que la fiche l'affiche et permette d'en joindre un autre.
+
+  /** Le dossier accepte-t-il une pièce jointe ? (le serveur exige « confirmé »). */
+  get canAttach(): boolean {
+    return this.isAdmin && this.status === 'confirmed' && !!this.accidentEventId;
+  }
+
+  /** Libellé d'une pièce jointe — même vocabulaire que le PDF du dossier. */
+  documentLabel(type: string): string {
+    switch (type) {
+      case 'expert_report': return "Rapport d'expertise";
+      case 'mechanic_quote': return 'Devis du garage';
+      case 'repair_invoice': return 'Facture de réparation';
+      case 'insurance_response': return "Réponse de l'assurance";
+      case 'police_report': return 'Constat / PV';
+      case 'detection_pdf': return 'Rapport de détection';
+      default: return 'Autre pièce';
+    }
+  }
+
+  onAttachmentFile(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    const file = input?.files?.[0] ?? null;
+    if (input) input.value = '';   // permet de re-sélectionner le même fichier
+    if (!file || !this.accidentEventId || this.attachmentBusy) return;
+
+    const id = this.accidentEventId;
+    const type = this.attachmentType;
+    this.attachmentBusy = true;
+    this.attachmentError = null;
+    this.cdr.detectChanges();
+
+    const sub = this.apiService.uploadAccidentDocument(id, file, type).subscribe({
+      next: (res) => {
+        this.attachments = [...this.attachments, {
+          id: res.documentId,
+          documentType: type,
+          fileName: file.name,
+          fileUrl: res.fileUrl,
+          fileSize: file.size,
+          mimeType: file.type || null,
+          uploadedAt: new Date().toISOString(),
+        }];
+        this.attachmentBusy = false;
+        this.cdr.detectChanges();
+        // Le rapport du dossier liste ses pièces jointes : il devient périmé.
+        void this.regeneratePdf({ silencieux: true });
+      },
+      error: (err: any) => {
+        this.attachmentBusy = false;
+        this.attachmentError = err?.error?.message || "Échec de l'envoi du document.";
+        this.cdr.detectChanges();
+      },
+    });
+    this.subs.push(sub);
+  }
+
+  removeAttachment(d: AccidentReportDocumentDto): void {
+    if (!this.accidentEventId || this.attachmentBusy) return;
+    if (!confirm(`Supprimer « ${d.fileName} » ?`)) return;
+    const id = this.accidentEventId;
+    this.attachmentBusy = true;
+    this.attachmentError = null;
+    const sub = this.apiService.deleteAccidentDocument(id, d.id).subscribe({
+      next: () => {
+        this.attachments = this.attachments.filter((x) => x.id !== d.id);
+        this.attachmentBusy = false;
+        this.cdr.detectChanges();
+        void this.regeneratePdf({ silencieux: true });
+      },
+      error: (err: any) => {
+        this.attachmentBusy = false;
+        this.attachmentError = err?.error?.message || 'Impossible de supprimer cette pièce jointe.';
         this.cdr.detectChanges();
       },
     });
@@ -3178,6 +3423,11 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
    * shows the appropriate success / error toast, then refreshes the DTO
    * so the timeline picks up server-side derived values (e.g. auto
    * VehicleCost upserts on Phase 5 / 6).
+   *
+   * Deux ajouts de la recette du 18/09/2026 : les phases 5 et 6 répondent
+   * désormais avec un avertissement quand la réparation ou le remboursement n'a
+   * PAS pu être reporté, et le PDF est régénéré après chaque enregistrement —
+   * il ne portait jusque-là que l'état du jour de la confirmation.
    */
   private runPhase(phase: 'phase2' | 'phase3' | 'phase4' | 'phase5' | 'phase6', call: () => any): void {
     if (!this.accidentEventId || this.phaseBusy) return;
@@ -3185,10 +3435,19 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
     this.phaseBusy = phase;
     this.phaseMessage = null;
     const sub = call().subscribe({
-      next: () => {
+      next: (res: any) => {
         this.phaseBusy = null;
-        this.phaseMessage = { type: 'success', text: 'Phase enregistrée.' };
-        this.reloadAfterDecision(id, 'confirmed');
+        const avertissement: string | null = res?.message ?? null;
+        this.phaseMessage = avertissement
+          ? { type: 'warning', text: avertissement }
+          : { type: 'success', text: 'Phase enregistrée.' };
+        // Le PDF D'ABORD, la relecture du dossier ensuite : la réponse du rechargement
+        // réaffecte le lien du rapport et les pièces jointes, et elle arrivait avant la
+        // régénération — le lien affiché pointait sur le fichier qui venait d'être
+        // effacé, et une pièce rangée côté serveur n'apparaissait qu'au chargement
+        // suivant. L'échec du PDF ne doit pas empêcher la relecture, d'où le finally.
+        void this.regeneratePdf({ silencieux: true })
+          .finally(() => this.reloadAfterDecision(id, 'confirmed'));
       },
       error: (err: any) => {
         this.phaseBusy = null;

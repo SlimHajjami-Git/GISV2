@@ -441,6 +441,12 @@
                           <th class="num">Entretien {{ getCurrencyCode() }}</th>
                           <th class="num">Réparation {{ getCurrencyCode() }}</th>
                           <th class="num">Autres</th>
+                          @if (aDesAvoirs(monthlyCostCredit())) {
+                            <!-- « Avoirs » comme dans les trois autres tableaux : c'est ici
+                                 que le tableau est le plus large (12 colonnes). Le libellé
+                                 long reste aux exports, où la place existe. -->
+                            <th class="num" [title]="infoBulleAvoirs">Avoirs</th>
+                          }
                           <th class="num">Total Coût</th>
                           <th class="num">Coût {{ getCurrencyCode() }}/KM</th>
                           <th class="num">Carb. {{ getCurrencyCode() }}/100KM</th>
@@ -473,6 +479,9 @@
                             <td class="num">{{ formatCurrency(v.maintenanceCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.repairCostDzd) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCostDzd) }}</td>
+                            @if (aDesAvoirs(monthlyCostCredit())) {
+                              <td class="num">{{ formatCurrency(v.creditAmountDzd || 0) }}</td>
+                            }
                             <td class="num total-cell">{{ formatCurrency(v.totalCostDzd) }}</td>
                             <td class="num">{{ v.costPerKm == null ? '—' : formatDecimal(v.costPerKm) }}</td>
                             <td class="num">{{ v.fuelPer100Km == null ? '—' : formatDecimal(v.fuelPer100Km) }}</td>
@@ -496,6 +505,9 @@
                           <td class="num"><strong>{{ formatCurrency(dept.totalMaintenanceCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(dept.totalRepairCostDzd) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(dept.totalOtherCostDzd) }}</strong></td>
+                          @if (aDesAvoirs(monthlyCostCredit())) {
+                            <td class="num"><strong>{{ formatCurrency(dept.totalCreditAmountDzd || 0) }}</strong></td>
+                          }
                           <td class="num total-cell"><strong>{{ formatCurrency(dept.totalCostDzd) }}</strong></td>
                           <!-- Ratios au format francais, comme les lignes au-dessus : ils
                                sortaient de toFixed, donc « 0.13 » a cote de « 250,77 € ».
@@ -525,7 +537,7 @@
             @if (monthlyCostReport.departments.length > 0) {
               <div class="report-note">
                 <span>ℹ️</span>
-                <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « non mesuré » quand le kilométrage n’est pas mesurable sur le mois (un seul relevé, compteur inchangé ou relevés incohérents), et les ratios au kilomètre affichent alors « — » plutôt que 0. Le KM total ne compte que les distances mesurées, et les ratios des lignes de total ne portent que sur les véhicules mesurés.</span>
+                <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « non mesuré » quand le kilométrage n’est pas mesurable sur le mois (un seul relevé, compteur inchangé ou relevés incohérents), et les ratios au kilomètre affichent alors « — » plutôt que 0. Le KM total ne compte que les distances mesurées, et les ratios des lignes de total ne portent que sur les véhicules mesurés.@if (aDesAvoirs(monthlyCostCredit())) {<span> Carburant, Entretien, Réparation et Autres sont BRUTS ; les avoirs fournisseurs et remboursements d’assurance forment la colonne « Avoirs », en négatif, et seul le Total Coût en tient compte.</span>}</span>
               </div>
             }
 
@@ -642,6 +654,9 @@
                           <th class="num" title="Entretiens">Entr.{{ mfDeviseEntete() }}</th>
                           <th class="num" title="Réparations">Répar.{{ mfDeviseEntete() }}</th>
                           <th class="num" title="Autres dépenses : assurance, vignette, péages…">Autres{{ mfDeviseEntete() }}</th>
+                          @if (aDesAvoirs(monthlyReport.totals.creditAmount)) {
+                            <th class="num" [title]="infoBulleAvoirs">Avoirs{{ mfDeviseEntete() }}</th>
+                          }
                           <th class="num">Total{{ mfDeviseEntete() }}</th>
                           <th class="num" title="Coût au kilomètre">{{ getCurrencyCode() }}/km</th>
                           @if (monthlyReport.fleetHasGps) {
@@ -661,6 +676,9 @@
                             <td class="num">{{ mfMontant(v.maintenanceCost) }}</td>
                             <td class="num">{{ mfMontant(v.repairCost) }}</td>
                             <td class="num">{{ mfMontant(v.otherCost) }}</td>
+                            @if (aDesAvoirs(monthlyReport.totals.creditAmount)) {
+                              <td class="num">{{ mfMontant(v.creditAmount || 0) }}</td>
+                            }
                             <td class="num total-cell">{{ mfMontant(v.totalCost) }}</td>
                             <td class="num">{{ v.costPerKm == null ? '—' : formatCostPerKm(v.costPerKm) }}</td>
                             @if (monthlyReport.fleetHasGps) {
@@ -680,6 +698,9 @@
                           <td class="num"><strong>{{ mfMontant(monthlyReport.totals.maintenanceCost) }}</strong></td>
                           <td class="num"><strong>{{ mfMontant(monthlyReport.totals.repairCost) }}</strong></td>
                           <td class="num"><strong>{{ mfMontant(monthlyReport.totals.otherCost) }}</strong></td>
+                          @if (aDesAvoirs(monthlyReport.totals.creditAmount)) {
+                            <td class="num"><strong>{{ mfMontant(monthlyReport.totals.creditAmount || 0) }}</strong></td>
+                          }
                           <td class="num total-cell"><strong>{{ mfMontant(monthlyReport.totals.totalCost) }}</strong></td>
                           <td class="num"><strong>{{ monthlyReport.totals.costPerKm == null ? '—' : formatCostPerKm(monthlyReport.totals.costPerKm) }}</strong></td>
                           @if (monthlyReport.fleetHasGps) {
@@ -694,7 +715,7 @@
 
                 <div class="report-note mf-note">
                   <span>ℹ️</span>
-                  <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « — » quand le mois n’en compte pas au moins deux. Consommation = litres ÷ kilométrage du véhicule. Coûts = dépenses saisies du mois (carburant, entretiens, réparations, autres) ; les mensualités d’acquisition ne sont pas comptées.@if (!monthlyReport.fleetHasGps) { Utilisation, trajets et heures de conduite demandent un boîtier GPS.}</span>
+                  <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « — » quand le mois n’en compte pas au moins deux. Consommation = litres ÷ kilométrage du véhicule. Coûts = dépenses saisies du mois (carburant, entretiens, réparations, autres), BRUTES ; les mensualités d’acquisition ne sont pas comptées.@if (aDesAvoirs(monthlyReport.totals.creditAmount)) {<span> La colonne « Avoirs » porte les avoirs fournisseurs et les remboursements d’assurance en négatif : seul le Total en tient compte.</span>}@if (!monthlyReport.fleetHasGps) { Utilisation, trajets et heures de conduite demandent un boîtier GPS.}</span>
                 </div>
               </div>
 
@@ -708,16 +729,20 @@
                     <div class="donut-split rf-donut">
                       <div class="donut-split-canvas rf-donut-canvas"><canvas #mfCostDonutCanvas></canvas></div>
                       <div class="donut-split-legend">
-                        @for (c of monthlyReport.costAnalysis.byCategory; track c.category; let i = $index) {
+                        <!-- Pourcentages des parts DESSINÉES (voir mfCategoriesLegende) :
+                             ceux du serveur portent sur le total net et dépassaient 100 %
+                             dès qu'un avoir existait. Une ligne de crédit n'a pas de part. -->
+                        @for (c of mfCategoriesLegende(); track c.category; let i = $index) {
                           <div class="donut-split-row">
                             <span class="ai-cost-dot" [style.background]="mfCouleurCategorie(c.category, i)"></span>
                             <span class="lbl">{{ c.category }}</span>
-                            <span class="val">{{ formatCurrency(c.amount) }} <small>({{ formatPct(c.percentage) }})</small></span>
+                            <span class="val">{{ formatCurrency(c.amount) }} <small>({{ c.percent === null ? '—' : formatPct(c.percent) }})</small></span>
                           </div>
                         }
-                        <div class="donut-split-row donut-split-total">
+                        <div class="donut-split-row donut-split-total"
+                             [title]="aDesAvoirs(monthlyReport.totals.creditAmount) ? 'Total net des avoirs et remboursements ; les pourcentages portent sur les postes bruts' : ''">
                           <span class="lbl">Total</span>
-                          <span class="val">{{ formatCurrency(monthlyReport.costAnalysis.totalOperationalCost) }} <small>(100 %)</small></span>
+                          <span class="val">{{ formatCurrency(monthlyReport.costAnalysis.totalOperationalCost) }} <small>({{ aDesAvoirs(monthlyReport.totals.creditAmount) ? '—' : '100 %' }})</small></span>
                         </div>
                       </div>
                     </div>
@@ -797,7 +822,11 @@
                 <!-- Cost Breakdown -->
                 <ui-card title="Répartition des coûts" [showHeader]="true">
                   <div class="ai-cost-items">
-                    <div class="ai-cost-item" *ngFor="let c of aiCostBreakdown.items">
+                    <!-- Ce bloc vient de l'assistant IA (AiChatController) : « Autres » y est
+                         NET des crédits, seule convention du rapport IA. L'info-bulle le dit,
+                         faute de quoi le chiffre contredisait le tableau deux cartes plus bas. -->
+                    <div class="ai-cost-item" *ngFor="let c of aiCostBreakdown.items"
+                         [title]="c.key === 'other' ? infoBulleAutresIA : c.label">
                       <span class="ai-cost-dot" [style.background]="c.color"></span>
                       <span class="ai-cost-lbl">{{ c.label }}</span>
                       <span class="ai-cost-val">{{ c.value | appCurrency:0 }}</span>
@@ -1077,7 +1106,10 @@
                 <span class="stat-corps">
                 <span class="stat-value">{{ formatCurrency(operatingCost.totalCost) }}</span>
                 <span class="stat-label">Coût total d'exploitation</span>
-                <span class="stat-sub">Carburant {{ formatCurrency(operatingCost.totalFuelCost) }} &bull; Entretiens {{ formatCurrency(operatingCost.totalMaintenanceCost) }} &bull; Réparations {{ formatCurrency(operatingCost.totalRepairCost) }} &bull; Autres {{ formatCurrency(operatingCost.totalOtherCost) }}</span>
+                <!-- Postes BRUTS, total NET : les avoirs et remboursements ne sont
+                     retranchés d'aucun poste, ils apparaissent en clair à la suite
+                     (règle du 18/09/2026) et seulement s'il y en a. -->
+                <span class="stat-sub">Carburant {{ formatCurrency(operatingCost.totalFuelCost) }} &bull; Entretiens {{ formatCurrency(operatingCost.totalMaintenanceCost) }} &bull; Réparations {{ formatCurrency(operatingCost.totalRepairCost) }} &bull; Autres {{ formatCurrency(operatingCost.totalOtherCost) }}@if (aDesAvoirs(operatingCost.totalCreditAmount)) {<span [title]="infoBulleAvoirs"> &bull; {{ libelleAvoirs }} {{ formatCurrency(operatingCost.totalCreditAmount || 0) }}</span>}</span>
                 </span>
               </div>
               <div class="stat-card stat-card--icone">
@@ -1130,6 +1162,9 @@
                           <th class="num">Entretien</th>
                           <th class="num">Réparations</th>
                           <th class="num">Autres</th>
+                          @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                            <th class="num" [title]="infoBulleAvoirs">Avoirs</th>
+                          }
                         } @else {
                           <th title="Immatriculation">Immat.</th>
                           <th class="num" title="Kilométrage de la période">Km</th>
@@ -1137,6 +1172,9 @@
                           <th class="num">Entretiens</th>
                           <th class="num">Réparations</th>
                           <th class="num">Autres</th>
+                          @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                            <th class="num" [title]="infoBulleAvoirs">Avoirs</th>
+                          }
                           <th class="num">Coût total</th>
                           <th class="num" title="Coût d’exploitation par kilomètre">{{ getCurrencyCode() }}/km</th>
                         }
@@ -1162,6 +1200,9 @@
                             <td class="num">{{ formatCurrency(v.maintenanceCost) }}</td>
                             <td class="num">{{ formatCurrency(v.repairCost) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCost) }}</td>
+                            @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                              <td class="num">{{ formatCurrency(v.creditAmount || 0) }}</td>
+                            }
                           } @else {
                             <!-- Immatriculation SEULE : le nom interne (« Logistique 01 ») ne dit rien
                                  au lecteur du rapport, et doubler nom + plaque prenait la
@@ -1173,6 +1214,9 @@
                             <td class="num">{{ formatCurrency(v.maintenanceCost) }}</td>
                             <td class="num">{{ formatCurrency(v.repairCost) }}</td>
                             <td class="num">{{ formatCurrency(v.otherCost) }}</td>
+                            @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                              <td class="num">{{ formatCurrency(v.creditAmount || 0) }}</td>
+                            }
                             <td class="num total-cell">{{ formatCurrency(v.totalCost) }}</td>
                             <td class="num">{{ formatCostPerKm(v.costPerKm) }}</td>
                           }
@@ -1191,6 +1235,9 @@
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalMaintenanceCost) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalRepairCost) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalOtherCost) }}</strong></td>
+                          @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                            <td class="num"><strong>{{ formatCurrency(operatingCost.totalCreditAmount || 0) }}</strong></td>
+                          }
                         } @else {
                           <td><strong>TOTAL / MOYENNE</strong></td>
                           <td class="num"><strong>{{ formatNumber(operatingCost.totalKm) }}</strong></td>
@@ -1198,6 +1245,9 @@
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalMaintenanceCost) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalRepairCost) }}</strong></td>
                           <td class="num"><strong>{{ formatCurrency(operatingCost.totalOtherCost) }}</strong></td>
+                          @if (aDesAvoirs(operatingCost.totalCreditAmount)) {
+                            <td class="num"><strong>{{ formatCurrency(operatingCost.totalCreditAmount || 0) }}</strong></td>
+                          }
                           <td class="num total-cell"><strong>{{ formatCurrency(operatingCost.totalCost) }}</strong></td>
                           <td class="num"><strong>{{ formatCostPerKm(operatingCost.averageCostPerKm) }}</strong></td>
                         }
@@ -1233,7 +1283,7 @@
 
             <div class="report-note">
               <span>ℹ️</span>
-              <span>{{ operatingCost.distanceNote }} La moyenne de la flotte est pondérée : total des coûts des véhicules mesurables divisé par le total de leurs kilomètres. Les mensualités d'acquisition ne sont pas comptées (ce ne sont pas des dépenses d'exploitation).</span>
+              <span>{{ operatingCost.distanceNote }} La moyenne de la flotte est pondérée : total des coûts des véhicules mesurables divisé par le total de leurs kilomètres. Les mensualités d'acquisition ne sont pas comptées (ce ne sont pas des dépenses d'exploitation).@if (aDesAvoirs(operatingCost.totalCreditAmount)) {<span> Carburant, Entretiens, Réparations et Autres sont BRUTS : la colonne « Avoirs » porte les avoirs fournisseurs et les remboursements d'assurance en négatif, et seul le Coût total en tient compte.</span>}</span>
             </div>
           </div>
         } @else if (selectedTemplate?.type === 'cost-evolution' && costEvolution && costEvolution.totalCost === 0) {
@@ -1332,9 +1382,12 @@
                         <span class="val">{{ formatCurrency(c.amount) }} <small>({{ formatPct(c.pct) }})</small></span>
                       </div>
                     }
-                    <div class="donut-split-row donut-split-total">
+                    <!-- Les pourcentages portent sur les DÉPENSES brutes ; dès qu'un avoir
+                         existe, le total est net et n'en fait donc plus 100 % : « — ». -->
+                    <div class="donut-split-row donut-split-total"
+                         [title]="aDesAvoirs(costEvolution.totalCreditAmount) ? 'Total net des avoirs et remboursements ; les pourcentages portent sur les postes bruts' : ''">
                       <span class="lbl">Total</span>
-                      <span class="val">{{ formatCurrency(costEvolution.totalCost) }} <small>({{ costEvolution.totalCost > 0 ? '100 %' : '—' }})</small></span>
+                      <span class="val">{{ formatCurrency(costEvolution.totalCost) }} <small>({{ aDesAvoirs(costEvolution.totalCreditAmount) || costEvolution.totalCost <= 0 ? '—' : '100 %' }})</small></span>
                     </div>
                   </div>
                 </div>
@@ -1359,6 +1412,9 @@
                         <!-- Intitulés courts sur une ligne : « Autres dépenses » et « Variation vs mois
                              précédent » faisaient déborder le tableau de 50 px en 1536 px (recette du 11/09). -->
                         <th class="num" title="Autres dépenses">Autres</th>
+                        @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
+                          <th class="num" [title]="infoBulleAvoirs">Avoirs</th>
+                        }
                         <th class="num">Total</th>
                         <th class="num" title="Variation par rapport au mois précédent">Var. / mois préc.</th>
                       </tr>
@@ -1375,6 +1431,9 @@
                           <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
                           <td class="num">{{ formatCurrency(m.repairCost) }}</td>
                           <td class="num">{{ formatCurrency(m.otherCost) }}</td>
+                          @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
+                            <td class="num">{{ formatCurrency(m.creditAmount || 0) }}</td>
+                          }
                           <td class="num total-cell">{{ formatCurrency(m.totalCost) }}</td>
                           <td class="num deviation" [ngClass]="deviationClass(m.variationPct)">{{ formatSignedPct(m.variationPct) }}</td>
                         </tr>
@@ -1387,6 +1446,9 @@
                         <td class="num"><strong>{{ formatCurrency(costEvolution.totalMaintenanceCost) }}</strong></td>
                         <td class="num"><strong>{{ formatCurrency(costEvolution.totalRepairCost) }}</strong></td>
                         <td class="num"><strong>{{ formatCurrency(costEvolution.totalOtherCost) }}</strong></td>
+                        @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
+                          <td class="num"><strong>{{ formatCurrency(costEvolution.totalCreditAmount || 0) }}</strong></td>
+                        }
                         <td class="num total-cell"><strong>{{ formatCurrency(costEvolution.totalCost) }}</strong></td>
                         <td class="num">—</td>
                       </tr>
@@ -1422,10 +1484,13 @@
                       }
                     </tbody>
                     <tfoot>
-                      <tr class="dept-total-row">
+                      <!-- Avec une ligne d'avoirs le total est NET alors que les
+                           pourcentages portent sur les postes bruts : « — ». -->
+                      <tr class="dept-total-row"
+                          [title]="evolutionDetailAvecAvoirs() ? 'Total net des avoirs et remboursements ; les pourcentages portent sur les postes bruts' : ''">
                         <td><strong>Total</strong></td>
                         <td class="num total-cell"><strong>{{ formatCurrency(evolutionDetailTotal()) }}</strong></td>
-                        <td class="num"><strong>{{ evolutionDetailTotal() > 0 ? '100 %' : '—' }}</strong></td>
+                        <td class="num"><strong>{{ evolutionDetailAvecAvoirs() || evolutionDetailTotal() <= 0 ? '—' : '100 %' }}</strong></td>
                       </tr>
                     </tfoot>
                   </table>
@@ -1435,7 +1500,7 @@
 
             <div class="report-note">
               <span>ℹ️</span>
-              <span>Les mois sans dépense apparaissent à 0. Un mois est dit INCOMPLET quand la période ne le couvre pas en entier, par l’une ou l’autre borne : elle commence après le 1er (période personnalisée) ou s’arrête avant la fin (mois en cours). La variation compare le total du mois au mois précédent (« — » pour le premier mois, si le mois précédent est à 0, ou dès que l’un des deux mois est incomplet : dix jours ne se comparent pas à un mois entier). Un mois incomplet n’entre pas non plus dans les mois le plus et le moins élevés. Carburant = pleins saisis, Entretiens = coûts d’entretien, Réparations = réparations non annulées, Autres dépenses = assurance, vignette, contrôle technique, péages… Les mensualités d’acquisition ne sont pas comptées.</span>
+              <span>Les mois sans dépense apparaissent à 0. Un mois est dit INCOMPLET quand la période ne le couvre pas en entier, par l’une ou l’autre borne : elle commence après le 1er (période personnalisée) ou s’arrête avant la fin (mois en cours). La variation compare le total du mois au mois précédent (« — » pour le premier mois, si le mois précédent est à 0, ou dès que l’un des deux mois est incomplet : dix jours ne se comparent pas à un mois entier). Un mois incomplet n’entre pas non plus dans les mois le plus et le moins élevés. Carburant = pleins saisis, Entretiens = coûts d’entretien, Réparations = réparations non annulées et factures de réparation, Autres dépenses = assurance, vignette, contrôle technique, péages… Ces quatre postes sont BRUTS.@if (aDesAvoirs(costEvolution.totalCreditAmount)) {<span> La colonne « Avoirs » porte les avoirs fournisseurs et les remboursements d’assurance en négatif, et seul le Total en tient compte.</span>} Les mensualités d’acquisition ne sont pas comptées.</span>
             </div>
           </div>
         } @else if (selectedTemplate?.type === 'repair-frequency' && repairFrequency && repairFrequency.totalInterventions === 0) {

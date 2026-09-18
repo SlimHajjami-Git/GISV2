@@ -92,7 +92,8 @@ public static class OperatingCostReportBuilder
                 OtherCost: Math.Round(x.Vehicle.Total.Other, 2),
                 TotalCost: Math.Round(x.Vehicle.Total.Total, 2),
                 CostPerKm: x.CostPerKm.HasValue ? Math.Round(x.CostPerKm.Value, 3) : null,
-                DeviationFromAveragePct: x.Deviation.HasValue ? Math.Round(x.Deviation.Value, 1) : null))
+                DeviationFromAveragePct: x.Deviation.HasValue ? Math.Round(x.Deviation.Value, 1) : null,
+                CreditAmount: Math.Round(x.Vehicle.Total.Credit, 2)))
             .ToList();
 
         if (top.HasValue)
@@ -113,6 +114,7 @@ public static class OperatingCostReportBuilder
             TotalRepairCost: Math.Round(analysed.Sum(v => v.Total.Repair), 2),
             TotalOtherCost: Math.Round(analysed.Sum(v => v.Total.Other), 2),
             DistanceNote: data.FleetHasGps ? DistanceNoteWithGps : DistanceNoteWithoutGps,
-            Vehicles: ranked);
+            Vehicles: ranked,
+            TotalCreditAmount: Math.Round(analysed.Sum(v => v.Total.Credit), 2));
     }
 }

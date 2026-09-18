@@ -787,6 +787,9 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     /// catégorie « Réparation » (facture de sinistre, scan de facture). Le type de
     /// réparation vient de la colonne <c>repair_type</c>, déduit de la
     /// description quand elle est vide (<see cref="RepairTypeClassifier"/>).
+    /// Les avoirs et remboursements ne diminuent AUCUN de ces montants (règle du
+    /// 18/09/2026) : ce bloc est brut, ils ont leur ligne dans la répartition des
+    /// coûts (<see cref="BuildCostCategories"/>).
     /// </summary>
     private MaintenanceAnalyticsDto BuildMaintenance(List<Vehicle> vehicles, RealCostData real)
     {
@@ -1032,7 +1035,8 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
     /// + réparations (elles ne doivent pas disparaître du total), le détail des
     /// deux restant visible dans <c>ByCategory</c>. <c>InsuranceCost</c> est la
     /// part réelle des dépenses de type assurance, <c>OtherCosts</c> tout le
-    /// reste. La somme des quatre champs redonne exactement le total.
+    /// reste, BRUT, et <c>CreditAmount</c> les avoirs et remboursements, en
+    /// négatif (18/09/2026). La somme des cinq champs redonne exactement le total.
     ///
     /// <paramref name="costPerKm"/> vient du tableau par véhicule
     /// (<see cref="BuildVehicleRows"/>) : le coût au km ne se recalcule pas ici,
@@ -1049,6 +1053,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             MaintenanceCost = Round2(real.Total.Maintenance + real.Total.Repair),
             InsuranceCost = Round2(insurance),
             OtherCosts = Round2(real.Total.Other - insurance),
+            CreditAmount = Round2(real.Total.Credit),
             TotalOperationalCost = Round2(real.Total.Total)
         };
 
@@ -1107,9 +1112,11 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
         // Mêmes règles que l'agrégateur (11/09/2026), sinon la répartition ne
         // retombe plus sur le total : une dépense « Réparation » est déjà dans la
         // ligne Réparations (elle apparaissait une 2e fois en « Réparation
-        // (dépense) »), et un remboursement d'assurance est un CRÉDIT (il
-        // s'ajoutait en positif). Groupement par libellé : « insurance » et
-        // « assurance » donnaient deux lignes « Assurance ».
+        // (dépense) »). Les CRÉDITS, eux, ne sont dans aucune des trois lignes
+        // ci-dessus depuis le 18/09/2026 : ils passent ici et sortent en
+        // « Remboursement assurance » / « Avoir fournisseur », en négatif.
+        // Groupement par libellé : « insurance » et « assurance » donnaient deux
+        // lignes « Assurance ».
         lines.AddRange(real.Expenses
             .Where(e => !IsFuelType(e.Type) && !IsMaintenanceType(e.Type) && !IsRepairType(e.Type))
             .GroupBy(e => CategoryLabel(NormalizeType(e.Type)))
@@ -1219,6 +1226,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
                 MaintenanceCost = Round2(total.Maintenance),
                 RepairCost = Round2(total.Repair),
                 OtherCost = Round2(total.Other),
+                CreditAmount = Round2(total.Credit),
                 TotalCost = Round2(total.Total),
                 CostPerKm = km is > 0 ? Math.Round(total.Total / (decimal)km.Value, 3) : null,
                 UtilizationRate = hasGps ? gpsRow?.UtilizationRate : null,
@@ -1247,6 +1255,7 @@ public class GetMonthlyFleetReportQueryHandler : IRequestHandler<GetMonthlyFleet
             MaintenanceCost = rows.Sum(r => r.MaintenanceCost),
             RepairCost = rows.Sum(r => r.RepairCost),
             OtherCost = rows.Sum(r => r.OtherCost),
+            CreditAmount = rows.Sum(r => r.CreditAmount),
             TotalCost = rows.Sum(r => r.TotalCost)
         };
         // Coût au km sur les véhicules MESURÉS seulement, comme la consommation et

@@ -85,9 +85,14 @@ public class ChiffresCoutsRecetteTests
 
         var rapport = await MensuelAsync(ctx);
 
+        // Décision du 18/09/2026 : les postes restent BRUTS et le remboursement porte
+        // sa propre colonne, en négatif. Le total, lui, est bien allégé de 100.
         var ligne = rapport.Vehicles.Single();
-        ligne.OtherCostDzd.Should().Be(500m, "600 d'assurance moins 100 remboursés, et non 700");
-        rapport.TotalOtherCostDzd.Should().Be(500m);
+        ligne.OtherCostDzd.Should().Be(600m, "l'assurance est affichée telle qu'elle a été facturée");
+        ligne.CreditAmountDzd.Should().Be(-100m);
+        rapport.TotalOtherCostDzd.Should().Be(600m);
+        rapport.TotalCreditAmountDzd.Should().Be(-100m);
+        rapport.TotalCostDzd.Should().Be(ligne.FuelCostDzd + ligne.MaintenanceCostDzd + 545m + 600m - 100m);
     }
 
     [Fact]
