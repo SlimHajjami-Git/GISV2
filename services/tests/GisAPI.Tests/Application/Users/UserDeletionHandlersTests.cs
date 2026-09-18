@@ -29,6 +29,12 @@ public class UserDeletionHandlersTests
     private const int CostId = 900;
     private const int DriverId = 5;
 
+    private static User Employe(User user)
+    {
+        user.EmployeeRole = "driver";
+        return user;
+    }
+
     private static async Task<TestGisDbContext> SeedAsync()
     {
         var ctx = TestDbContextFactory.Create();
@@ -37,7 +43,8 @@ public class UserDeletionHandlersTests
         ctx.Roles.Add(new Role { Id = 1, Name = "Employé", SocieteId = CompanyId });
         ctx.Users.AddRange(
             TestDataBuilder.CreateUser(id: CallerId, companyId: CompanyId, email: "admin@test.com"),
-            TestDataBuilder.CreateUser(id: DeletedId, companyId: CompanyId, email: "parti@test.com"),
+            // Fiche employé (EmployeeRole) : l'écran Employés ne supprime que ces comptes-là.
+            Employe(TestDataBuilder.CreateUser(id: DeletedId, companyId: CompanyId, email: "parti@test.com")),
             TestDataBuilder.CreateUser(id: ColleagueId, companyId: CompanyId, email: "collegue@test.com"));
         ctx.Vehicles.Add(TestDataBuilder.CreateVehicle(id: VehicleId, companyId: CompanyId));
         ctx.AuditLogs.Add(new AuditLog { UserId = DeletedId, CompanyId = CompanyId, Action = "login", EntityType = "User", EntityId = DeletedId });
@@ -222,5 +229,41 @@ public class UserDeletionHandlersTests
 
         await Delete("société", ctx, ColleagueId).Should().ThrowAsync<NotFoundException>();
         (await ctx.Users.CountAsync(u => u.Id == ColleagueId)).Should().Be(1);
+    }
+
+    /// <summary>
+    /// Revue de l'intégration du 18/09/2026 : DELETE /api/employees/{id} (droit « Chauffeurs »)
+    /// cherchait n'importe quel compte par son id. Maintenant que la suppression aboutit, un
+    /// opérateur pouvait supprimer un gestionnaire que l'écran Employés ne montre même pas,
+    /// en contournant le droit « Utilisateurs ». Seules les fiches employé de la société.
+    /// </summary>
+    [Fact]
+    public async Task L_ecran_employes_ne_supprime_pas_un_compte_qui_n_est_pas_un_employe()
+    {
+        await using var ctx = await SeedAsync(); // le collègue 43 n'a pas de fiche employé
+
+        await Delete("employés", ctx, ColleagueId).Should().ThrowAsync<DomainException>()
+            .WithMessage("Employé introuvable");
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.CountAsync(u => u.Id == ColleagueId)).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task L_ecran_employes_ne_supprime_pas_l_employe_d_une_autre_societe()
+    {
+        await using var ctx = await SeedAsync();
+        // Appelant administrateur système : le filtre global du DbContext est alors contourné,
+        // seul le filtre société explicite du handler protège l'autre société.
+        await ctx.Database.ExecuteSqlRawAsync($"UPDATE users SET CompanyId = 8 WHERE id = {DeletedId}");
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: CompanyId, userId: CallerId);
+        tenant.Setup(t => t.IsSystemAdmin).Returns(true);
+
+        var act = () => new DeleteEmployeeCommandHandler(ctx, tenant.Object)
+            .Handle(new DeleteEmployeeCommand(DeletedId), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("Employé introuvable");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.CountAsync(u => u.Id == DeletedId)).Should().Be(1);
     }
 }

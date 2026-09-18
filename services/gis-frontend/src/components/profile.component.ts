@@ -7,6 +7,7 @@ import { ApiService } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PermissionService } from '../services/permission.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { environment } from '../environments/environment';
 
 interface ProfileModel {
   fullName: string;
@@ -31,6 +32,13 @@ interface ProfileModel {
 const PREFERENCES_KEY = 'userProfilePreferences';
 const ALERT_PREFS_KEY = 'userAlertPreferences';
 
+/**
+ * Pays par défaut d'un compte sans préférences : environment.defaultCountry du déploiement
+ * s'il en pose un (lu par transtypage : la copie locale d'environment.ts de chaque serveur
+ * peut ne pas déclarer le champ), sinon la France (décision de Karim du 18/09/2026).
+ */
+const DEFAULT_COUNTRY: string = (environment as { defaultCountry?: string }).defaultCountry || 'FR';
+
 const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
   position: '',
   industry: 'transport',
@@ -39,7 +47,9 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
   // Belive GPA s'adresse d'abord à l'export : un compte créé sans préférences part en France
   // plutôt qu'en Tunisie (décision de Karim du 18/09/2026). Le fuseau, lui, reste celui du
   // serveur tant qu'aucune préférence n'est enregistrée.
-  country: 'FR',
+  // Un déploiement qui sert un autre pays pose le sien dans SON environment.ts
+  // (defaultCountry, déjà lu par l'inscription) : la France n'est que le repli.
+  country: DEFAULT_COUNTRY,
   language: 'fr',
   timezone: 'Africa/Tunis',
   dateFormat: 'dd/MM/yyyy',
@@ -1090,7 +1100,7 @@ export class ProfileComponent implements OnInit {
     industry: 'transport',
     address: '',
     city: '',
-    country: 'FR',
+    country: DEFAULT_COUNTRY,
     language: 'fr',
     timezone: 'Africa/Tunis',
     currency: '',

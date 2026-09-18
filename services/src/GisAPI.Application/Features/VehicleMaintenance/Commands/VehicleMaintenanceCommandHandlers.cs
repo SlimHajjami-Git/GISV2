@@ -1,4 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Application.Services;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
@@ -28,15 +30,24 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
 {
     private readonly IGisDbContext _context;
     private readonly IMaintenanceSchedulerService _scheduler;
+    private readonly ICurrentTenantService _tenantService;
 
-    public AssignMaintenanceTemplateCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
+    public AssignMaintenanceTemplateCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _scheduler = scheduler;
+        _tenantService = tenantService;
     }
 
     public async Task<int> Handle(AssignMaintenanceTemplateCommand request, CancellationToken cancellationToken)
     {
+        // Portée véhicules : un employé restreint n'affecte un entretien qu'à ses véhicules.
+        // Hors portée, même refus qu'un véhicule supprimé.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, request.VehicleId, cancellationToken))
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "Ce véhicule n'existe plus. Rechargez la page puis recommencez l'affectation.");
+
         // Check if already assigned
         var existing = await _context.VehicleMaintenanceSchedules
             .FirstOrDefaultAsync(s => s.VehicleId == request.VehicleId && s.TemplateId == request.TemplateId, cancellationToken);
@@ -114,11 +125,14 @@ public class RebaseMaintenanceScheduleCommandHandler : IRequestHandler<RebaseMai
 {
     private readonly IGisDbContext _context;
     private readonly IMaintenanceSchedulerService _scheduler;
+    private readonly ICurrentTenantService _tenantService;
 
-    public RebaseMaintenanceScheduleCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
+    public RebaseMaintenanceScheduleCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _scheduler = scheduler;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(RebaseMaintenanceScheduleCommand request, CancellationToken cancellationToken)
@@ -129,6 +143,9 @@ public class RebaseMaintenanceScheduleCommandHandler : IRequestHandler<RebaseMai
 
         if (schedule == null) return false;
         if (schedule.Template == null) return false;
+        // Hors portée véhicules : 404, comme un échéancier inexistant.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         var currentMileage = await _scheduler.GetCurrentMileageAsync(schedule.VehicleId, cancellationToken);
 
@@ -165,10 +182,12 @@ public class RebaseMaintenanceScheduleCommandHandler : IRequestHandler<RebaseMai
 public class RemoveMaintenanceScheduleCommandHandler : IRequestHandler<RemoveMaintenanceScheduleCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public RemoveMaintenanceScheduleCommandHandler(IGisDbContext context)
+    public RemoveMaintenanceScheduleCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(RemoveMaintenanceScheduleCommand request, CancellationToken cancellationToken)
@@ -177,6 +196,8 @@ public class RemoveMaintenanceScheduleCommandHandler : IRequestHandler<RemoveMai
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         _context.VehicleMaintenanceSchedules.Remove(schedule);
         await _context.SaveChangesAsync(cancellationToken);
@@ -212,6 +233,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, cancellationToken)
             ?? throw new NotFoundException(EntretienIntrouvable.Vehicule);
 
+        // Portée véhicules, comme POST /api/costs : l'entretien crée une dépense et fait
+        // avancer le compteur. Un employé restreint ne l'enregistre que sur ses véhicules ;
+        // hors portée, même 404 qu'un véhicule inexistant.
+        await VehicleScope.EnsureCanWriteAsync(_context, _tenantService, vehicle.Id,
+            EntretienIntrouvable.Vehicule, cancellationToken);
+
         // Un compteur ne recule pas — même règle que les pleins
         // (CreateFuelEntryCommandHandler). Un kilométrage inférieur à
         // vehicles.mileage était accepté et NextDueKm recalculé EN ARRIÈRE :
@@ -220,12 +247,20 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         // plein, le zéro n'est pas exempté : ici le kilométrage est obligatoire et
         // sert d'ancre à l'échéance, 0 sur un véhicule à 80 000 km produirait
         // exactement ce recul. Un véhicule neuf à 0 km passe toujours.
+        // Le plancher dépend de la DATE de l'entretien (VehicleMileage.FloorAtAsync) :
+        // un entretien du jour se compare au compteur courant, un entretien passé au
+        // relevé connu à sa date — sinon toute saisie après coup était refusée.
         // Contrôle AVANT toute écriture : rien n'est enregistré en cas de refus.
-        if (request.Mileage < vehicle.Mileage)
+        var plancher = await VehicleMileage.FloorAtAsync(_context, companyId, vehicle, request.Date, cancellationToken);
+        if (request.Mileage < plancher)
         {
             throw new GisAPI.Domain.Exceptions.DomainException(
-                $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
-                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+                request.Date.Date >= DateTime.UtcNow.Date
+                    ? $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
+                      $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur."
+                    : $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur à un relevé déjà enregistré " +
+                      $"au {request.Date:dd/MM/yyyy} ou avant ({plancher:N0} km). Un compteur ne recule pas : " +
+                      "vérifiez la valeur ou la date.");
         }
 
         // Le fournisseur doit appartenir à la société de l'appelant : le filtre
@@ -289,17 +324,25 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         // restait en base mais était ignoré dès le premier entretien réalisé.
         var intervalKm = schedule.CustomIntervalKm ?? template.IntervalKm;
         var intervalMonths = schedule.CustomIntervalMonths ?? template.IntervalMonths;
-        schedule.LastDoneDate = request.Date;
-        schedule.LastDoneKm = request.Mileage;
-        schedule.NextDueKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : null;
-        schedule.NextDueDate = intervalMonths.HasValue ? request.Date.AddMonths(intervalMonths.Value) : null;
-        // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
-        // already-loaded template (the schedule was fetched without Include
-        // so schedule.Template was null inside CalculateStatus, falling back
-        // to default warning thresholds — that made the new "next due" appear
-        // already "imminent" right after marking done).
-        var newMileage = request.Mileage > vehicle.Mileage ? request.Mileage : vehicle.Mileage;
-        schedule.Status = CalculateStatus(schedule, newMileage, template);
+        // Un entretien ANTÉRIEUR au dernier connu (historique saisi après coup) entre dans
+        // l'historique et les dépenses, mais ne recule pas l'échéance : recaler NextDue*
+        // sur un passage plus ancien avancerait l'alerte à tort.
+        var anterieurAuDernier = schedule.LastDoneDate.HasValue
+            && schedule.LastDoneDate.Value.Date > request.Date.Date;
+        if (!anterieurAuDernier)
+        {
+            schedule.LastDoneDate = request.Date;
+            schedule.LastDoneKm = request.Mileage;
+            schedule.NextDueKm = intervalKm.HasValue ? request.Mileage + intervalKm.Value : null;
+            schedule.NextDueDate = intervalMonths.HasValue ? request.Date.AddMonths(intervalMonths.Value) : null;
+            // Calypso 6 (P7.1): use the freshly bumped vehicle mileage AND the
+            // already-loaded template (the schedule was fetched without Include
+            // so schedule.Template was null inside CalculateStatus, falling back
+            // to default warning thresholds — that made the new "next due" appear
+            // already "imminent" right after marking done).
+            var newMileage = request.Mileage > vehicle.Mileage ? request.Mileage : vehicle.Mileage;
+            schedule.Status = CalculateStatus(schedule, newMileage, template);
+        }
         schedule.UpdatedAt = DateTime.UtcNow;
 
         // Decrement free uses counter if benefit was applied
@@ -392,10 +435,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
 public class PauseMaintenanceScheduleCommandHandler : IRequestHandler<PauseMaintenanceScheduleCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public PauseMaintenanceScheduleCommandHandler(IGisDbContext context)
+    public PauseMaintenanceScheduleCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(PauseMaintenanceScheduleCommand request, CancellationToken cancellationToken)
@@ -404,6 +449,8 @@ public class PauseMaintenanceScheduleCommandHandler : IRequestHandler<PauseMaint
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         schedule.IsPaused = true;
         schedule.PausedAt = DateTime.UtcNow;
@@ -418,10 +465,12 @@ public class PauseMaintenanceScheduleCommandHandler : IRequestHandler<PauseMaint
 public class ResumeMaintenanceScheduleCommandHandler : IRequestHandler<ResumeMaintenanceScheduleCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public ResumeMaintenanceScheduleCommandHandler(IGisDbContext context)
+    public ResumeMaintenanceScheduleCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(ResumeMaintenanceScheduleCommand request, CancellationToken cancellationToken)
@@ -430,6 +479,8 @@ public class ResumeMaintenanceScheduleCommandHandler : IRequestHandler<ResumeMai
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         schedule.IsPaused = false;
         schedule.PausedAt = null;
@@ -444,10 +495,12 @@ public class ResumeMaintenanceScheduleCommandHandler : IRequestHandler<ResumeMai
 public class UpdateScheduleIntervalsCommandHandler : IRequestHandler<UpdateScheduleIntervalsCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public UpdateScheduleIntervalsCommandHandler(IGisDbContext context)
+    public UpdateScheduleIntervalsCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(UpdateScheduleIntervalsCommand request, CancellationToken cancellationToken)
@@ -457,6 +510,8 @@ public class UpdateScheduleIntervalsCommandHandler : IRequestHandler<UpdateSched
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         schedule.CustomIntervalKm = request.CustomIntervalKm;
         schedule.CustomIntervalMonths = request.CustomIntervalMonths;
@@ -557,11 +612,14 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
 {
     private readonly IGisDbContext _context;
     private readonly IMaintenanceSchedulerService _scheduler;
+    private readonly ICurrentTenantService _tenantService;
 
-    public DeclareFreeMaintenancesCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler)
+    public DeclareFreeMaintenancesCommandHandler(IGisDbContext context, IMaintenanceSchedulerService scheduler,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _scheduler = scheduler;
+        _tenantService = tenantService;
     }
 
     public async Task<int> Handle(DeclareFreeMaintenancesCommand request, CancellationToken cancellationToken)
@@ -582,6 +640,10 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
         // Même garde qu'à l'affectation : filtre multi-tenant contourné pour l'administrateur système.
         if (vehicle.CompanyId != template.CompanyId)
             throw new NotFoundException(EntretienIntrouvable.Vehicule);
+
+        // Portée véhicules : hors portée, même 404 qu'un véhicule inexistant.
+        await VehicleScope.EnsureCanWriteAsync(_context, _tenantService, vehicle.Id,
+            EntretienIntrouvable.Vehicule, cancellationToken);
 
         // Find existing schedule OR create a new one
         var schedule = await _context.VehicleMaintenanceSchedules
@@ -641,10 +703,12 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
 public class UpdateFreeMaintenanceCommandHandler : IRequestHandler<UpdateFreeMaintenanceCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public UpdateFreeMaintenanceCommandHandler(IGisDbContext context)
+    public UpdateFreeMaintenanceCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(UpdateFreeMaintenanceCommand request, CancellationToken cancellationToken)
@@ -653,6 +717,8 @@ public class UpdateFreeMaintenanceCommandHandler : IRequestHandler<UpdateFreeMai
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         // DomainException (400) : en InvalidOperationException ces refus sortaient en 500
         // et leur message français était perdu (recette GPA, DEF-031).
@@ -677,10 +743,12 @@ public class UpdateFreeMaintenanceCommandHandler : IRequestHandler<UpdateFreeMai
 public class ClearFreeMaintenanceCommandHandler : IRequestHandler<ClearFreeMaintenanceCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public ClearFreeMaintenanceCommandHandler(IGisDbContext context)
+    public ClearFreeMaintenanceCommandHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(ClearFreeMaintenanceCommand request, CancellationToken cancellationToken)
@@ -689,6 +757,8 @@ public class ClearFreeMaintenanceCommandHandler : IRequestHandler<ClearFreeMaint
             .FirstOrDefaultAsync(s => s.Id == request.ScheduleId, cancellationToken);
 
         if (schedule == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, schedule.VehicleId, cancellationToken))
+            return false;
 
         schedule.FreeUsesTotal = 0;
         schedule.FreeUsesRemaining = 0;

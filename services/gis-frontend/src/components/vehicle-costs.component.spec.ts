@@ -1,4 +1,4 @@
-import { costCategoryFamily, costCreditFamily, fuelDetailToSave } from './vehicle-costs.component';
+import { costAmountError, costCategoryFamily, costCreditFamily, fuelDetailToSave } from './vehicle-costs.component';
 
 /**
  * Défauts M9-COUTS (17/09/2026) : ventilation des types anciens à l'écran Coûts, et détail
@@ -63,6 +63,27 @@ describe('vehicle-costs : postes et détail du plein', () => {
         .toEqual({ fuelType: 'gasoline', liters: 30, pricePerLiter: null });
       expect(fuelDetailToSave({ type: 'fuel', fuelType: '', liters: 0 }, 60, null))
         .toEqual({ fuelType: null, liters: null, pricePerLiter: null });
+    });
+  });
+
+  // Revue de l'intégration du 18/09/2026 : une dépense à 0 écrite par « marquer fait »
+  // (entretien gratuit) ne se modifiait plus.
+  describe('costAmountError', () => {
+    it('création : montant nul ou négatif refusé', () => {
+      expect(costAmountError(0, null)).toBe('Le montant doit être supérieur à zéro.');
+      expect(costAmountError(-5, null)).not.toBeNull();
+      expect(costAmountError(NaN, null)).not.toBeNull();
+      expect(costAmountError(12.5, null)).toBeNull();
+    });
+
+    it('modification : un 0 hérité et inchangé reste enregistrable', () => {
+      expect(costAmountError(0, { amount: 0 })).toBeNull();
+      expect(costAmountError(0, { amount: '0.00' })).toBeNull();
+    });
+
+    it('modification : passer à 0 ou en négatif reste refusé', () => {
+      expect(costAmountError(0, { amount: 350 })).not.toBeNull();
+      expect(costAmountError(-5, { amount: 0 })).not.toBeNull();
     });
   });
 });

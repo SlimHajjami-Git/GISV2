@@ -3,6 +3,7 @@ using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.AcquisitionPayments;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Vehicles;
 
@@ -600,16 +601,23 @@ public class DashboardService : IDashboardService
         // ajoutait en positif, alors que les rapports les rangent en Réparations
         // et en crédit ; la comparaison exacte « maintenance » laissait aussi
         // « Entretien » (casse) et « entretien » en « Autres ».
+        // Parts positive et négative à part (CASE, traduit aussi par SQLite) : un crédit se
+        // déduit ligne à ligne en valeur absolue (VehicleCostCategory.SignedFromParts).
         var byType = await costs
             .GroupBy(c => c.Type)
-            .Select(g => new { Type = g.Key, Amount = g.Sum(c => c.Amount) })
+            .Select(g => new
+            {
+                Type = g.Key,
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
+            })
             .ToListAsync(ct);
 
         decimal maintenance = 0m, repair = 0m, other = 0m;
         foreach (var t in byType)
         {
-            var (category, sign) = VehicleCostCategory.Classify(t.Type);
-            var amount = sign * t.Amount;
+            var category = VehicleCostCategory.Classify(t.Type).Category;
+            var amount = VehicleCostCategory.SignedFromParts(t.Type, t.Positive, t.Negative);
             switch (category)
             {
                 case CostCategory.Fuel: fuel += amount; break;
@@ -619,12 +627,13 @@ public class DashboardService : IDashboardService
             }
         }
 
-        // Statut comparé en mémoire : la casse varie selon la source de saisie,
-        // et OperatingCostAggregator applique exactement le même filtre.
-        var repairRows = await repairs.Select(r => new { r.TotalCost, r.Status }).ToListAsync(ct);
-        repair += repairRows
-            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
-            .Sum(r => r.TotalCost);
+        // Réparations annulées exclues, casse ET espaces ignorés (« Cancelled », « CANCELLED »
+        // des données anciennes) — même règle que RepairInputRules.HasStatus et
+        // OperatingCostAggregator. Somme calculée en base : le détail n'est jamais chargé.
+        repair += await repairs
+            .Where(r => r.Status == null || r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
+            .Select(r => (decimal?)r.TotalCost)
+            .SumAsync(ct) ?? 0m;
 
         return (fuel, maintenance, repair, other);
     }

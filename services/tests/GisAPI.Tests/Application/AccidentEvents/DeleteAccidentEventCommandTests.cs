@@ -287,6 +287,157 @@ public class DeleteAccidentEventCommandTests : IDisposable
         (await context.AccidentEvents.CountAsync()).Should().Be(1);
     }
 
+    // ── Portée véhicules (revue de l'intégration du 18/09/2026) ───────────────────
+    // La fiche refusait (404) un dossier hors des véhicules de l'employé, la suppression
+    // l'acceptait : un employé restreint avec le droit Sinistres effaçait des dossiers
+    // qu'il ne pouvait même pas ouvrir.
+
+    private const int AutreVehiculeId = 50;
+
+    /// <summary>Employé NON administrateur (rôle hors liste admin) avec le droit Sinistres.</summary>
+    private static DeleteAccidentEventCommandHandler HandlerRestreint(TestGisDbContext context)
+    {
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: Societe, userId: ChargeSinistresId);
+        tenant.Setup(t => t.UserRoles).Returns(new[] { "user" });
+        return new(context, tenant.Object, NullLogger<DeleteAccidentEventCommandHandler>.Instance);
+    }
+
+    private static async Task AffecterAsync(TestGisDbContext context, int vehicleId)
+    {
+        context.Vehicles.Add(TestDataBuilder.CreateVehicle(id: AutreVehiculeId, companyId: Societe));
+        context.UserVehicles.Add(new UserVehicle { UserId = ChargeSinistresId, VehicleId = vehicleId });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task EmployeRestreint_DossierDUnVehiculeNonAffecte_IntrouvableEtIntact()
+    {
+        using var context = CreerContexte();
+        await AffecterAsync(context, AutreVehiculeId); // le sinistre porte sur VehiculeId
+
+        var absent = await Assert.ThrowsAsync<NotFoundException>(() =>
+            HandlerRestreint(context).Handle(new DeleteAccidentEventCommand(SinistreId, _uploadsRoot), CancellationToken.None));
+
+        absent.Message.Should().Be("Dossier de sinistre introuvable.");
+        context.ChangeTracker.Clear();
+        (await context.AccidentEvents.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EmployeRestreint_DossierSansVehicule_Introuvable()
+    {
+        using var context = CreerContexte();
+        await AffecterAsync(context, VehiculeId);
+        var ev = await context.AccidentEvents.SingleAsync(e => e.Id == SinistreId);
+        ev.VehicleId = null; // même règle que la fiche : réservé aux administrateurs
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            HandlerRestreint(context).Handle(new DeleteAccidentEventCommand(SinistreId, _uploadsRoot), CancellationToken.None));
+
+        context.ChangeTracker.Clear();
+        (await context.AccidentEvents.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task EmployeRestreint_DossierDeSonVehicule_Supprime()
+    {
+        using var context = CreerContexte();
+        await AffecterAsync(context, VehiculeId);
+
+        await HandlerRestreint(context).Handle(new DeleteAccidentEventCommand(SinistreId, _uploadsRoot), CancellationToken.None);
+
+        context.ChangeTracker.Clear();
+        (await context.AccidentEvents.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task EmployeRestreint_LaListeNeMontreQueLesDossiersDeSesVehicules()
+    {
+        using var context = CreerContexte();
+        await AffecterAsync(context, AutreVehiculeId);
+        context.AccidentEvents.Add(new AccidentEvent
+        {
+            Id = 2, CompanyId = Societe, VehicleId = AutreVehiculeId, DeviceUid = string.Empty,
+            IncidentAt = new DateTime(2026, 9, 11, 8, 0, 0, DateTimeKind.Utc), Confidence = 100,
+            Origin = "manual", Status = "confirmed",
+        });
+        context.AccidentEvents.Add(new AccidentEvent
+        {
+            Id = 3, CompanyId = Societe, VehicleId = null, DeviceUid = string.Empty,
+            IncidentAt = new DateTime(2026, 9, 12, 8, 0, 0, DateTimeKind.Utc), Confidence = 100,
+            Origin = "manual", Status = "confirmed",
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var tenant = TestDbContextFactory.CreateMockTenantService(companyId: Societe, userId: ChargeSinistresId);
+        tenant.Setup(t => t.UserRoles).Returns(new[] { "user" });
+        var restreint = await new GisAPI.Application.Features.AccidentEvents.Queries.ListAccidentEventsQueryHandler(context, tenant.Object)
+            .Handle(new GisAPI.Application.Features.AccidentEvents.Queries.ListAccidentEventsQuery(), CancellationToken.None);
+        var admin = await new GisAPI.Application.Features.AccidentEvents.Queries.ListAccidentEventsQueryHandler(context, Tenant(AdminId))
+            .Handle(new GisAPI.Application.Features.AccidentEvents.Queries.ListAccidentEventsQuery(), CancellationToken.None);
+
+        restreint.Items.Select(i => i.Id).Should().Equal(2);
+        restreint.TotalCount.Should().Be(1);
+        admin.Items.Select(i => i.Id).Should().BeEquivalentTo(new[] { 1, 2, 3 });
+    }
+
+    // ── Redétection : un dossier détecté récent serait recréé par la détection ────
+
+    [Fact]
+    public async Task DossierDetecteIlYAMoinsDe30Minutes_Refuse409EtIntact()
+    {
+        using var context = CreerContexte();
+        var ev = await context.AccidentEvents.SingleAsync(e => e.Id == SinistreId);
+        ev.Origin = "auto";
+        ev.IncidentAt = DateTime.UtcNow.AddMinutes(-12);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var refus = await Assert.ThrowsAsync<ConflictException>(() =>
+            Handler(context, AdminId).Handle(new DeleteAccidentEventCommand(SinistreId, _uploadsRoot), CancellationToken.None));
+
+        refus.Message.Should().Contain("Fausse alerte");
+        context.ChangeTracker.Clear();
+        (await context.AccidentEvents.CountAsync()).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("auto", -45, false)]   // hors de la fenêtre de scan : plus de redétection
+    [InlineData("auto", -29, true)]
+    [InlineData("manual", -5, false)]  // la détection ne recrée jamais un dossier manuel
+    public void PeutEtreRedetecte_SuitLaFenetreDeScan(string origin, int minutes, bool attendu)
+    {
+        var now = new DateTime(2026, 9, 18, 14, 0, 0, DateTimeKind.Utc);
+        DeleteAccidentEventCommandHandler.PeutEtreRedetecte(origin, now.AddMinutes(minutes), now).Should().Be(attendu);
+    }
+
+    // ── Fichiers : un libellé de zone ne doit jamais faire effacer un fichier ─────
+
+    [Fact]
+    public async Task UneZoneEndommageeForgeeNEffaceAucunFichierDUnAutreDossier()
+    {
+        using var context = CreerContexte();
+        var justificatif = Path.Combine(_uploadsRoot, "invoices", "10", "facture.pdf");
+        Directory.CreateDirectory(Path.GetDirectoryName(justificatif)!);
+        File.WriteAllText(justificatif, "justificatif d'une dépense");
+
+        var ev = await context.AccidentEvents.SingleAsync(e => e.Id == SinistreId);
+        ev.DamagedZonesJson = $"[\"/uploads/accident-reports/{SinistreId}/../../invoices/10/facture.pdf\"]";
+        ev.PdfReportUrl = $"/uploads/accident-reports/{SinistreId}/../../invoices/10/facture.pdf";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var resultat = await Handler(context, AdminId).Handle(
+            new DeleteAccidentEventCommand(SinistreId, _uploadsRoot), CancellationToken.None);
+
+        resultat.DeletedFiles.Should().Be(0);
+        File.Exists(justificatif).Should().BeTrue();
+    }
+
     [Fact]
     public async Task SansReferenceCode_LeMessageCiteLeNumeroDuDossier()
     {

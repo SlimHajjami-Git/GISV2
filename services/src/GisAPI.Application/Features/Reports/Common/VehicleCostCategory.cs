@@ -107,10 +107,20 @@ public static class VehicleCostCategory
                 Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
             })
             .ToListAsync(ct);
-        return byType.Sum(t => Classify(t.Type).Sign < 0
-            ? -(t.Positive - t.Negative)
-            : t.Positive + t.Negative);
+        return byType.Sum(t => SignedFromParts(t.Type, t.Positive, t.Negative));
     }
+
+    /// <summary>
+    /// Total signé d'un type à partir de ses deux parts sommées en SQL : la somme des montants
+    /// positifs et celle des négatifs. Un crédit compte chaque ligne en valeur absolue
+    /// (<see cref="SignedAmount"/>) : appliquer le signe à la somme brute d'un type donnait
+    /// −|Σ| au lieu de −Σ|x| (+150 et −120 en avoirs : −30 au lieu de −270). Règle unique
+    /// pour le tableau de bord, /api/costs/summary et le rapport IA flotte.
+    /// </summary>
+    /// <param name="positive">Σ des montants &gt; 0 du type.</param>
+    /// <param name="negative">Σ des montants &lt; 0 du type (valeur négative ou nulle).</param>
+    public static decimal SignedFromParts(string? type, decimal positive, decimal negative) =>
+        Classify(type).Sign < 0 ? -(positive - negative) : positive + negative;
 
     public static bool IsFuel(string? type) => Classify(type).Category == CostCategory.Fuel;
     public static bool IsMaintenance(string? type) => Classify(type).Category == CostCategory.Maintenance;

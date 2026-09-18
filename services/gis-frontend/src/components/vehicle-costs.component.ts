@@ -59,6 +59,18 @@ export function costCategoryFamily(type: string | null | undefined): 'fuel' | 'm
 }
 
 /**
+ * Même règle que le serveur (POST et PUT /api/costs) : un montant doit être > 0. En
+ * modification, un montant INCHANGÉ n'est pas recontrôlé : « marquer fait » crée une
+ * dépense à 0 pour un entretien gratuit, qui doit rester corrigeable (date, description)
+ * sans inventer un montant. Un montant négatif reste toujours refusé.
+ */
+export function costAmountError(amount: number, editing: { amount?: number | string | null } | null): string | null {
+  if (amount > 0) return null;
+  const inchange = !!editing && amount === 0 && Number(editing.amount) === 0;
+  return inchange ? null : 'Le montant doit être supérieur à zéro.';
+}
+
+/**
  * Détail du plein que l'écran Coûts envoie à POST et PUT /api/costs. PUT remplace litres,
  * carburant et prix au litre par ce qu'il reçoit. Le prix au litre n'a pas de champ à
  * l'écran : il est renvoyé tel quel tant que montant et litres ne changent pas ; sinon il ne
@@ -1137,9 +1149,11 @@ export class VehicleCostsComponent implements OnInit, OnDestroy {
       this.saveError = 'Renseignez le véhicule, le type et la date.';
       return;
     }
-    // Même règle que le serveur (montant > 0) : refusé là-bas, le message se perdait.
-    if (!(amount > 0)) {
-      this.saveError = 'Le montant doit être supérieur à zéro.';
+    // Même règle que le serveur (montant > 0, 0 inchangé toléré en modification) :
+    // refusé là-bas, le message se perdait.
+    const amountError = costAmountError(amount, this.editingCost);
+    if (amountError) {
+      this.saveError = amountError;
       return;
     }
 

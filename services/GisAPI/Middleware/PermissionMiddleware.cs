@@ -414,8 +414,14 @@ public class PermissionMiddleware
             return;
         }
 
-        // Chargé pour TOUTE requête non exemptée, même quand aucune règle ne vise le chemin : c'est
-        // ce qui refuse (401) le jeton encore valide d'un utilisateur supprimé.
+        // Chargé pour toute requête NON EXEMPTÉE, même quand aucune règle ne vise le chemin : c'est
+        // ce qui refuse (401) le jeton encore valide d'un utilisateur supprimé — mais SEULEMENT
+        // ici. Les routes exemptées plus haut (hors /api dont le hub mobile /hubs/gps,
+        // _skipRoutes comme /api/dashboard, /api/notifications, /api/settings,
+        // /api/statistics, libre-service) ne passent jamais par ce chargement, pas plus
+        // qu'une connexion SignalR déjà ouverte : un jeton d'utilisateur supprimé ou
+        // désactivé y reste accepté jusqu'à son expiration (Jwt:ExpiryMinutes, 24 h par
+        // défaut). Le refresh, lui, refuse un compte absent ou inactif.
         var currentUser = await dbContext.Users
             .AsNoTracking()
             .Include(u => u.Role)

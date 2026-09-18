@@ -30,7 +30,7 @@ public class VehicleMaintenanceTests
         await context.SaveChangesAsync();
 
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
         var command = new AssignMaintenanceTemplateCommand(VehicleId: 1, TemplateId: 1);
 
         // Act
@@ -70,7 +70,7 @@ public class VehicleMaintenanceTests
         await context.SaveChangesAsync();
 
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
         var command = new AssignMaintenanceTemplateCommand(VehicleId: 1, TemplateId: 1);
 
         // Act
@@ -215,7 +215,7 @@ public class VehicleMaintenanceTests
         });
         await context.SaveChangesAsync();
 
-        var handler = new RemoveMaintenanceScheduleCommandHandler(context);
+        var handler = new RemoveMaintenanceScheduleCommandHandler(context, TestDbContextFactory.CreateMockTenantService().Object);
         var command = new RemoveMaintenanceScheduleCommand(ScheduleId: 1);
 
         // Act

@@ -29,7 +29,7 @@ public class VehicleCostConfiguration : IEntityTypeConfiguration<VehicleCost>
         builder.Property(e => e.CreatedByUserId).HasColumnName("created_by_user_id");
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
 
-        // Renouvellement de document — colonnes de la migration 047. Sans ce
+        // Renouvellement de document — colonnes de la migration 048. Sans ce
         // mapping, échéance, fournisseur et notes saisis dans la fenêtre de
         // renouvellement n'allaient nulle part et l'historique les rendait null.
         builder.Property(e => e.ExpiryDate).HasColumnName("expiry_date");

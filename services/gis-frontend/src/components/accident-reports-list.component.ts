@@ -9,6 +9,7 @@ import {
   CreateManualAccidentRequest,
 } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { peutEtreRedetecte as dossierRedetectable } from './accident-redetection';
 import { Vehicle } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
@@ -100,8 +101,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
                   <span *ngIf="!row.pdfReportUrl" class="muted">—</span>
                 </td>
                 <td class="actions-cell">
-                  <button class="btn-row" (click)="open(row); $event.stopPropagation()">Ouvrir →</button>
-                  <button class="btn-row danger" (click)="askDelete(row); $event.stopPropagation()" title="Supprimer ce dossier">Supprimer</button>
+                  <!-- Le <td> reste une cellule de tableau (bordure et alignement de la ligne) :
+                       c'est ce bloc intérieur qui aligne les deux boutons. -->
+                  <div class="row-actions">
+                    <button class="btn-row" (click)="open(row); $event.stopPropagation()">Ouvrir →</button>
+                    <button class="btn-row danger" (click)="askDelete(row); $event.stopPropagation()" title="Supprimer ce dossier">Supprimer</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -136,12 +141,13 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             </p>
             <p class="del-warn">Suppression définitive : le dossier, ses documents, ses photos et les tiers déclarés seront effacés.</p>
             <p class="del-keep">Les dépenses déjà enregistrées (réparation, remboursement d'assurance) sont <strong>conservées</strong> dans Dépenses ; elles ne seront simplement plus rattachées à ce dossier.</p>
-            <p class="del-warn" *ngIf="peutEtreRedetecte(deleteTarget)">Ce dossier vient d'une détection automatique et l'incident date de moins de 30 minutes : il peut être redétecté. Préférez « Fausse alerte » pour l'écarter définitivement.</p>
+            <p class="del-warn" *ngIf="peutEtreRedetecte(deleteTarget)">Ce dossier vient d'une détection automatique et l'incident date de moins de 30 minutes : supprimé maintenant, il serait recréé par la détection et l'alerte repartirait. Ouvrez-le et choisissez « Fausse alerte » pour l'écarter, ou supprimez-le plus tard.</p>
             <p class="del-error" *ngIf="deleteError">{{ deleteError }}</p>
           </div>
           <div class="modal-foot">
             <button class="btn-secondary" (click)="cancelDelete()" [disabled]="deleteBusy">Annuler</button>
-            <button class="btn-primary" (click)="confirmDelete()" [disabled]="deleteBusy">
+            <!-- Le serveur refuse (409) ce cas : le bouton ne le propose pas. -->
+            <button class="btn-primary" (click)="confirmDelete()" [disabled]="deleteBusy || peutEtreRedetecte(deleteTarget)">
               <span *ngIf="!deleteBusy">Supprimer définitivement</span>
               <span *ngIf="deleteBusy">Suppression…</span>
             </button>
@@ -260,7 +266,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .chip.confirmed.active { background:#16a34a; border-color:#16a34a; }
     .chip-toggle { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#64748b; }
 
-    .table-wrap { background:white; border:1px solid #e2e8f0; border-radius:8px; overflow:hidden; }
+    /* overflow-x:auto et non hidden : sur un écran étroit la table défile au lieu d'être rognée. */
+    .table-wrap { background:white; border:1px solid #e2e8f0; border-radius:8px; overflow-x:auto; }
     .acc-table { width:100%; border-collapse:collapse; font-size:12px; }
     .acc-table th { text-align:left; padding:10px 12px; background:#f8fafc; font-weight:600; color:#475569; border-bottom:1px solid #e2e8f0; }
     .acc-table td { padding:10px 12px; border-bottom:1px solid #f1f5f9; color:#0f172a; }
@@ -300,7 +307,10 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .btn-row:hover { background:#f8fafc; border-color:#3b82f6; color:#3b82f6; }
     /* Suppression : discrète tant qu'on ne la vise pas (l'écran fait 1536 px, deux boutons tiennent) */
     .btn-row.danger:hover { border-color:#dc2626; color:#dc2626; background:#fef2f2; }
-    .actions-cell { white-space:nowrap; display:flex; align-items:center; gap:6px; justify-content:flex-end; }
+    /* La cellule reste en table-cell : en display:flex elle sortait du tableau (bordure
+       basse et alignement détachés de la ligne). Le flex vit dans .row-actions. */
+    .actions-cell { white-space:nowrap; text-align:right; vertical-align:middle; }
+    .row-actions { display:inline-flex; align-items:center; gap:6px; }
 
     .empty { padding:60px 20px; text-align:center; color:#94a3b8; }
     .empty h3 { margin:12px 0 4px 0; color:#475569; font-size:14px; }
@@ -437,11 +447,10 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
    * Un accident DÉTECTÉ est reconstruit par AccidentDetectionService tant que son incident
    * reste dans la fenêtre de scan (les 25 dernières minutes) : supprimé, il réapparaît seul.
    * « Fausse alerte » garde la ligne au statut « dismissed », que la détection reconnaît.
+   * Règle partagée avec la fiche et le serveur (accident-redetection.ts).
    */
   peutEtreRedetecte(row: AccidentEventListItemDto | null): boolean {
-    if (!row || row.origin === 'manual') return false;
-    const minutes = (Date.now() - new Date(row.incidentAt).getTime()) / 60000;
-    return minutes >= 0 && minutes < 30;
+    return !!row && dossierRedetectable(row.origin, row.incidentAt);
   }
 
   askDelete(row: AccidentEventListItemDto): void {

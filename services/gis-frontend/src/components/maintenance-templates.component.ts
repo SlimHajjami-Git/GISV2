@@ -379,6 +379,9 @@ interface FlatRow {
             <div class="field-error" *ngIf="isMileageBelowVehicle()">
               Inférieur au kilométrage actuel du véhicule ({{ formatKm(markData.vehicleMileage) }}). Un compteur ne recule pas : vérifiez la valeur.
             </div>
+            <div class="field-hint" *ngIf="isMileageBelowVehicleForPastDate()">
+              Entretien antérieur : inférieur au kilométrage actuel ({{ formatKm(markData.vehicleMileage) }}), accepté s'il n'est pas sous un relevé déjà enregistré à cette date.
+            </div>
             <div class="field" *ngIf="canUseSuppliers">
               <label>Fournisseur / Garage</label>
               <select [(ngModel)]="markData.supplierId">
@@ -1390,10 +1393,33 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.isMarkSubmitting) return; // les appels en cours doivent pouvoir rendre compte de leur résultat
     this.isMarkOpen = false; this.markData = this.getEmptyMark();
   }
-  /** Même règle que le serveur (MarkMaintenanceDoneCommandHandler) : un compteur ne recule pas. */
+  /**
+   * Même règle que le serveur (MarkMaintenanceDoneCommandHandler) : un compteur ne recule pas.
+   * Bloquant seulement pour un entretien DU JOUR (ou postérieur) : le compteur courant est
+   * alors le bon plancher. Pour un entretien antidaté, le serveur compare au relevé connu à
+   * cette date — comparer au compteur courant refusait toute saisie après coup (l'entretien
+   * du 06/07 à 10 000 km saisi le 11/08 quand le boîtier affichait 18 593).
+   */
   isMileageBelowVehicle(): boolean {
+    return this.kmBelowCurrent() && !this.isMarkDatedInPast();
+  }
+
+  /** Entretien antidaté sous le compteur courant : simple avertissement, le serveur tranche. */
+  isMileageBelowVehicleForPastDate(): boolean {
+    return this.kmBelowCurrent() && this.isMarkDatedInPast();
+  }
+
+  private kmBelowCurrent(): boolean {
     const km = this.markData.mileage;
     return km != null && km !== '' && Number(km) < (this.markData.vehicleMileage ?? 0);
+  }
+
+  /** Date saisie antérieure à aujourd'hui (jour UTC, comme le serveur). */
+  isMarkDatedInPast(): boolean {
+    const date = this.markData.date;
+    if (!date) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return String(date).slice(0, 10) < today;
   }
   formatKm(km: number | null | undefined): string { return `${(km ?? 0).toLocaleString('fr-FR')} km`; }
   isMarkValid() {

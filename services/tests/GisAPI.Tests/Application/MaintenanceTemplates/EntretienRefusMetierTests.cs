@@ -79,7 +79,8 @@ public class EntretienRefusMetierTests
             Cost: 30m, SupplierId: null, Notes: null);
 
     private static DeclareFreeMaintenancesCommandHandler DeclareFreeHandler(TestGisDbContext context) =>
-        new(context, new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance));
+        new(context, new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance),
+            TestDbContextFactory.CreateMockTenantService().Object);
 
     // ── Gabarit sans intervalle ────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ public class EntretienRefusMetierTests
         using var context = await SeedAsync();
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
 
-        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler)
+        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object)
             .Handle(new AssignMaintenanceTemplateCommand(VehicleId: 20, TemplateId: 12), CancellationToken.None);
 
         // Le véhicule existe (dans une autre société) : « n'existe plus » serait faux.
@@ -173,7 +174,7 @@ public class EntretienRefusMetierTests
         using var context = await SeedAsync();
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
 
-        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler)
+        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object)
             .Handle(new AssignMaintenanceTemplateCommand(VehicleId: 404, TemplateId: 12), CancellationToken.None);
 
         await act.Should().ThrowAsync<DomainException>().WithMessage("Ce véhicule n'existe plus*");
@@ -187,7 +188,7 @@ public class EntretienRefusMetierTests
         using var context = await SeedAsync(ContexteAdministrateurSysteme(companyId: 99));
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
 
-        var id = await new AssignMaintenanceTemplateCommandHandler(context, scheduler)
+        var id = await new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object)
             .Handle(new AssignMaintenanceTemplateCommand(VehicleId: 20, TemplateId: 30), CancellationToken.None);
 
         (await context.VehicleMaintenanceSchedules.AsNoTracking().FirstAsync(s => s.Id == id))
@@ -261,7 +262,7 @@ public class EntretienRefusMetierTests
     {
         using var context = await SeedAsync();
 
-        var act = () => new UpdateFreeMaintenanceCommandHandler(context).Handle(
+        var act = () => new UpdateFreeMaintenanceCommandHandler(context, TestDbContextFactory.CreateMockTenantService().Object).Handle(
             new UpdateFreeMaintenanceCommand(47, total, remaining, "QA", null, null), CancellationToken.None);
 
         (await act.Should().ThrowAsync<DomainException>()).Which.Message.Should().Be(message);

@@ -50,6 +50,15 @@ public class UpdateInitialDamagesCommandHandler : PhaseCommandHandlerBase, IRequ
 
     public async Task<Unit> Handle(UpdateInitialDamagesCommand request, CancellationToken ct)
     {
+        // Les zones sont des LIBELLÉS (« arriere », « coffre »), jamais des chemins : une
+        // chaîne libre « /uploads/…/../… » était enregistrée telle quelle, puis relue comme
+        // un fichier à effacer à la suppression du dossier. Refus avant toute écriture.
+        if (request.DamagedZones?.Any(z => z is not null
+                && (z.Contains('/') || z.Contains('\\') || z.Contains(".."))) == true)
+            throw new DomainException(
+                "Zone endommagée invalide : une zone est un libellé (par exemple « arrière » ou "
+                + "« coffre »), sans « / », « \\ » ni « .. ». Aucune modification n'a été enregistrée.");
+
         var ev = await LoadConfirmedAsync(request.AccidentEventId, ct);
         ev.InitialDescription = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim();
         ev.InitialSeverity = NormaliseSeverity(request.Severity);
@@ -176,6 +185,12 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
                 description: $"Réparation accident — {ev.ReferenceCode ?? $"#{ev.Id}"}",
                 ct: ct);
         }
+        else
+        {
+            // Coût effacé : la dépense créée par un enregistrement précédent ne décrit
+            // plus rien et resterait comptée dans tous les totaux.
+            await RemoveVehicleCostAsync(ev, "repair", ct);
+        }
 
         await Context.SaveChangesAsync(ct);
         return Unit.Value;
@@ -223,7 +238,7 @@ public class RegisterClaimCommandHandler : PhaseCommandHandlerBase, IRequestHand
         // Auto-sync: upsert VehicleCost("insurance_refund") if approved > 0
         // and vehicle known. The refund row is positive amount but the
         // /depenses UI renders it as a credit (green).
-        if (request.ApprovedAmount is > 0 && ev.VehicleId.HasValue)
+        if (request.ApprovedAmount is > 0 && claimStatus != "rejected" && ev.VehicleId.HasValue)
         {
             await UpsertVehicleCostAsync(
                 ev,
@@ -232,6 +247,13 @@ public class RegisterClaimCommandHandler : PhaseCommandHandlerBase, IRequestHand
                 date: ev.ClaimSubmittedAt,
                 description: $"Remboursement assurance — {ev.ClaimNumber ?? ev.ReferenceCode ?? $"#{ev.Id}"}",
                 ct: ct);
+        }
+        else
+        {
+            // Montant approuvé vidé ou sinistre rejeté : le remboursement enregistré avant
+            // n'existe plus. Le crédit est déduit de tous les totaux de coûts (tableau de
+            // bord, rapports, IA) : laissé en base, il les minorait sans contrepartie.
+            await RemoveVehicleCostAsync(ev, "insurance_refund", ct);
         }
 
         await Context.SaveChangesAsync(ct);
@@ -485,6 +507,29 @@ public abstract class PhaseCommandHandlerBase
         Logger.LogInformation(
             "Phase auto-sync: inserted VehicleCost for accident {Accident} (type={Type}, amount={Amount})",
             ev.Id, type, amount);
+    }
+
+    /// <summary>
+    /// Retire la dépense qu'une phase avait créée pour ce sinistre, quand son montant
+    /// est effacé (ou le sinistre rejeté). Même clé que l'upsert :
+    /// <c>(VehicleId, AccidentEventId, Type)</c>. Ne touche qu'aux lignes liées au
+    /// dossier — jamais une dépense saisie à la main.
+    /// </summary>
+    protected async Task RemoveVehicleCostAsync(AccidentEvent ev, string type, CancellationToken ct)
+    {
+        if (!ev.VehicleId.HasValue) return;
+
+        var existing = await Context.VehicleCosts
+            .Where(c => c.AccidentEventId == ev.Id
+                     && c.Type == type
+                     && c.VehicleId == ev.VehicleId.Value)
+            .ToListAsync(ct);
+        if (existing.Count == 0) return;
+
+        Context.VehicleCosts.RemoveRange(existing);
+        Logger.LogInformation(
+            "Phase auto-sync: removed {Count} VehicleCost(s) for accident {Accident} (type={Type}) — amount cleared",
+            existing.Count, ev.Id, type);
     }
 
     protected static string? NormaliseSeverity(string? raw)

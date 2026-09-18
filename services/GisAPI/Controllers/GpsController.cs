@@ -1215,7 +1215,16 @@ public class GpsController : ControllerBase
                 c.Source,
                 c.Attempts,
                 c.ErrorMessage,
-                userName = c.User != null ? c.User.FirstName + " " + c.User.LastName : "Système"
+                // Sous-requête facultative, pas la navigation : DeviceCommand.User est une
+                // relation REQUISE (user_id int), traduite en INNER JOIN filtré par société.
+                // Les commandes système (user_id = 0), celles d'un expéditeur d'une autre
+                // société et celles d'un compte supprimé (device_commands.user_id n'a pas de
+                // clé étrangère, UserDeletionHelper ne la voit pas) disparaissaient de
+                // l'historique au lieu d'afficher « Système ».
+                userName = _context.Users.IgnoreQueryFilters()
+                    .Where(u => u.Id == c.UserId)
+                    .Select(u => u.FirstName + " " + u.LastName)
+                    .FirstOrDefault() ?? "Système"
             })
             .ToListAsync();
 

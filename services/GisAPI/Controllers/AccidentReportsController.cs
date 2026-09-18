@@ -154,7 +154,9 @@ public class AccidentReportsController : ControllerBase
     /// enregistrées restent dans Dépenses, simplement détachées du dossier.
     /// Garde propre à la route : ce contrôleur n'est visé par aucune clé du
     /// PermissionMiddleware, la commande refuse donc elle-même (403) un compte
-    /// sans droit Sinistres ni statut d'administrateur.
+    /// sans droit Sinistres ni statut d'administrateur, répond 404 hors de la
+    /// portée véhicules de l'appelant, et 409 pour un dossier détecté il y a
+    /// moins de 30 minutes (la détection le recréerait).
     /// </summary>
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Delete(int id, CancellationToken ct)
@@ -172,8 +174,10 @@ public class AccidentReportsController : ControllerBase
             });
         }
         catch (NotFoundException) { return NotFound(new { message = "Dossier de sinistre introuvable." }); }
-        // Avant DomainException : ForbiddenAccessException en hérite, l'ordre fait le code HTTP.
+        // Avant DomainException : ForbiddenAccessException et ConflictException en héritent,
+        // l'ordre fait le code HTTP.
         catch (ForbiddenAccessException ex) { return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message }); }
+        catch (ConflictException ex) { return Conflict(new { message = ex.Message }); }
         catch (DomainException ex) { return BadRequest(new { message = ex.Message }); }
     }
 

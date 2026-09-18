@@ -81,6 +81,28 @@ public class UserDeletionGardesTests
         (await ctx.Users.AsNoTracking().AnyAsync(u => u.Id == TargetId)).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Revue de l'intégration du 18/09/2026 : un administrateur suspendu (ou en attente) ne
+    /// peut pas se connecter ; il ne sauve donc pas la société de se retrouver sans
+    /// administrateur.
+    /// </summary>
+    [Theory]
+    [InlineData("suspended")]
+    [InlineData("pending")]
+    public async Task Un_administrateur_qui_ne_peut_pas_se_connecter_ne_compte_pas_comme_restant(string statut)
+    {
+        await using var ctx = await SeedAsync(targetRole: AdminRole, otherRole: AdminRole);
+        var autre = await ctx.Users.SingleAsync(u => u.Id == OtherId);
+        autre.Status = statut;
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Delete(ctx).Should().ThrowAsync<DomainException>()
+            .WithMessage("Impossible de supprimer le dernier administrateur de la société");
+
+        (await ctx.Users.AsNoTracking().AnyAsync(u => u.Id == TargetId)).Should().BeTrue();
+    }
+
     [Fact]
     public async Task Un_compte_systeme_n_est_pas_supprime_par_un_gestionnaire_de_societe()
     {

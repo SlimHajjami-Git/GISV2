@@ -37,7 +37,7 @@ public class GetRenewalHistoryQueryHandler : IRequestHandler<GetRenewalHistoryQu
             c.Date,
             c.ExpiryDate,
             c.DocumentNumber,
-            // Le fournisseur a sa propre colonne (migration 047). La description
+            // Le fournisseur a sa propre colonne (migration 048). La description
             // est un libellé libre (« Renouvellement Assurance - X ») affiché tel
             // quel dans les dépenses : la servir comme fournisseur donnait
             // « Renouvellement Assurance - QA-Assureur » dans l'historique. Les

@@ -852,52 +852,21 @@ public class DashboardController : ControllerBase
     }
 
     [HttpGet("cost-summary")]
-    public async Task<ActionResult> GetCostSummary([FromQuery] string period = "month")
+    public async Task<ActionResult> GetCostSummary([FromQuery] string period = "month", CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
         var now = DateTime.UtcNow;
         var (periodStart, periodEnd, _, _) = GetPeriodRange(now, period);
 
-        // 1. Carburant: from FuelEntries (manual fuel invoices/fill-ups)
-        var fuelCost = await _context.FuelEntries
-            .AsNoTracking()
-            .Where(f => f.CompanyId == companyId && f.InvoiceDate >= periodStart && f.InvoiceDate <= periodEnd)
-            .Select(f => (decimal?)f.TotalAmount).SumAsync() ?? 0m;
-
-        // Also add VehicleCosts type='fuel' (legacy manual cost entries)
-        fuelCost += await _context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= periodStart && c.Date <= periodEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-
-        // 2. Entretiens: from MaintenanceLogs (completed scheduled maintenance)
-        var maintenanceCost = await _context.MaintenanceLogs
-            .AsNoTracking()
-            .Where(m => m.Vehicle!.CompanyId == companyId && m.DoneDate >= periodStart && m.DoneDate <= periodEnd && m.ActualCost > 0)
-            .Select(m => (decimal?)m.ActualCost).SumAsync() ?? 0m;
-
-        // Also add VehicleCosts type='maintenance'
-        maintenanceCost += await _context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "maintenance" && c.Date >= periodStart && c.Date <= periodEnd)
-            .Select(c => (decimal?)c.Amount).SumAsync() ?? 0m;
-
-        // 3. Réparations: from Repairs table (SocieteId = companyId)
-        // Une réparation annulée n'est pas un coût : les rapports de coûts et le tableau de
-        // bord GPA l'écartent déjà, cette synthèse l'additionnait encore. Casse et espaces
-        // ignorés : des statuts anciens « Cancelled » restent en base.
-        var repairCost = await _context.Repairs
-            .AsNoTracking()
-            .Where(r => r.SocieteId == companyId && r.RepairDate >= periodStart && r.RepairDate <= periodEnd
-                && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
-            .Select(r => (decimal?)r.TotalCost).SumAsync() ?? 0m;
-
-        // 4. Autres: remaining VehicleCosts (insurance, tax, toll, parking, fine, other)
-        // Avoir et remboursement d'assurance y sont DÉDUITS, comme dans les rapports de coûts.
-        var otherCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd
-                && c.Type != "fuel" && c.Type != "maintenance"));
+        // Même définition que le tableau de bord (DashboardService.PeriodCostsAsync), dans la
+        // portée de l'appelant. Cette synthèse recalculait ses postes à part : chaque
+        // « marquer fait » crée un MaintenanceLog ET sa dépense vehicle_costs, et les deux
+        // étaient additionnés — l'entretien comptait double (HERTZ, T3 2026 : 20 174 au lieu
+        // de 10 087) ; une dépense « repair » ou « entretien » tombait en Autres, et aucune
+        // portée véhicule n'était appliquée.
+        var scopeIds = await AccessibleVehicleIdsAsync(ct);
+        var (fuelCost, maintenanceCost, repairCost, otherCost) =
+            await DashboardService.PeriodCostsAsync(_context, companyId, scopeIds, periodStart, periodEnd, ct);
 
         var grandTotal = fuelCost + maintenanceCost + repairCost + otherCost;
 

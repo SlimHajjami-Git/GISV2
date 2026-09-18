@@ -49,9 +49,12 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
         var isCompanyAdmin = role?.IsCompanyAdmin == true || user.AccessLevel == "admin";
         if (isCompanyAdmin)
         {
+            // Un administrateur restant doit pouvoir se CONNECTER : LoginCommandHandler refuse
+            // tout compte dont le statut n'est pas « active ». Un admin suspendu ou en attente
+            // ne sauvait pas la société de se retrouver sans administrateur.
             var otherAdmin = await _context.Users
                 .AsNoTracking()
-                .AnyAsync(u => u.CompanyId == companyId && u.Id != user.Id
+                .AnyAsync(u => u.CompanyId == companyId && u.Id != user.Id && u.Status == "active"
                             && (u.AccessLevel == "admin" || u.Role.IsCompanyAdmin), ct);
             if (!otherAdmin)
                 throw new DomainException("Impossible de supprimer le dernier administrateur de la société");

@@ -33,6 +33,8 @@ public class AiChatController : ControllerBase
 
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+    // Même définition que DashboardController et VehicleScope.SeesWholeFleet (rôles du jeton).
+    private bool IsAdminUser() => User.IsInRole("company_admin") || User.IsInRole("admin") || User.IsInRole("super_admin") || User.IsInRole("system_admin");
 
     /// <summary>
     /// Send a message to the AI diagnostic assistant for a specific vehicle
@@ -756,44 +758,81 @@ public class AiChatController : ControllerBase
         };
         var periodStart = DateTime.SpecifyKind(now.AddDays(-periodDays).Date, DateTimeKind.Utc);
 
+        var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
+
         // ── Company info ──
         var company = await _context.Societes.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == companyId);
 
-        // ── Vehicles + health scores ──
-        var vehicles = await _context.Vehicles.AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync();
+        // ── Portée véhicules ──
+        // /api/ai-chat/fleet-report n'exige que le droit « Rapport IA flotte » : un employé
+        // restreint à quelques véhicules recevait l'analyse (coûts, plaques, santé) de tout
+        // le parc. Même portée que le tableau de bord : null = tout le parc (admin).
+        var scopeIds = await DashboardService.ScopeIdsAsync(_context, IsAdminUser(), GetUserId(), ct);
 
-        var healthScores = await _healthService.CalculateAllScoresAsync(companyId);
+        // ── Vehicles + health scores ──
+        var vehiclesQuery = _context.Vehicles.AsNoTracking().Where(v => v.CompanyId == companyId);
+        if (scopeIds is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scopeIds.Contains(v.Id));
+        var vehicles = await vehiclesQuery.ToListAsync(ct);
+        var vehicleIds = vehicles.Select(v => v.Id).ToList();
+        var vehicleIdSet = vehicleIds.ToHashSet();
+
+        var healthScores = (await _healthService.CalculateAllScoresAsync(companyId))
+            .Where(h => scopeIds is null || vehicleIdSet.Contains(h.VehicleId))
+            .ToList();
         var healthMap = healthScores.ToDictionary(h => h.VehicleId);
 
         // ── Trips data ──
-        var trips = await _context.Trips.AsNoTracking()
-            .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.Status == "completed")
-            .ToListAsync();
+        var tripsQuery = _context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.Status == "completed");
+        if (scopeIds is not null)
+            tripsQuery = tripsQuery.Where(t => scopeIds.Contains(t.VehicleId));
+        var trips = await tripsQuery.ToListAsync(ct);
         var tripsByVehicle = trips.GroupBy(t => t.VehicleId).ToDictionary(g => g.Key, g => g.ToList());
 
         // ── Costs data ──
-        // Ventilation partagée VehicleCostCategory, celle du tableau de bord et des rapports
-        // de coûts : avoir et remboursement d'assurance y sont DÉDUITS. Additionnés bruts,
-        // ils gonflaient les coûts transmis à l'assistant du montant remboursé. Une somme
-        // par véhicule et par type en SQL : le détail des dépenses n'est jamais chargé.
-        var costRows = await _context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart)
+        // Les postes viennent de LA MÊME agrégation que le tableau de bord
+        // (DashboardService.PeriodCostsAsync) : pleins saisis (fuel_entries), dépenses
+        // vehicle_costs ventilées par VehicleCostCategory (avoir et remboursement DÉDUITS)
+        // et réparations non annulées (table repairs). Le rapport ne lisait que
+        // vehicle_costs : pour un client qui saisit ses pleins, il annonçait « Coûts 0 »
+        // (SGF, 30 jours : 5 856 de carburant au tableau de bord, 0 ici).
+        var (totalFuelCost, totalMaintCost, totalRepairCost, totalOtherCost) =
+            await DashboardService.PeriodCostsAsync(_context, companyId, scopeIds, periodStart, now, ct);
+        var netCost = totalFuelCost + totalMaintCost + totalRepairCost + totalOtherCost;
+
+        // Coût par véhicule, mêmes sources : sommes par véhicule en SQL, jamais le détail.
+        var fuelEntriesQuery = _context.FuelEntries.AsNoTracking()
+            .Where(f => f.CompanyId == companyId && f.VehicleId != null
+                        && f.InvoiceDate >= periodStart && f.InvoiceDate <= now);
+        var vehicleCostsQuery = _context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= now);
+        if (scopeIds is not null)
+        {
+            fuelEntriesQuery = fuelEntriesQuery.Where(f => scopeIds.Contains(f.VehicleId!.Value));
+            vehicleCostsQuery = vehicleCostsQuery.Where(c => scopeIds.Contains(c.VehicleId));
+        }
+        var fuelEntriesByVehicle = (await fuelEntriesQuery
+                .GroupBy(f => f.VehicleId!.Value)
+                .Select(g => new { VehicleId = g.Key, Amount = g.Sum(f => f.TotalAmount) })
+                .ToListAsync(ct))
+            .ToDictionary(r => r.VehicleId, r => r.Amount);
+        var costRows = await vehicleCostsQuery
             .GroupBy(c => new { c.VehicleId, c.Type })
-            .Select(g => new { g.Key.VehicleId, g.Key.Type, Amount = g.Sum(c => c.Amount) })
-            .ToListAsync();
-        var costs = costRows
-            .Select(c => (c.VehicleId, Category: VehicleCostCategory.Classify(c.Type).Category,
-                          Amount: VehicleCostCategory.SignedAmount(c.Type, c.Amount)))
-            .ToList();
-        var costsByVehicle = costs.GroupBy(c => c.VehicleId).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
-        decimal CategoryCost(CostCategory category) => costs.Where(c => c.Category == category).Sum(c => c.Amount);
-        var netCost = costs.Sum(c => c.Amount);
+            .Select(g => new
+            {
+                g.Key.VehicleId,
+                g.Key.Type,
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m)
+            })
+            .ToListAsync(ct);
+        var vehicleCostsByVehicle = costRows
+            .GroupBy(c => c.VehicleId)
+            .ToDictionary(g => g.Key, g => g.Sum(c => VehicleCostCategory.SignedFromParts(c.Type, c.Positive, c.Negative)));
 
         // ── Maintenance & Repairs ──
-        var vehicleIds = vehicles.Select(v => v.Id).ToList();
         var maintenance = await _context.MaintenanceRecords.AsNoTracking()
             .Where(m => vehicleIds.Contains(m.VehicleId) && m.Date >= periodStart)
             .ToListAsync();
@@ -801,9 +840,16 @@ public class AiChatController : ControllerBase
         // par véhicule transmis à l'assistant, alors que les rapports de coûts les excluent.
         // Casse et espaces ignorés : des statuts anciens « Cancelled » restent en base.
         var repairs = await _context.Repairs.AsNoTracking()
-            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= periodStart
+            .Where(r => vehicleIds.Contains(r.VehicleId) && r.RepairDate >= periodStart && r.RepairDate <= now
                      && r.Status.Trim().ToLower() != RepairInputRules.Cancelled)
             .ToListAsync();
+
+        // Coût total par véhicule : pleins + dépenses (crédits déduits) + réparations.
+        var costsByVehicle = vehicleIds.ToDictionary(
+            id => id,
+            id => fuelEntriesByVehicle.GetValueOrDefault(id)
+                  + vehicleCostsByVehicle.GetValueOrDefault(id)
+                  + repairs.Where(r => r.VehicleId == id).Sum(r => r.TotalCost));
 
         // ── Alerts ──
         var alertsByVehicle = await _context.GpsAlerts.AsNoTracking()
@@ -828,18 +874,17 @@ public class AiChatController : ControllerBase
             f => f.AvgRate);
 
         // ── Scheduled maintenance status ──
-        var schedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive)
+        var schedulesQuery = _context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive);
+        if (scopeIds is not null)
+            schedulesQuery = schedulesQuery.Where(s => scopeIds.Contains(s.VehicleId));
+        var schedules = await schedulesQuery
             .Include(s => s.Template)
             .ToListAsync();
 
         // ══════════ BUILD CHART DATA ══════════
+        // totalOtherCost est net des crédits : négatif si les avoirs dépassent les autres frais.
         var totalDistance = trips.Sum(t => t.DistanceKm);
-        var totalFuelCost = CategoryCost(CostCategory.Fuel);
-        var totalMaintCost = CategoryCost(CostCategory.Maintenance);
-        var totalRepairCost = CategoryCost(CostCategory.Repair);
-        // Net des crédits, négatif si les avoirs dépassent les autres frais.
-        var totalOtherCost = CategoryCost(CostCategory.Other);
 
         // Health distribution
         var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
@@ -1068,7 +1113,13 @@ Calendrier recommandé pour les 3 prochains mois.";
 
         var companyId = GetCompanyId();
         var company = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId);
-        var vehicles = await _context.Vehicles.AsNoTracking().Where(v => v.CompanyId == companyId).ToListAsync();
+        // Même portée que le rapport : un employé restreint ne reçoit que ses véhicules.
+        var scopeIds = await DashboardService.ScopeIdsAsync(_context, IsAdminUser(), GetUserId(),
+            HttpContext?.RequestAborted ?? CancellationToken.None);
+        var vehiclesQuery = _context.Vehicles.AsNoTracking().Where(v => v.CompanyId == companyId);
+        if (scopeIds is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scopeIds.Contains(v.Id));
+        var vehicles = await vehiclesQuery.ToListAsync();
 
         var sb = new StringBuilder();
         sb.AppendLine("Tu es un expert en gestion de flotte et consultant TCO. L'utilisateur pose une question de suivi sur le rapport de flotte.");

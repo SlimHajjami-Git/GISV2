@@ -338,7 +338,8 @@ public class CostsController : ControllerBase
             .Select(g => new
             {
                 Type = g.Key,
-                Total = g.Sum(c => c.Amount),
+                Positive = g.Sum(c => c.Amount > 0 ? c.Amount : 0m),
+                Negative = g.Sum(c => c.Amount < 0 ? c.Amount : 0m),
                 Count = g.Count(),
                 Liters = g.Sum(c => c.Liters ?? 0m)
             })
@@ -347,8 +348,9 @@ public class CostsController : ControllerBase
         // Avoir fournisseur et remboursement d'assurance : stockés en positif, ce sont
         // des crédits (décision du 16/09/2026). La somme brute les AJOUTAIT au total,
         // qui contredisait alors l'écran Dépenses, le tableau de bord et les rapports.
+        // Signe appliqué ligne à ligne (parts positive et négative), comme l'écran.
         var costs = byType
-            .Select(t => new { t.Type, Total = VehicleCostCategory.SignedAmount(t.Type, t.Total), t.Count })
+            .Select(t => new { t.Type, Total = VehicleCostCategory.SignedFromParts(t.Type, t.Positive, t.Negative), t.Count })
             .ToList();
 
         // Litres des pleins selon la ventilation des rapports : un plein ancien « carburant »
@@ -460,6 +462,9 @@ public class CostsController : ControllerBase
         // relu à 45,68 × 2,21 donnait 100,95 — renvoyer le plein tel quel pour corriger sa
         // description en aurait changé le montant.
         var fuelDetailChanged = updated.Liters != cost.Liters || updated.PricePerLiter != cost.PricePerLiter;
+        // Montant d'origine : une dépense à 0 écrite par l'application (entretien gratuit,
+        // « marquer fait ») doit rester modifiable (date, description…) sans inventer un montant.
+        var originalAmount = cost.Amount;
 
         cost.Type = type;
         cost.Description = updated.Description;
@@ -479,8 +484,26 @@ public class CostsController : ControllerBase
         }
 
         // Même contrôle que la création (DEF-050) ; rien n'est enregistré en cas de refus.
-        if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
+        // Un montant INCHANGÉ n'est pas recontrôlé : « marquer fait » crée volontairement une
+        // dépense à 0 pour un entretien gratuit, qui ne pouvait plus être corrigée (date,
+        // description). Un montant négatif reste toujours refusé.
+        if ((cost.Amount != originalAmount || cost.Amount < 0)
+            && VehicleCostRules.AmountError(cost.Amount) is { } amountError)
             return BadRequest(new { message = amountError });
+
+        // Le journal d'entretien lié (MaintenanceLog.CostId) suit la dépense : l'historique
+        // Entretiens (écran, total et PDF) lit ActualCost / DoneDate / DoneKm. Corrigée ici
+        // seule, la dépense divergeait de l'historique. MaintenanceLog n'a pas de filtre
+        // société, mais la dépense vient d'être chargée dans la portée de l'appelant.
+        var linkedLogs = await _context.MaintenanceLogs
+            .Where(m => m.CostId == cost.Id)
+            .ToListAsync(ct);
+        foreach (var log in linkedLogs)
+        {
+            log.ActualCost = cost.Amount;
+            log.DoneDate = cost.Date;
+            if (cost.Mileage is > 0) log.DoneKm = cost.Mileage.Value;
+        }
 
         await _context.SaveChangesAsync(ct);
 

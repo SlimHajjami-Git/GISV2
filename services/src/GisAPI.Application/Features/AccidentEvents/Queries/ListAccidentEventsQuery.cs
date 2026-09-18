@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -87,6 +88,14 @@ public class ListAccidentEventsQueryHandler : IRequestHandler<ListAccidentEvents
         var query = _context.AccidentEvents
             .AsNoTracking()
             .Where(e => e.CompanyId == companyId);
+
+        // Même portée que la fiche (GetAccidentReportQueryHandler) : un employé restreint
+        // voyait dans la liste la plaque, le lieu et le coût des sinistres de tout le parc,
+        // avec un bouton « Supprimer » sur des dossiers qu'il ne pouvait même pas ouvrir.
+        // Un dossier sans véhicule reste réservé aux administrateurs, comme la fiche.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (scope is not null)
+            query = query.Where(e => e.VehicleId != null && scope.Contains(e.VehicleId.Value));
 
         if (!request.IncludeDismissed)
             query = query.Where(e => e.Status != "dismissed");

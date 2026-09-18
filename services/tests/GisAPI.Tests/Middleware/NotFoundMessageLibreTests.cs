@@ -159,7 +159,7 @@ public class NotFoundMessageLibreTests
                 new MarkMaintenanceDoneCommand(VehiculeEtranger, 12, Jour, 90_000, 30m, null, null),
                 CancellationToken.None), EntretienVehiculeIntrouvable),
             ("déclarer des entretiens gratuits", () => new DeclareFreeMaintenancesCommandHandler(
-                    ctx, new MaintenanceSchedulerService(ctx, NullLogger<MaintenanceSchedulerService>.Instance))
+                    ctx, new MaintenanceSchedulerService(ctx, NullLogger<MaintenanceSchedulerService>.Instance), tenant)
                 .Handle(new DeclareFreeMaintenancesCommand(VehiculeEtranger, 12, 1, null, null, null), CancellationToken.None),
                 EntretienVehiculeIntrouvable),
         };

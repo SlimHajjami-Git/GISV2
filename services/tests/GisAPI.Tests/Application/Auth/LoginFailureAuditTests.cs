@@ -219,6 +219,14 @@ public class LoginFailureAuditTests
             new LoginCommand("karim.hajjami@gmail.com", "faux-1", Ip, UserAgent), CancellationToken.None);
         await act.Should().ThrowAsync<DomainException>();
 
+        // L'écran Employés ne supprime que les fiches employé (EmployeeRole renseigné).
+        if (ecran == "employés")
+        {
+            ctx.ChangeTracker.Clear();
+            (await ctx.Users.SingleAsync(u => u.Id == 42)).EmployeeRole = "driver";
+            await ctx.SaveChangesAsync();
+        }
+
         ctx.ChangeTracker.Clear();
         await ctx.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
 

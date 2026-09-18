@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
@@ -26,6 +27,9 @@ namespace GisAPI.Application.Features.AccidentEvents.Commands;
 ///   <item>La route <c>/api/accident-reports</c> n'est couverte par aucune clé du
 ///     PermissionMiddleware : la suppression porte donc sa propre garde (admin de
 ///     société ou droit Sinistres), sinon 403.</item>
+///   <item>Portée véhicules : on ne supprime que ce qu'on peut ouvrir (404 sinon).</item>
+///   <item>Un dossier détecté il y a moins de 30 minutes est refusé (409) : la
+///     détection le recréerait. « Fausse alerte » est le bon geste.</item>
 /// </list>
 ///
 /// <paramref name="UploadsRoot"/> est le dossier physique servi sous <c>/uploads</c>
@@ -70,34 +74,55 @@ public class DeleteAccidentEventCommandHandler : IRequestHandler<DeleteAccidentE
 
         await EnsureCanDeleteAsync(companyId, ct);
 
-        // Société de l'appelant seulement : un dossier d'une autre société est introuvable.
-        var ev = await _context.AccidentEvents
+        // Société de l'appelant, puis portée véhicules : la même règle que la fiche
+        // (GetAccidentReportQueryHandler). Un employé restreint à quelques véhicules
+        // recevait 404 en ouvrant le dossier d'un autre véhicule mais pouvait le
+        // SUPPRIMER (revue de l'intégration du 18/09/2026). Hors portée = introuvable,
+        // même réponse qu'un dossier inexistant ; un dossier sans véhicule n'est
+        // visible, donc supprimable, que par un administrateur.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+        var query = _context.AccidentEvents
             .Include(e => e.Documents)
             .Include(e => e.ThirdParties)
-            .FirstOrDefaultAsync(e => e.Id == request.AccidentEventId && e.CompanyId == companyId, ct)
+            .Where(e => e.Id == request.AccidentEventId && e.CompanyId == companyId);
+        if (scope is not null)
+            query = query.Where(e => e.VehicleId != null && scope.Contains(e.VehicleId.Value));
+
+        var ev = await query.FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("Dossier de sinistre introuvable.");
+
+        // Un dossier DÉTECTÉ reste dans la fenêtre de scan d'AccidentDetectionService
+        // (trames de 10 à 25 minutes) : supprimé, il serait recréé sous un nouvel id au
+        // scan suivant, et la notification et l'e-mail d'alerte repartiraient vers toute
+        // la société. « Fausse alerte » garde la ligne au statut dismissed, que la
+        // détection reconnaît. Refus (409) avant toute écriture.
+        if (PeutEtreRedetecte(ev.Origin, ev.IncidentAt, DateTime.UtcNow))
+            throw new ConflictException(
+                "Ce dossier a été détecté automatiquement il y a moins de "
+                + $"{FenetreRedetectionMinutes} minutes : supprimé maintenant, il serait recréé par la détection "
+                + "et l'alerte repartirait. Utilisez « Fausse alerte » pour l'écarter, ou supprimez-le plus tard.");
 
         var reference = ev.ReferenceCode is { Length: > 0 } code ? code : $"#{ev.Id}";
 
         // Fichiers relevés AVANT la suppression des lignes : après, plus rien ne les
         // référencerait et ils resteraient sur le disque du nœud. Les zones endommagées
-        // ne portent que des libellés ("arriere", "coffre") : la ligne ne couvre qu'une
-        // photo qui y aurait été insérée à la main, les pièces vivent dans Documents.
+        // ne sont PAS lues : ce sont des libellés ("arriere", "coffre") saisis par le
+        // client, jamais des fichiers — les y chercher permettait d'effacer un fichier
+        // d'un autre dossier (« …/12/../../invoices/… »). Les pièces vivent dans Documents.
         var fichiers = new List<string>();
         fichiers.AddRange(ResetCompanyDataCommandHandler.ExtractUploadPaths(ev.PdfReportUrl));
-        fichiers.AddRange(ResetCompanyDataCommandHandler.ExtractUploadPaths(ev.DamagedZonesJson));
         foreach (var doc in ev.Documents)
             fichiers.AddRange(ResetCompanyDataCommandHandler.ExtractUploadPaths(doc.FileUrl));
 
         // Même garde que la suppression d'un document unitaire : on n'efface que sous le
         // dossier de CE sinistre. Un chemin venu d'ailleurs est signalé, jamais supprimé.
         var prefixe = $"/uploads/accident-reports/{ev.Id}/";
-        var horsDossier = fichiers.Where(f => !f.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase)).ToList();
+        var horsDossier = fichiers.Where(f => !EstDansLeDossier(f, prefixe)).ToList();
         if (horsDossier.Count > 0)
             _logger.LogWarning(
                 "Sinistre #{AccidentId} : {Count} fichier(s) hors de {Prefixe} conservés sur le disque : {Fichiers}",
                 ev.Id, horsDossier.Count, prefixe, string.Join(", ", horsDossier));
-        fichiers = fichiers.Where(f => f.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase)).ToList();
+        fichiers = fichiers.Where(f => EstDansLeDossier(f, prefixe)).ToList();
 
         // L'argent reste : la dépense de réparation ou le remboursement d'assurance
         // survit au dossier, simplement détaché. C'est aussi ce que ferait la base
@@ -136,6 +161,35 @@ public class DeleteAccidentEventCommandHandler : IRequestHandler<DeleteAccidentE
 
         return new DeleteAccidentEventResult(
             ev.Id, reference, documents, tiers, notifications.Count, couts.Count, fichiersSupprimes);
+    }
+
+    /// <summary>
+    /// Fenêtre pendant laquelle un dossier détecté peut être recréé : la détection relit
+    /// les trames jusqu'à 25 minutes en arrière, plus une marge. Même valeur que l'écran
+    /// (liste et fiche des sinistres, <c>peutEtreRedetecte</c>).
+    /// </summary>
+    public const int FenetreRedetectionMinutes = 30;
+
+    /// <summary>Dossier automatique dont l'incident est encore dans la fenêtre de scan.</summary>
+    public static bool PeutEtreRedetecte(string? origin, DateTime incidentAtUtc, DateTime nowUtc)
+    {
+        if (string.Equals(origin, "manual", StringComparison.OrdinalIgnoreCase)) return false;
+        var age = nowUtc - incidentAtUtc;
+        return age >= TimeSpan.Zero && age < TimeSpan.FromMinutes(FenetreRedetectionMinutes);
+    }
+
+    /// <summary>
+    /// Le fichier est-il bien SOUS le dossier de ce sinistre ? Un simple StartsWith sur la
+    /// chaîne brute laissait passer « /uploads/accident-reports/12/../../invoices/x.pdf »,
+    /// que Path.GetFullPath résout hors du dossier. On refuse donc tout segment « . » ou
+    /// « .. » et tout séparateur Windows après le préfixe.
+    /// </summary>
+    internal static bool EstDansLeDossier(string url, string prefixe)
+    {
+        if (!url.StartsWith(prefixe, StringComparison.OrdinalIgnoreCase)) return false;
+        var reste = url[prefixe.Length..].Split('?')[0];
+        if (reste.Length == 0 || reste.Contains('\\')) return false;
+        return reste.Split('/').All(segment => segment.Length > 0 && segment != "." && segment != "..");
     }
 
     /// <summary>

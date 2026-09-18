@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -48,5 +49,38 @@ public static class VehicleScope
             .Where(uv => uv.UserId == userId)
             .Select(uv => uv.VehicleId)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// L'appelant peut-il écrire sur ce véhicule ? Même règle que la lecture :
+    /// un administrateur écrit sur tout le parc, un employé restreint seulement
+    /// sur ses véhicules. Les écritures (réparations, pleins, entretiens,
+    /// sinistres) ne filtraient que par société, alors que POST /api/costs
+    /// appliquait déjà la portée : un employé limité au véhicule A pouvait
+    /// imputer une réparation au véhicule B en forgeant l'appel.
+    /// </summary>
+    public static async Task<bool> CanAccessVehicleAsync(
+        IGisDbContext context,
+        ICurrentTenantService tenant,
+        int vehicleId,
+        CancellationToken ct)
+    {
+        var scope = await AccessibleVehicleIdsAsync(context, tenant, ct);
+        return scope is null || scope.Contains(vehicleId);
+    }
+
+    /// <summary>
+    /// Refuse l'écriture sur un véhicule hors portée par un 404 : même réponse
+    /// qu'un véhicule inexistant, pour ne jamais révéler qu'il existe.
+    /// </summary>
+    public static async Task EnsureCanWriteAsync(
+        IGisDbContext context,
+        ICurrentTenantService tenant,
+        int vehicleId,
+        string notFoundMessage,
+        CancellationToken ct)
+    {
+        if (!await CanAccessVehicleAsync(context, tenant, vehicleId, ct))
+            throw new NotFoundException(notFoundMessage);
     }
 }

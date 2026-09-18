@@ -88,7 +88,7 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
             Date = paymentDateUtc,
             // Toute la saisie de la fenêtre de renouvellement est conservée :
             // échéance, fournisseur et notes ont leur colonne depuis la migration
-            // 047 ; le numéro de police et le justificatif vont dans
+            // 048 ; le numéro de police et le justificatif vont dans
             // receipt_number / receipt_url, les colonnes de cette nature. Avant
             // cela, seule la description restait — la saisie disparaissait sans
             // message et l'historique rendait la description comme fournisseur.
@@ -257,7 +257,7 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
     /// <summary>
     /// Fournisseur d'une dépense de document dont la colonne provider est vide.
-    /// Les renouvellements antérieurs à la migration 047 ne portent leur
+    /// Les renouvellements antérieurs à la migration 048 ne portent leur
     /// fournisseur que dans la description écrite par <see cref="BuildDescription"/> :
     /// on l'y relit. « Renouvellement Assurance » seul = aucun fournisseur saisi.
     /// Une description libre (dépense saisie ou scannée hors renouvellement) est

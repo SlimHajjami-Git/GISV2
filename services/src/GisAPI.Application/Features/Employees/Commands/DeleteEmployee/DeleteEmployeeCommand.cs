@@ -27,11 +27,17 @@ public class DeleteEmployeeCommandHandler : IRequestHandler<DeleteEmployeeComman
         if (request.Id == _tenantService.UserId)
             throw new DomainException("Vous ne pouvez pas supprimer votre propre compte");
 
-        // Filtre de société du DbContext, comme le FindAsync d'origine ; sans suivi, car le
-        // compte est supprimé en SQL.
+        // Société EXPLICITE (le filtre global du DbContext est contourné pour l'administrateur
+        // système) et fiche EMPLOYÉ seulement (EmployeeRole renseigné, le critère de la liste
+        // GetEmployeesQuery). Cette route n'exige que le droit « Chauffeurs » : sans ce
+        // filtre, elle supprimait n'importe quel compte non administrateur de la société —
+        // gestionnaire, opérateur — que l'écran Employés ne montre même pas, contournant le
+        // droit « Utilisateurs ». Sans suivi, car le compte est supprimé en SQL.
+        var companyId = _tenantService.CompanyId
+            ?? throw new DomainException("Société non identifiée");
         var user = await _context.Users
             .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == request.Id, ct);
+            .FirstOrDefaultAsync(u => u.Id == request.Id && u.CompanyId == companyId && u.EmployeeRole != null, ct);
         if (user == null)
             throw new DomainException("Employé introuvable");
 

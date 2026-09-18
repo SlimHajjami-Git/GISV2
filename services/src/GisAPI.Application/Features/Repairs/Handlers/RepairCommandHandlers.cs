@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Features.Repairs.Commands;
 using GisAPI.Application.Features.Reports.Common;
@@ -69,6 +70,11 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
         var repairVehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
             ?? throw new NotFoundException("Véhicule introuvable.");
+
+        // Et dans la portée de l'appelant, comme POST /api/costs (CanBookOnVehicleAsync) :
+        // un employé restreint n'impute une réparation qu'à ses véhicules.
+        await VehicleScope.EnsureCanWriteAsync(_context, _tenantService, repairVehicle.Id,
+            "Véhicule introuvable.", cancellationToken);
 
         await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, null, cancellationToken);
 
@@ -213,6 +219,9 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == societeId, cancellationToken);
 
         if (repair == null) return false;
+        // Réparation d'un véhicule hors portée : introuvable, comme dans la liste.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, repair.VehicleId, cancellationToken))
+            return false;
 
         // Mêmes refus qu'à la création et que PATCH …/status, tous AVANT la moindre
         // modification de l'entité suivie : en cas de refus, la réparation reste intacte.
@@ -226,6 +235,10 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         var repairVehicle = await _context.Vehicles
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == societeId, cancellationToken)
             ?? throw new NotFoundException("Véhicule introuvable.");
+        // Le nouveau véhicule aussi doit être dans la portée : sinon la réparation
+        // pourrait être poussée vers un véhicule que l'appelant ne voit pas.
+        await VehicleScope.EnsureCanWriteAsync(_context, _tenantService, repairVehicle.Id,
+            "Véhicule introuvable.", cancellationToken);
 
         await RepairSupplierGuard.EnsureAsync(_context, request.SupplierId, societeId, repair.SupplierId, cancellationToken);
 
@@ -301,6 +314,8 @@ public class DeleteRepairCommandHandler : IRequestHandler<DeleteRepairCommand, b
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == societeId, cancellationToken);
 
         if (repair == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, repair.VehicleId, cancellationToken))
+            return false;
 
         _context.RepairParts.RemoveRange(repair.Parts);
         _context.Repairs.Remove(repair);
@@ -334,6 +349,8 @@ public class UpdateRepairStatusCommandHandler : IRequestHandler<UpdateRepairStat
             .FirstOrDefaultAsync(r => r.Id == request.Id && r.SocieteId == societeId, cancellationToken);
 
         if (repair == null) return false;
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, repair.VehicleId, cancellationToken))
+            return false;
 
         repair.Status = status;
         repair.UpdatedAt = DateTime.UtcNow;

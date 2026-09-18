@@ -1,5 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Application.Features.Vehicles;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -49,10 +51,17 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             // elle est refusée comme un matricule inconnu.
             if (key.Length > 0)
             {
-                // Présélection en base, limitée à la société ; la clé exacte se
-                // compare sur ces quelques lignes, sans rapatrier le parc.
-                var candidates = await _context.Vehicles
-                    .Where(v => v.CompanyId == companyId)
+                // Présélection en base, limitée à la société ET à la portée de l'appelant
+                // (comme POST /api/costs) : un employé restreint ne rattache un plein qu'à
+                // ses véhicules, y compris par l'import en masse. Un matricule hors portée
+                // est refusé comme un matricule inconnu, sans révéler qu'il existe.
+                // La clé exacte se compare sur ces quelques lignes, sans rapatrier le parc.
+                var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
+                var candidatesQuery = _context.Vehicles
+                    .Where(v => v.CompanyId == companyId);
+                if (scope is not null)
+                    candidatesQuery = candidatesQuery.Where(v => scope.Contains(v.Id));
+                var candidates = await candidatesQuery
                     .Where(VehiclePlateKey.MayMatch(key))
                     .OrderBy(v => v.Id)
                     .Select(v => new { v.Id, v.Plate, v.Name })
@@ -116,12 +125,23 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         // à celui du 25 »). On refuse la saisie avec un message explicite plutôt
         // que de l'accepter en silence. Le zéro / l'absence de relevé restent
         // permis (le compteur est simplement inchangé).
-        if (vehicle != null && request.OdometerKm.HasValue
-            && request.OdometerKm.Value > 0 && request.OdometerKm.Value < vehicle.Mileage)
+        // Plancher DATÉ (VehicleMileage.FloorAtAsync, même règle que « marquer fait ») :
+        // un plein du jour se compare au compteur courant, un ticket ancien au relevé
+        // connu à sa date. Comparé au compteur courant, tout historique importé après
+        // coup était refusé (44 des 94 pleins de Belive GPA l'auraient été).
+        if (vehicle != null && request.OdometerKm.HasValue && request.OdometerKm.Value > 0)
         {
-            throw new GisAPI.Domain.Exceptions.DomainException(
-                $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur au kilométrage " +
-                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+            var plancher = await VehicleMileage.FloorAtAsync(_context, companyId, vehicle, invoiceDate, cancellationToken);
+            if (request.OdometerKm.Value < plancher)
+            {
+                throw new GisAPI.Domain.Exceptions.DomainException(
+                    invoiceDate.Date >= DateTime.UtcNow.Date
+                        ? $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur au kilométrage " +
+                          $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur."
+                        : $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur à un relevé déjà " +
+                          $"enregistré au {invoiceDate:dd/MM/yyyy} ou avant ({plancher:N0} km). Un compteur ne recule pas : " +
+                          "vérifiez la valeur ou la date.");
+            }
         }
 
         _context.FuelEntries.Add(entry);

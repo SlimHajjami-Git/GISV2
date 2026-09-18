@@ -101,7 +101,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         var scheduleId = await handler.Handle(
             new AssignMaintenanceTemplateCommand(1, 1), CancellationToken.None);
@@ -130,7 +130,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         var scheduleId = await handler.Handle(
             new AssignMaintenanceTemplateCommand(1, 1), CancellationToken.None);
@@ -157,7 +157,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler);
+        var handler = new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         var result = await handler.Handle(
             new AssignMaintenanceTemplateCommand(1, 1), CancellationToken.None);
@@ -474,7 +474,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler);
+        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         var ok = await handler.Handle(
             new RebaseMaintenanceScheduleCommand(50), CancellationToken.None);
@@ -510,7 +510,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler);
+        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         await handler.Handle(new RebaseMaintenanceScheduleCommand(50), CancellationToken.None);
 
@@ -538,7 +538,7 @@ public class MaintenanceMileageResolverTests
 
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler);
+        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         await handler.Handle(new RebaseMaintenanceScheduleCommand(50), CancellationToken.None);
         var afterFirst = (await context.VehicleMaintenanceSchedules.FindAsync(50))!.NextDueKm;
@@ -556,7 +556,7 @@ public class MaintenanceMileageResolverTests
         using var context = TestDbContextFactory.Create();
         var scheduler = new MaintenanceSchedulerService(
             context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler);
+        var handler = new RebaseMaintenanceScheduleCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object);
 
         var ok = await handler.Handle(
             new RebaseMaintenanceScheduleCommand(99999), CancellationToken.None);

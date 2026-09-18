@@ -55,7 +55,7 @@ public class VehicleCost : TenantEntity
     /// Renouvellement de document (assurance, visite technique, vignette…) :
     /// nouvelle échéance du document payé, fournisseur et notes saisis dans la
     /// fenêtre de renouvellement. Colonnes <c>expiry_date</c>, <c>provider</c> et
-    /// <c>notes</c> ajoutées par la migration 047 — avant elles ces propriétés
+    /// <c>notes</c> ajoutées par la migration 048 — avant elles ces propriétés
     /// n'avaient aucune colonne derrière et la saisie disparaissait sans message
     /// (recette GPA du 11/09/2026). Null sur toute autre dépense.
     /// </summary>

@@ -112,7 +112,7 @@ public class EntretienProgrammableRecetteTests
         });
         await context.SaveChangesAsync();
 
-        await new UpdateScheduleIntervalsCommandHandler(context)
+        await new UpdateScheduleIntervalsCommandHandler(context, TestDbContextFactory.CreateMockTenantService().Object)
             .Handle(new UpdateScheduleIntervalsCommand(1, 5_000, 3, null), CancellationToken.None);
         var afterIntervals = context.VehicleMaintenanceSchedules.Single();
         afterIntervals.NextDueKm.Should().Be(58_200);
@@ -298,7 +298,7 @@ public class EntretienProgrammableRecetteTests
         await context.SaveChangesAsync();
 
         var scheduler = new MaintenanceSchedulerService(context, NullLogger<MaintenanceSchedulerService>.Instance);
-        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler)
+        var act = () => new AssignMaintenanceTemplateCommandHandler(context, scheduler, TestDbContextFactory.CreateMockTenantService().Object)
             .Handle(new AssignMaintenanceTemplateCommand(VehicleId: 1, TemplateId: 404), CancellationToken.None);
 
         await act.Should().ThrowAsync<DomainException>()

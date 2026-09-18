@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription, firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { peutEtreRedetecte as dossierRedetectable } from './accident-redetection';
 import {
   ApiService,
   PositionDto,
@@ -867,10 +868,24 @@ interface ImpactProfile {
               Les dépenses déjà enregistrées (réparation, remboursement d'assurance) sont
               <strong>conservées</strong> dans Dépenses ; elles ne seront simplement plus rattachées à ce dossier.
             </p>
+            <!-- Même règle que la liste et que le serveur (409) : un dossier détecté récent
+                 serait recréé par la détection, et l'alerte repartirait. C'est depuis la
+                 fiche (lien de la notification) qu'on écarte le plus souvent une fausse alerte. -->
+            <p class="del-warn" *ngIf="redetectable">
+              Ce dossier vient d'une détection automatique et l'incident date de moins de 30 minutes :
+              supprimé maintenant, il serait recréé par la détection et l'alerte repartirait.
+              {{ status === 'pending' && isAdmin
+                  ? 'Choisissez « Fausse alerte » pour l’écarter définitivement.'
+                  : 'Vous pourrez le supprimer une fois ce délai passé.' }}
+            </p>
             <p class="del-error" *ngIf="deleteError">{{ deleteError }}</p>
             <div class="del-foot">
               <button type="button" class="del-cancel" (click)="cancelDelete()" [disabled]="deleteBusy">Annuler</button>
-              <button type="button" class="del-confirm" (click)="confirmDelete()" [disabled]="deleteBusy">
+              <button type="button" class="del-confirm" *ngIf="redetectable && status === 'pending' && isAdmin"
+                      (click)="dismissInsteadOfDelete()" [disabled]="deleteBusy || !!decisionBusy">
+                {{ decisionBusy === 'dismiss' ? 'Envoi…' : 'Fausse alerte' }}
+              </button>
+              <button type="button" class="del-confirm" *ngIf="!redetectable" (click)="confirmDelete()" [disabled]="deleteBusy">
                 {{ deleteBusy ? 'Suppression…' : 'Supprimer définitivement' }}
               </button>
             </div>
@@ -2900,6 +2915,19 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
   askDelete(): void {
     this.deleteOpen = true;
     this.deleteError = null;
+  }
+
+  /** Dossier détecté il y a moins de 30 minutes : le serveur refuserait la suppression (409). */
+  get redetectable(): boolean {
+    return dossierRedetectable(this.origin, this.impactAtIso);
+  }
+
+  /** Depuis la fenêtre de suppression : « Fausse alerte » au lieu d'une suppression refusée. */
+  dismissInsteadOfDelete(): void {
+    this.deleteOpen = false;
+    this.deleteError = null;
+    this.dismissFromReport();
+    this.cdr.markForCheck();
   }
 
   cancelDelete(): void {

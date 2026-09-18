@@ -2,6 +2,7 @@ using System.Globalization;
 using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
@@ -243,7 +244,7 @@ public static class OperatingCostAggregator
             .ToListAsync(ct);
 
         var repairs = repairRows
-            .Where(r => !string.Equals(r.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .Where(r => !RepairInputRules.HasStatus(r.Status, RepairInputRules.Cancelled)) // casse et espaces ignorés
             .OrderByDescending(r => r.Date)
             .ThenByDescending(r => r.Id)
             .ToList();
@@ -313,8 +314,10 @@ public static class OperatingCostAggregator
                 //   module Sinistres, et affiché en crédit par l’écran Dépenses.
                 //   L’additionner gonflait le coût du mois du montant remboursé au
                 //   lieu de l’alléger. On le soustrait : c’est un crédit.
-                var (category, sign) = VehicleCostCategory.Classify(c.Type);
-                var amount = sign * c.Amount;
+                // Montant signé ligne à ligne (SignedAmount) : un crédit ancien saisi en
+                // négatif (−120, avant DEF-050) comptait sinon en dépense (+120).
+                var category = VehicleCostCategory.Classify(c.Type).Category;
+                var amount = VehicleCostCategory.SignedAmount(c.Type, c.Amount);
                 switch (category)
                 {
                     case CostCategory.Fuel: acc.Fuel += amount; break;

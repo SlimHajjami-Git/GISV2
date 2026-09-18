@@ -19,7 +19,7 @@ namespace GisAPI.Tests.Application.Documents;
 /// colonne derrière — la saisie disparaissait sans message et l'historique
 /// rendait la description à la place du fournisseur.
 ///
-/// <para>Depuis la migration 047, échéance, fournisseur et notes ont leur
+/// <para>Depuis la migration 048, échéance, fournisseur et notes ont leur
 /// colonne ; le numéro et le justificatif vont dans receipt_number /
 /// receipt_url. On vérifie l'aller-retour complet : écriture par le
 /// renouvellement, restitution par l'historique.</para>
@@ -218,7 +218,7 @@ public class DocumentRenewalPersistenceTests
         cost.ReceiptUrl.Should().HaveLength(500);
     }
 
-    // ── Renouvellements enregistrés avant la migration 047 ──────────────────
+    // ── Renouvellements enregistrés avant la migration 048 ──────────────────
 
     [Theory]
     [InlineData("insurance", "Renouvellement Assurance - AXA Flotte Entreprise", "AXA Flotte Entreprise")]

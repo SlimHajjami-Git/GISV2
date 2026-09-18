@@ -32,7 +32,10 @@
 --
 -- ORDRE DE DÉPLOIEMENT — ce SQL AVANT le nouveau pod gps-ingest, sur DZ puis TN.
 -- L'inverse ferait échouer chaque INSERT en 42703 : plus aucune position enregistrée.
--- Rien à jouer côté API avant l'ingest : la colonne est simplement NULL partout.
+-- Ce SQL passe AUSSI avant le nouveau pod gis-api : l'API mappe battery_raw
+-- (GpsPositionConfiguration) et la lit en SQL brut sur /vehicles/with-positions.
+-- Sans la colonne, toute lecture de positions et le monitoring tombent en 42703.
+-- Ingest non redéployé : la colonne reste simplement NULL partout.
 --
 -- POSITION ANCIENNE INCHANGÉE — power_voltage continue d'être écrite et conservée :
 -- elle reste la seule source des boîtiers Teltonika (facteur 0,1, 11 appareils, qui
