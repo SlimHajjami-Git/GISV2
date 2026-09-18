@@ -23,7 +23,12 @@ public record AdminDeviceCommandTargetDto(
     bool IsNems,
     DateTime? LastCommunication,
     bool OnlineRecently,
-    string Status);
+    string Status,
+    // Marque et modèle du VÉHICULE (Brand/Model ci-dessus sont ceux du boîtier) :
+    // l'opérateur reconnaît une voiture à « Seat Ibiza » bien plus qu'à sa plaque
+    // (demande du 18/09/2026).
+    string? VehicleBrand = null,
+    string? VehicleModel = null);
 
 public class GetAdminDeviceCommandTargetsQueryHandler
     : IRequestHandler<GetAdminDeviceCommandTargetsQuery, List<AdminDeviceCommandTargetDto>>
@@ -62,7 +67,9 @@ public class GetAdminDeviceCommandTargetsQueryHandler
                 SpeedLimitCommandBuilder.IsNemsDevice(d),
                 d.LastCommunication,
                 d.LastCommunication.HasValue && d.LastCommunication.Value >= threshold,
-                d.Status))
+                d.Status,
+                d.Vehicle?.Brand,
+                d.Vehicle?.Model))
             .OrderBy(t => t.Plate ?? t.Label ?? t.Imei)
             .ToList();
     }

@@ -48,7 +48,7 @@ import {
               <h3>1. Boîtiers ciblés</h3>
               <div class="card-tools">
                 <label class="chk"><input type="checkbox" [(ngModel)]="allFleet" (ngModelChange)="onAllFleetChange()"> <b>Tout le parc</b> ({{ selectableTargets.length }} NEMS)</label>
-                <input type="text" class="filter" placeholder="Filtrer plaque / IMEI / MAT" [(ngModel)]="filterText" [disabled]="allFleet">
+                <input type="text" class="filter" placeholder="Filtrer plaque / marque / modèle / IMEI / MAT" [(ngModel)]="filterText" [disabled]="allFleet">
                 <label class="chk"><input type="checkbox" [(ngModel)]="onlyOnline" [disabled]="allFleet"> En ligne seulement</label>
                 <button class="btn-link" (click)="selectVisible()" [disabled]="allFleet">Cocher les visibles</button>
                 <button class="btn-link" (click)="clearSelection()" [disabled]="allFleet">Tout décocher</button>
@@ -67,13 +67,15 @@ import {
             <div class="table-container" *ngIf="!loadingTargets && targets.length" [class.dimmed]="allFleet">
               <table>
                 <thead>
-                  <tr><th></th><th>Plaque</th><th>Véhicule</th><th>IMEI</th><th>MAT</th><th>Boîtier</th><th>Firmware</th><th>Dernière trame</th><th>État</th></tr>
+                  <tr><th></th><th>Plaque</th><th>Véhicule</th><th>Marque</th><th>Modèle</th><th>IMEI</th><th>MAT</th><th>Boîtier</th><th>Firmware</th><th>Dernière trame</th><th>État</th></tr>
                 </thead>
                 <tbody>
                   <tr *ngFor="let t of filteredTargets" [class.disabled]="!t.isNems" (click)="toggle(t)">
                     <td><input type="checkbox" [checked]="allFleet ? t.isNems : selected.has(t.deviceId)" [disabled]="!t.isNems || allFleet" (click)="$event.stopPropagation()" (change)="toggle(t)"></td>
                     <td class="mono">{{ t.plate || '—' }}</td>
                     <td>{{ t.vehicleName || '—' }}</td>
+                    <td>{{ t.vehicleBrand || '—' }}</td>
+                    <td>{{ t.vehicleModel || '—' }}</td>
                     <td class="mono">{{ t.imei }}</td>
                     <td class="mono">{{ t.mat || '—' }}</td>
                     <td>{{ t.brand || '' }} {{ t.model || '' }} <span class="tag" *ngIf="!t.isNems" title="Pas de protocole AJ+">{{ t.protocolType || 'non NEMS' }}</span></td>
@@ -279,7 +281,7 @@ export class AdminDeviceCommandsComponent implements OnInit, OnDestroy {
     const q = this.filterText.trim().toLowerCase();
     return this.targets.filter(t =>
       (!this.onlyOnline || t.onlineRecently) &&
-      (!q || [t.plate, t.imei, t.mat, t.vehicleName, t.label].some(v => (v || '').toLowerCase().includes(q))));
+      (!q || [t.plate, t.imei, t.mat, t.vehicleName, t.vehicleBrand, t.vehicleModel, t.label].some(v => (v || '').toLowerCase().includes(q))));
   }
   get targetCount(): number { return this.allFleet ? this.selectableTargets.length : this.selected.size; }
 

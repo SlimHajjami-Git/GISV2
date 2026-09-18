@@ -107,6 +107,9 @@ export interface DeviceCommandTarget {
   lastCommunication?: string;
   onlineRecently: boolean;
   status: string;
+  /** Marque et modèle du véhicule (brand / model ci-dessus = ceux du boîtier). */
+  vehicleBrand?: string;
+  vehicleModel?: string;
 }
 
 export interface DeviceCommandTargetResult {
