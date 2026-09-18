@@ -11,6 +11,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
 import { debounceTime, switchMap, catchError } from 'rxjs/operators';
+import { driverAfterVehicleChange, driverOptionLabel, DriverOption, selectableDrivers } from './tours-driver.helpers';
 
 declare let L: any;
 
@@ -169,12 +170,10 @@ declare let L: any;
               </div>
               <div class="field">
                 <label>Chauffeur</label>
-                <div class="driver-chip" [class.driver-assigned]="tourForm.vehicleId && getVehicleDriver()" [class.driver-empty]="!tourForm.vehicleId || !getVehicleDriver()">
-                  <svg class="driver-chip-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  <span class="driver-chip-text" *ngIf="tourForm.vehicleId && getVehicleDriver()">{{getVehicleDriver()}}</span>
-                  <span class="driver-chip-text" *ngIf="tourForm.vehicleId && !getVehicleDriver()">Aucun chauffeur</span>
-                  <span class="driver-chip-text" *ngIf="!tourForm.vehicleId">—</span>
-                </div>
+                <select [(ngModel)]="tourForm.driverId" (ngModelChange)="onDriverChange()">
+                  <option [ngValue]="null">Aucun chauffeur</option>
+                  <option *ngFor="let d of driverOptions()" [ngValue]="d.id">{{driverLabel(d)}}</option>
+                </select>
               </div>
             </div>
             <div class="field-row">
@@ -381,7 +380,7 @@ declare let L: any;
             <h4>Informations</h4>
             <div class="info-grid">
               <div class="info-item"><span class="info-lbl">Vehicule</span><span class="info-val">{{selectedTour.vehicleName}}</span></div>
-              <div class="info-item" *ngIf="selectedTour.driverName"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName}}</span></div>
+              <div class="info-item"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName || (selectedTour.driverId ? 'Fiche chauffeur introuvable' : 'Aucun')}}</span></div>
               <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.actualDepartureTime || selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualDepartureTime || selectedTour.actualStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.waitBeforeDepartureMinutes >= 1"><span class="info-lbl">Attente avant depart</span><span class="info-val c-orange">{{selectedTour.waitBeforeDepartureMinutes}} min</span></div>
@@ -679,13 +678,6 @@ declare let L: any;
     .field input:focus, .field select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
-    .driver-chip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 7px; font-size: 13px; min-height: 18px; transition: all .2s; }
-    .driver-assigned { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
-    .driver-assigned .driver-chip-icon { color: #22c55e; }
-    .driver-empty { background: #f8fafc; border: 1px dashed #cbd5e1; color: #94a3b8; }
-    .driver-empty .driver-chip-icon { color: #cbd5e1; }
-    .driver-chip-text { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
     .recurrence-config { padding: 10px 0 4px; }
     .rc-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; display: block; }
     .day-chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -855,6 +847,9 @@ export class ToursComponent implements OnInit, OnDestroy {
   filterDriverId: number | null = null;
 
   editingTour: any = null;
+  /** Le chauffeur a été choisi à la main (y compris « Aucun ») : le
+   *  préremplissage par véhicule ne l'écrase plus. */
+  driverChosenByUser = false;
   selectedTour: any = null;
   estimation: any = null;
   showCreateModal = false;
@@ -1384,6 +1379,7 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   openCreate() {
     this.editingTour = null;
+    this.driverChosenByUser = false;
     this.tourForm = this.getEmptyForm();
     this.estimation = null;
     this.currentView = 'create';
@@ -1479,14 +1475,23 @@ export class ToursComponent implements OnInit, OnDestroy {
     };
   }
 
+  /** Préremplit le chauffeur rattaché au véhicule (fiche chauffeur), sans
+   *  écraser un choix déjà fait — cf. tours-driver.helpers. */
   onVehicleChange(vehicleId: number) {
-    const v = this.vehicles.find((veh: any) => veh.id === vehicleId);
-    this.tourForm.driverId = v?.assignedDriverId || null;
+    this.tourForm.driverId = driverAfterVehicleChange(
+      this.drivers, vehicleId, this.tourForm.driverId, this.driverChosenByUser);
   }
 
-  getVehicleDriver(): string | null {
-    const v = this.vehicles.find((veh: any) => veh.id === this.tourForm.vehicleId);
-    return v?.assignedDriverName || v?.driverName || null;
+  onDriverChange() {
+    this.driverChosenByUser = true;
+  }
+
+  driverOptions(): DriverOption[] {
+    return selectableDrivers(this.drivers, this.tourForm.driverId);
+  }
+
+  driverLabel(d: DriverOption): string {
+    return driverOptionLabel(d, this.tourForm.vehicleId);
   }
 
   onRecurrenceChange(val: string) {
@@ -1626,14 +1631,23 @@ export class ToursComponent implements OnInit, OnDestroy {
       ? this.apiService.updateTour(this.editingTour.id, payload)
       : this.apiService.createTour(payload);
     obs.subscribe({
-      next: () => { this.saving = false; this.closeCreate(); this.loadTours(); this.loadStats(); },
-      error: () => { this.saving = false; }
+      next: () => { this.saving = false; this.closeCreate(); this.loadTours(); this.loadStats(); this.cdr.detectChanges(); },
+      // Le serveur refuse désormais un véhicule, un chauffeur ou une zone hors
+      // société ou hors portée : afficher son motif au lieu d'un échec muet.
+      error: (err) => {
+        this.saving = false;
+        this.cdr.detectChanges();
+        alert(err?.error?.message || "La tournée n'a pas pu être enregistrée.");
+      }
     });
   }
 
   editTour() {
     if (!this.selectedTour) return;
     this.editingTour = this.selectedTour;
+    // Chauffeur déjà enregistré = choix fait ; une tournée sans chauffeur
+    // reste préremplie au changement de véhicule.
+    this.driverChosenByUser = this.selectedTour.driverId != null;
     const rec = this.selectedTour.recurrence || 'none';
     let recType = 'none', recDays: string[] = [], customInt = 1, customUnit = 'weeks';
     if (rec.startsWith('weekly:')) { recType = 'weekly'; recDays = rec.split(':')[1]?.split(',') || []; }
@@ -1643,7 +1657,7 @@ export class ToursComponent implements OnInit, OnDestroy {
       name: this.selectedTour.name,
       description: this.selectedTour.description || '',
       vehicleId: this.selectedTour.vehicleId,
-      driverId: this.selectedTour.driverId,
+      driverId: this.selectedTour.driverId ?? null,
       scheduledStartTime: this.toLocalDatetime(this.selectedTour.scheduledStartTime),
       recurrence: recType,
       recurrenceDays: recDays,
@@ -1696,8 +1710,12 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   quickEdit(tour: any) {
-    this.selectedTour = tour;
-    this.editTour();
+    // La ligne de liste ne porte ni les étapes, ni leurs zones et marges :
+    // editTour() plantait sur waypoints.map. On repart du détail complet.
+    this.apiService.getTour(tour.id).subscribe({
+      next: (detail) => { this.selectedTour = detail; this.editTour(); },
+      error: () => alert("La tournée n'a pas pu être chargée.")
+    });
   }
 
   quickDelete(tour: any) {
