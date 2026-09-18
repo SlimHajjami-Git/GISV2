@@ -1,9 +1,14 @@
+// marked n'est livré qu'en ESM, que jest ne transforme pas dans node_modules : le charger
+// avec le composant fait échouer la suite avant le premier test. Aucun test ici ne rend du
+// markdown (rapport IA). Même contournement que reports-ai-cost-breakdown.spec.ts.
+jest.mock('marked', () => ({ marked: { parse: (s: string) => s } }));
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { RouterTestingModule } from '@angular/router/testing';
 import { FormsModule } from '@angular/forms';
 import { ReportsComponent } from './reports.component';
-import { ApiService, FuelRecordsResult, FuelRecord } from '../services/api.service';
+import { ApiService, PositionDto } from '../services/api.service';
 import { of, throwError } from 'rxjs';
 
 describe('ReportsComponent', () => {
@@ -11,66 +16,46 @@ describe('ReportsComponent', () => {
   let fixture: ComponentFixture<ReportsComponent>;
   let apiService: ApiService;
 
-  const mockFuelRecords: FuelRecord[] = [
+  // Le rapport carburant part de l'historique GPS (fuelRaw / odometerKm) et non
+  // plus de /api/fuel-records : trois trames = niveau initial, remplissage
+  // (+10 %) puis chute importante (-50 %, marquée anomalie).
+  const mockFuelPositions: PositionDto[] = [
     {
       id: 1,
-      vehicleId: 1,
       recordedAt: '2025-12-30T08:00:00Z',
-      fuelPercent: 85,
-      fuelChange: -5,
       latitude: 36.8065,
       longitude: 10.1815,
-      eventType: 'normal',
-      isAnomaly: false,
-      speedKph: 60,
-      odometerKm: 15000
+      address: 'Avenue Habib Bourguiba, Tunis',
+      fuelRaw: 85,
+      odometerKm: 15000,
+      speedKph: 60
     },
     {
       id: 2,
-      vehicleId: 1,
       recordedAt: '2025-12-30T10:00:00Z',
-      fuelPercent: 100,
-      fuelChange: 15,
       latitude: 36.8100,
       longitude: 10.1850,
-      eventType: 'refuel',
-      isAnomaly: false,
-      refuelAmount: 45,
-      speedKph: 0,
-      odometerKm: 15120
+      address: 'Station service, La Marsa',
+      fuelRaw: 95,
+      odometerKm: 15120,
+      speedKph: 0
     },
     {
       id: 3,
-      vehicleId: 1,
       recordedAt: '2025-12-30T12:00:00Z',
-      fuelPercent: 50,
-      fuelChange: -50,
       latitude: 36.8200,
       longitude: 10.1900,
-      eventType: 'theft_alert',
-      isAnomaly: true,
-      anomalyReason: 'Sudden fuel drop detected',
-      speedKph: 0,
-      odometerKm: 15200
+      address: 'Route de Bizerte, Ariana',
+      fuelRaw: 45,
+      odometerKm: 15200,
+      speedKph: 0
     }
   ];
 
-  const mockFuelRecordsResult: FuelRecordsResult = {
-    items: mockFuelRecords,
-    summary: {
-      totalRecords: 3,
-      refuelCount: 1,
-      anomalyCount: 1,
-      totalRefuelLiters: 45,
-      averageConsumptionLPer100Km: 8.5
-    },
-    totalCount: 3,
-    page: 1,
-    pageSize: 50,
-    totalPages: 1
-  };
-
   beforeEach(async () => {
+    // Le service PDF précharge le logo par fetch(), absent de jsdom.
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
     await TestBed.configureTestingModule({
       imports: [
         HttpClientTestingModule,
@@ -96,20 +81,22 @@ describe('ReportsComponent', () => {
     });
 
     it('should have default values', () => {
-      expect(component.selectedPeriod).toBe('week');
+      expect(component.selectedStandardPeriod).toBe('today');
       expect(component.reportGenerated).toBe(false);
       expect(component.loading).toBe(false);
       expect(component.currentPage).toBe(1);
     });
 
-    it('should have 7 report templates', () => {
-      expect(component.templates.length).toBe(7);
+    // Compte du catalogue de rapports : à mettre à jour en même temps que
+    // `templates` quand un rapport est ajouté ou retiré du menu.
+    it('should have 21 report templates', () => {
+      expect(component.templates.length).toBe(21);
     });
 
     it('should include fuel report template', () => {
       const fuelTemplate = component.templates.find(t => t.type === 'fuel');
       expect(fuelTemplate).toBeTruthy();
-      expect(fuelTemplate?.name).toBe('Rapport de carburant');
+      expect(fuelTemplate?.name).toBe('Consommation carburant');
     });
   });
 
@@ -132,17 +119,17 @@ describe('ReportsComponent', () => {
 
   describe('Period selection', () => {
     it('should set date range for today', () => {
-      component.selectPeriod('today');
+      component.selectStandardPeriod('today');
 
-      expect(component.selectedPeriod).toBe('today');
+      expect(component.selectedStandardPeriod).toBe('today');
       expect(component.fromDate).toBeTruthy();
       expect(component.toDate).toBeTruthy();
     });
 
     it('should set date range for week', () => {
-      component.selectPeriod('week');
+      component.selectStandardPeriod('week');
 
-      expect(component.selectedPeriod).toBe('week');
+      expect(component.selectedStandardPeriod).toBe('week');
       const fromDate = new Date(component.fromDate);
       const toDate = new Date(component.toDate);
       const diffDays = (toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24);
@@ -151,9 +138,9 @@ describe('ReportsComponent', () => {
     });
 
     it('should set date range for month', () => {
-      component.selectPeriod('month');
+      component.selectStandardPeriod('month');
 
-      expect(component.selectedPeriod).toBe('month');
+      expect(component.selectedStandardPeriod).toBe('month');
     });
   });
 
@@ -161,76 +148,52 @@ describe('ReportsComponent', () => {
     beforeEach(() => {
       component.selectedTemplateId = '2';
       component.onTemplateChange();
-      component.selectPeriod('week');
+      component.selectStandardPeriod('week');
+      // Rapport mono-véhicule : sans véhicule sélectionné, executeReport()
+      // s'arrête avant tout appel API.
+      component.selectedVehicleId = '1';
     });
 
     it('should call API when executing fuel report', () => {
-      jest.spyOn(apiService, 'getFuelRecords').mockReturnValue(of(mockFuelRecordsResult));
+      jest.spyOn(apiService, 'getVehicleHistory').mockReturnValue(of(mockFuelPositions));
 
       component.executeReport();
 
-      expect(apiService.getFuelRecords).toHaveBeenCalled();
+      expect(apiService.getVehicleHistory).toHaveBeenCalled();
     });
 
     it('should process fuel data correctly', () => {
-      component.processFuelData(mockFuelRecordsResult);
+      component.processVehicleData(mockFuelPositions);
 
       expect(component.tableData.length).toBe(3);
       expect(component.chartData.length).toBe(3);
     });
 
     it('should identify anomaly records', () => {
-      component.processFuelData(mockFuelRecordsResult);
+      component.processVehicleData(mockFuelPositions);
 
       const anomalyRow = component.tableData.find((r: any) => r.isAnomaly);
       expect(anomalyRow).toBeTruthy();
-      expect(anomalyRow.eventType).toContain('Vol suspecté');
+      expect(anomalyRow.eventType).toContain('Chute importante');
     });
 
     it('should calculate statistics correctly', () => {
-      component.processFuelData(mockFuelRecordsResult);
+      component.processVehicleData(mockFuelPositions);
 
-      expect(component.statisticsData['Total enregistrements']).toBe('3');
-      expect(component.statisticsData['Remplissages']).toBe('1');
-      expect(component.statisticsData['Anomalies']).toBe('1');
+      expect(component.statisticsData['⛽ Remplissages']).toBe('1');
+      expect(component.statisticsData['⚠️ Alertes']).toBe('1');
+      expect(component.statisticsData['📏 Distance parcourue']).toBe('200 km');
     });
 
-    it('should handle API error with fallback to mock data', () => {
-      jest.spyOn(apiService, 'getFuelRecords').mockReturnValue(throwError(() => new Error('API Error')));
-      jest.spyOn(component, 'generateFuelData').mockImplementation(() => {});
+    it('should report an error message when the API fails', () => {
+      jest.spyOn(apiService, 'getVehicleHistory').mockReturnValue(throwError(() => new Error('API Error')));
 
       component.executeReport();
 
-      // Wait for async operation
-      setTimeout(() => {
-        expect(component.generateFuelData).toHaveBeenCalled();
-      }, 100);
-    });
-  });
-
-  describe('Event type translation', () => {
-    it('should translate normal event type', () => {
-      expect(component.translateEventType('normal')).toBe('Normal');
-    });
-
-    it('should translate refuel event type', () => {
-      expect(component.translateEventType('refuel')).toBe('Remplissage');
-    });
-
-    it('should translate theft_alert event type', () => {
-      expect(component.translateEventType('theft_alert')).toBe('⚠️ Vol suspecté');
-    });
-
-    it('should translate consumption_spike event type', () => {
-      expect(component.translateEventType('consumption_spike')).toBe('⚠️ Pic consommation');
-    });
-
-    it('should translate low_fuel event type', () => {
-      expect(component.translateEventType('low_fuel')).toBe('⚠️ Niveau bas');
-    });
-
-    it('should return original for unknown event type', () => {
-      expect(component.translateEventType('unknown_type')).toBe('unknown_type');
+      expect(component.statisticsData['Erreur']).toBe('Impossible de charger les données');
+      expect(component.tableData.length).toBe(0);
+      expect(component.reportGenerated).toBe(true);
+      expect(component.loading).toBe(false);
     });
   });
 
