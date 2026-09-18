@@ -1,4 +1,4 @@
--- 047 — Renouvellement de document : fournisseur, notes et date d'échéance
+-- 048 — Renouvellement de document : fournisseur, notes et date d'échéance
 -- réellement stockés (campagne de test Calypso GPA, DEF-007 du 11/09/2026).
 --
 -- CONSTAT — La fenêtre de renouvellement (document-renewal-popup) propose
@@ -21,6 +21,8 @@
 -- colonnes (VehicleCostConfiguration) : un pod API démarré sans elles fait
 -- échouer en 42703 toute requête qui charge une dépense de vehicle_costs.
 -- CE SQL SE JOUE AVANT LE NOUVEAU POD API, sur DZ puis TN.
+-- RENUMÉROTÉE le 18/09/2026 : écrite en 047 le 13/09, jamais poussée ; Slim a publié
+-- 047_gps_positions_battery_raw.sql entre-temps. Aucun serveur ne l'a jouée sous l'ancien nom.
 
 ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS expiry_date TIMESTAMPTZ NULL;
 ALTER TABLE vehicle_costs ADD COLUMN IF NOT EXISTS provider VARCHAR(200) NULL;
