@@ -8166,6 +8166,143 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return Number(value) > 0 ? 'over' : 'under';
   }
 
+  // ── « Coût d'exploitation réel » : lisibilité du tableau (19/09/2026) ──────
+  // Constat de Karim, capture à l'appui : « 10 527,26 € » s'écrivait sur deux
+  // lignes, le « € » seul en dessous, et le séparateur de milliers n'avait pas
+  // la même largeur d'une colonne à l'autre. Pourquoi : formatCurrency colle le
+  // symbole après une espace ORDINAIRE, donc sécable, alors que toLocaleString
+  // sépare les milliers par une espace fine insécable (U+202F).
+
+  /**
+   * Valeur d'une cellule de ce rapport : toutes ses espaces deviennent des
+   * espaces FINES INSÉCABLES. Le montant ne peut plus se couper avant le
+   * symbole, et les milliers se lisent partout à la même largeur. Réservé à
+   * l'affichage : les exports Excel / PDF / CSV gardent formatCurrency tel quel,
+   * un caractère U+202F n'a rien à faire dans un classeur.
+   */
+  private insecable(texte: string): string {
+    return texte.replace(/[\s\u00A0\u202F]+/g, '\u202F');
+  }
+
+  /** Montant d'une cellule du rapport « Coût d'exploitation », insécable. */
+  montantCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatCurrency(value ?? 0));
+  }
+
+  /** Kilométrage d'une cellule, insécable ; « — » quand il n'est pas mesurable. */
+  kmCellule(value: number | null | undefined): string {
+    return value == null ? '—' : this.insecable(this.formatNumber(value));
+  }
+
+  /** Coût au km d'une cellule, insécable. */
+  coutKmCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatCostPerKm(value));
+  }
+
+  /** Écart à la moyenne d'une cellule (« +90,4 % »), insécable. */
+  ecartCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatSignedPct(value));
+  }
+
+  /**
+   * Nombre de colonnes RÉELLEMENT affichées par le tableau de ce rapport.
+   * Détail par véhicule : immatriculation, km, quatre postes, coût total,
+   * coût au km et écart = neuf, plus « Avoirs » quand il y en a. Le classement
+   * ajoute la colonne de rang.
+   */
+  nbColonnesCoutExploitation(): number {
+    const avoirs = this.aDesAvoirs(this.operatingCost?.totalCreditAmount) ? 1 : 0;
+    return (this.isRanking ? 10 : 9) + avoirs;
+  }
+
+  /**
+   * Largeur du PLUS LONG MONTANT réellement affiché, comptée en caractères de
+   * la chaîne rendue (`montantCellule`) : chiffres, séparateurs de milliers,
+   * virgule, décimales, signe « - » d'un avoir, espace et devise.
+   *
+   * C'est cette longueur, et non le nombre de colonnes, qui fixe la largeur des
+   * six colonnes de chiffres : « 123 450 208,70 € » est cinq caractères plus
+   * large que « 46 322,78 € », six fois de suite. Une flotte de quarante
+   * véhicules produit mécaniquement ce chiffre de plus sur la ligne TOTAL, et
+   * l'ascenseur horizontal que Karim a signalé revenait alors que la densité,
+   * elle, ne bougeait pas (relecture du 19/09/2026).
+   *
+   * Toutes les cellules sont parcourues, pas seulement le total : une ligne
+   * peut être plus longue que lui quand un avoir est en négatif (le « - »
+   * compte pour un caractère), ou quand un véhicule porte à lui seul un montant
+   * que le total net des avoirs ne montre plus.
+   */
+  largeurMontantCoutMax(): number {
+    const r = this.operatingCost;
+    if (!r) return 0;
+    const avoirs = this.aDesAvoirs(r.totalCreditAmount);
+    const valeurs: (number | null | undefined)[] = [
+      r.totalCost, r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost
+    ];
+    if (avoirs) valeurs.push(r.totalCreditAmount);
+    for (const v of r.vehicles || []) {
+      valeurs.push(v.totalCost, v.fuelCost, v.maintenanceCost, v.repairCost, v.otherCost);
+      if (avoirs) valeurs.push(v.creditAmount);
+    }
+    let max = 0;
+    for (const v of valeurs) {
+      const l = this.montantCellule(v).length;
+      if (l > max) max = l;
+    }
+    return max;
+  }
+
+  /**
+   * Longueur de référence : « 46 322,78 € », le total de la société de recette,
+   * soit la densité d'origine (aucun cran de plus). Un caractère de moins ne
+   * rend rien : on ne remonte jamais au-dessus du cran de base.
+   */
+  private static readonly LARGEUR_MONTANT_REF = 11;
+  /**
+   * Caractères gagnés par cran. Mesuré au banc à 1521 px : passer d'un cran au
+   * suivant rend entre 40 et 60 px au tableau, un caractère de plus sur les six
+   * colonnes de montants en coûte une trentaine. Deux caractères par cran est
+   * la valeur qui tient sur toute la grille (cf. le tableau des marges).
+   */
+  private static readonly MONTANT_PAR_CRAN = 2;
+
+  /**
+   * Cran de densité DEMANDÉ, non borné : nombre de colonnes réellement
+   * affichées, plus les crans réclamés par la largeur des montants (devise
+   * comprise, « 46 322,78 TND » valant deux caractères de plus que son
+   * équivalent en euro). Au-delà de douze, plus aucun cran n'existe : c'est le
+   * signal d'empiler les deux blocs.
+   */
+  cranDensiteCout(): number {
+    const largeur = this.largeurMontantCoutMax();
+    const supplement = Math.max(0, Math.ceil(
+      (largeur - ReportsComponent.LARGEUR_MONTANT_REF) / ReportsComponent.MONTANT_PAR_CRAN));
+    return this.nbColonnesCoutExploitation() + supplement;
+  }
+
+  /**
+   * Cran de densité du tableau : la police et les gouttières suivent le cran
+   * demandé (voir .oc-workspace .cost-table--cNN dans le CSS), borné au plus
+   * serré. Posé depuis le composant plutôt que par une mesure JavaScript : le
+   * rendu est le même au premier affichage qu'après un changement de période.
+   * Le plancher de 11 px des VALEURS ne bouge pas : au-delà de c12 on empile
+   * plutôt que de rogner encore.
+   */
+  classeDensiteCout(): string {
+    return `cost-table--c${Math.min(12, Math.max(9, this.cranDensiteCout()))}`;
+  }
+
+  /**
+   * Vrai quand même le cran le plus serré ne suffit plus : les deux blocs
+   * s'empilent, le tableau prend toute la largeur de l'espace de travail
+   * (1 169 px au lieu de 776 mesurés à 1521 px) et le classement passe dessous.
+   * Mieux vaut empiler que rogner une colonne ou rouvrir un ascenseur
+   * horizontal — c'est le défaut même que Karim a signalé.
+   */
+  empilerBlocsCout(): boolean {
+    return this.cranDensiteCout() > 12;
+  }
+
   /** Info-bulle de la colonne Kilométrage : origine (compteur / GPS) et fiabilité de la distance. */
   distanceSourceTitle(v: { distanceSource: string; reliableDistance?: boolean; ignoredOdometerReadings?: number; odometerBreaks?: number }): string {
     switch (v.distanceSource) {
@@ -8285,6 +8422,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Hauteur du graphe à barres horizontales : 28 px par véhicule, 240 px minimum. */
   operatingCostChartHeight(): number {
     return Math.max(240, 28 * this.operatingCostChartRows().length + 60);
+  }
+
+  /**
+   * Plafond du cadre du tableau, posé en variable CSS sur la rangée
+   * (--oc-plafond-tableau, lue par .oc-table-wrapper). Il SUIT la hauteur du
+   * graphe d'en face au lieu des 420 px écrits en dur : le graphe grandit de
+   * 28 px par véhicule, si bien qu'à partir de treize véhicules il dépassait le
+   * cadre du tableau, la rangée prenait SA hauteur et un grand vide blanc
+   * s'ouvrait sous le tableau (481 px à trente véhicules, 761 px à quarante).
+   * La société de recette n'en a que douze : le défaut ne se voyait pas.
+   *
+   * Plancher à 420 px — la valeur d'avant — pour le cas inverse, la flotte
+   * courte : le tableau doit pouvoir s'étirer jusqu'à la hauteur du graphe.
+   *
+   * Aucune rallonge pour la légende rouge/bleu du classement. Elle avait été
+   * ajoutée (80 px) le 19/09/2026 pour refermer le vide blanc de « Véhicules
+   * les plus coûteux » : elle ne le refermait pas — le tableau du Top 10 est
+   * plus COURT que son plafond, l'agrandir ne lui fait rien gagner — et elle
+   * l'agrandissait de 2 px. La vraie cause était le min-height de 380 px de
+   * .cost-chart-box, qui étirait le graphe du classement (340 px demandés) de
+   * quarante pixels ; elle est traitée dans la feuille.
+   */
+  plafondCadreTableauCout(): string {
+    return `${Math.max(420, this.operatingCostChartHeight())}px`;
   }
 
   /** Barres horizontales « Classement par coût d'exploitation » : valeur au bout de chaque barre et

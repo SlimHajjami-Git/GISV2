@@ -105,3 +105,61 @@ describe('AccidentReportComponent — pièces jointes du dossier', () => {
     expect(component.attachments).toEqual([]);
   });
 });
+
+/**
+ * Relecture du 19/09/2026 — le rapport de sinistre affiché à l'écran dessinait encore
+ * le pin fait main à DEUX endroits (en-tête et bloc de signature) et portait la
+ * baseline anglaise « Fleet Analytics », alors que c'est précisément le document que
+ * Karim désignait en demandant « le logo de Calypso dans le rapport ». Ces tests
+ * verrouillent les deux emplacements et l'absence de la baseline.
+ */
+describe('AccidentReportComponent — marque du document', () => {
+  let fixture: any;
+
+  beforeEach(async () => {
+    // Le service PDF précharge le logo par fetch(), absent de jsdom.
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, AccidentReportComponent],
+      providers: [ApiService],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(AccidentReportComponent);
+    fixture.detectChanges();
+  });
+
+  it("pose le vrai logo en en-tête ET dans la signature, et plus aucun pin dessiné à la main", () => {
+    const entete: HTMLImageElement | null = fixture.nativeElement.querySelector('.doc-brand img.brand-logo-img');
+    expect(entete).not.toBeNull();
+    expect(entete!.getAttribute('src')).toBe('/assets/calypso-logo.svg');
+
+    const signature: HTMLImageElement | null = fixture.nativeElement.querySelector('.sign-brand img.sign-logo-img');
+    expect(signature).not.toBeNull();
+    expect(signature!.getAttribute('src')).toBe('/assets/calypso-logo.svg');
+
+    // Le pin était un SVG en ligne avec ses propres dégradés, un par emplacement.
+    const html: string = fixture.nativeElement.innerHTML;
+    expect(html).not.toContain('pinGradHdr');
+    expect(html).not.toContain('pinGradFtr');
+  });
+
+  it("n'écrit plus la baseline anglaise « Fleet Analytics »", () => {
+    expect(fixture.nativeElement.textContent).not.toContain('Fleet Analytics');
+  });
+
+  it("n'affiche le logo Calypso que pour la marque Calypso", () => {
+    // Garde-fou : brandName vient de environment.ts, en copie locale par serveur.
+    // Un déploiement « Bougeo » ne doit pas imprimer le logo d'un concurrent sur un
+    // document que SON client transmet à son assureur.
+    const composant = fixture.componentInstance;
+    expect(composant.estMarqueCalypso).toBe(true);
+
+    composant.estMarqueCalypso = false; // readonly n'existe qu'à la compilation
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.doc-brand img.brand-logo-img')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.sign-brand img.sign-logo-img')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.doc-brand .brand-name')!.textContent).toContain(composant.brandName);
+  });
+});

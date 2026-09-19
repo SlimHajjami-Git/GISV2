@@ -6,6 +6,12 @@
     <base href="/">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Solution complète de gestion de parc automobile avec suivi GPS en temps réel" />
+    <!-- Icône d'onglet. Il n'y en avait AUCUNE : aucun <link rel="icon">, aucun
+         favicon.ico dans le dépôt — le navigateur demandait /favicon.ico, prenait un
+         404 et affichait sa pastille grise par défaut. On sert le monogramme seul
+         (assets/calypso-monogramme.svg, découpé dans calypso-logo.svg) : le logo
+         complet fait 3:1 et devient illisible dans 16 px. -->
+    <link rel="icon" type="image/svg+xml" href="assets/calypso-monogramme.svg" />
     <!-- Manrope sert UNIQUEMENT au site commercial France (.fr). L'application
          de gestion ne la référence nulle part : la charger ne change donc rien
          à son apparence. On évite volontairement d'ajouter Inter, que le CSS de

@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { Subscription, firstValueFrom } from 'rxjs';
 import * as L from 'leaflet';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import { environment } from '../environments/environment';
 import {
   ApiService,
   PositionDto,
@@ -116,37 +117,39 @@ interface ImpactProfile {
           <!-- Document header -->
           <header class="doc-header">
             <div class="doc-header-top">
+              <!--
+                Marque du rapport. Le pin dessiné à la main en SVG qui trônait ici
+                (goutte verte et bleue, vague, œil) n'existe sur aucune planche de la
+                charte : c'est exactement la surface visée par « le logo de Calypso
+                DANS LE RAPPORT ». Il laisse la place au vrai fichier de marque, le
+                même que la barre de navigation.
+
+                Le fichier porte DÉJÀ le mot CALYPSO : le doubler du texte
+                « Calypso » le répéterait, le bloc .brand-txt disparaît donc pour la
+                marque Calypso. La baseline anglaise « Fleet Analytics » part avec lui
+                — tranché le 18/09, « Pas de Belive GPA, juste Calypso » : un rapport
+                remis à un client français n'a pas à être sous-titré en anglais.
+
+                Version CLAIRE du fichier, sans bascule de thème : la page du rapport
+                pose sa propre palette papier (--paper: #faf8f3, voir .doc-page) et
+                ignore data-theme — elle reste claire même quand l'application est en
+                thème sombre. La variante sombre du logo n'a donc rien à y faire.
+
+                Même garde-fou de marque que la barre de navigation (estMarqueCalypso,
+                plus bas) : un déploiement sous une autre marque ne doit JAMAIS
+                imprimer le logo Calypso sur un document remis à SES clients. Il garde
+                son nom en toutes lettres — sans le pin, qui n'était la marque de
+                personne et n'a pas à survivre ailleurs.
+              -->
               <div class="doc-brand">
-                <div class="brand-mark" aria-label="Logo Calypso">
-                  <svg viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" focusable="false">
-                    <defs>
-                      <linearGradient id="pinGradHdr" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stop-color="#43e6a0"/>
-                        <stop offset="50%" stop-color="#2fb8d8"/>
-                        <stop offset="100%" stop-color="#1a3a8a"/>
-                      </linearGradient>
-                      <linearGradient id="innerGradHdr" x1="0.2" y1="0" x2="0.8" y2="1">
-                        <stop offset="0%" stop-color="#3de8a8"/>
-                        <stop offset="100%" stop-color="#1848a0"/>
-                      </linearGradient>
-                    </defs>
-                    <path d="M256 20C152 20 68 104 68 208c0 140 188 290 188 290s188-150 188-290C444 104 360 20 256 20z" fill="url(#pinGradHdr)"/>
-                    <circle cx="256" cy="200" r="130" fill="url(#innerGradHdr)" opacity="0.3"/>
-                    <path d="M310 110c40 20 68 62 68 108" stroke="white" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
-                    <circle cx="378" cy="218" r="8" fill="white" opacity="0.8"/>
-                    <g transform="translate(256,210)" fill="white">
-                      <path d="M-60,10 L-50,-25 Q-45,-40 -30,-40 L30,-40 Q45,-40 50,-25 L60,10 Q62,16 58,20 L-58,20 Q-62,16 -60,10z" opacity="0.95"/>
-                      <rect x="-65" y="20" width="130" height="30" rx="8" opacity="0.95"/>
-                      <circle cx="-40" cy="50" r="10" fill="url(#pinGradHdr)"/>
-                      <circle cx="40" cy="50" r="10" fill="url(#pinGradHdr)"/>
-                      <rect x="-20" y="-30" width="40" height="20" rx="4" fill="rgba(26,58,138,0.3)"/>
-                    </g>
-                  </svg>
-                </div>
-                <div class="brand-txt">
-                  <div class="brand-name">Calypso</div>
-                  <div class="brand-tag">Fleet Analytics</div>
-                </div>
+                <img *ngIf="estMarqueCalypso; else marqueGeneriqueEntete"
+                     class="brand-logo-img" src="/assets/calypso-logo.svg"
+                     [alt]="brandName" width="504" height="170" draggable="false">
+                <ng-template #marqueGeneriqueEntete>
+                  <div class="brand-txt">
+                    <div class="brand-name">{{ brandName }}</div>
+                  </div>
+                </ng-template>
               </div>
               <div class="doc-meta">
                 <div class="meta-row"><span class="meta-k">Référence</span><span class="meta-v">{{ reference }}</span></div>
@@ -871,35 +874,18 @@ interface ImpactProfile {
           <footer class="doc-footer">
             <div class="sign-line"></div>
             <div class="sign-block">
+              <!-- Second endroit où le pin fait main était dessiné : le bloc de
+                   signature, en bas du rapport. Même remplacement, même garde-fou,
+                   même suppression de la baseline anglaise (« Calypso Fleet
+                   Analytics » devient le logo seul). Plus petit que l'en-tête :
+                   24 px contre 32 px, comme la signature était en 16 px contre 22 px
+                   pour le nom de l'en-tête. -->
               <div class="sign-brand">
-                <div class="sign-logo" aria-label="Logo Calypso">
-                  <svg viewBox="0 0 512 640" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" focusable="false">
-                    <defs>
-                      <linearGradient id="pinGradFtr" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stop-color="#43e6a0"/>
-                        <stop offset="50%" stop-color="#2fb8d8"/>
-                        <stop offset="100%" stop-color="#1a3a8a"/>
-                      </linearGradient>
-                      <linearGradient id="innerGradFtr" x1="0.2" y1="0" x2="0.8" y2="1">
-                        <stop offset="0%" stop-color="#3de8a8"/>
-                        <stop offset="100%" stop-color="#1848a0"/>
-                      </linearGradient>
-                    </defs>
-                    <path d="M256 20C152 20 68 104 68 208c0 140 188 290 188 290s188-150 188-290C444 104 360 20 256 20z" fill="url(#pinGradFtr)"/>
-                    <circle cx="256" cy="200" r="130" fill="url(#innerGradFtr)" opacity="0.3"/>
-                    <path d="M310 110c40 20 68 62 68 108" stroke="white" stroke-width="8" stroke-linecap="round" fill="none" opacity="0.8"/>
-                    <circle cx="378" cy="218" r="8" fill="white" opacity="0.8"/>
-                    <g transform="translate(256,210)" fill="white">
-                      <path d="M-60,10 L-50,-25 Q-45,-40 -30,-40 L30,-40 Q45,-40 50,-25 L60,10 Q62,16 58,20 L-58,20 Q-62,16 -60,10z" opacity="0.95"/>
-                      <rect x="-65" y="20" width="130" height="30" rx="8" opacity="0.95"/>
-                      <circle cx="-40" cy="50" r="10" fill="url(#pinGradFtr)"/>
-                      <circle cx="40" cy="50" r="10" fill="url(#pinGradFtr)"/>
-                      <rect x="-20" y="-30" width="40" height="20" rx="4" fill="rgba(26,58,138,0.3)"/>
-                    </g>
-                  </svg>
-                </div>
+                <img *ngIf="estMarqueCalypso" class="sign-logo-img"
+                     src="/assets/calypso-logo.svg" [alt]="brandName"
+                     width="504" height="170" draggable="false">
                 <div>
-                  <div class="sign-name">Calypso Fleet Analytics</div>
+                  <div class="sign-name" *ngIf="!estMarqueCalypso">{{ brandName }}</div>
                   <div class="sign-role">Rapport établi par l'équipe d'analyse</div>
                 </div>
               </div>
@@ -1358,18 +1344,16 @@ interface ImpactProfile {
       align-items: center;
       gap: 14px;
     }
-    .brand-mark {
-      width: 44px;
-      height: 52px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .brand-mark svg {
-      width: 100%;
-      height: 100%;
+    /* Le vrai logo, en place du pin + « Calypso » + baseline. 32 px de haut :
+       le mot CALYPSO du fichier y retrouve la hauteur de capitale qu'avait le
+       nom en 22 px serif (rapport mesuré dans la barre de navigation, 26 px de
+       logo pour 18 px de texte). Vectoriel, donc net à 125 % sur 1536 px. */
+    .brand-logo-img {
       display: block;
+      height: 32px;
+      width: auto;
+      flex-shrink: 0;
+      user-select: none;
     }
     .brand-name {
       font-family: 'Newsreader', serif;
@@ -1379,14 +1363,6 @@ interface ImpactProfile {
       color: var(--ink);
       line-height: 1;
       letter-spacing: -0.01em;
-    }
-    .brand-tag {
-      font-size: 10px;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: var(--ink-faint);
-      margin-top: 4px;
-      font-weight: 500;
     }
     .doc-meta {
       text-align: right;
@@ -1864,18 +1840,14 @@ interface ImpactProfile {
       align-items: center;
       gap: 14px;
     }
-    .sign-logo {
-      width: 34px;
-      height: 40px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .sign-logo svg {
-      width: 100%;
-      height: 100%;
+    /* Même logo qu'en en-tête, à l'échelle de la signature (24 px pour 16 px
+       de texte, le même rapport que l'en-tête). */
+    .sign-logo-img {
       display: block;
+      height: 24px;
+      width: auto;
+      flex-shrink: 0;
+      user-select: none;
     }
     .sign-name {
       font-family: 'Newsreader', serif;
@@ -1934,6 +1906,19 @@ interface ImpactProfile {
 })
 export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit {
   @ViewChild('mapEl', { static: false }) mapEl?: ElementRef<HTMLDivElement>;
+
+  /** Nom de marque du déploiement — « Calypso » ici, autre chose ailleurs. */
+  readonly brandName = environment.brandName;
+
+  /**
+   * Garde-fou de marque, identique à celui de la barre de navigation
+   * (app-layout.component.ts) et du service d'export PDF : le logo Calypso ne
+   * s'affiche QUE si le déploiement est sous cette marque. brandName vient de
+   * environment.ts, que chaque serveur garde en copie locale (« Bougeo » en
+   * Algérie). Sans ce test, un client Bougeo verrait le logo d'un concurrent en
+   * tête d'un rapport de sinistre qu'il transmet à son assureur.
+   */
+  readonly estMarqueCalypso = (environment.brandName || '').trim().toLowerCase() === 'calypso';
 
   /**
    * Display fields populated from the backend DTO (or from the static

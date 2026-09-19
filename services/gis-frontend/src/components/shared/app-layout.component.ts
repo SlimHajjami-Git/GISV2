@@ -46,7 +46,9 @@ type NotifBucket = Notification | NotifThreadGroup;
     <div class="app-container">
       <!-- Bandeau nouvelle version : un déploiement a eu lieu, l'onglet tourne sur un vieux bundle -->
       <div *ngIf="versionCheck.newVersionAvailable$ | async" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;background:linear-gradient(90deg,#2563eb,#1d4ed8);color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-        <span>🔄 Une nouvelle version de Calypso est disponible</span>
+        <!-- « Calypso » était écrit en dur ici : sur un déploiement Bougeo, le bandeau
+             de mise à jour annonçait le nom d'une autre marque. Il suit brandName. -->
+        <span>🔄 Une nouvelle version de {{ brandName }} est disponible</span>
         <button type="button" (click)="versionCheck.reloadNow()" style="background:rgba(255,255,255,0.25);border:1px solid rgba(255,255,255,0.6);color:#fff;padding:4px 12px;border-radius:6px;font-weight:600;cursor:pointer;white-space:nowrap;">Actualiser maintenant</button>
       </div>
       <!-- Bandeau impersonation ("voir en tant que") -->
@@ -63,27 +65,55 @@ type NotifBucket = Notification | NotifThreadGroup;
       </ng-container>
       <!-- WIALON-STYLE TOP NAVIGATION BAR -->
       <nav class="top-nav">
-        <!-- Logo Calypso (pin tourbillon + œil) -->
+        <!--
+          Marque, en haut à gauche. Le VRAI logo Calypso (assets/calypso-logo.svg :
+          monogramme hexagonal + mot CALYPSO) remplace le pin qui était dessiné à la
+          main ici en SVG en ligne — une goutte verte et bleue avec une vague et un
+          œil qui ne ressemblait à rien de la charte.
+
+          Le logo complet remplace le COUPLE pin + texte, pas seulement le pin : le
+          mot CALYPSO fait déjà partie du dessin, le doubler du texte brandName le
+          répéterait. Il est aussi plus compact (≈ 77 px de large contre ≈ 100 px
+          pour le pin et le texte), donc la barre gagne de la place pour les onglets.
+
+          Le logo n'est posé QUE pour la marque Calypso : brandName vient de
+          environment.ts et vaut autre chose sur d'autres déploiements (Bougeo…).
+          Les autres marques gardent l'ancien rendu neutre, pin + nom.
+        -->
         <div class="nav-brand" (click)="navigate('/dashboard')">
-          <div class="brand-logo">
-            <svg width="24" height="32" viewBox="0 0 48 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Calypso">
-              <defs>
-                <linearGradient id="calypsoPin" x1="6" y1="4" x2="40" y2="60" gradientUnits="userSpaceOnUse">
-                  <stop offset="0" stop-color="#5fe3bd"/>
-                  <stop offset="0.45" stop-color="#23a6c9"/>
-                  <stop offset="1" stop-color="#1b3f9e"/>
-                </linearGradient>
-              </defs>
-              <!-- goutte / pin -->
-              <path d="M24 1.5C11.6 1.5 1.7 11.2 1.7 23.4 1.7 39 24 62.5 24 62.5S46.3 39 46.3 23.4C46.3 11.2 36.4 1.5 24 1.5Z" fill="url(#calypsoPin)"/>
-              <!-- vague / tourbillon -->
-              <path d="M11.5 28.5C11 17.8 19.4 9.9 30.2 11.6" stroke="#fff" stroke-width="2.7" stroke-linecap="round" fill="none"/>
-              <path d="M17.5 32.2C16.4 24.2 22.6 18.4 30 19.6" stroke="#fff" stroke-width="2.3" stroke-linecap="round" fill="none" opacity="0.85"/>
-              <!-- œil -->
-              <circle cx="31.2" cy="14.4" r="3.1" fill="#fff"/>
-            </svg>
-          </div>
-          <span class="brand-text">{{ brandName }}</span>
+          <ng-container *ngIf="estMarqueCalypso; else marqueGenerique">
+            <!-- Deux fichiers existent, un par thème : un SVG chargé via <img> est un
+                 document isolé, il ne voit pas le data-theme de la page et ne peut pas
+                 se recolorer seul. Mais UNE SEULE balise est posée, dont la source suit
+                 le thème : les deux images étaient auparavant dans le DOM en permanence,
+                 l'une masquée en display:none — le navigateur télécharge quand même les
+                 deux fichiers (≈ 10 Ko chacun) à chaque chargement de page, pour n'en
+                 afficher qu'un. La bascule passe donc par logoMarque(), qui lit le même
+                 ThemeService que le bouton lune/soleil de cette barre. -->
+            <img class="brand-mark" [src]="logoMarque"
+                 [alt]="brandName" width="504" height="170" draggable="false">
+          </ng-container>
+          <ng-template #marqueGenerique>
+            <div class="brand-logo">
+              <svg width="24" height="32" viewBox="0 0 48 64" fill="none" xmlns="http://www.w3.org/2000/svg" [attr.aria-label]="brandName">
+                <defs>
+                  <linearGradient id="calypsoPin" x1="6" y1="4" x2="40" y2="60" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#5fe3bd"/>
+                    <stop offset="0.45" stop-color="#23a6c9"/>
+                    <stop offset="1" stop-color="#1b3f9e"/>
+                  </linearGradient>
+                </defs>
+                <!-- goutte / pin -->
+                <path d="M24 1.5C11.6 1.5 1.7 11.2 1.7 23.4 1.7 39 24 62.5 24 62.5S46.3 39 46.3 23.4C46.3 11.2 36.4 1.5 24 1.5Z" fill="url(#calypsoPin)"/>
+                <!-- vague / tourbillon -->
+                <path d="M11.5 28.5C11 17.8 19.4 9.9 30.2 11.6" stroke="#fff" stroke-width="2.7" stroke-linecap="round" fill="none"/>
+                <path d="M17.5 32.2C16.4 24.2 22.6 18.4 30 19.6" stroke="#fff" stroke-width="2.3" stroke-linecap="round" fill="none" opacity="0.85"/>
+                <!-- œil -->
+                <circle cx="31.2" cy="14.4" r="3.1" fill="#fff"/>
+              </svg>
+            </div>
+            <span class="brand-text">{{ brandName }}</span>
+          </ng-template>
         </div>
 
         <!-- Navigation Links -->
@@ -623,6 +653,29 @@ type NotifBucket = Notification | NotifThreadGroup;
       align-items: center;
       justify-content: center;
     }
+
+    /* Le vrai logo Calypso, posé à la place du couple pin + texte.
+       26 px de haut dans une barre de 42 px : le mot CALYPSO garde une hauteur de
+       capitale d'environ 12 px, soit l'équivalent de l'ancien texte 18 px gras, et
+       le bloc entier tient sur ~77 px contre ~100 px avant. Vectoriel : net à 125 %
+       (l'écran de référence fait 1536 px de large), là où le PNG baverait.
+       pointer-events: none — le clic doit atterrir sur .nav-brand, qui porte la
+       navigation vers le tableau de bord, jamais sur l'image. */
+    .brand-mark {
+      display: block;
+      height: 26px;
+      width: auto;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* Pourquoi deux fichiers : le fichier clair porte le mot CALYPSO en bleu
+       #1770C1 (2,8:1 sur le fond #1e293b de la barre sombre — illisible), le
+       fichier sombre le porte en #CFE3F2 (11:1), la même teinte que .brand-text
+       utilisait déjà en thème sombre. Le monogramme hexagonal est identique dans
+       les deux : c'est un emblème, pas du texte. La bascule n'est PLUS en CSS
+       (deux balises dont une masquée = deux téléchargements) mais dans la source
+       de l'unique balise, voir logoMarque(). */
 
     .brand-text {
       font-size: 18px;
@@ -1486,6 +1539,29 @@ type NotifBucket = Notification | NotifThreadGroup;
 export class AppLayoutComponent implements OnInit, OnDestroy {
   /** Brand name shown in the navbar — per-deployment (Calypso / Bougeo / …). */
   readonly brandName = environment.brandName;
+
+  /**
+   * Garde-fou de marque : le logo Calypso ne doit JAMAIS s'afficher pour un autre
+   * déploiement. brandName vient de environment.ts, que chaque serveur garde en
+   * copie locale (Bougeo en Algérie, par exemple). Sans ce test, un client Bougeo
+   * verrait le logo d'une marque concurrente en haut de son écran. Les autres
+   * marques gardent le rendu neutre pin + nom.
+   */
+  readonly estMarqueCalypso = (environment.brandName || '').trim().toLowerCase() === 'calypso';
+
+  /**
+   * Fichier de logo à poser dans la barre, selon le thème. Une seule balise
+   * <img> dans le DOM : quand les deux y étaient, l'une masquée en display:none,
+   * le navigateur téléchargeait les deux SVG à chaque chargement pour n'en
+   * afficher qu'un. Lit le même ThemeService que le bouton lune/soleil de la
+   * barre, qui rafraîchit déjà l'affichage (isDarkMode est lu juste à côté, dans
+   * le même gabarit, pour choisir l'icône du bouton).
+   */
+  get logoMarque(): string {
+    return this.themeService.isDarkMode
+      ? '/assets/calypso-logo-sombre.svg'
+      : '/assets/calypso-logo.svg';
+  }
 
   /** Impersonation ("voir en tant que") — bandeau + retour super-admin. */
   isImpersonating(): boolean { return this.authService.isImpersonating(); }

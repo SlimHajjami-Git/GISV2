@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Monogramme SEUL de Calypso, decoupe dans calypso-logo.svg : les six facettes du
+     « C » hexagonal, sans le mot CALYPSO. Chemins repris a l identique (memes fills de
+     charte, memes coordonnees), seule la viewBox est recadree sur le monogramme et
+     rendue CARREE. Constat : le logo complet fait 3:1 ; ecrase dans les 16 px d un
+     favicon il devient une bavure illisible, alors que le monogramme carre reste net. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="176" height="176" viewBox="143.56 261.38 174.6 174.6">
+<path fill-rule="nonzero" fill="rgb(94.335938%, 27.375793%, 13.926697%)" fill-opacity="1" d="M 185.707031 374.359375 L 185.707031 322.609375 L 185.730469 322.597656 L 230.859375 267.828125 L 160.882812 308.230469 L 160.839844 308.253906 L 185.707031 374.75 Z M 185.707031 374.359375 "/>
+<path fill-rule="nonzero" fill="rgb(0%, 67.83905%, 93.728638%)" fill-opacity="1" d="M 185.707031 374.75 L 160.839844 308.253906 L 160.839844 389.105469 L 230.859375 400.820312 Z M 185.707031 374.75 "/>
+<path fill-rule="nonzero" fill="rgb(96.469116%, 52.938843%, 7.058716%)" fill-opacity="1" d="M 185.734375 322.597656 L 230.859375 296.542969 L 275.988281 322.597656 L 230.859375 267.828125 Z M 185.734375 322.597656 "/>
+<path fill-rule="nonzero" fill="rgb(97.50824%, 65.449524%, 16.833496%)" fill-opacity="1" d="M 230.859375 267.828125 L 275.988281 322.597656 L 300.839844 308.230469 Z M 230.859375 267.828125 "/>
+<path fill-rule="nonzero" fill="rgb(9.01947%, 43.528748%, 75.489807%)" fill-opacity="1" d="M 160.839844 389.105469 L 230.859375 429.53125 L 300.878906 389.105469 L 230.859375 400.820312 Z M 160.839844 389.105469 "/>
+<path fill-rule="nonzero" fill="rgb(15.513611%, 26.026917%, 62.356567%)" fill-opacity="1" d="M 276.015625 374.359375 L 230.859375 400.820312 L 300.878906 389.105469 L 300.878906 388.890625 Z M 276.015625 374.359375 "/>
+</svg>
