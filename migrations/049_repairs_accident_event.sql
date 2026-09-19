@@ -30,7 +30,7 @@
 -- l'API retire la dépense liée au dossier au moment même où elle écrit la ligne
 -- de réparation correspondante.
 --
--- ORDRE DE DÉPLOIEMENT — ce SQL sur DZ puis TN AVANT le pod API qui mappe
+-- ORDRE DE DÉPLOIEMENT — ce SQL sur TN AVANT le pod API qui mappe
 -- Repair.AccidentEventId, sinon 42703 sur toute lecture des réparations.
 
 ALTER TABLE repairs
