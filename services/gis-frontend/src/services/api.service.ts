@@ -700,8 +700,15 @@ export class ApiService {
   }
 
   /**
-   * Scan an invoice (image/PDF) with AI. Returns { extraction, receiptUrl } for
-   * user review — nothing is saved. The confirmed data is saved via createCost.
+   * Analyse une facture (image/PDF) par l'IA. Rend { extraction, receiptUrl } pour
+   * relecture — rien n'est enregistré. L'écran appelant enregistre ensuite ce qu'il
+   * veut, sous son propre droit (createCost, plein de carburant, entretien…).
+   *
+   * Le chemin reste sous /costs/ pour des raisons serveur (plafond de débit reconnu
+   * au chemin), mais la route N'EXIGE PLUS le module Dépenses depuis le 19/09/2026 :
+   * elle est ouverte à tout utilisateur authentifié et c'est le quota mensuel de la
+   * société qui l'ouvre ou la ferme (403 « pas activé », 429 « quota atteint »).
+   * Les cinq écrans qui portent le bouton peuvent donc l'appeler sans canCosts.
    */
   scanInvoice(file: File): Observable<any> {
     const formData = new FormData();
@@ -711,9 +718,16 @@ export class ApiService {
     return this.http.post<any>(`${this.API_URL}/costs/scan-invoice`, formData, { headers });
   }
 
-  /** Quota mensuel de scans IA de la société — { used, limit, remaining }. */
+  /**
+   * Quota MENSUEL de scans IA de la société — { used, limit, remaining, resetsAt }.
+   * resetsAt (1er du mois prochain) faisait partie de la réponse mais manquait au
+   * type de la requête : le compteur des écrans le perdait silencieusement.
+   * Partagé par les cinq écrans qui portent le bouton « Scanner une facture ».
+   * Comme scanInvoice, la route n'exige plus le module Dépenses (19/09/2026) ;
+   * `limit: 0` veut dire « scan désactivé pour cette société ».
+   */
   getScanQuota(): Observable<{ used: number; limit: number; remaining: number; resetsAt?: string }> {
-    return this.http.get<{ used: number; limit: number; remaining: number }>(
+    return this.http.get<{ used: number; limit: number; remaining: number; resetsAt?: string }>(
       `${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
   }
 

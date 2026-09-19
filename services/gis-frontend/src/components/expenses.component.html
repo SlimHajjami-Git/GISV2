@@ -52,26 +52,9 @@
         </svg>
         Exporter PDF
       </button>
-      @if (canScanInvoice) {
-        <button class="btn-scan" (click)="invoiceInput.click()"
-                [disabled]="scanning || scanQuota?.remaining === 0"
-                [title]="scanQuotaTitle">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-            <line x1="3" y1="12" x2="21" y2="12"/>
-          </svg>
-          {{ scanning ? 'Analyse…' : 'Scanner une facture' }}
-          @if (scanQuota) {
-            <!-- Scans UTILISÉS ce mois / quota — même lecture que la fiche admin. Avant le
-                 11/09/2026 la bulle affichait le RESTE (« 16/20 »), qui se lisait comme
-                 16 scans consommés et laissait croire que le compteur ne repartait jamais à zéro. -->
-            <span class="scan-quota-chip" [class.scan-quota-chip-empty]="scanQuota.remaining === 0">
-              {{ scanQuota.used }}/{{ scanQuota.limit }} ce mois
-            </span>
-          }
-        </button>
-        <input #invoiceInput type="file" accept="image/*,application/pdf" hidden (change)="onInvoiceFile($event)">
-      }
+      <!-- Bouton + compteur de quota + envoi : brique partagée avec Entretien,
+           Réparations, Échéances et Carburant (shared/scan-facture.component.ts). -->
+      <app-scan-facture (scanne)="onFactureScannee($event)" (echec)="onEchecScan($event)"></app-scan-facture>
       <button class="btn-add" (click)="openAddForm()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>

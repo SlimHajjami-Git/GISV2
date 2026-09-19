@@ -9,6 +9,9 @@ import { ApiService, MarkMaintenanceDoneRequest, SupplierDto } from '../services
 import { ToastService } from '../services/toast.service';
 import { PermissionService } from '../services/permission.service';
 import { trigger, transition, style, animate } from '@angular/animations';
+import {
+  ScanFactureComponent, ResultatScanFacture, EchecScanFacture
+} from './shared/scan-facture.component';
 
 interface MaintenanceTemplate {
   id: string;
@@ -40,6 +43,50 @@ interface InvoiceLine {
 
 /** Champs communs à toutes les lignes d'un même « Entretien effectué ». */
 type MarkDoneCommon = Omit<MarkMaintenanceDoneRequest, 'templateId' | 'cost' | 'applyFreeBenefit'>;
+
+/**
+ * Ce que le dernier scan a lu sur la facture : bandeau d'information au-dessus du
+ * détail, pour que l'utilisateur sache ce qui a été pré-rempli, avec quelle
+ * confiance, et ce que l'écran n'a PAS pu placer. Rien d'ici n'est enregistré.
+ */
+interface FactureScannee {
+  /** high | medium | low — vide quand l'analyse a échoué. */
+  confiance: string;
+  /** Document stocké par le serveur (/uploads/invoices/…) : consultable, pas enregistré. */
+  receiptUrl: string;
+  numeroFacture: string;
+  /** Total lu sur la facture, pour contrôler le Total saisi. */
+  totalFacture: number | null;
+  fournisseurLu: string;
+  fournisseurRapproche: boolean;
+  plaqueLue: string;
+  plaqueDifferente: boolean;
+  /** Date lue mais écartée : une saisie manuelle prime sur le document. */
+  dateNonAppliquee: string;
+  /**
+   * Lignes de facture qu'AUCUN modèle d'entretien ne reconnaît (pièces, main
+   * d'œuvre, consommables) : rien ne peut les enregistrer, elles partent en Notes.
+   */
+  lignesNonRapprochees: { label: string; amount: number }[];
+  /**
+   * Lignes dont le modèle figure DÉJÀ, chiffré, dans le détail : rien ne manque,
+   * le montant en place l'emporte simplement sur celui lu. Cause très différente
+   * de la précédente : à ne pas annoncer sous le même libellé.
+   */
+  lignesDejaChiffrees: { label: string; amount: number }[];
+  /** La ligne de l'entretien coché a reçu le reste du total (main d'œuvre comprise). */
+  resteAffecte: boolean;
+  /**
+   * Reste nul ou négatif : le prix de l'entretien coché est resté VIDE, c'est à
+   * l'utilisateur de le saisir. Le scan ne remplit jamais un 0 à sa place.
+   */
+  entretienASaisir: boolean;
+  /** Le récapitulatif a été proposé dans les Notes (elles étaient vides). */
+  notesRemplies: boolean;
+  avoir: boolean;
+  /** Analyse impossible : message d'accompagnement du document stocké. */
+  echec: string;
+}
 
 interface VehicleMaintenanceStatus {
   vehicleId: string;
@@ -93,7 +140,7 @@ interface FlatRow {
 @Component({
   selector: 'app-maintenance-templates',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -388,7 +435,58 @@ interface FlatRow {
               <div class="field-hint" *ngIf="suppliersLoaded && suppliers.length === 0">Aucun fournisseur actif : ajoutez vos garages dans le module Fournisseurs.</div>
             </div>
             <div class="invoice-section">
-              <h4 class="sub-title">Detail de la facture</h4>
+              <div class="inv-head">
+                <h4 class="sub-title">Detail de la facture</h4>
+                <!-- Même geste qu'à l'écran Dépenses : la brique partagée fait l'envoi,
+                     le quota et les messages ; cet écran ne remplit que SES champs. -->
+                <app-scan-facture libelle="Scanner la facture"
+                                  [desactive]="isMarkSubmitting"
+                                  raisonDesactivation="Enregistrement en cours…"
+                                  (scanne)="onFactureScannee($event)"
+                                  (echec)="onEchecScan($event)"></app-scan-facture>
+              </div>
+
+              <!-- Ce que le scan a lu : l'utilisateur doit voir ce qui a été pré-rempli,
+                   avec quelle confiance, et ce qui n'a pas pu l'être. -->
+              <div class="scan-lu" *ngIf="scanLu">
+                <div class="scan-lu-head">
+                  <span class="scan-lu-title">{{ scanLu.echec ? 'Document enregistré' : 'Proposé par le scan' }}</span>
+                  <span class="scan-conf" [class]="'scan-conf c-' + scanLu.confiance" *ngIf="scanLu.confiance">Confiance {{ scanConfianceLabel() }}</span>
+                </div>
+                <div class="scan-lu-line" *ngIf="scanLu.echec">{{ scanLu.echec }}</div>
+                <div class="scan-lu-line" *ngIf="scanLu.numeroFacture">
+                  Facture n° <strong>{{ scanLu.numeroFacture }}</strong><span *ngIf="scanLu.notesRemplies"> — reportée dans les Notes</span>
+                </div>
+                <div class="scan-lu-line" *ngIf="scanLu.totalFacture !== null">
+                  Total lu <strong>{{ scanLu.totalFacture | appCurrency }}</strong> — saisi
+                  <strong [class.scan-ecart]="scanTotalDiffere()">{{ getInvoiceTotal() | appCurrency }}</strong>
+                </div>
+                <div class="scan-lu-line" *ngIf="scanLu.fournisseurLu">
+                  Fournisseur lu « {{ scanLu.fournisseurLu }} »<span *ngIf="!scanLu.fournisseurRapproche"> : aucun de vos fournisseurs ne correspond, champ laissé sur « Non renseigné ».</span>
+                </div>
+                <div class="scan-lu-line" *ngIf="scanLu.dateNonAppliquee">
+                  Date de la facture : {{ scanLu.dateNonAppliquee | date:'dd/MM/yyyy' }} — votre saisie a été conservée.
+                </div>
+                <!-- Deux causes bien distinctes, deux messages : une ligne que rien ne
+                     reconnaît n'est pas une ligne que l'utilisateur a déjà chiffrée. -->
+                <div class="scan-lu-line" *ngIf="scanLu.lignesNonRapprochees.length">
+                  {{ scanLu.lignesNonRapprochees.length }} ligne<span *ngIf="scanLu.lignesNonRapprochees.length > 1">s</span> sans modèle d'entretien (pièces, main d'œuvre)<span *ngIf="scanLu.notesRemplies"> : détaillée<span *ngIf="scanLu.lignesNonRapprochees.length > 1">s</span> dans les Notes</span><span *ngIf="scanLu.resteAffecte">, montant compris dans la ligne de l'entretien</span>.
+                </div>
+                <div class="scan-lu-line" *ngIf="scanLu.lignesDejaChiffrees.length">
+                  {{ scanLu.lignesDejaChiffrees.length }} ligne<span *ngIf="scanLu.lignesDejaChiffrees.length > 1">s</span> dont le modèle est déjà chiffré dans le détail : le montant en place est conservé<span *ngIf="scanLu.notesRemplies">, celui de la facture est rappelé dans les Notes</span>.
+                </div>
+                <div class="scan-warn" *ngIf="scanLu.entretienASaisir">
+                  Montant de « {{ markData.maintenanceName }} » à saisir : les autres lignes couvrent déjà le total lu, le scan ne met pas 0 à votre place.
+                </div>
+                <div class="scan-warn" *ngIf="scanLu.plaqueDifferente">
+                  Plaque lue « {{ scanLu.plaqueLue }} » : différente de {{ markData.vehiclePlate }}. Vérifiez que la facture concerne bien ce véhicule.
+                </div>
+                <div class="scan-warn" *ngIf="scanLu.avoir">
+                  Facture d'avoir : cet écran enregistre un coût d'entretien, pas un remboursement. Saisissez l'avoir dans Dépenses.
+                </div>
+                <a class="scan-doc" *ngIf="scanLu.receiptUrl" [href]="scanLu.receiptUrl" target="_blank" rel="noopener">Voir le document scanné</a>
+              </div>
+
               <div class="invoice-lines">
                 <div class="inv-line" *ngFor="let line of markData.invoiceLines; let i = index">
                   <div class="inv-top">
@@ -429,6 +527,9 @@ interface FlatRow {
                     </div>
                   </div>
                   <div class="inv-hint" *ngIf="line.templateId && lastPaidPrices.get(line.templateId)">Dernier prix: {{ lastPaidPrices.get(line.templateId) | appCurrency:0 }}</div>
+                  <!-- Une ligne en saisie libre n'a pas de modèle : le serveur ne sait pas
+                       l'enregistrer, elle était jusqu'ici abandonnée en silence. -->
+                  <div class="inv-hint warn" *ngIf="line.isCustom && line.price !== null">Choisissez un type d'entretien : une ligne en saisie libre n'est pas enregistrée.</div>
                 </div>
               </div>
               <button class="btn-add-line" (click)="addInvoiceLine()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ajouter une ligne</button>
@@ -935,6 +1036,21 @@ interface FlatRow {
       color:#78350f;
     }
     .invoice-section { background:#f8fafc; border-radius:6px; padding:14px; margin-bottom:14px; border:1px solid #e2e8f0; }
+    /* Titre + bouton de scan sur une seule ligne : le panneau ne fait que 460 px,
+       le bouton (brique partagée, :host display:contents) reste un enfant du flex. */
+    .inv-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+    .inv-head .sub-title { margin:0; }
+    .scan-lu { background:#f5f3ff; border:1px solid #ddd6fe; border-radius:6px; padding:8px 10px; margin-bottom:10px; font-size:11px; line-height:1.45; color:#4c1d95; }
+    .scan-lu-head { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:3px; }
+    .scan-lu-title { font-weight:700; }
+    .scan-lu-line { margin-top:2px; }
+    .scan-ecart { color:#b91c1c; }
+    .scan-conf { padding:1px 7px; border-radius:999px; font-size:10px; font-weight:700; background:#e2e8f0; color:#475569; white-space:nowrap; }
+    .scan-conf.c-high { background:#dcfce7; color:#166534; }
+    .scan-conf.c-medium { background:#fef3c7; color:#92400e; }
+    .scan-conf.c-low { background:#fee2e2; color:#b91c1c; }
+    .scan-warn { margin-top:5px; padding:5px 7px; background:#fef3c7; border-radius:3px; color:#92400e; font-weight:600; }
+    .scan-doc { display:inline-block; margin-top:6px; color:#6d28d9; font-weight:600; }
     .invoice-lines { display:flex; flex-direction:column; gap:8px; }
     .inv-line { background:white; border-radius:6px; padding:10px; border:1px solid #e2e8f0; }
     .inv-top { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
@@ -947,6 +1063,7 @@ interface FlatRow {
     .inv-price input.is-free { background:#f0fdf4; border-color:#bbf7d0; color:#166534; cursor:not-allowed; }
     .inv-price span { font-size:11px; color:#64748b; }
     .inv-hint { margin-top:6px; padding:6px 8px; background:#dbeafe; border-radius:3px; font-size:10px; color:#1d4ed8; }
+    .inv-hint.warn { background:#fef3c7; color:#92400e; font-weight:600; }
     .new-tpl-fields { background:#f0fdf4; border:1px solid #bbf7d0; border-radius:6px; padding:10px; margin-bottom:8px; }
     .new-tpl-fields .field { margin-bottom:8px; }
     .new-tpl-fields .field:last-of-type { margin-bottom:0; }
@@ -996,6 +1113,16 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   canUseSuppliers = false;
   suppliers: SupplierDto[] = [];
   suppliersLoaded = false;
+  /** Dernier scan de facture de la modale ouverte (null tant qu'aucun scan). */
+  scanLu: FactureScannee | null = null;
+  /**
+   * Prix que l'ÉCRAN a posés lui-même, ligne par ligne : rappel du dernier prix payé
+   * à l'ouverture ou au choix d'un modèle, montant proposé par un scan. Tant que le
+   * champ vaut encore le prix enregistré ici, personne n'y a touché et un scan peut
+   * le remplacer ; dès qu'il en diffère, c'est une saisie de l'utilisateur et elle
+   * prime. Vidée à chaque ouverture et à la fermeture de la modale.
+   */
+  private prixProposes = new Map<InvoiceLine, number | null>();
   isAddToVehicleOpen = false;
   isAssignSubmitting = false;
   addToVehicleData: any = this.getEmptyAddToVehicle();
@@ -1038,9 +1165,12 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
 
   getEmptyForm() { return { name:'', description:'', category:'', priority:'medium', intervalKm:null, intervalMonths:null, estimatedCost:0, isActive:true, warningKm:1000, warningDays:30, criticalKm:0, criticalDays:0 }; }
   getEmptyMark() {
+    const aujourdhui = new Date().toISOString().split('T')[0];
     return {
       vehicleId:'', vehicleName:'', vehiclePlate:'', templateId:'', maintenanceName:'',
-      date:new Date().toISOString().split('T')[0], mileage:null, vehicleMileage:0, supplierId:null as number | null, notes:'',
+      // dateAuto : date posée par l'écran (ouverture, puis scan). Tant que « date » lui
+      // est égale, personne n'y a touché et un scan peut la remplacer.
+      date:aujourdhui, dateAuto:aujourdhui, mileage:null, vehicleMileage:0, supplierId:null as number | null, notes:'',
       freeUsesRemaining: 0, freeUsesTotal: 0, freeSource: '', freeExpiryDate: null, applyFreeBenefit: false,
       invoiceLines: [] as InvoiceLine[]
     };
@@ -1269,6 +1399,8 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     const lastPrice = this.lastPaidPrices.get(m.templateId) || null;
     const hasFree = (m.freeUsesRemaining ?? 0) > 0;
     const tpl = this.templates.find(t => t.id === m.templateId);
+    const aujourdhui = new Date().toISOString().split('T')[0];
+    this.scanLu = null;
     this.markData = {
       vehicleId: v.vehicleId,
       vehicleName: v.vehicleName,
@@ -1276,7 +1408,8 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       templateId: m.templateId,
       maintenanceName: m.templateName,
       estimatedCost: tpl?.estimatedCost ?? 0,
-      date: new Date().toISOString().split('T')[0],
+      date: aujourdhui,
+      dateAuto: aujourdhui,
       mileage: v.currentMileage,
       // vehicles.mileage : plancher du kilométrage saisi (un compteur ne recule pas).
       vehicleMileage: v.currentMileage || 0,
@@ -1300,6 +1433,12 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
         newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null
       }]
     };
+    // Le prix posé ici n'est qu'un rappel du dernier prix payé : un scan peut le
+    // remplacer tant que l'utilisateur ne l'a pas retouché (un entretien offert, lui,
+    // reste verrouillé à 0).
+    this.prixProposes.clear();
+    const ligneOuverture = this.markData.invoiceLines[0] as InvoiceLine;
+    this.prixProposes.set(ligneOuverture, ligneOuverture.price);
     this.isMarkOpen = true;
     this.loadSuppliers();
   }
@@ -1389,6 +1528,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   closeMarkDone() {
     if (this.isMarkSubmitting) return; // les appels en cours doivent pouvoir rendre compte de leur résultat
     this.isMarkOpen = false; this.markData = this.getEmptyMark();
+    this.scanLu = null; this.prixProposes.clear();
   }
   /** Même règle que le serveur (MarkMaintenanceDoneCommandHandler) : un compteur ne recule pas. */
   isMileageBelowVehicle(): boolean {
@@ -1422,7 +1562,14 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       line.templateId = null; line.isCustom = true; line.isNewTemplate = false; line.description = ''; line.price = null;
     } else {
       const t = this.templates.find(x => x.id === templateId);
-      if (t) { line.templateId = t.id; line.isCustom = false; line.isNewTemplate = false; line.description = t.name; line.price = this.lastPaidPrices.get(t.id) || null; }
+      if (t) {
+        line.templateId = t.id; line.isCustom = false; line.isNewTemplate = false; line.description = t.name;
+        line.price = this.lastPaidPrices.get(t.id) || null;
+        // Même nature que le prix posé à l'ouverture : un rappel du dernier prix payé,
+        // pas une saisie. Un scan a donc le droit de le remplacer par le montant du
+        // document, ici comme sur la ligne de l'entretien coché.
+        this.prixProposes.set(line, line.price);
+      }
     }
   }
   getVehicleMaintenanceTemplates(): MaintenanceTemplate[] {
@@ -1436,6 +1583,256 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   }
   removeInvoiceLine(i: number) { if (this.markData.invoiceLines.length > 1) this.markData.invoiceLines.splice(i, 1); }
   getInvoiceTotal(): number { return this.markData.invoiceLines.reduce((s: number, l: any) => s + (l.price || 0), 0); }
+
+  // ── Scan de facture (IA) ────────────────────────────────────────────────────
+  // Le bouton, le quota, l'envoi de la photo et TOUS les messages d'erreur vivent
+  // dans <app-scan-facture> (shared/scan-facture.component.ts), commun à Dépenses,
+  // Carburant, Réparations et Échéances. Ici on ne décide que du remplissage des
+  // champs de CETTE modale. Règle d'or : le scan propose, l'utilisateur dispose —
+  // rien de ce qui a été saisi à la main n'est écrasé, et ce qui ne rentre dans
+  // aucun champ est affiché puis reporté dans les Notes plutôt que perdu.
+
+  /** Clé de comparaison d'un libellé : minuscules, sans accent ni séparateur. */
+  private cleTexte(s: string | null | undefined): string {
+    return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]/g, '');
+  }
+
+  /** Deux plaques désignent-elles le même véhicule (égalité, puis inclusion) ? */
+  private memePlaque(a: string, b: string): boolean {
+    const x = this.cleTexte(a), y = this.cleTexte(b);
+    if (!x || !y) return false;
+    return x === y || x.includes(y) || y.includes(x);
+  }
+
+  /** Montant d'une ligne : arrondi au millime, jamais négatif (le serveur refuse). */
+  private montantLigne(n: number): number {
+    return Math.max(0, Math.round((n || 0) * 1000) / 1000);
+  }
+
+  /** Montant écrit dans les Notes, à la française. */
+  private montantTexte(n: number): string {
+    return `${(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 })} ${this.currencyCode}`;
+  }
+
+  /**
+   * Fournisseur de la liste portant ce nom : égalité, puis inclusion (« GARAGE
+   * ELMOTORS SARL » ↔ « El Motors »). Rien de probant → null : on laisse « Non
+   * renseigné » plutôt que d'affecter la facture au mauvais garage.
+   */
+  private rapprocherFournisseur(nom: string): SupplierDto | null {
+    const cle = this.cleTexte(nom);
+    if (cle.length < 3) return null;
+    return this.suppliers.find(s => this.cleTexte(s.name) === cle)
+        || this.suppliers.find(s => {
+             const c = this.cleTexte(s.name);
+             return c.length >= 4 && (c.includes(cle) || cle.includes(c));
+           })
+        || null;
+  }
+
+  /**
+   * Ligne de facture rapprochée d'un modèle d'entretien (« Vidange moteur 5W40 » →
+   * modèle « Vidange moteur »), ceux du véhicule d'abord. Sans correspondance on
+   * rend null : une ligne sans modèle n'est pas enregistrable par le serveur, on
+   * ne l'invente donc pas — elle part dans les Notes.
+   */
+  private rapprocherModele(libelle: string): MaintenanceTemplate | null {
+    const cle = this.cleTexte(libelle);
+    if (cle.length < 3) return null;
+    const listes = [this.getVehicleMaintenanceTemplates(), this.getOtherTemplatesForDropdown()];
+    for (const liste of listes) {
+      const exact = liste.find(t => this.cleTexte(t.name) === cle);
+      if (exact) return exact;
+    }
+    for (const liste of listes) {
+      const partiel = liste.find(t => {
+        const c = this.cleTexte(t.name);
+        return c.length >= 4 && (cle.includes(c) || c.includes(cle));
+      });
+      if (partiel) return partiel;
+    }
+    return null;
+  }
+
+  /** Prix encore « proposé » par l'écran, donc remplaçable par un scan. */
+  private prixRemplacable(ligne: InvoiceLine): boolean {
+    if (this.isLineFree(ligne)) return false;           // entretien offert : 0 verrouillé
+    if (ligne.price === null) return true;
+    return this.prixProposes.has(ligne) && this.prixProposes.get(ligne) === ligne.price;
+  }
+
+  /** Total saisi différent du total lu sur la facture (tolérance 0,01). */
+  scanTotalDiffere(): boolean {
+    const lu = this.scanLu?.totalFacture;
+    if (lu === null || lu === undefined) return false;
+    return Math.abs(this.getInvoiceTotal() - lu) > 0.01;
+  }
+
+  scanConfianceLabel(): string {
+    const c = this.scanLu?.confiance || '';
+    return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as Record<string, string>)[c] || c;
+  }
+
+  /**
+   * Facture scannée : la brique a déjà envoyé le document et décompté le quota.
+   * L'écran ne remplit que ce qu'il a lui-même posé (date du jour, prix rappelé) :
+   * une date corrigée, un prix tapé, un fournisseur déjà choisi restent intacts.
+   * Les lignes de facture rapprochées d'un modèle deviennent des lignes du détail ;
+   * la ligne de l'entretien coché — celle qui déclare l'entretien fait et repousse
+   * l'échéance — reçoit le reste du total, pour que le Total affiché corresponde à
+   * celui lu sur le document. Reste nul ou négatif : le champ prix reste VIDE, le
+   * scan n'invente aucun montant.
+   */
+  onFactureScannee(res: ResultatScanFacture): void {
+    const x = res.extraction;
+    const lignes = this.markData.invoiceLines as InvoiceLine[];
+
+    let dateNonAppliquee = '';
+    if (x.date) {
+      if (this.markData.date === this.markData.dateAuto) {
+        this.markData.date = x.date;
+        this.markData.dateAuto = x.date;
+      } else if (this.markData.date !== x.date) {
+        dateNonAppliquee = x.date;
+      }
+    }
+
+    let fournisseurRapproche = false;
+    if (x.supplierName && this.canUseSuppliers && this.markData.supplierId == null) {
+      const s = this.rapprocherFournisseur(x.supplierName);
+      if (s) { this.markData.supplierId = s.id; fournisseurRapproche = true; }
+    }
+
+    // 1) Une ligne déjà présente et non chiffrée prend le montant de la ligne de
+    //    facture qui porte son modèle.
+    const servies = new Set<InvoiceLine>();
+    const restants = [...x.items];
+    for (const ligne of lignes) {
+      if (!ligne.templateId || !this.prixRemplacable(ligne)) continue;
+      const i = restants.findIndex(it => this.rapprocherModele(it.label)?.id === ligne.templateId);
+      if (i < 0) continue;
+      ligne.price = this.montantLigne(restants[i].amount);
+      restants.splice(i, 1);
+      servies.add(ligne);
+    }
+
+    // 2) Les lignes de facture restantes rapprochées d'un modèle s'AJOUTENT au
+    //    détail. Les autres ne sont pas enregistrables telles quelles et partent
+    //    dans les Notes, pour DEUX raisons qu'il ne faut surtout pas confondre :
+    //      - aucun modèle ne correspond (pièces, main d'œuvre, consommables) :
+    //        le montant n'a aucune ligne où aller, il faut le signaler ;
+    //      - le modèle correspond mais la ligne du détail est déjà chiffrée :
+    //        rien ne manque, le montant en place l'emporte simplement sur celui lu.
+    //    Les annoncer sous le même libellé était faux et inquiétait pour rien.
+    const nonRapprochees: { label: string; amount: number }[] = [];
+    const dejaChiffrees: { label: string; amount: number }[] = [];
+    for (const it of restants) {
+      const t = this.rapprocherModele(it.label);
+      if (!t) { nonRapprochees.push({ label: it.label, amount: it.amount }); continue; }
+      if (lignes.some(l => l.templateId === t.id && l.price !== null)) {
+        dejaChiffrees.push({ label: it.label, amount: it.amount });
+        continue;
+      }
+      const ajoutee: InvoiceLine = {
+        templateId: t.id, description: t.name, price: this.montantLigne(it.amount),
+        isCustom: false, isNewTemplate: false, newTemplateName: '',
+        newTemplateCategory: '', newTemplateIntervalKm: null, newTemplateIntervalMonths: null
+      };
+      lignes.push(ajoutee);
+      servies.add(ajoutee);
+    }
+
+    // 3) La ligne de l'entretien coché — celle qui déclare l'entretien fait et
+    //    repousse l'échéance — reçoit le RESTE de la facture : son propre montant
+    //    plus ce qui n'a pu être rangé nulle part (main d'œuvre, consommables,
+    //    timbre). Sans cela le Total saisi serait inférieur au total payé et le
+    //    coût du véhicule sous-estimé.
+    let resteAffecte = false;
+    let entretienASaisir = false;
+    const ligneEntretien = lignes.find(l => !!l.templateId && l.templateId === this.markData.templateId);
+    if (ligneEntretien && x.total !== null && (servies.has(ligneEntretien) || this.prixRemplacable(ligneEntretien))) {
+      const autres = lignes.filter(l => l !== ligneEntretien).reduce((s, l) => s + (l.price || 0), 0);
+      // montantLigne ramène à 0 tout reste négatif (le serveur refuse un montant < 0).
+      const reste = this.montantLigne(x.total - autres);
+      // On ne descend JAMAIS en dessous du montant en place, et un champ vide vaut
+      // ici zéro : un reste nul ou négatif (remise, lignes qui couvrent déjà le
+      // total, total mal lu) laisse donc le prix VIDE au lieu d'y écrire un 0.
+      // C'était le seul endroit où le scan inventait une valeur, et un entretien
+      // pouvait partir à 0 sans que personne ne le voie. Le champ vide se voit, lui,
+      // et la ligne n'est même pas enregistrée tant que l'utilisateur n'a pas saisi.
+      if (reste > (ligneEntretien.price || 0)) {
+        resteAffecte = nonRapprochees.length > 0;
+        ligneEntretien.price = reste;
+        servies.add(ligneEntretien);
+      } else {
+        entretienASaisir = ligneEntretien.price === null;
+      }
+    }
+    // Ne devient « prix posé par l'écran » que ce que CE scan a lui-même écrit.
+    // Recopier le contenu du champ sans distinction faisait basculer dans cette
+    // catégorie un prix TAPÉ par l'utilisateur — que le scan venait justement de
+    // respecter — et le scan suivant se croyait alors autorisé à l'écraser : la
+    // protection « le scan propose, l'utilisateur dispose » se retournait contre
+    // elle-même au deuxième scan.
+    for (const ligne of servies) this.prixProposes.set(ligne, ligne.price);
+
+    // 4) Ni numéro de pièce ni justificatif dans ce formulaire : ce qui n'a pas de
+    //    champ est proposé dans les Notes, et seulement si elles sont vides — une
+    //    remarque déjà écrite par l'utilisateur ne s'efface pas.
+    const entete = [x.invoiceNumber ? `Facture n° ${x.invoiceNumber}` : '', x.supplierName || '']
+      .filter(s => !!s).join(' — ');
+    const detail = nonRapprochees.map(it => `${it.label || 'Ligne'} : ${this.montantTexte(it.amount)}`);
+    // Les lignes déjà chiffrées sont rappelées telles qu'elles ont été lues, en
+    // disant bien que la saisie prime : sans ce rappel, l'écart entre la facture
+    // et le détail n'est nulle part.
+    const rappels = dejaChiffrees.map(it =>
+      `${it.label || 'Ligne'} : ${this.montantTexte(it.amount)} (lu sur la facture, montant du détail conservé)`);
+    const texte = [entete, ...detail, ...rappels].filter(s => !!s).join('\n');
+    // Le bandeau ne doit annoncer un report dans les Notes que s'il y a vraiment
+    // eu quelque chose à y écrire.
+    const notesRemplies = !this.markData.notes && !!texte;
+    if (notesRemplies) this.markData.notes = texte;
+
+    const plaqueLue = x.vehiclePlate || '';
+    this.scanLu = {
+      confiance: x.confidence || '',
+      receiptUrl: res.receiptUrl,
+      numeroFacture: x.invoiceNumber || '',
+      totalFacture: x.total,
+      fournisseurLu: x.supplierName || '',
+      fournisseurRapproche,
+      plaqueLue,
+      plaqueDifferente: !!plaqueLue && !this.memePlaque(plaqueLue, this.markData.vehiclePlate),
+      dateNonAppliquee,
+      lignesNonRapprochees: nonRapprochees,
+      lignesDejaChiffrees: dejaChiffrees,
+      resteAffecte,
+      entretienASaisir,
+      notesRemplies,
+      avoir: x.isCreditNote,
+      echec: ''
+    };
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Scan en échec : le message a déjà été montré par la brique et la saisie à la
+   * main reste possible — on ne vide surtout pas la modale, qui était déjà remplie.
+   * Quand le serveur a tout de même stocké le document (panne de l'IA), on garde son
+   * lien affiché pour que l'utilisateur puisse recopier les montants.
+   */
+  onEchecScan(e: EchecScanFacture): void {
+    if (!e.receiptUrl) return;
+    this.scanLu = {
+      confiance: '', receiptUrl: e.receiptUrl, numeroFacture: '', totalFacture: null,
+      fournisseurLu: '', fournisseurRapproche: false, plaqueLue: '', plaqueDifferente: false,
+      dateNonAppliquee: '', lignesNonRapprochees: [], lignesDejaChiffrees: [], resteAffecte: false,
+      entretienASaisir: false, notesRemplies: false, avoir: false,
+      echec: "Le document est enregistré mais n'a pas pu être lu : saisissez les montants à la main."
+    };
+    this.cdr.detectChanges();
+  }
+
   /**
    * Une ligne de facture = un enregistrement. Les erreurs étaient avalées
    * (`error: onDone`) : la modale se fermait et se rafraîchissait comme si tout
@@ -1463,7 +1860,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       date: this.markData.date,
       mileage: this.markData.mileage,
       supplierId: this.markData.supplierId ?? undefined,
-      notes: this.markData.notes || undefined
+      notes: this.notesAvecJustificatif()
     };
 
     // Chaque appel émet null en cas de succès, l'erreur sinon : forkJoin attend toutes les lignes.
@@ -1499,6 +1896,24 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
       this.toast.error(title, [...new Set(errors.map(e => this.saveErrorMessage(e)))].join(' '), 10000);
       this.cdr.detectChanges();
     });
+  }
+
+  /**
+   * Notes enregistrées avec l'entretien, lien du document scanné compris.
+   *
+   * Le journal d'entretien n'a aucune colonne de justificatif : sans ce lien,
+   * la facture n'est référencée NULLE PART et le balayage des factures
+   * orphelines l'efface le lendemain, alors que la ligne reste. Même
+   * convention que Carburant et Réparations, qui rangent déjà la leur dans
+   * leurs notes (choix de Karim du 19/09/2026 : les notes plutôt qu'une
+   * migration). Le lien n'est ajouté qu'une fois : un second essai après un
+   * échec partiel ne le redouble pas.
+   */
+  private notesAvecJustificatif(): string | undefined {
+    const saisie = (this.markData.notes || '').trim();
+    const url = this.scanLu?.receiptUrl || '';
+    if (!url || saisie.includes(url)) return saisie || undefined;
+    return (saisie ? `${saisie}\n` : '') + `Facture scannée : ${url}`;
   }
 
   /**

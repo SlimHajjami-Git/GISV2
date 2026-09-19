@@ -8,6 +8,9 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { ApiService } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
+import {
+  ScanFactureComponent, ResultatScanFacture, EchecScanFacture, LigneFactureScannee
+} from './shared/scan-facture.component';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 type RepairSortKey = 'reference' | 'repairDate' | 'vehicleName' | 'partsCost' | 'laborCost' | 'totalCost' | 'status';
@@ -67,10 +70,66 @@ interface Vehicle {
   mileage: number;
 }
 
+/**
+ * Ce que le scan a proposé, montré en tête du formulaire : la confiance de la
+ * lecture et surtout ce qui n'a PAS pu être repris (plaque inconnue, fournisseur
+ * absent, lignes sans case dans ce formulaire). Rien n'est enregistré tant que
+ * l'utilisateur n'a pas validé.
+ */
+interface ScanInfo {
+  /** high | medium | low ('' quand l'analyse a échoué). */
+  confidence: string;
+  /** Vrai quand le document est joint mais que l'IA n'a rien pu lire. */
+  echec: boolean;
+  plaque: string;
+  vehiculeTrouve: boolean;
+  fournisseur: string;
+  fournisseurTrouve: boolean;
+  /** Total lu sur la facture (null si illisible) — sert à montrer l'écart. */
+  totalFacture: number | null;
+  lignesIgnorees: number;
+  avoir: boolean;
+  receiptUrl: string;
+}
+
+/**
+ * Le lien du document scanné est rangé dans les notes : la réparation n'a pas de
+ * champ justificatif en base (voir remarques de la recette du 19/09/2026).
+ */
+const PREFIXE_JUSTIFICATIF = 'Justificatif : ';
+
+/** Libellés de facture pris tels qu'ils viennent : sans accents ni casse pour les comparer. */
+function sansAccents(s: string): string {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/** Ligne de temps passé, pas une pièce montée sur le véhicule. */
+const LIGNE_MAIN_OEUVRE = /(main\s*d\s*['’`]?\s*(oeuvre|œuvre)|\bm\.?\s?o\.?\b|forfait|diagnosti|deplacement|prestation|heure|taux horaire|service)/;
+
+/** Ni pièce ni prestation : le formulaire n'a aucune case pour ces lignes. */
+const LIGNE_HORS_POSTE = /(timbre|remise|escompte|acompte|arrondi|\btva\b|frais de dossier)/;
+
+/** Plaque ou nom de fournisseur réduits à l'essentiel, pour le rapprochement. */
+function cleRapprochement(s: string): string {
+  return sansAccents(s).replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * « 2026-08-03T12:00:00Z » → « 2026-08-03 ». Les réparations sont enregistrées avec une
+ * HEURE (repairs.repair_date est un timestamp) et un <input type="date"> refuse tout ce
+ * qui n'est pas yyyy-MM-dd : à la modification, le champ Date — pourtant obligatoire —
+ * s'affichait VIDE. Découpage de la chaîne, jamais un passage par le fuseau du
+ * navigateur qui décalerait la date d'un jour. Chaîne inutilisable → champ vide assumé.
+ */
+function dateSeule(d: string | null | undefined): string {
+  const s = (d || '').trim();
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : '';
+}
+
 @Component({
   selector: 'app-repairs',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -117,7 +176,22 @@ interface Vehicle {
             </svg>
             Exporter PDF
           </button>
-          <button class="btn-add" (click)="openAddRepair()">
+          <!-- Même geste qu'à l'écran Dépenses : bouton et compteur de quota dans la
+               barre d'actions (brique shared/scan-facture.component.ts).
+               Le scan repart d'un formulaire VIERGE : tant qu'une fenêtre est ouverte le
+               bouton est verrouillé. Le seul recouvrement visuel ne suffisait pas — le
+               bouton restait dans l'ordre de TABULATION derrière la fenêtre, et un
+               utilisateur au clavier perdait sa saisie sans un mot. -->
+          <app-scan-facture [desactive]="fenetreOuverte"
+                            raisonDesactivation="Fermez la fenêtre ouverte avant de scanner : le scan repart d'un formulaire vierge."
+                            (scanne)="onFactureScannee($event)" (echec)="onEchecScan($event)"></app-scan-facture>
+          <!-- Même verrou, exactement pour la même raison : ce bouton vit HORS de la
+               fenêtre. L'ombre le cachait sans le sortir de l'ordre de TABULATION — une
+               touche Tab (ou un clic dès la fenêtre refermée par erreur) rouvrait un
+               formulaire vierge par-dessus la saisie en cours, perdue sans un mot. -->
+          <button class="btn-add" (click)="openAddRepair()"
+                  [disabled]="fenetreOuverte"
+                  [title]="fenetreOuverte ? raisonFenetreOuverte : 'Nouvelle réparation'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -258,26 +332,35 @@ interface Vehicle {
                   <span class="status-badge" [class]="repair.status">{{ getStatusLabel(repair.status) }}</span>
                 </td>
                 <td class="col-actions">
+                  <!-- Les trois boutons de la ligne vivent eux aussi HORS de la fenêtre :
+                       une tabulation y menait pendant une saisie, et « Détails » ou
+                       « Modifier » remplaçait le formulaire en cours. Même verrou que le
+                       bouton du scan (getter « fenetreOuverte »), même motif en infobulle. -->
                   <div class="actions-cell">
-                    <button class="btn-action view" (click)="viewRepair(repair); $event.stopPropagation()" title="Détails">
+                    <button class="btn-action view" (click)="viewRepair(repair); $event.stopPropagation()"
+                            [disabled]="fenetreOuverte"
+                            [title]="fenetreOuverte ? raisonFenetreOuverte : 'Détails'">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
                       </svg>
                     </button>
-                    <button class="btn-action edit" (click)="editRepair(repair); $event.stopPropagation()" title="Modifier">
+                    <button class="btn-action edit" (click)="editRepair(repair); $event.stopPropagation()"
+                            [disabled]="fenetreOuverte"
+                            [title]="fenetreOuverte ? raisonFenetreOuverte : 'Modifier'">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                       </svg>
                     </button>
                     <!-- Réparation née d'un sinistre : le serveur refuse la suppression (le retrait
-                         passe par la phase 5 du dossier). Verrou et motif, comme l'écran Dépenses. -->
+                         passe par la phase 5 du dossier). Verrou et motif, comme l'écran Dépenses.
+                         Le motif du sinistre passe AVANT celui de la fenêtre : il est définitif. -->
                     <button class="btn-action delete" (click)="confirmDelete(repair); $event.stopPropagation()"
-                            [disabled]="!!repair.accidentEventId"
+                            [disabled]="fenetreOuverte || !!repair.accidentEventId"
                             [title]="repair.accidentEventId
                               ? 'Réparation du dossier de sinistre #' + repair.accidentEventId
                                 + ' : videz le coût réel dans la phase 5 du dossier pour la retirer.'
-                              : 'Supprimer'">
+                              : (fenetreOuverte ? raisonFenetreOuverte : 'Supprimer')">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                       </svg>
@@ -307,6 +390,49 @@ interface Vehicle {
           </div>
 
           <div class="panel-body">
+            <!-- Ce que le scan a proposé : l'utilisateur doit voir d'où viennent les champs
+                 pré-remplis, avec quelle confiance, et ce qui n'a PAS pu être repris. -->
+            <div class="scan-banner" *ngIf="scanInfo">
+              <div class="scan-banner-head">
+                <span class="scan-banner-title">{{ scanBannerTitre() }}</span>
+                <span class="scan-conf" [class]="'scan-conf scan-conf-' + scanInfo.confidence" *ngIf="scanInfo.confidence">
+                  Confiance {{ scanConfidenceLabel() }}
+                </span>
+              </div>
+              <p class="scan-hint">{{ scanBannerAide() }}</p>
+
+              <p class="scan-warn" *ngIf="scanInfo.avoir">
+                Facture d'avoir : cet écran enregistre un coût. Un remboursement se saisit en Dépenses, catégorie « Avoir fournisseur ».
+              </p>
+              <p class="scan-warn" *ngIf="scanInfo.plaque && !scanInfo.vehiculeTrouve">
+                Plaque détectée « {{ scanInfo.plaque }} » — véhicule introuvable, choisissez-le.
+              </p>
+              <p class="scan-warn" *ngIf="scanInfo.fournisseur && !scanInfo.fournisseurTrouve">
+                Fournisseur « {{ scanInfo.fournisseur }} » — absent de la liste, ajoutez-le avec « + ».
+              </p>
+              <p class="scan-warn" *ngIf="scanInfo.lignesIgnorees > 0">
+                {{ scanInfo.lignesIgnorees }} ligne(s) laissée(s) de côté (timbre, remise, TVA) : ce formulaire n'a pas de case pour elles.
+              </p>
+
+              <!-- La facture ne dit pas toujours ce qui revient aux pièces et ce qui revient
+                   au temps passé : l'écart se VOIT et ne se comble que sur un clic. -->
+              <div class="scan-total" *ngIf="scanInfo.totalFacture !== null">
+                <span>Total facture : <strong>{{ scanInfo.totalFacture | appCurrency }}</strong></span>
+                <ng-container *ngIf="ecartAvecFacture() as ecart">
+                  <span class="scan-ecart">Écart avec la répartition : {{ ecart | appCurrency }}</span>
+                  <button class="btn-scan-ecart" *ngIf="ecart > 0" (click)="reporterEcartEnMainOeuvre()"
+                          title="La facture ne donne pas cette répartition : le report en main-d'œuvre est votre choix.">
+                    Ajouter en main-d'œuvre
+                  </button>
+                </ng-container>
+              </div>
+
+              <a class="scan-doc" *ngIf="scanInfo.receiptUrl" [href]="scanInfo.receiptUrl" target="_blank" rel="noopener">
+                Voir le document scanné
+              </a>
+              <p class="scan-hint" *ngIf="scanInfo.receiptUrl">Son lien est conservé dans les notes, au bas du formulaire.</p>
+            </div>
+
             <!-- Vehicle Selection -->
             <div class="form-section">
               <h4>Vehicule</h4>
@@ -518,6 +644,14 @@ interface Vehicle {
                 <span class="detail-label">N° Facture</span>
                 <span class="detail-value">{{ viewingRepair.invoiceNumber }}</span>
               </div>
+              <!-- Document scanné : faute de champ justificatif sur la réparation, son lien
+                   vit dans les notes — sans cette ligne il resterait invisible ici. -->
+              <div class="detail-row" *ngIf="justificatifUrl(viewingRepair) as url">
+                <span class="detail-label">Justificatif</span>
+                <span class="detail-value">
+                  <a class="justif-link" [href]="url" target="_blank" rel="noopener">Ouvrir le document</a>
+                </span>
+              </div>
               <div class="detail-row" *ngIf="viewingRepair.accidentEventId">
                 <span class="detail-label">Dossier de sinistre</span>
                 <span class="detail-value">
@@ -592,7 +726,10 @@ interface Vehicle {
   styles: [`
     .repairs-page { flex:1; background:#f1f5f9; display:flex; flex-direction:column; min-height:calc(100vh - 42px); }
 
-    .filter-bar { display:flex; align-items:center; gap:12px; padding:10px 14px; background:white; border-bottom:1px solid #e2e8f0; }
+    /* flex-wrap : un bouton de plus (scan de facture) dans la barre — à 1536 px tout
+       tient sur une ligne, et si la fenêtre rétrécit la barre passe à la ligne
+       plutôt que de pousser un ascenseur horizontal. */
+    .filter-bar { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 14px; background:white; border-bottom:1px solid #e2e8f0; }
     .search-wrapper { position:relative; flex:1; max-width:300px; }
     .search-icon { position:absolute; left:10px; top:50%; transform:translateY(-50%); color:#94a3b8; }
     .search-input { width:100%; padding:6px 10px 6px 32px; font-size:12px; border:1px solid #e2e8f0; border-radius:3px; }
@@ -603,7 +740,10 @@ interface Vehicle {
     .btn-export:hover:not(:disabled) { background:#f1f5f9; border-color:#cbd5e1; color:#1e293b; }
     .btn-export:disabled { opacity:.4; cursor:not-allowed; }
     .btn-add { display:flex; align-items:center; gap:6px; padding:6px 12px; background:#3b82f6; color:white; border:none; border-radius:3px; font-size:12px; font-weight:500; cursor:pointer; }
-    .btn-add:hover { background:#2563eb; }
+    .btn-add:hover:not(:disabled) { background:#2563eb; }
+    /* Fenêtre ouverte : le bouton est verrouillé, il doit le MONTRER — grisé et curseur
+       barré, comme « Exporter PDF » sans ligne et comme le bouton du scan. */
+    .btn-add:disabled { opacity:.5; cursor:not-allowed; }
 
     .stats-bar { display:flex; gap:16px; padding:12px 14px; background:white; border-bottom:1px solid #e2e8f0; }
     .stat-item { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#f8fafc; border-radius:6px; }
@@ -699,9 +839,11 @@ interface Vehicle {
     .actions-cell { display:flex; align-items:center; gap:4px; }
     .btn-action { width:26px; height:26px; border:1px solid #e2e8f0; border-radius:4px; background:white; display:flex; align-items:center; justify-content:center; cursor:pointer; transition:all .15s; }
     .btn-action.view { color:#2563eb; }
-    .btn-action.view:hover { background:#dbeafe; border-color:#2563eb; }
+    /* :not(:disabled) sur les trois — un bouton verrouillé qui s'allume au survol
+       promet un clic qui n'arrivera jamais. */
+    .btn-action.view:hover:not(:disabled) { background:#dbeafe; border-color:#2563eb; }
     .btn-action.edit { color:#f59e0b; }
-    .btn-action.edit:hover { background:#fef3c7; border-color:#f59e0b; }
+    .btn-action.edit:hover:not(:disabled) { background:#fef3c7; border-color:#f59e0b; }
     .btn-action.delete { color:#dc2626; }
     .btn-action.delete:hover:not(:disabled) { background:#fee2e2; border-color:#dc2626; }
     .btn-action:disabled { opacity:.4; cursor:not-allowed; }
@@ -750,6 +892,24 @@ interface Vehicle {
     .form-group label { display:block; font-size:11px; font-weight:500; color:#64748b; margin-bottom:4px; }
     .form-control { width:100%; padding:8px 10px; border:1px solid #e2e8f0; border-radius:6px; font-size:13px; }
     .form-control:focus { outline:none; border-color:#3b82f6; }
+
+    /* Bandeau du scan : ce que l'IA a proposé, et ce qu'elle n'a pas pu reprendre.
+       Mêmes teintes violettes que le bouton de la brique, pour que le lien se voie. */
+    .scan-banner { margin-bottom:16px; padding:12px; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:8px; }
+    .scan-banner-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+    .scan-banner-title { font-size:12.5px; font-weight:700; color:#5b21b6; }
+    .scan-conf { padding:1px 8px; border-radius:999px; font-size:10.5px; font-weight:700; background:#e2e8f0; color:#475569; white-space:nowrap; }
+    .scan-conf-high { background:#dcfce7; color:#15803d; }
+    .scan-conf-medium { background:#fef3c7; color:#b45309; }
+    .scan-conf-low { background:#fee2e2; color:#b91c1c; }
+    .scan-hint { margin:6px 0 0; font-size:11px; color:#64748b; line-height:1.4; }
+    .scan-warn { margin:6px 0 0; font-size:11.5px; color:#b45309; line-height:1.4; }
+    .scan-total { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:#1e293b; }
+    .scan-ecart { color:#b45309; }
+    .btn-scan-ecart { padding:3px 8px; background:white; color:#6d28d9; border:1px solid #c4b5fd; border-radius:4px; font-size:11px; font-weight:600; cursor:pointer; }
+    .btn-scan-ecart:hover { background:#ede9fe; }
+    .scan-doc { display:inline-block; margin-top:8px; font-size:11.5px; font-weight:600; color:#6d28d9; }
+    .justif-link { color:#2563eb; text-decoration:underline; }
 
     .vehicle-select-wrapper { margin-bottom:8px; }
     .vehicle-info-box { display:flex; gap:8px; padding:8px 12px; background:#f8fafc; border-radius:6px; font-size:12px; }
@@ -851,6 +1011,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
   /** Refus du serveur lors de l'enregistrement : il n'était écrit que dans la console. */
   saveError: string | null = null;
 
+  /** Résumé du dernier scan de facture, affiché en tête du formulaire (null = saisie manuelle). */
+  scanInfo: ScanInfo | null = null;
+
   form = this.getEmptyForm();
 
   readonly repairTypes = REPAIR_TYPES;
@@ -870,6 +1033,22 @@ export class RepairsComponent implements OnInit, OnDestroy {
   ) {}
 
   get currencyCode(): string { return this.userPrefs.current.currency; }
+
+  /**
+   * Une fenêtre est ouverte (saisie, détail, confirmation de suppression) : TOUT ce qui
+   * ouvrirait ou remplacerait une fenêtre depuis l'arrière-plan est alors VERROUILLÉ —
+   * « Scanner une facture », « Nouvelle reparation » et, sur chaque ligne, Détails,
+   * Modifier et Supprimer.
+   * Ces boutons vivent hors de la fenêtre : l'ombre les cachait mais ne les sortait pas
+   * de l'ordre de tabulation — à la touche Tab on les atteignait encore, le formulaire
+   * repartait de zéro ou était remplacé, la saisie en cours perdue sans un mot.
+   */
+  get fenetreOuverte(): boolean {
+    return this.isPanelOpen || !!this.viewingRepair || this.showDeleteConfirm;
+  }
+
+  /** Motif du verrou, en infobulle, pour que le gris ne soit pas une énigme. */
+  readonly raisonFenetreOuverte = 'Fermez la fenêtre ouverte avant d\'en ouvrir une autre : la saisie en cours serait perdue.';
 
   ngOnInit() {
     // Lien « Voir toutes les interventions » du rapport Fréquence des réparations : /repairs?vehicleId=N
@@ -1197,16 +1376,223 @@ export class RepairsComponent implements OnInit, OnDestroy {
     this.editingRepair = null;
     this.selectedVehicle = null;
     this.saveError = null;
+    this.scanInfo = null;
     this.isPanelOpen = true;
+  }
+
+  // ── Scan de facture (IA) ───────────────────────────────────────────────────
+
+  /**
+   * Le scan efface le formulaire pour repartir du document : on ne remplace JAMAIS
+   * une saisie en cours sans demander (même règle qu'à l'écran Carburant).
+   *
+   * Le verrou du bouton (`fenetreOuverte`) empêche de LANCER un scan par-dessus une
+   * saisie ; il reste la course inverse — scan lancé fenêtre fermée, l'analyse dure
+   * quelques secondes et l'utilisateur ouvre « Nouvelle reparation » entre-temps.
+   * Refuser tout court perdrait un scan déjà décompté du quota : on demande.
+   */
+  private peutRemplacerLaSaisie(): boolean {
+    if (!this.isPanelOpen) return true;
+    return confirm('Une saisie est en cours. La remplacer par les valeurs de la facture scannée ?');
+  }
+
+  /**
+   * Facture scannée : <app-scan-facture> a déjà tout fait (envoi, quota, erreurs)
+   * et rend l'extraction. Cet écran ne décide que du remplissage de SON formulaire.
+   *
+   * Le formulaire repart de zéro : une saisie en cours n'est jamais écrasée sans
+   * accord (voir `fenetreOuverte` et `peutRemplacerLaSaisie`). Un champ illisible
+   * (null) reste vide — le scan propose, l'utilisateur dispose, et rien n'est
+   * enregistré tant qu'il n'a pas validé.
+   */
+  onFactureScannee(res: ResultatScanFacture): void {
+    if (!this.peutRemplacerLaSaisie()) return;
+    // Fiche de détail ou confirmation de suppression restées ouvertes : rien n'y est
+    // saisi, mais deux fenêtres empilées n'ont aucun sens.
+    this.viewingRepair = null;
+    this.showDeleteConfirm = false;
+    this.repairToDelete = null;
+
+    const x = res.extraction;
+    this.form = this.getEmptyForm();
+    this.editingRepair = null;
+    this.selectedVehicle = null;
+    this.saveError = null;
+
+    const vehicule = this.matchVehicleByPlate(x.vehiclePlate);
+    if (vehicule) {
+      this.form.vehicleId = String(vehicule.id);
+      this.onVehicleChange();   // reprend le kilométrage courant, comme une sélection à la main
+    }
+
+    const fournisseur = this.matchSupplierByName(x.supplierName);
+    if (fournisseur) this.form.supplierId = String(fournisseur.id);
+
+    // Même précaution qu'à la modification : l'IA peut rendre un horodatage complet.
+    const dateFacture = dateSeule(x.date);
+    if (dateFacture) this.form.repairDate = dateFacture;
+    this.form.invoiceNumber = x.invoiceNumber || '';
+    this.form.description = x.descriptionComplete;
+    // Type d'intervention : la facture ne le donne pas (les catégories du scan sont
+    // celles des dépenses). Laissé « Non précisé », le rapport le déduit de la description.
+
+    const reparti = this.repartirLignesFacture(x.items);
+    this.form.parts = reparti.pieces;
+    this.form.laborCost = reparti.mainOeuvre;
+
+    // Justificatif : la réparation n'a pas de champ dédié en base, le lien part dans les notes.
+    this.form.notes = res.receiptUrl ? PREFIXE_JUSTIFICATIF + res.receiptUrl : '';
+
+    this.scanInfo = {
+      confidence: x.confidence || '',
+      echec: false,
+      plaque: x.vehiclePlate || '',
+      vehiculeTrouve: !!vehicule,
+      fournisseur: x.supplierName || '',
+      fournisseurTrouve: !!fournisseur,
+      totalFacture: x.total,
+      lignesIgnorees: reparti.ignorees,
+      avoir: x.isCreditNote,
+      receiptUrl: res.receiptUrl
+    };
+    this.isPanelOpen = true;
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Scan échoué (quota atteint, IA indisponible, format refusé) : le message a déjà
+   * été montré par la brique et la saisie à la main reste entière — « Nouvelle
+   * reparation » n'est jamais bloquée. Quand le serveur a tout de même stocké le
+   * fichier, on ouvre le formulaire VIDE avec le justificatif déjà rattaché.
+   */
+  onEchecScan(e: EchecScanFacture): void {
+    if (!e?.receiptUrl) return;
+    if (!this.peutRemplacerLaSaisie()) return;
+    this.viewingRepair = null;
+    this.showDeleteConfirm = false;
+    this.repairToDelete = null;
+    this.form = this.getEmptyForm();
+    this.editingRepair = null;
+    this.selectedVehicle = null;
+    this.saveError = null;
+    this.form.notes = PREFIXE_JUSTIFICATIF + e.receiptUrl;
+    this.scanInfo = {
+      confidence: '', echec: true, plaque: '', vehiculeTrouve: false,
+      fournisseur: '', fournisseurTrouve: false, totalFacture: null,
+      lignesIgnorees: 0, avoir: false, receiptUrl: e.receiptUrl
+    };
+    this.isPanelOpen = true;
+    this.cdr.detectChanges();
+  }
+
+  /** Rapprochement par plaque, mêmes règles qu'à l'écran Dépenses (égalité puis inclusion). */
+  private matchVehicleByPlate(plaque: string | null): Vehicle | null {
+    const cible = cleRapprochement(plaque || '');
+    if (!cible) return null;
+    return this.vehicles.find(v => cleRapprochement(v.plateNumber) === cible)
+        || this.vehicles.find(v => {
+             const p = cleRapprochement(v.plateNumber);
+             return !!p && (p.includes(cible) || cible.includes(p));
+           })
+        || null;
+  }
+
+  /**
+   * Fournisseur reconnu par son nom. L'inclusion n'est tentée qu'à partir de quatre
+   * caractères : un garage nommé « AB » rattraperait n'importe quelle facture.
+   */
+  private matchSupplierByName(nom: string | null): { id: number; name: string; type: string } | null {
+    const cible = cleRapprochement(nom || '');
+    if (!cible) return null;
+    return this.suppliers.find(s => cleRapprochement(s.name) === cible)
+        || (cible.length >= 4
+              ? this.suppliers.find(s => {
+                  const n = cleRapprochement(s.name);
+                  return n.length >= 4 && (n.includes(cible) || cible.includes(n));
+                })
+              : undefined)
+        || null;
+  }
+
+  /**
+   * Lignes de la facture → pièces détachées et main-d'œuvre. Ne partent en
+   * main-d'œuvre que les lignes qui le DISENT (main d'œuvre, forfait, heure,
+   * diagnostic…) ; timbre, remise et TVA n'ont pas de case ici et sont laissés de
+   * côté (comptés, puis signalés) ; tout le reste est une pièce, quantité 1 et prix
+   * unitaire = montant de la ligne — la facture ne donne pas les quantités et les
+   * inventer fausserait le prix unitaire.
+   */
+  private repartirLignesFacture(items: LigneFactureScannee[]): { pieces: RepairPart[]; mainOeuvre: number; ignorees: number } {
+    const pieces: RepairPart[] = [];
+    let mainOeuvre = 0;
+    let ignorees = 0;
+    for (const it of items || []) {
+      const libelle = (it?.label || '').trim();
+      const montant = Math.round((Number(it?.amount) || 0) * 100) / 100;
+      if (!libelle && montant <= 0) continue;
+      const cle = sansAccents(libelle);
+      // Montant nul ou négatif (remise) : le serveur refuse un prix unitaire négatif.
+      if (montant <= 0 || LIGNE_HORS_POSTE.test(cle)) { ignorees++; continue; }
+      if (LIGNE_MAIN_OEUVRE.test(cle)) { mainOeuvre += montant; continue; }
+      pieces.push({
+        partName: libelle || 'Pièce', partReference: '',
+        quantity: 1, unitPrice: montant, subtotal: montant, notes: ''
+      });
+    }
+    return { pieces, mainOeuvre: Math.round(mainOeuvre * 100) / 100, ignorees };
+  }
+
+  /**
+   * Écart entre le total lu sur la facture et ce que le formulaire totalise (0 =
+   * rien à signaler). Timbre fiscal, remise ou facture sans détail : l'écart se
+   * montre, il ne se comble jamais tout seul — sinon le scan inventerait une
+   * répartition pièces / main-d'œuvre que la facture ne donne pas.
+   */
+  ecartAvecFacture(): number {
+    const total = this.scanInfo?.totalFacture;
+    if (total === null || total === undefined) return 0;
+    const ecart = Math.round((total - this.getTotalCost()) * 100) / 100;
+    return Math.abs(ecart) < 0.01 ? 0 : ecart;
+  }
+
+  /** Report de l'écart en main-d'œuvre : un clic de l'utilisateur, jamais un automatisme. */
+  reporterEcartEnMainOeuvre(): void {
+    const ecart = this.ecartAvecFacture();
+    if (ecart <= 0) return;
+    this.form.laborCost = Math.round(((Number(this.form.laborCost) || 0) + ecart) * 100) / 100;
+  }
+
+  scanBannerTitre(): string {
+    return this.scanInfo?.echec ? 'Document joint — saisie à la main' : 'Pré-rempli par le scan de facture';
+  }
+
+  scanBannerAide(): string {
+    return this.scanInfo?.echec
+      ? "L'analyse n'a pas abouti : le document est joint, saisissez les informations."
+      : "Vérifiez chaque champ avant d'enregistrer — rien n'est encore enregistré.";
+  }
+
+  /** Confiance de la lecture, mêmes mots qu'à l'écran Dépenses. */
+  scanConfidenceLabel(): string {
+    const c = this.scanInfo?.confidence || '';
+    return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as Record<string, string>)[c] || c;
+  }
+
+  /** Lien du document scanné, rangé dans les notes faute de champ dédié (voir onFactureScannee). */
+  justificatifUrl(repair: Repair | null): string | null {
+    const trouve = /\/uploads\/invoices\/\S+/.exec(repair?.notes || '');
+    return trouve ? trouve[0] : null;
   }
 
   editRepair(repair: Repair) {
     this.editingRepair = repair;
     this.saveError = null;
+    this.scanInfo = null;   // modification d'une ligne existante : rien ne vient d'un scan
     this.form = {
       vehicleId: repair.vehicleId.toString(),
       supplierId: repair.supplierId?.toString() || '',
-      repairDate: repair.repairDate,
+      // Horodatage de la base ramené au jour : sans cela le champ Date s'affichait vide.
+      repairDate: dateSeule(repair.repairDate),
       mileageAtRepair: repair.mileageAtRepair || null,
       description: repair.description,
       invoiceNumber: repair.invoiceNumber,
@@ -1239,6 +1625,11 @@ export class RepairsComponent implements OnInit, OnDestroy {
     this.isPanelOpen = false;
     this.editingRepair = null;
     this.saveError = null;
+    this.scanInfo = null;
+    // Le bloc « ajouter un fournisseur » survivait à la fermeture : la fenêtre suivante
+    // s'ouvrait déjà dépliée, avec le nom à moitié tapé de la fois d'avant.
+    this.showAddSupplier = false;
+    this.newSupplierName = '';
     this.form = this.getEmptyForm();
   }
 

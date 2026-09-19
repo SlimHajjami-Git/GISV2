@@ -48,7 +48,13 @@ public record InvoiceExtraction(
     string? Description,
     string? Confidence,    // high|medium|low
     List<InvoiceLineItem>? Items = null,   // lignes de la facture (détail, best-effort)
-    bool IsCreditNote = false);            // avoir fournisseur (document intitulé avoir, ou total négatif), montants rendus positifs
+    bool IsCreditNote = false,             // avoir fournisseur (document intitulé avoir, ou total négatif), montants rendus positifs
+    // ── Carburant ────────────────────────────────────────────────────────────
+    // Ajoutés en FIN de liste, optionnels : aucun appelant positionnel existant
+    // n'est cassé. Un ticket de station imprime volume, prix au litre et total ;
+    // l'écran Carburant a besoin des deux premiers, que l'extraction ne rendait pas.
+    decimal? Liters = null,                // volume servi, en litres (null si non imprimé/illisible)
+    decimal? PricePerLiter = null);        // prix au litre imprimé (null si non imprimé/illisible)
 
 public class InvoiceExtractionService : IInvoiceExtractionService
 {
@@ -75,6 +81,8 @@ Réponds UNIQUEMENT par un objet JSON avec exactement ces clés :
   ""category"": string|null,            // UNE parmi: fuel, maintenance, insurance, tax, toll, parking, fine, repair, other
   ""vehiclePlate"": string|null,        // immatriculation si présente
   ""description"": string|null,         // résumé court des biens/prestations
+  ""liters"": number|null,              // CARBURANT uniquement: volume servi en litres
+  ""pricePerLiter"": number|null,       // CARBURANT uniquement: prix au litre imprimé
   ""confidence"": string|null,          // high | medium | low
   ""isCreditNote"": boolean,            // true si le document s'intitule avoir (voir règle)
   ""items"": [                          // DÉTAIL: chaque ligne facturée (article/prestation)
@@ -90,6 +98,7 @@ amountTTC = la ligne ""TOTAL TTC"" / ""NET À PAYER"" / ""TOTAL"" du document (p
 Le TIMBRE FISCAL (souvent 0,600 ou 1,000 DT) fait partie du TTC mais N'EST PAS une ligne d'article : ne le mets pas dans items (TTC peut donc valoir HT + TVA + timbre).
 Si une REMISE GLOBALE figure sur le document, ajoute-la dans items comme ligne ""Remise"" avec un montant NÉGATIF (ainsi la somme des lignes reste égale au total).
 isCreditNote=true UNIQUEMENT si le document s'intitule ""Avoir"", ""Facture d'avoir"", ""Note de crédit"" ou ""Credit note"" (il rembourse ou annule une facture) ; une simple remise ne suffit pas. Recopie alors les montants tels qu'imprimés.
+CARBURANT: un ticket de station imprime presque toujours le VOLUME (litres), le PRIX AU LITRE et le TOTAL. Recopie liters et pricePerLiter EXACTEMENT comme imprimés — ne les calcule pas, ne les déduis pas du total, et laisse à null celui qui n'est pas imprimé ou qui est illisible. Sur un document qui n'est pas du carburant, liters=null et pricePerLiter=null.
 Immatriculation tunisienne: formats ""123 TUN 4567"" / ""123 تونس 4567"" / régime spécial (RS, TRAC...). Si elle est écrite en arabe, translittère en ""123 TUN 4567"".
 Choisis la catégorie la plus probable d'après le contenu (carburant/gasoil/essence→fuel, entretien/vidange→maintenance, réparation/pièces→repair, assurance→insurance, vignette/taxe→tax, péage→toll, parking→parking, amende→fine, sinon other).
 Pour items: liste les lignes réellement facturées (désignation + montant TTC ligne), dans l'ordre du document. Vérifie que la somme des lignes (remises comprises) est cohérente avec le total — si elle ne l'est pas, re-lis le document avant de répondre.
@@ -176,7 +185,13 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
                 extraction = extraction with { Confidence = "medium" };
         }
 
-        return new InvoiceExtractionResult(AsCreditNoteIfDetected(extraction), tokens);
+        // Complétion carburant APRÈS la mise au positif de l'avoir : elle raisonne
+        // sur le total tel qu'il sera affiché. La CATÉGORIE, en revanche, est celle
+        // lue sur le document : AsCreditNoteIfDetected vient de réécrire celle de
+        // l'extraction en « credit_note », et un avoir de station-service resterait
+        // sinon sans volume ni prix au litre.
+        var positif = AsCreditNoteIfDetected(extraction);
+        return new InvoiceExtractionResult(CompleteFuelVolume(positif, extraction.Category), tokens);
     }
 
     /// <summary>
@@ -220,6 +235,108 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
     }
 
     /// <summary>
+    /// Tolérance d'arrondi d'un ticket de carburant : le volume est imprimé au
+    /// centilitre et le prix au litre au millime, donc volume × prix ne retombe
+    /// jamais au millime près sur le total imprimé. 50 millimes, ou 0,5 % du
+    /// total au-delà de 10 DT (un plein de camion se compte en centaines de litres).
+    /// </summary>
+    private static decimal FuelTolerance(decimal total) => Math.Max(0.05m, Math.Abs(total) * 0.005m);
+
+    /// <summary>
+    /// Écart toléré entre HT + TVA et TTC pour juger un total « pur » (voir
+    /// <see cref="TotalPurementCarburant"/>). Ces trois montants sont IMPRIMÉS : leur
+    /// seule dérive légitime est l'arrondi au millime. 50 millimes laissent donc passer
+    /// l'arrondi et arrêtent le TIMBRE FISCAL (0,600 ou 1,000 DT), qui s'ajoute au TTC
+    /// sans être du carburant. Volontairement FIXE et non proportionnelle : un timbre
+    /// coûte le même prix sur un ticket de 20 DT et sur un plein de camion.
+    /// </summary>
+    private const decimal ToleranceTotalPur = 0.05m;
+
+    /// <summary>
+    /// Le total du document peut-il se lire comme « volume × prix au litre », et rien
+    /// d'autre ? Deux réserves, faute de quoi on ne déduit rien :
+    /// <list type="bullet">
+    ///   <item>aucune ligne facturée étrangère au carburant (lavage, huile, accessoire,
+    ///     remise) : le total couvrirait alors plus que le plein. Une ligne sans catégorie
+    ///     est traitée comme étrangère — on ne déduit pas d'un détail qu'on ne comprend pas ;</item>
+    ///   <item>quand HT, TVA et TTC sont lus tous les trois, TTC doit valoir HT + TVA à
+    ///     <see cref="ToleranceTotalPur"/> près : un écart signe un timbre fiscal ou un
+    ///     poste hors carburant glissé dans le total.</item>
+    /// </list>
+    /// Un ticket de station ordinaire (items vide, un seul montant) passe les deux.
+    /// </summary>
+    private static bool TotalPurementCarburant(InvoiceExtraction x)
+    {
+        if (x.Items is { Count: > 0 } lignes && lignes.Any(l => !VehicleCostCategory.IsFuel(l.Category)))
+            return false;
+
+        if (x.AmountHT is decimal ht && x.AmountTVA is decimal tva && x.AmountTTC is decimal ttc)
+            return Math.Abs(ht + tva - ttc) <= ToleranceTotalPur;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Carburant : un ticket porte d'ordinaire le VOLUME, le PRIX AU LITRE et le
+    /// TOTAL. Quand une SEULE des trois manque, elle se déduit des deux autres.
+    /// Rien n'est déduit si les deux champs manquent, ni si les deux sont déjà là.
+    ///
+    /// <para><b>Carburant UNIQUEMENT</b> (19/09/2026). <see cref="Parse"/> accepte
+    /// « volume » comme synonyme de litres : une facture de GARAGE portant « Huile
+    /// 5W40 — 5 L » arrivait ici avec Liters = 5, et la complétion en tirait un prix
+    /// au litre de 342,50 / 5 = 68,500 DT — un plein fantôme proposé à l'écran
+    /// Carburant. La catégorie est celle LUE sur le document : <paramref name="categorieDocument"/>
+    /// quand l'appelant l'a mise de côté avant que la détection d'avoir ne réécrive
+    /// <see cref="InvoiceExtraction.Category"/> en « credit_note », sinon celle de l'extraction.</para>
+    ///
+    /// <para>Le TOTAL, lui, n'est JAMAIS déduit : c'est le montant qui partira en
+    /// dépense, et le fabriquer à partir de deux chiffres peut-être mal lus
+    /// inventerait de l'argent absent du document. L'écran laisse l'utilisateur le
+    /// saisir.</para>
+    ///
+    /// <para><b>Ce que vaut la valeur rendue.</b> Elle est APPROCHÉE : ce n'est pas un
+    /// chiffre lu sur le document mais un quotient arrondi (2 décimales pour un volume,
+    /// 3 pour un prix au litre). Jusqu'au 19/09/2026 elle n'était gardée que « si elle
+    /// retombait sur le total » — garde-fou TAUTOLOGIQUE, puisque la valeur est calculée
+    /// à partir de ce même total : l'écart se réduisait à l'arrondi et le contrôle ne
+    /// refusait jamais rien, pas même un total gonflé d'un timbre fiscal ou d'un article
+    /// hors carburant. Il est remplacé par un contrôle qui, lui, porte : la déduction est
+    /// réservée aux documents dont le total est PUR (<see cref="TotalPurementCarburant"/>).
+    /// Mieux vaut un champ vide, que l'utilisateur complète en lisant son ticket, qu'un
+    /// volume faux qu'il ne relira pas. (Public pour les tests.)</para>
+    /// </summary>
+    /// <param name="categorieDocument">Catégorie lue sur le document ; null = celle de <paramref name="x"/>.</param>
+    public static InvoiceExtraction CompleteFuelVolume(InvoiceExtraction x, string? categorieDocument = null)
+    {
+        // Seuls les documents de carburant : ailleurs, un « 5 L » d'huile n'est pas un plein.
+        if (!VehicleCostCategory.IsFuel(categorieDocument ?? x.Category)) return x;
+
+        // Les deux présents : rien à compléter. Les deux absents : rien à déduire
+        // (le ticket n'imprime ni volume ni prix au litre lisibles).
+        var hasLiters = x.Liters is not null;
+        var hasPrice = x.PricePerLiter is not null;
+        if (hasLiters == hasPrice) return x;
+        if ((x.AmountTTC ?? x.AmountHT) is not decimal total || total <= 0) return x;
+
+        // Le total doit ne payer QUE du carburant, sinon la déduction est fausse d'autant.
+        if (!TotalPurementCarburant(x)) return x;
+
+        if (x.Liters is null && x.PricePerLiter is decimal price && price > 0)
+        {
+            var liters = Math.Round(total / price, 2, MidpointRounding.AwayFromZero);
+            return liters > 0 ? x with { Liters = liters } : x;
+        }
+
+        if (x.PricePerLiter is null && x.Liters is decimal volume && volume > 0)
+        {
+            var perLiter = Math.Round(total / volume, 3, MidpointRounding.AwayFromZero);
+            return perLiter > 0 ? x with { PricePerLiter = perLiter } : x;
+        }
+
+        return x;
+    }
+
+    /// <summary>
     /// Incohérences arithmétiques détectables sans revoir le document.
     /// Tolérances adaptées aux factures tunisiennes : le timbre fiscal (~1 DT)
     /// s'ajoute à HT+TVA, et les arrondis de millimes existent — on ne signale
@@ -229,6 +346,18 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
     public static List<string> CoherenceIssues(InvoiceExtraction x)
     {
         var issues = new List<string>();
+
+        // Carburant : les trois valeurs (volume, prix au litre, total) sortent du
+        // MÊME ticket ; si elles ne se recoupent pas, au moins une est mal lue —
+        // la passe corrective fait relire le document plutôt que de trancher seule.
+        // Le total vaut ici TTC, à défaut HT : beaucoup de tickets de station
+        // n'impriment qu'un seul montant.
+        if (x.Liters is decimal fuelLiters && fuelLiters > 0
+            && x.PricePerLiter is decimal fuelPrice && fuelPrice > 0
+            && (x.AmountTTC ?? x.AmountHT) is decimal fuelTotal && fuelTotal > 0
+            && Math.Abs(fuelLiters * fuelPrice - fuelTotal) > FuelTolerance(fuelTotal))
+            issues.Add($"liters ({fuelLiters}) × pricePerLiter ({fuelPrice}) = {fuelLiters * fuelPrice} ne retombe pas sur le total ({fuelTotal})");
+
         if (x.AmountTTC is not decimal ttc || ttc <= 0) return issues;
         var tol = Math.Max(1.5m, Math.Abs(ttc) * 0.01m);
 
@@ -299,13 +428,34 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
         }
     }
 
-    /// <summary>Tolerant JSON → DTO mapping (exposed for tests).</summary>
+    /// <summary>
+    /// Tolerant JSON → DTO mapping (exposed for tests).
+    ///
+    /// <para><b>Litres et prix au litre : CARBURANT UNIQUEMENT</b> (règle produit arrêtée
+    /// par Karim le 19/09/2026 — « les litres et le prix au litre, tu les ajoutes juste à
+    /// l'écran carburant »). La coupe se fait ICI, à la source, et non au moment de
+    /// compléter la valeur manquante : <see cref="CompleteFuelVolume"/> empêchait bien de
+    /// DÉDUIRE un prix au litre hors carburant, mais la valeur BRUTE continuait de sortir
+    /// du service et l'écran Carburant la lisait. Une facture de garage portant « Huile
+    /// 5W40 — 5 L » — que le modèle range volontiers sous « volume », accepté ci-dessous
+    /// comme synonyme de litres — remplissait donc le volume d'un plein.</para>
+    ///
+    /// <para>La catégorie regardée est celle LUE sur le document, avant toute réécriture :
+    /// un avoir de station-service est encore « fuel » à cet instant (c'est
+    /// <see cref="AsCreditNoteIfDetected"/>, plus tard, qui le passe en « credit_note ») et
+    /// garde donc son volume.</para>
+    /// </summary>
     public static InvoiceExtraction Parse(string json)
     {
         try
         {
             using var doc = JsonDocument.Parse(json);
             var r = doc.RootElement;
+            var categorie = NormalizeCategory(Str(r, "category"));
+            // Hors carburant, ni litres ni prix au litre ne sortent du service. Une catégorie
+            // absente ou illisible vaut « other » : mieux vaut un champ vide, que l'utilisateur
+            // complète en lisant son ticket, qu'un volume faux qu'il ne relira pas.
+            var estCarburant = VehicleCostCategory.IsFuel(categorie);
             return new InvoiceExtraction(
                 Str(r, "supplierName"),
                 Str(r, "invoiceNumber"),
@@ -314,12 +464,19 @@ Réponds UNIQUEMENT avec le JSON, sans texte autour, en gardant chaque désignat
                 Dec(r, "amountTVA"),
                 Dec(r, "amountTTC"),
                 Str(r, "currency"),
-                NormalizeCategory(Str(r, "category")),
+                categorie,
                 Str(r, "vehiclePlate"),
                 Str(r, "description"),
                 Str(r, "confidence"),
                 ParseItems(r),
-                Bool(r, "isCreditNote"));
+                Bool(r, "isCreditNote"),
+                // Le modèle nomme parfois ces deux champs en français ou « volume » ;
+                // on accepte ces variantes, mais AUCUNE clé générique (unitPrice) qui,
+                // sur une facture de garage, désignerait tout autre chose.
+                estCarburant ? Dec(r, "liters") ?? Dec(r, "litres") ?? Dec(r, "volume") : null,
+                estCarburant
+                    ? Dec(r, "pricePerLiter") ?? Dec(r, "pricePerLitre") ?? Dec(r, "prixLitre") ?? Dec(r, "prixAuLitre")
+                    : null);
         }
         catch
         {

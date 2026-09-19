@@ -102,6 +102,29 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
 
         if (cost is not null) _context.VehicleCosts.Add(cost);
 
+        // Renouvellement SANS montant : aucune dépense n'est créée, donc plus
+        // personne ne portait le lien de la quittance scannée — le fichier
+        // n'était référencé nulle part et le balayage des factures orphelines
+        // l'effaçait le lendemain, en silence. Il est rangé dans les documents
+        // du véhicule, colonne qui existe déjà (choix de Karim du 19/09/2026 :
+        // garder la quittance, sans créer de ligne de coût à zéro ni migration).
+        if (cost is null && !string.IsNullOrWhiteSpace(request.DocumentUrl))
+        {
+            var dejaRange = await _context.VehicleDocuments
+                .AnyAsync(d => d.VehicleId == request.VehicleId && d.FileUrl == request.DocumentUrl, cancellationToken);
+            if (!dejaRange)
+            {
+                _context.VehicleDocuments.Add(new VehicleDocument
+                {
+                    VehicleId = request.VehicleId,
+                    Type = request.DocumentType,
+                    Name = BuildDescription(request.DocumentType, request.Provider),
+                    ExpiryDate = expiryDateUtc,
+                    FileUrl = request.DocumentUrl,
+                });
+            }
+        }
+
         // Update vehicle expiry date based on document type. Le début de période
         // est recalé avec l'échéance (DEF-032) : il restait celui de la période
         // précédente et l'écran affichait « 30/09/2025 → 13/09/2027 ». Carte

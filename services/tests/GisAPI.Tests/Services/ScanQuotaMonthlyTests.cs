@@ -33,7 +33,8 @@ public class ScanQuotaMonthlyTests
     private static readonly DateTime Now = DateTime.UtcNow;
     private static readonly DateTime MonthStart = new(Now.Year, Now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    private static CostsController Controller(TestGisDbContext ctx)
+    /// <param name="companyIdClaim">Société portée par le jeton ; par défaut celle du test.</param>
+    private static CostsController Controller(TestGisDbContext ctx, int? companyIdClaim = null)
     {
         var tenant = new Mock<ICurrentTenantService>();
         tenant.Setup(x => x.CompanyId).Returns(CompanyId);
@@ -52,7 +53,7 @@ public class ScanQuotaMonthlyTests
             {
                 User = new ClaimsPrincipal(new ClaimsIdentity(new[]
                 {
-                    new Claim("companyId", CompanyId.ToString()),
+                    new Claim("companyId", (companyIdClaim ?? CompanyId).ToString()),
                     new Claim(ClaimTypes.NameIdentifier, "45"),
                 }, "test"))
             }
@@ -112,9 +113,8 @@ public class ScanQuotaMonthlyTests
     public async Task Quota_atteint_le_message_donne_la_date_de_remise_a_zero()
     {
         using var ctx = await SeedAsync(1, (CompanyId, Now));
-        var file = new FormFile(new MemoryStream(new byte[] { 0xFF, 0xD8, 0xFF }), 0, 3, "file", "facture.jpg") { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
 
-        var result = await Controller(ctx).ScanInvoice(file, CancellationToken.None);
+        var result = await Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
 
         var status = result.Should().BeOfType<ObjectResult>().Subject;
         status.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
@@ -122,4 +122,73 @@ public class ScanQuotaMonthlyTests
         body.GetProperty("message").GetString().Should().Contain(MonthStart.AddMonths(1).ToString("dd/MM/yyyy"));
         body.GetProperty("resetsAt").GetDateTime().Should().Be(MonthStart.AddMonths(1));
     }
+
+    // ── Le quota est LE contrôle d'accès du scan (19/09/2026) ──────────────────
+    // Depuis que le scan ne dépend plus du module Dépenses, ces trois règles portent
+    // seules le droit d'user de l'IA : quota nul = fonction fermée, quota atteint =
+    // 429, et rien ne traverse la frontière entre deux sociétés.
+
+    [Fact]
+    public async Task Un_quota_a_zero_ferme_la_fonction_pour_toute_la_societe()
+    {
+        using var ctx = await SeedAsync(0);
+
+        var result = await Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
+
+        var refus = result.Should().BeOfType<ObjectResult>().Subject;
+        refus.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        Body(result).GetProperty("message").GetString()
+            .Should().Be("Le scan de factures IA n'est pas activé pour votre société.");
+    }
+
+    [Fact]
+    public async Task Un_quota_a_zero_se_lit_aussi_sur_le_compteur_du_bouton()
+    {
+        using var ctx = await SeedAsync(0);
+
+        var body = Body(await Controller(ctx).GetScanQuota(CancellationToken.None));
+
+        body.GetProperty("limit").GetInt32().Should().Be(0);
+        body.GetProperty("remaining").GetInt32().Should().Be(0, "le bouton doit se griser, pas promettre un scan refusé");
+    }
+
+    [Fact]
+    public async Task Une_societe_ne_voit_ni_les_scans_ni_la_limite_d_une_autre()
+    {
+        using var ctx = await SeedAsync(20,
+            (CompanyId, Now),
+            (OtherCompanyId, Now), (OtherCompanyId, Now), (OtherCompanyId, Now));
+        var voisine = ctx.Societes.Single(s => s.Id == OtherCompanyId);
+        voisine.InvoiceScanMonthlyLimit = 3;
+        await ctx.SaveChangesAsync();
+
+        var body = Body(await Controller(ctx).GetScanQuota(CancellationToken.None));
+
+        body.GetProperty("used").GetInt32().Should().Be(1, "les 3 scans de la société voisine ne comptent pas ici");
+        body.GetProperty("limit").GetInt32().Should().Be(20, "sa limite de 3 non plus");
+        body.GetProperty("remaining").GetInt32().Should().Be(19);
+    }
+
+    [Fact]
+    public async Task Un_jeton_sans_societe_connue_ne_scanne_rien()
+    {
+        // La limite se lisait par un FirstOrDefault sur la seule colonne : une société
+        // ABSENTE rendait null, donc le défaut plateforme (20 scans), et le scan partait
+        // — journalisé sous une société qui n'existe pas. Maintenant que ce quota est le
+        // seul contrôle d'accès, une société introuvable vaut quota nul.
+        using var ctx = await SeedAsync(null, (CompanyId, Now));
+
+        var compteur = Body(await Controller(ctx, companyIdClaim: 4242).GetScanQuota(CancellationToken.None));
+        compteur.GetProperty("limit").GetInt32().Should().Be(0);
+        compteur.GetProperty("used").GetInt32().Should().Be(0);
+
+        var result = await Controller(ctx, companyIdClaim: 4242).ScanInvoice(Facture(), CancellationToken.None);
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+    }
+
+    /// <summary>Photo de facture minimale (en-tête JPEG) : le contrôle de quota passe
+    /// avant toute lecture du contenu, ces trois octets suffisent.</summary>
+    private static FormFile Facture() =>
+        new(new MemoryStream(new byte[] { 0xFF, 0xD8, 0xFF }), 0, 3, "file", "facture.jpg")
+        { Headers = new HeaderDictionary(), ContentType = "image/jpeg" };
 }
