@@ -10,6 +10,15 @@ namespace GisAPI.Application.Features.Repairs.Handlers;
 
 public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsListResult>
 {
+    /// <summary>
+    /// Plafond de lignes par appel. L'écran Réparations enchaîne les pages pour
+    /// charger tout le parc : il lui faut une page large, mais chaque ligne
+    /// traîne son véhicule et ses pièces, et la route accepte n'importe quel
+    /// pageSize. Deux mille est la borne haute retenue le 20/09/2026, la même
+    /// que celle au-delà de laquelle l'écran prévient qu'il ne charge plus tout.
+    /// </summary>
+    public const int TaillePageMax = 2000;
+
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
 
@@ -48,8 +57,12 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
         if (request.VehicleId.HasValue)
             query = query.Where(r => r.VehicleId == request.VehicleId.Value);
 
-        if (!string.IsNullOrEmpty(request.Status))
-            query = query.Where(r => r.Status == request.Status);
+        // Comparaison sans casse ni espaces : « Cancelled » existe dans des données
+        // anciennes (import) et échappait au filtre, alors que l'écran et les compteurs
+        // le comptent bien pour « annulée » — le total démentait donc le tableau.
+        var statutFiltre = request.Status?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(statutFiltre))
+            query = query.Where(r => r.Status.ToLower() == statutFiltre);
 
         if (fromDateUtc.HasValue)
             query = query.Where(r => r.RepairDate >= fromDateUtc.Value);
@@ -59,10 +72,22 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
 
         var totalCount = await query.CountAsync(cancellationToken);
 
+        // Bornes de pagination : la route accepte page et pageSize tels quels.
+        // Un pageSize démesuré ferait matérialiser tout le parc avec ses pièces
+        // et ses véhicules ; une page à zéro ou négative rendrait un Skip négatif.
+        var page = Math.Max(1, request.Page);
+        var pageSize = Math.Clamp(request.PageSize, 1, TaillePageMax);
+
+        // Départage par identifiant : l'écran Réparations enchaîne les pages
+        // (Skip/Take) pour charger tout le parc. Sans second critère, PostgreSQL
+        // ne garantit AUCUN ordre entre deux lignes de même repair_date — la même
+        // réparation pouvait revenir sur deux pages et une autre disparaître,
+        // donnant un coût total faux sans le moindre message (20/09/2026).
         var repairs = await query
             .OrderByDescending(r => r.RepairDate)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
+            .ThenByDescending(r => r.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(cancellationToken);
         // Nom du fournisseur. L'entite Repair ne porte que SupplierId, sans
         // propriete de navigation, et les deux projections de ce fichier
@@ -120,7 +145,7 @@ public class GetRepairsQueryHandler : IRequestHandler<GetRepairsQuery, RepairsLi
             r.AccidentEventId
         )).ToList();
 
-        return new RepairsListResult(items, totalCount, request.Page, request.PageSize);
+        return new RepairsListResult(items, totalCount, page, pageSize);
     }
 }
 
@@ -233,6 +258,13 @@ public class GetRepairStatsQueryHandler : IRequestHandler<GetRepairStatsQuery, R
 
         if (request.VehicleId.HasValue)
             query = query.Where(r => r.VehicleId == request.VehicleId.Value);
+
+        // Même filtre de statut que la liste, même comparaison sans casse : les compteurs
+        // de l'écran suivent le filtre choisi, et ils portent sur TOUTE la société — pas
+        // sur la page que le navigateur a chargée.
+        var statutFiltre = request.Status?.Trim().ToLowerInvariant();
+        if (!string.IsNullOrEmpty(statutFiltre))
+            query = query.Where(r => r.Status.ToLower() == statutFiltre);
 
         if (fromDateUtc.HasValue)
             query = query.Where(r => r.RepairDate >= fromDateUtc.Value);

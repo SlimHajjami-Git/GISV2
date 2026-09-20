@@ -5,7 +5,7 @@ import { ActivatedRoute } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
-import { ApiService } from '../services/api.service';
+import { ApiService, RepairDto } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
 import {
@@ -155,18 +155,21 @@ function dateSeule(d: string | null | undefined): string {
             </svg>
             <input type="text" class="search-input" placeholder="Rechercher une reparation..." [(ngModel)]="searchQuery" (input)="filterRepairs()">
           </div>
-          <select class="filter-select" [(ngModel)]="filterVehicle" (change)="filterRepairs()">
+          <select class="filter-select" [(ngModel)]="filterVehicle" (change)="onFiltreServeur()">
             <option value="">Tous les vehicules</option>
             <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
           </select>
-          <select class="filter-select" [(ngModel)]="filterStatus" (change)="filterRepairs()">
+          <select class="filter-select" [(ngModel)]="filterStatus" (change)="onFiltreServeur()">
             <option value="">Tous les statuts</option>
             <option value="pending">En attente</option>
             <option value="in_progress">En cours</option>
             <option value="completed">Terminée</option>
             <option value="cancelled">Annulée</option>
           </select>
-          <button class="btn-export" (click)="exportPdf()" [disabled]="filteredRepairs.length === 0" title="Exporter un PDF groupé par véhicule">
+          <!-- L'export porte sur TOUT l'ensemble filtré, pas sur la page affichée : le dire,
+               sinon un tableau paginé laisse croire que le PDF s'arrête à ces 25 lignes. -->
+          <button class="btn-export" (click)="exportPdf()" [disabled]="filteredRepairs.length === 0"
+                  [title]="'Exporter un PDF groupé par véhicule — ' + filteredRepairs.length + ' réparation(s), toutes pages confondues'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
               <polyline points="14 2 14 8 20 8"/>
@@ -199,9 +202,17 @@ function dateSeule(d: string | null | undefined): string {
           </button>
         </div>
 
+        <!-- Parc plus grand que ce que l'écran garde en mémoire : ce n'est pas un détail
+             d'infobulle, cela change ce que le tableau et la recherche couvrent. -->
+        <div class="avertissement-volume" *ngIf="!chargementComplet">
+          <strong>Parc volumineux — {{ totalParc }} réparations au total.</strong>
+          Seules les {{ repairs.length }} plus récentes sont chargées. {{ porteeChargementPartiel }}
+          Choisissez un véhicule ou un statut : le sous-ensemble est alors rechargé en entier.
+        </div>
+
         <!-- Stats Bar -->
         <div class="stats-bar">
-          <div class="stat-item">
+          <div class="stat-item" [title]="infobulleTotal">
             <div class="stat-icon info">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
@@ -209,7 +220,7 @@ function dateSeule(d: string | null | undefined): string {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ stats.totalRepairs }}</span>
-              <span class="stat-label">Total réparations</span>
+              <span class="stat-label">{{ libelleTotal }}</span>
             </div>
           </div>
           <div class="stat-item">
@@ -245,7 +256,7 @@ function dateSeule(d: string | null | undefined): string {
               <span class="stat-label">Annulées</span>
             </div>
           </div>
-          <div class="stat-item" [title]="stats.cancelledRepairs > 0 ? 'Hors réparations annulées' : ''">
+          <div class="stat-item" [title]="infobulleCout">
             <div class="stat-icon cost">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
@@ -253,7 +264,7 @@ function dateSeule(d: string | null | undefined): string {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ stats.totalCost | appCurrency:0 }}</span>
-              <span class="stat-label">Coût total</span>
+              <span class="stat-label">{{ libelleCout }}</span>
             </div>
           </div>
         </div>
@@ -297,7 +308,7 @@ function dateSeule(d: string | null | undefined): string {
               </tr>
             </thead>
             <tbody>
-              <tr class="repair-row" *ngFor="let repair of getSortedRepairs()" (click)="viewRepair(repair)">
+              <tr class="repair-row" *ngFor="let repair of getPageRepairs()" (click)="viewRepair(repair)">
                 <td class="col-ref">
                   <div class="ref-cell">
                     <span class="repair-icon">🔧</span>
@@ -371,12 +382,20 @@ function dateSeule(d: string | null | undefined): string {
             </tbody>
           </table>
 
+          <!-- Le pied dit toujours sur COMBIEN de réparations porte ce qui est au-dessus :
+               un tableau coupé en pages sans ce repère laissait croire que tout tenait là. -->
+          <div class="pager" *ngIf="filteredRepairs.length > 0">
+            <button type="button" (click)="allerPage(pageAffichage - 1)" [disabled]="pageAffichage <= 1" title="Page précédente">‹</button>
+            <span>Page {{ pageAffichage }} / {{ totalPagesAffichage }} — {{ filteredRepairs.length }} réparation(s)</span>
+            <button type="button" (click)="allerPage(pageAffichage + 1)" [disabled]="pageAffichage >= totalPagesAffichage" title="Page suivante">›</button>
+          </div>
+
           <div class="empty-state" *ngIf="filteredRepairs.length === 0">
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
             </svg>
-            <h3>Aucune reparation trouvee</h3>
-            <p>Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
+            <h3>{{ chargementEnCours ? 'Chargement des reparations...' : 'Aucune reparation trouvee' }}</h3>
+            <p *ngIf="!chargementEnCours">Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
           </div>
         </div>
       </div>
@@ -745,6 +764,9 @@ function dateSeule(d: string | null | undefined): string {
        barré, comme « Exporter PDF » sans ligne et comme le bouton du scan. */
     .btn-add:disabled { opacity:.5; cursor:not-allowed; }
 
+    /* Parc au-delà du plafond de chargement : un avertissement qui se lit, pas une infobulle. */
+    .avertissement-volume { padding:10px 14px; background:#fffbeb; border-bottom:1px solid #fcd34d; color:#92400e; font-size:12px; line-height:1.5; }
+    .avertissement-volume strong { color:#78350f; }
     .stats-bar { display:flex; gap:16px; padding:12px 14px; background:white; border-bottom:1px solid #e2e8f0; }
     .stat-item { display:flex; align-items:center; gap:10px; padding:8px 14px; background:#f8fafc; border-radius:6px; }
     .stat-icon { width:32px; height:32px; border-radius:6px; display:flex; align-items:center; justify-content:center; }
@@ -755,10 +777,15 @@ function dateSeule(d: string | null | undefined): string {
     .stat-icon.muted { background:#f1f5f9; color:#64748b; }
     .stat-content { display:flex; flex-direction:column; }
     .stat-value { font-size:16px; font-weight:600; color:#1e293b; }
-    .stat-label { font-size:11px; color:#64748b; }
+    /* Intitulé sur une seule ligne : « Réparations filtrées » est plus long que
+       « Total réparations » et passait à la ligne en écrasant la barre. */
+    .stat-label { font-size:11px; color:#64748b; white-space:nowrap; }
 
     /* Table */
     .table-container { flex:1; padding:16px 24px; overflow-x:auto; }
+    .pager { display:flex; align-items:center; gap:12px; justify-content:center; padding:14px; font-size:12px; color:#475569; }
+    .pager button { padding:6px 12px; background:white; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; }
+    .pager button:disabled { opacity:.4; cursor:not-allowed; }
     .repairs-table {
       width:100%;
       border-collapse:separate;
@@ -1000,6 +1027,52 @@ export class RepairsComponent implements OnInit, OnDestroy {
   sortDirection: 'asc' | 'desc' = 'desc';
 
   stats = { totalRepairs: 0, pendingRepairs: 0, completedRepairs: 0, cancelledRepairs: 0, totalCost: 0 };
+  /**
+   * Nombre de réparations de la société, rendu par le serveur (totalCount) — et non
+   * la longueur de la liste chargée. C'est lui que cite l'infobulle « Sur N réparations
+   * au total » et le bandeau de parc volumineux.
+   */
+  totalParc = 0;
+
+  /**
+   * Chargement du parc — défaut du 20/09/2026, « c'est pas acceptable que le total soit
+   * faux » (Karim).
+   *
+   * L'écran demandait UNE page de 100 lignes et faisait tout le reste dessus : compteurs,
+   * filtres, recherche, tri, export. Une société de 250 réparations lisait « 100 Total
+   * réparations », un coût amputé, et 150 réparations introuvables — sans un mot. La
+   * société de test n'en a que 38, le défaut ne se voyait pas en local.
+   *
+   * Choix : charger TOUT le parc, page après page, et garder recherche, tri et
+   * pagination dans le navigateur — un seul ensemble en mémoire, donc des compteurs qui
+   * recoupent le tableau par construction. Mesuré en base le 20/09/2026 : une réparation
+   * rendue par l'API pèse 746 octets en moyenne (786 au maximum, pièces comprises), et le
+   * parc grossit d'environ 4 réparations par véhicule et par an (38 réparations pour
+   * 12 véhicules en 9,5 mois). 250 lignes ≈ 180 Ko, 1 000 ≈ 0,7 Mo, à comparer aux
+   * 28 Ko du plus gros parc d'aujourd'hui. Le plafond ci-dessous n'est qu'un garde-fou.
+   */
+  taillePageChargement = 500;
+
+  /**
+   * Plafond de lignes gardées en mémoire : 2 000 ≈ 1,5 Mo, soit un parc de 500 véhicules
+   * sur un an. Au-delà, l'écran ne charge pas plus et le DIT — bandeau visible, et
+   * compteurs demandés au serveur pour qu'aucun total ne soit faux.
+   */
+  limiteChargement = 2000;
+
+  /** Vrai quand tout le parc est en mémoire : les compteurs se calculent alors ici. */
+  chargementComplet = true;
+
+  /** Chargement en cours : le pied de tableau le dit plutôt que de laisser croire à un parc vide. */
+  chargementEnCours = false;
+
+  /**
+   * Pagination de l'AFFICHAGE : le tri, la recherche et les compteurs portent sur tout
+   * l'ensemble filtré, seule la découpe en pages est ici. 25 lignes tiennent sur un
+   * écran de 1536 px sans ascenseur interminable.
+   */
+  taillePageAffichage = 25;
+  pageAffichage = 1;
 
   isPanelOpen = false;
   editingRepair: Repair | null = null;
@@ -1123,45 +1196,115 @@ export class RepairsComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Ligne du serveur → ligne de l'écran. Un seul endroit, le chargement enchaîne les pages. */
+  private versRepair(r: RepairDto): Repair {
+    return {
+      id: r.id,
+      vehicleId: r.vehicleId,
+      vehicleName: r.vehicleName || '',
+      vehiclePlate: r.vehiclePlate || '',
+      supplierId: r.supplierId,
+      supplierName: r.supplierName,
+      reference: r.reference || '',
+      description: r.description || '',
+      repairDate: r.repairDate,
+      mileageAtRepair: r.mileageAtRepair,
+      laborCost: r.laborCost,
+      partsCost: r.partsCost,
+      totalCost: r.totalCost,
+      status: r.status,
+      invoiceNumber: r.invoiceNumber || '',
+      notes: r.notes || '',
+      repairType: r.repairType ?? null,
+      // Dossier de sinistre : sert au badge de la ligne et au verrou du bouton Supprimer.
+      accidentEventId: r.accidentEventId ?? null,
+      parts: (r.parts || []).map(p => ({
+        id: p.id,
+        partName: p.partName,
+        partReference: p.partReference || '',
+        quantity: p.quantity,
+        unitPrice: p.unitPrice,
+        subtotal: p.subtotal,
+        notes: p.notes || ''
+      }))
+    };
+  }
+
   loadRepairs() {
-    this.apiService.getRepairs({ pageSize: 100 }).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (result) => {
-        this.repairs = result.items.map(r => ({
-          id: r.id,
-          vehicleId: r.vehicleId,
-          vehicleName: r.vehicleName || '',
-          vehiclePlate: r.vehiclePlate || '',
-          supplierId: r.supplierId,
-          supplierName: r.supplierName,
-          reference: r.reference || '',
-          description: r.description || '',
-          repairDate: r.repairDate,
-          mileageAtRepair: r.mileageAtRepair,
-          laborCost: r.laborCost,
-          partsCost: r.partsCost,
-          totalCost: r.totalCost,
-          status: r.status,
-          invoiceNumber: r.invoiceNumber || '',
-          notes: r.notes || '',
-          repairType: r.repairType ?? null,
-          // Dossier de sinistre : sert au badge de la ligne et au verrou du bouton Supprimer.
-          accidentEventId: r.accidentEventId ?? null,
-          parts: (r.parts || []).map(p => ({
-            id: p.id,
-            partName: p.partName,
-            partReference: p.partReference || '',
-            quantity: p.quantity,
-            unitPrice: p.unitPrice,
-            subtotal: p.subtotal,
-            notes: p.notes || ''
-          }))
-        }));
-        this.filterRepairs();
-        this.calculateStats();
-        this.cdr.detectChanges();
-      },
-      error: (err) => { console.error('Error loading repairs:', err); this.cdr.detectChanges(); }
-    });
+    this.chargementEnCours = true;
+    this.chargerPage(1, []);
+  }
+
+  /**
+   * Changement du filtre véhicule ou statut. Ces deux-là, le SERVEUR sait les
+   * appliquer : quand le parc dépasse ce que l'écran garde en mémoire, on
+   * recharge en les lui passant, et le sous-ensemble demandé redevient complet.
+   * Sans cela le bandeau conseillait de filtrer pour « atteindre les autres »
+   * alors que le filtre ne faisait que trier les lignes DÉJÀ chargées — il
+   * promettait ce qu'il ne pouvait pas tenir (20/09/2026).
+   * La recherche par texte, elle, ne s'exprime pas en SQL : elle reste locale,
+   * et le bandeau le dit.
+   */
+  onFiltreServeur() {
+    if (!this.chargementComplet) { this.loadRepairs(); return; }
+    this.filterRepairs();
+  }
+
+  /**
+   * Une page du serveur, puis la suivante tant qu'il reste des réparations : c'est ce
+   * qui rend les compteurs, la recherche et le tri vrais pour une société de 250 lignes
+   * comme pour une de 38. La liste n'est remplacée qu'à la FIN, sinon le tableau
+   * clignoterait page après page.
+   *
+   * Trois arrêts : plus rien à charger, page vide (un serveur qui rendrait toujours la
+   * même page ne doit pas tourner en boucle), ou plafond atteint.
+   */
+  private chargerPage(page: number, cumul: Repair[]) {
+    this.apiService.getRepairs({
+        page,
+        pageSize: this.taillePageChargement,
+        // Filtres que le serveur sait appliquer : sur un gros parc, ils réduisent
+        // l'ensemble à charger et rendent le sous-ensemble demandé COMPLET.
+        vehicleId: this.filterVehicle ? +this.filterVehicle : undefined,
+        status: this.filterStatus || undefined,
+      })
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (result) => {
+          const lot = (result.items || []).map(r => this.versRepair(r));
+          const tout = cumul.concat(lot);
+          // Le total du parc est connu dès la première page : on le retient TOUT DE SUITE,
+          // sinon une erreur sur la page suivante laisserait l'écran croire qu'il a tout.
+          this.totalParc = Math.max(result.totalCount ?? tout.length, tout.length);
+
+          if (lot.length > 0 && tout.length < this.totalParc && tout.length < this.limiteChargement) {
+            this.chargerPage(page + 1, tout);
+            return;
+          }
+
+          this.repairs = tout;
+          this.chargementComplet = tout.length >= this.totalParc;
+          this.chargementEnCours = false;
+          this.pageAffichage = 1;
+          // filterRepairs() met les compteurs à jour : un seul chemin, jamais deux sources.
+          this.filterRepairs();
+          this.cdr.detectChanges();
+        },
+        error: (err) => {
+          console.error('Error loading repairs:', err);
+          this.chargementEnCours = false;
+          // Ce qui a déjà été chargé vaut mieux qu'un tableau vide, mais il en manque :
+          // le bandeau et les compteurs du serveur prennent le relais, on ne prétend
+          // jamais avoir tout le parc.
+          if (cumul.length > 0) {
+            this.repairs = cumul;
+            this.chargementComplet = cumul.length >= this.totalParc;
+            this.pageAffichage = 1;
+            this.filterRepairs();
+          }
+          this.cdr.detectChanges();
+        }
+      });
   }
 
   filterRepairs() {
@@ -1182,6 +1325,105 @@ export class RepairsComponent implements OnInit, OnDestroy {
       result = result.filter(r => (r.status || '').trim().toLowerCase() === this.filterStatus);
     }
     this.filteredRepairs = result;
+    // Un filtre change l'ensemble : on repart de la première page, sinon on resterait
+    // sur une page 7 qui n'existe plus et le tableau paraîtrait vide.
+    this.pageAffichage = 1;
+    // Les compteurs du haut suivent recherche, véhicule et statut. Sans cette mise à
+    // jour ils restaient figés sur tout le parc (un véhicule filtré à 72 € et
+    // « 36 réparations, 10 570 € » annoncés au-dessus).
+    this.majCompteurs();
+  }
+
+  /**
+   * D'où viennent les quatre compteurs.
+   *
+   * Tout le parc est en mémoire (le cas de toutes les sociétés GPA d'aujourd'hui) : ils
+   * se calculent ici et recoupent EXACTEMENT le tableau, la pagination et l'export PDF.
+   *
+   * Parc au-delà du plafond : le navigateur n'a qu'une partie des lignes, un calcul
+   * local annoncerait un total faux. Le serveur, lui, sait compter toute la société
+   * (GET /api/repairs/stats, mêmes règles : annulées comptées, hors montants) et connaît
+   * les filtres véhicule et statut. La recherche par texte, elle, ne s'exprime pas là-bas :
+   * dans ce seul cas on retombe sur les lignes chargées, et le bandeau le dit.
+   */
+  private majCompteurs() {
+    if (this.chargementComplet || this.searchQuery) {
+      this.calculateStats();
+      return;
+    }
+
+    this.apiService.getRepairStats({
+      vehicleId: this.filterVehicle ? +this.filterVehicle : undefined,
+      status: this.filterStatus || undefined
+    }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (s) => {
+        this.stats = {
+          totalRepairs: s.totalRepairs,
+          pendingRepairs: s.pendingRepairs,
+          completedRepairs: s.completedRepairs,
+          cancelledRepairs: s.cancelledRepairs ?? 0,
+          totalCost: s.totalCost
+        };
+        this.cdr.detectChanges();
+      },
+      // Serveur muet : les chiffres des lignes chargées, avec le bandeau qui les
+      // relativise, valent mieux que quatre zéros.
+      error: () => { this.calculateStats(); this.cdr.detectChanges(); }
+    });
+  }
+
+  /** Nombre de pages du tableau (au moins une, même vide : « Page 1 / 1 »). */
+  get totalPagesAffichage(): number {
+    return Math.max(1, Math.ceil(this.filteredRepairs.length / this.taillePageAffichage));
+  }
+
+  /** Changement de page, borné : un clic ne doit jamais sortir de l'ensemble filtré. */
+  allerPage(page: number) {
+    this.pageAffichage = Math.min(Math.max(1, page), this.totalPagesAffichage);
+  }
+
+  /**
+   * Portée réelle du tableau, de la recherche et des compteurs quand le parc dépasse le
+   * plafond de chargement. Affiché en clair : l'écran ne montre jamais un sous-ensemble
+   * sans le dire.
+   */
+  get porteeChargementPartiel(): string {
+    return this.searchQuery
+      ? `La recherche et les compteurs ne portent que sur ces ${this.repairs.length} lignes.`
+      : `Les compteurs portent sur le parc entier ; le tableau, la recherche et l'export PDF `
+        + `ne portent que sur ces ${this.repairs.length} lignes.`;
+  }
+
+  /**
+   * Un filtre masque des lignes : les compteurs ne portent plus tout le parc.
+   * Mêmes conditions exactement que filterRepairs(), sinon l'intitulé mentirait
+   * sur un cas de bord (une recherche faite d'espaces filtre bel et bien).
+   */
+  get filtreActif(): boolean {
+    return !!(this.searchQuery || this.filterVehicle || this.filterStatus);
+  }
+
+  /** Intitulé du premier compteur : « Total » ne se dit que du parc entier. */
+  get libelleTotal(): string {
+    return this.filtreActif ? 'Réparations filtrées' : 'Total réparations';
+  }
+
+  /** Idem pour le coût : filtré, ce n'est plus le total du parc. */
+  get libelleCout(): string {
+    return this.filtreActif ? 'Coût filtré' : 'Coût total';
+  }
+
+  /** Infobulle du premier compteur : rappelle le parc entier quand le filtre masque des lignes. */
+  get infobulleTotal(): string {
+    return this.filtreActif ? `Sur ${this.totalParc} réparations au total` : '';
+  }
+
+  /** Infobulle du coût : périmètre du filtre et exclusion des annulées, quand ils s'appliquent. */
+  get infobulleCout(): string {
+    const mentions: string[] = [];
+    if (this.filtreActif) mentions.push('Sur le filtre en cours');
+    if (this.stats.cancelledRepairs > 0) mentions.push('Hors réparations annulées');
+    return mentions.join(' — ');
   }
 
   toggleSort(column: RepairSortKey) {
@@ -1191,6 +1433,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
       this.sortColumn = column;
       this.sortDirection = column === 'repairDate' ? 'desc' : 'asc';
     }
+    // Le tri reclasse TOUT l'ensemble filtré : rester sur la page 7 après un clic sur
+    // une colonne ferait passer à côté de ce que l'on vient de remonter en tête.
+    this.pageAffichage = 1;
   }
 
   getSortIndicator(column: RepairSortKey): string {
@@ -1239,6 +1484,15 @@ export class RepairsComponent implements OnInit, OnDestroy {
       if (va > vb) return 1 * dir;
       return 0;
     });
+  }
+
+  /**
+   * Lignes de la page affichée. Le tri et les filtres portent sur TOUT l'ensemble
+   * filtré : seule la découpe est ici, sinon trier ne classerait que la page en cours.
+   */
+  getPageRepairs(): Repair[] {
+    const debut = (this.pageAffichage - 1) * this.taillePageAffichage;
+    return this.getSortedRepairs().slice(debut, debut + this.taillePageAffichage);
   }
 
   exportPdf() {
@@ -1340,16 +1594,22 @@ export class RepairsComponent implements OnInit, OnDestroy {
   }
 
   calculateStats() {
+    // Périmètre = TOUT l'ensemble filtré (filteredRepairs), pas la page affichée : ce
+    // sont les mêmes réparations que la barre de pagination annonce et que l'export PDF
+    // reprend. Sur tout le parc, les compteurs démentaient le tableau filtré.
+    // Appelé par majCompteurs() quand le parc entier est en mémoire — le cas courant ;
+    // au-delà du plafond de chargement, les compteurs viennent du serveur.
     // Une réparation annulée (import, API) ne coûte rien : les rapports l'excluent déjà.
     // Elle gonflait le coût total, et sans compteur dédié en attente + terminées ne
     // recoupait plus le total (même règle que GET /repairs/stats).
     const is = (r: Repair, status: string) => (r.status || '').trim().toLowerCase() === status;
-    const costed = this.repairs.filter(r => !this.isCancelled(r));
+    const visibles = this.filteredRepairs;
+    const costed = visibles.filter(r => !this.isCancelled(r));
     this.stats = {
-      totalRepairs: this.repairs.length,
-      pendingRepairs: this.repairs.filter(r => is(r, 'pending') || is(r, 'in_progress')).length,
-      completedRepairs: this.repairs.filter(r => is(r, 'completed')).length,
-      cancelledRepairs: this.repairs.length - costed.length,
+      totalRepairs: visibles.length,
+      pendingRepairs: visibles.filter(r => is(r, 'pending') || is(r, 'in_progress')).length,
+      completedRepairs: visibles.filter(r => is(r, 'completed')).length,
+      cancelledRepairs: visibles.length - costed.length,
       totalCost: costed.reduce((sum, r) => sum + r.totalCost, 0)
     };
   }

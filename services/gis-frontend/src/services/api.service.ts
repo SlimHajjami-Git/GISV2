@@ -2078,11 +2078,17 @@ export class ApiService {
     return this.http.get<RepairDto>(`${this.API_URL}/repairs/${id}`, { headers: this.getHeaders() });
   }
 
-  getRepairStats(vehicleId?: number, fromDate?: string, toDate?: string): Observable<RepairStatsDto> {
+  /**
+   * Compteurs de l'écran Réparations sur TOUTE la société — pas sur la page que le
+   * navigateur a chargée. Options plutôt que paramètres positionnels, comme getRepairs(),
+   * depuis que `status` s'y ajoute (l'écran filtre par statut et ses compteurs suivent).
+   */
+  getRepairStats(options?: { vehicleId?: number; status?: string; fromDate?: string; toDate?: string }): Observable<RepairStatsDto> {
     let params = new HttpParams();
-    if (vehicleId) params = params.set('vehicleId', vehicleId.toString());
-    if (fromDate) params = params.set('fromDate', fromDate);
-    if (toDate) params = params.set('toDate', toDate);
+    if (options?.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options?.status) params = params.set('status', options.status);
+    if (options?.fromDate) params = params.set('fromDate', options.fromDate);
+    if (options?.toDate) params = params.set('toDate', options.toDate);
     return this.http.get<RepairStatsDto>(`${this.API_URL}/repairs/stats`, { headers: this.getHeaders(), params });
   }
 
@@ -4310,6 +4316,8 @@ export interface RepairStatsDto {
   averageCost: number;
   totalLaborCost: number;
   totalPartsCost: number;
+  /** Annulées : comptées dans totalRepairs, exclues de tous les montants (comme les rapports). */
+  cancelledRepairs: number;
 }
 
 export interface CreateRepairRequest {

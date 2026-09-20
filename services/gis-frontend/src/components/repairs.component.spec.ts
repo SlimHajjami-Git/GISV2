@@ -628,3 +628,439 @@ describe('RepairsComponent — une fenêtre ouverte verrouille l’arrière-plan
     expect(boutonLigne('REP-2026-012', 'delete').disabled).toBe(true);
   });
 });
+
+/**
+ * Compteurs du haut de l'écran Réparations (recette du 19/09/2026).
+ *
+ * Karim filtre sur « Commercial 01 » : le tableau affiche bien une seule réparation
+ * à 72 €, et les compteurs continuent d'annoncer 36 réparations et 10 570 € — tout le
+ * parc. calculateStats() lisait `repairs` (tout ce qui est chargé) au lieu de
+ * `filteredRepairs` (ce qui est affiché) ; le filtre de statut était ignoré pareil.
+ *
+ * Règle métier conservée : une réparation ANNULÉE ne coûte rien et reste hors du
+ * « Coût total » (même règle que GET /repairs/stats), le compteur d'annulées est là
+ * pour qu'on retrouve le compte.
+ */
+describe('RepairsComponent — les compteurs suivent le filtre', () => {
+  let component: RepairsComponent;
+  let fixture: any;
+  let api: ApiService;
+
+  const reparation = (o: Record<string, any>): any => ({
+    vehiclePlate: '100 TU 1000', reference: 'REP', description: 'Intervention',
+    repairDate: '2026-09-10T12:00:00', laborCost: 0, partsCost: 0,
+    invoiceNumber: '', notes: '', repairType: null, accidentEventId: null, parts: [],
+    ...o
+  });
+
+  // Parc de test calqué sur la base locale : Commercial 01 n'a qu'une réparation, à 72 €.
+  const parc = [
+    reparation({ id: 1, vehicleId: 5, vehicleName: 'Commercial 01', reference: 'REP-001', totalCost: 72, status: 'completed' }),
+    reparation({ id: 2, vehicleId: 9, vehicleName: 'Logistique 01', reference: 'REP-002', totalCost: 600, status: 'completed' }),
+    reparation({ id: 3, vehicleId: 9, vehicleName: 'Logistique 01', reference: 'REP-003', totalCost: 150, status: 'pending' }),
+    reparation({ id: 4, vehicleId: 9, vehicleName: 'Logistique 01', reference: 'REP-004', totalCost: 90, status: 'in_progress' }),
+    reparation({ id: 5, vehicleId: 12, vehicleName: 'Service 03', reference: 'REP-005', totalCost: 500, status: 'Cancelled' })
+  ];
+
+  /** Intitulés lus dans le DOM, dans l'ordre de la barre. */
+  const libelles = (): string[] =>
+    (Array.from(fixture.nativeElement.querySelectorAll('.stats-bar .stat-label')) as HTMLElement[])
+      .map(e => (e.textContent || '').trim());
+
+  const valeurs = (): string[] =>
+    (Array.from(fixture.nativeElement.querySelectorAll('.stats-bar .stat-value')) as HTMLElement[])
+      .map(e => (e.textContent || '').trim());
+
+  const lignesAffichees = (): number =>
+    fixture.nativeElement.querySelectorAll('tr.repair-row').length;
+
+  beforeEach(async () => {
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, NoopAnimationsModule, RepairsComponent],
+      providers: [ApiService],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RepairsComponent);
+    component = fixture.componentInstance;
+    api = TestBed.inject(ApiService);
+
+    jest.spyOn(api, 'getVehicles').mockReturnValue(of([]) as any);
+    jest.spyOn(api, 'getSuppliers').mockReturnValue(of({ items: [], totalCount: 0, page: 1, pageSize: 200 }) as any);
+    jest.spyOn(api, 'getRepairs').mockReturnValue(
+      of({ items: parc, totalCount: parc.length, page: 1, pageSize: 100 }) as any
+    );
+
+    fixture.detectChanges();
+  });
+
+  it('sans filtre : les compteurs portent tout le parc chargé, annulée hors du coût', () => {
+    expect(component.stats.totalRepairs).toBe(5);
+    expect(component.stats.pendingRepairs).toBe(2);   // en attente + en cours
+    expect(component.stats.completedRepairs).toBe(2);
+    expect(component.stats.cancelledRepairs).toBe(1);
+    expect(component.stats.totalCost).toBe(912);      // 72 + 600 + 150 + 90, les 500 annulés exclus
+    expect(component.filtreActif).toBe(false);
+    expect(libelles()[0]).toBe('Total réparations');
+    expect(libelles()[libelles().length - 1]).toBe('Coût total');
+  });
+
+  it('filtre véhicule : les quatre compteurs suivent, et recoupent le tableau', () => {
+    component.filterVehicle = '5';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(lignesAffichees()).toBe(1);
+    expect(component.stats.totalRepairs).toBe(1);
+    expect(component.stats.pendingRepairs).toBe(0);
+    expect(component.stats.completedRepairs).toBe(1);
+    expect(component.stats.cancelledRepairs).toBe(0);
+    expect(component.stats.totalCost).toBe(72);
+    expect(valeurs()[0]).toBe('1');
+
+    component.filterVehicle = '9';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(lignesAffichees()).toBe(3);
+    expect(component.stats.totalRepairs).toBe(3);
+    expect(component.stats.pendingRepairs).toBe(2);
+    expect(component.stats.completedRepairs).toBe(1);
+    expect(component.stats.totalCost).toBe(840);
+  });
+
+  it('filtre statut : les compteurs suivent aussi', () => {
+    component.filterStatus = 'completed';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(lignesAffichees()).toBe(2);
+    expect(component.stats.totalRepairs).toBe(2);
+    expect(component.stats.completedRepairs).toBe(2);
+    expect(component.stats.pendingRepairs).toBe(0);
+    expect(component.stats.cancelledRepairs).toBe(0);
+    expect(component.stats.totalCost).toBe(672);
+  });
+
+  it('filtre sur les annulées : elles se comptent mais ne coûtent rien', () => {
+    component.filterStatus = 'cancelled';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(lignesAffichees()).toBe(1);
+    expect(component.stats.totalRepairs).toBe(1);
+    expect(component.stats.cancelledRepairs).toBe(1);
+    expect(component.stats.totalCost).toBe(0);
+    // Le compteur d'annulées n'apparaît que s'il y en a : ici il est visible.
+    expect(libelles()).toContain('Annulées');
+  });
+
+  it('recherche : les compteurs suivent le texte saisi', () => {
+    component.searchQuery = 'Commercial';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(component.stats.totalRepairs).toBe(1);
+    expect(component.stats.totalCost).toBe(72);
+  });
+
+  it('en attente + terminées + annulées = total, filtre actif ou non', () => {
+    const recoupe = () => {
+      const s = component.stats;
+      expect(s.pendingRepairs + s.completedRepairs + s.cancelledRepairs).toBe(s.totalRepairs);
+      expect(s.totalRepairs).toBe(component.filteredRepairs.length);
+    };
+
+    recoupe();
+    for (const filtre of ['5', '9', '12']) {
+      component.filterVehicle = filtre;
+      component.filterRepairs();
+      recoupe();
+    }
+  });
+
+  it('filtre actif : l’intitulé le dit, et l’infobulle rappelle le parc entier', () => {
+    component.filterVehicle = '5';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(component.filtreActif).toBe(true);
+    expect(libelles()[0]).toBe('Réparations filtrées');
+    expect(libelles()[libelles().length - 1]).toBe('Coût filtré');
+
+    const premier: HTMLElement = fixture.nativeElement.querySelector('.stats-bar .stat-item');
+    expect(premier.getAttribute('title')).toBe('Sur 5 réparations au total');
+
+    // Filtre retiré : on revient aux intitulés du parc entier, sans infobulle.
+    component.filterVehicle = '';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(component.filtreActif).toBe(false);
+    expect(libelles()[0]).toBe('Total réparations');
+    expect(fixture.nativeElement.querySelector('.stats-bar .stat-item').getAttribute('title')).toBe('');
+  });
+
+  it('tri : le classement ne change aucun compteur', () => {
+    component.filterVehicle = '9';
+    component.filterRepairs();
+    const avant = { ...component.stats };
+
+    component.toggleSort('totalCost');
+    fixture.detectChanges();
+
+    expect(component.stats).toEqual(avant);
+    expect(lignesAffichees()).toBe(3);
+  });
+
+  it('suppression : les compteurs se recalculent, filtre toujours appliqué', () => {
+    component.filterVehicle = '9';
+    component.filterRepairs();
+    expect(component.stats.totalRepairs).toBe(3);
+
+    // Le serveur renvoie le parc sans REP-003 (150 €, en attente).
+    const restant = parc.filter(r => r.id !== 3);
+    (api.getRepairs as jest.Mock).mockReturnValue(
+      of({ items: restant, totalCount: restant.length, page: 1, pageSize: 100 }) as any
+    );
+    jest.spyOn(api, 'deleteRepair').mockReturnValue(of(void 0) as any);
+
+    component.confirmDelete(parc[2] as any);
+    component.deleteRepair();
+    fixture.detectChanges();
+
+    expect(component.filterVehicle).toBe('9');
+    expect(component.stats.totalRepairs).toBe(2);
+    expect(component.stats.pendingRepairs).toBe(1);
+    expect(component.stats.totalCost).toBe(690);
+    expect(lignesAffichees()).toBe(2);
+  });
+});
+
+/**
+ * Grosse société — l'écran s'arrêtait à 100 lignes sans le dire (20/09/2026).
+ *
+ * loadRepairs() demandait UNE page de 100 et tout le reste se faisait dessus :
+ * les quatre compteurs, les filtres, la recherche, le tri et l'export. Une société
+ * de 250 réparations lisait donc « 100 Total réparations », un coût total amputé,
+ * et 150 réparations INVISIBLES qu'aucune recherche ne retrouvait — sans un mot.
+ * La société de test n'en a que 38 : le défaut ne se voyait pas en local.
+ *
+ * Le faux serveur ci-dessous pagine pour de vrai (page + pageSize) : il rejoue
+ * exactement ce que fait l'API.
+ */
+describe('RepairsComponent — une société de 250 réparations', () => {
+  let component: RepairsComponent;
+  let fixture: any;
+  let api: ApiService;
+
+  /** 250 réparations, dont la 201e porte un libellé que l'on ira chercher. */
+  const parcGeant: any[] = Array.from({ length: 250 }, (_, i) => ({
+    id: i + 1,
+    vehicleId: (i % 10) + 1,
+    vehicleName: `Véhicule ${(i % 10) + 1}`,
+    vehiclePlate: `${100 + (i % 10)} TU 1000`,
+    reference: `REP-${String(i + 1).padStart(4, '0')}`,
+    description: i === 200 ? 'Boîte de vitesses' : 'Intervention courante',
+    repairDate: '2026-09-10T12:00:00',
+    laborCost: 40,
+    partsCost: 60 + i,
+    totalCost: 100 + i,
+    // Une annulée toutes les dix : elle compte dans le total, jamais dans le coût.
+    status: i % 10 === 9 ? 'cancelled' : (i % 3 === 0 ? 'pending' : 'completed'),
+    invoiceNumber: '', notes: '', repairType: null, accidentEventId: null, parts: []
+  }));
+
+  const attendu = {
+    total: parcGeant.length,
+    annulees: parcGeant.filter(r => r.status === 'cancelled').length,
+    cout: parcGeant.filter(r => r.status !== 'cancelled').reduce((s, r) => s + r.totalCost, 0)
+  };
+
+  /** Le serveur rend la tranche demandée et le VRAI total, comme GET /api/repairs. */
+  const serveurPagine = (o?: { page?: number; pageSize?: number }) => {
+    const pageSize = o?.pageSize ?? 50;
+    const page = o?.page ?? 1;
+    const debut = (page - 1) * pageSize;
+    return of({
+      items: parcGeant.slice(debut, debut + pageSize),
+      totalCount: parcGeant.length,
+      page,
+      pageSize
+    }) as any;
+  };
+
+  const referencesAffichees = (): string[] =>
+    (Array.from(fixture.nativeElement.querySelectorAll('tr.repair-row .repair-ref')) as HTMLElement[])
+      .map(e => (e.textContent || '').trim());
+
+  beforeEach(async () => {
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, NoopAnimationsModule, RepairsComponent],
+      providers: [ApiService],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RepairsComponent);
+    component = fixture.componentInstance;
+    api = TestBed.inject(ApiService);
+
+    jest.spyOn(api, 'getVehicles').mockReturnValue(of([]) as any);
+    jest.spyOn(api, 'getSuppliers').mockReturnValue(of({ items: [], totalCount: 0, page: 1, pageSize: 200 }) as any);
+    jest.spyOn(api, 'getRepairs').mockImplementation(serveurPagine as any);
+
+    // Pages de 100, la taille qui a produit le défaut : le chargement doit en
+    // enchaîner trois (100 + 100 + 50) au lieu de s'arrêter à la première.
+    component.taillePageChargement = 100;
+    fixture.detectChanges();
+  });
+
+  it('les compteurs annoncent le parc entier, pas la première page', () => {
+    expect(component.totalParc).toBe(attendu.total);
+    expect(component.stats.totalRepairs).toBe(attendu.total);
+    expect(component.stats.cancelledRepairs).toBe(attendu.annulees);
+    expect(component.stats.totalCost).toBe(attendu.cout);
+    expect(component.stats.pendingRepairs + component.stats.completedRepairs + component.stats.cancelledRepairs)
+      .toBe(component.stats.totalRepairs);
+  });
+
+  it('le chargement enchaîne les pages du serveur jusqu’au dernier enregistrement', () => {
+    expect(component.repairs.length).toBe(attendu.total);
+    expect(component.chargementComplet).toBe(true);
+    const pagesDemandees = (api.getRepairs as jest.Mock).mock.calls.map(c => c[0]?.page);
+    expect(pagesDemandees).toEqual([1, 2, 3]);
+  });
+
+  it('la recherche atteint la 201e réparation, invisible dans les cent premières', () => {
+    component.searchQuery = 'Boîte de vitesses';
+    component.filterRepairs();
+    fixture.detectChanges();
+
+    expect(component.filteredRepairs.length).toBe(1);
+    expect(component.filteredRepairs[0].reference).toBe('REP-0201');
+    expect(referencesAffichees()).toContain('REP-0201');
+    expect(component.stats.totalRepairs).toBe(1);
+    // L'infobulle du premier compteur rappelle le parc ENTIER, pas la page chargée.
+    expect(component.infobulleTotal).toBe(`Sur ${attendu.total} réparations au total`);
+  });
+
+  it('la pagination affiche une page à la fois et permet d’atteindre REP-0201', () => {
+    expect(referencesAffichees().length).toBe(component.taillePageAffichage);
+    expect(component.totalPagesAffichage).toBe(Math.ceil(attendu.total / component.taillePageAffichage));
+
+    // Tri par référence croissante : REP-0201 est la 201e ligne.
+    component.sortColumn = 'reference';
+    component.sortDirection = 'asc';
+    component.allerPage(Math.ceil(201 / component.taillePageAffichage));
+    fixture.detectChanges();
+
+    expect(referencesAffichees()).toContain('REP-0201');
+  });
+
+  it('l’export PDF porte sur tout l’ensemble filtré, pas sur la page affichée', () => {
+    const exporte = jest.spyOn((component as any).pdfService, 'exportGroupedReport').mockImplementation(() => {});
+
+    component.exportPdf();
+
+    const arg = exporte.mock.calls[0][0] as any;
+    const lignes = arg.groups.reduce((s: number, g: any) => s + g.rows.length, 0);
+    expect(lignes).toBe(attendu.total);
+    expect(arg.subtitle).toContain(`${attendu.total} réparation(s)`);
+  });
+
+  it('une page qui échoue en cours de route : l’écran garde ce qu’il a et le DIT', () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(api, 'getRepairStats').mockReturnValue(of({
+      totalRepairs: attendu.total, pendingRepairs: 84, completedRepairs: 141, cancelledRepairs: attendu.annulees,
+      totalCost: attendu.cout, averageCost: 0, totalLaborCost: 0, totalPartsCost: 0
+    }) as any);
+    (api.getRepairs as jest.Mock).mockImplementation((o?: any) =>
+      o?.page === 1 ? serveurPagine(o) : throwError(() => ({ status: 500 })));
+
+    component.loadRepairs();
+    fixture.detectChanges();
+
+    // Cent lignes sur 250 : le pire serait de les présenter comme le parc entier.
+    expect(component.repairs.length).toBe(100);
+    expect(component.chargementComplet).toBe(false);
+    expect(fixture.nativeElement.querySelector('.avertissement-volume')).toBeTruthy();
+    expect(component.stats.totalRepairs).toBe(attendu.total);
+  });
+});
+
+/**
+ * Parc au-delà de la limite de chargement : l'écran ne doit ni tout avaler ni mentir.
+ * Les compteurs viennent alors du SERVEUR (GET /api/repairs/stats, filtres véhicule et
+ * statut compris) et un bandeau dit noir sur blanc que le tableau et la recherche ne
+ * portent que sur les lignes chargées.
+ */
+describe('RepairsComponent — parc au-delà de la limite de chargement', () => {
+  let component: RepairsComponent;
+  let fixture: any;
+  let api: ApiService;
+
+  const parc: any[] = Array.from({ length: 250 }, (_, i) => ({
+    id: i + 1, vehicleId: 1, vehicleName: 'Camion', vehiclePlate: '100 TU 1',
+    reference: `REP-${String(i + 1).padStart(4, '0')}`, description: 'Intervention',
+    repairDate: '2026-09-10T12:00:00', laborCost: 40, partsCost: 60,
+    totalCost: 100, status: 'completed',
+    invoiceNumber: '', notes: '', repairType: null, accidentEventId: null, parts: []
+  }));
+
+  beforeEach(async () => {
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, NoopAnimationsModule, RepairsComponent],
+      providers: [ApiService],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(RepairsComponent);
+    component = fixture.componentInstance;
+    api = TestBed.inject(ApiService);
+
+    jest.spyOn(api, 'getVehicles').mockReturnValue(of([]) as any);
+    jest.spyOn(api, 'getSuppliers').mockReturnValue(of({ items: [], totalCount: 0, page: 1, pageSize: 200 }) as any);
+    jest.spyOn(api, 'getRepairs').mockImplementation(((o?: any) => {
+      const pageSize = o?.pageSize ?? 50;
+      const page = o?.page ?? 1;
+      const debut = (page - 1) * pageSize;
+      return of({ items: parc.slice(debut, debut + pageSize), totalCount: parc.length, page, pageSize }) as any;
+    }) as any);
+    jest.spyOn(api, 'getRepairStats').mockReturnValue(of({
+      totalRepairs: 250, pendingRepairs: 10, completedRepairs: 235, cancelledRepairs: 5,
+      totalCost: 24500, averageCost: 100, totalLaborCost: 9800, totalPartsCost: 14700
+    }) as any);
+
+    component.taillePageChargement = 100;
+    component.limiteChargement = 150;
+    fixture.detectChanges();
+  });
+
+  it('le chargement s’arrête à la limite et l’écran le DIT', () => {
+    expect(component.chargementComplet).toBe(false);
+    expect(component.repairs.length).toBeLessThan(parc.length);
+
+    const bandeau: HTMLElement = fixture.nativeElement.querySelector('.avertissement-volume');
+    expect(bandeau).toBeTruthy();
+    expect(bandeau.textContent).toContain('250');
+    expect(bandeau.textContent).toContain(String(component.repairs.length));
+  });
+
+  it('les compteurs viennent du serveur et restent vrais', () => {
+    expect(api.getRepairStats).toHaveBeenCalled();
+    expect(component.stats.totalRepairs).toBe(250);
+    expect(component.stats.totalCost).toBe(24500);
+    expect(component.stats.cancelledRepairs).toBe(5);
+  });
+
+  it('un filtre statut est envoyé au serveur pour que les compteurs suivent', () => {
+    (api.getRepairStats as jest.Mock).mockClear();
+    component.filterStatus = 'completed';
+    component.filterRepairs();
+
+    expect(api.getRepairStats).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+  });
+});
