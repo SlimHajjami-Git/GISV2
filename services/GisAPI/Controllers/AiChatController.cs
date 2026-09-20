@@ -776,9 +776,13 @@ public class AiChatController : ControllerBase
 
         // ── Costs data ──
         // Ventilation partagée VehicleCostCategory, celle du tableau de bord et des rapports
-        // de coûts : avoir et remboursement d'assurance y sont DÉDUITS. Additionnés bruts,
-        // ils gonflaient les coûts transmis à l'assistant du montant remboursé. Une somme
-        // par véhicule et par type en SQL : le détail des dépenses n'est jamais chargé.
+        // de coûts. Convention des RAPPORTS (règle du 18/09/2026), parce que c'est de rapports
+        // que le client parle quand il interroge l'assistant : les quatre postes restent BRUTS,
+        // les crédits (avoir fournisseur, remboursement d'assurance) portent leur propre ligne
+        // en négatif, seul le total est net. L'assistant, lui, rangeait le crédit DANS « Autres »
+        // sous un intitulé qui ne le disait pas : 745 de frais et 1 200 d'avoirs (société de test,
+        // exercice 2026) devenaient « Autres: -455 », un chiffre qu'aucun écran n'affiche.
+        // Une somme par véhicule et par type en SQL : le détail des dépenses n'est jamais chargé.
         var costRows = await _context.VehicleCosts.AsNoTracking()
             .Where(c => c.CompanyId == companyId && c.Date >= periodStart)
             .GroupBy(c => new { c.VehicleId, c.Type })
@@ -786,10 +790,12 @@ public class AiChatController : ControllerBase
             .ToListAsync();
         var costs = costRows
             .Select(c => (c.VehicleId, Category: VehicleCostCategory.Classify(c.Type).Category,
+                          IsCredit: VehicleCostCategory.IsCredit(c.Type),
                           Amount: VehicleCostCategory.SignedAmount(c.Type, c.Amount)))
             .ToList();
         var costsByVehicle = costs.GroupBy(c => c.VehicleId).ToDictionary(g => g.Key, g => g.Sum(c => c.Amount));
-        decimal CategoryCost(CostCategory category) => costs.Where(c => c.Category == category).Sum(c => c.Amount);
+        // Poste BRUT : un crédit est classé en « Autres » par son type, mais il n'y est pas compté.
+        decimal CategoryCost(CostCategory category) => costs.Where(c => !c.IsCredit && c.Category == category).Sum(c => c.Amount);
         var netCost = costs.Sum(c => c.Amount);
 
         // ── Maintenance & Repairs ──
@@ -838,8 +844,10 @@ public class AiChatController : ControllerBase
         var totalFuelCost = CategoryCost(CostCategory.Fuel);
         var totalMaintCost = CategoryCost(CostCategory.Maintenance);
         var totalRepairCost = CategoryCost(CostCategory.Repair);
-        // Net des crédits, négatif si les avoirs dépassent les autres frais.
+        // Frais divers BRUTS : assurance, amendes, péages… sans les avoirs.
         var totalOtherCost = CategoryCost(CostCategory.Other);
+        // Avoirs et remboursements, en NÉGATIF, sur leur propre ligne comme dans les rapports.
+        var totalCreditCost = costs.Where(c => c.IsCredit).Sum(c => c.Amount);
 
         // Health distribution
         var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
@@ -933,7 +941,16 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Véhicules actifs (avec trajets): {tripsByVehicle.Count}");
         sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
         sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
-        sb.AppendLine($"Coûts totaux (avoirs et remboursements déduits): {netCost:N0} {AppCurrency.Default} (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
+        // Chaque poste est nommé pour ce qu'il CONTIENT, pas seulement le total : un intitulé
+        // qui ment au modèle fait mentir l'assistant devant le client. Postes bruts, ligne
+        // d'avoirs à part, total net — le tableau que le client a sous les yeux, à la ligne près.
+        // Plafond Groq (8 000 jetons/minute) : la ligne d'avoirs (56 caractères, ≈ 20 jetons)
+        // n'est écrite que s'il y a un crédit, et l'intitulé raccourci en rend la moitié.
+        // Sans elle, le modèle resoustrayait l'avoir d'un total qui l'avait déjà déduit.
+        var ligneAvoirs = totalCreditCost != 0m
+            ? $", Avoirs et remboursements: {totalCreditCost:N0} déjà déduits du total"
+            : "";
+        sb.AppendLine($"Coûts totaux nets: {netCost:N0} {AppCurrency.Default} (postes bruts — Carburant: {totalFuelCost:N0}, Entretiens: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0}{ligneAvoirs})");
         sb.AppendLine($"Alertes totales: {totalAlerts}");
         sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
@@ -953,7 +970,9 @@ public class AiChatController : ControllerBase
         var notableIds = notable.Select(v => v.id).ToHashSet();
         var rest = vehicleDetails.Where(v => !notableIds.Contains(v.id)).ToList();
 
-        sb.AppendLine("═══ DÉTAIL PAR VÉHICULE ═══");
+        // « Coûts » par véhicule est un TOTAL (avoirs du véhicule déduits), pas un poste : dit une
+        // fois en tête plutôt que sur chaque ligne, qui multiplierait la mention par 25 véhicules.
+        sb.AppendLine("═══ DÉTAIL PAR VÉHICULE (Coûts = total net des avoirs) ═══");
         if (rest.Count > 0)
             sb.AppendLine($"(Flotte de {vehicleDetails.Count} véhicules — détail des {notable.Count} plus notables ci-dessous ; les {rest.Count} autres sont résumés à la fin.)");
         foreach (var v in notable)
@@ -1034,11 +1053,12 @@ Calendrier recommandé pour les 3 prochains mois.";
                 charts = new
                 {
                     healthDistribution = new { excellent = exc, good = goo, fair = fai, poor = poo, critical = cri },
-                    // Barre empilée des écrans : une part négative n'a pas de largeur, "Autres" s'arrête à 0.
-                    // Les crédits que les autres frais n'absorbent pas vont dans "credits" (positif) : bornés
-                    // seuls, ils disparaissaient et la légende ne retombait plus sur totalCosts.
+                    // Barre empilée des écrans, postes BRUTS comme dans les rapports : "other" porte
+                    // les seuls frais divers, "credits" les avoirs en positif (l'écran les affiche en
+                    // déduction, sous la barre). Bornés au net, 745 de frais et 1 200 d'avoirs se
+                    // réduisaient à 0 et 455 : la part "Autres" disparaissait de la barre.
                     // fuel + maintenance + repairs + other − credits = totalCosts.
-                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(Math.Max(0m, totalOtherCost), 0), credits = Math.Round(Math.Max(0m, -totalOtherCost), 0) },
+                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(totalOtherCost, 0), credits = Math.Round(-totalCreditCost, 0) },
                     topFuelConsumers = topFuel,
                     mileageByVehicle = mileageChart,
                     drivingScores = drivingChart

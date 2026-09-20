@@ -307,8 +307,14 @@ public class CreditsDeduitsPartoutTests
         return ctx;
     }
 
+    /// <summary>
+    /// Règle du 18/09/2026 appliquée à l'assistant : postes BRUTS, ligne d'avoirs à part,
+    /// total net — la convention des rapports, puisque c'est de rapports que le client parle.
+    /// L'assistant rangeait le crédit DANS « Autres » sous un intitulé muet : 600 d'assurance
+    /// et 250 d'avoirs s'annonçaient « Autres: 350 », un chiffre absent de tous les écrans.
+    /// </summary>
     [Fact]
-    public async Task Le_rapport_de_flotte_IA_transmet_des_couts_nets_des_credits()
+    public async Task Le_rapport_de_flotte_IA_transmet_des_postes_bruts_et_une_ligne_d_avoirs()
     {
         using var ctx = await ParcAsync(
         [
@@ -329,20 +335,23 @@ public class CreditsDeduitsPartoutTests
         var repartition = rapport.GetProperty("charts").GetProperty("costBreakdown");
         repartition.GetProperty("fuel").GetDecimal().Should().Be(50m);
         repartition.GetProperty("repairs").GetDecimal().Should().Be(200m);
-        repartition.GetProperty("other").GetDecimal().Should().Be(350m);
-        repartition.GetProperty("credits").GetDecimal().Should().Be(0m, "les autres frais absorbent les crédits");
+        repartition.GetProperty("other").GetDecimal().Should().Be(600m, "l'assurance reste brute, comme au rapport");
+        repartition.GetProperty("credits").GetDecimal().Should().Be(250m, "150 d'avoir + 100 de remboursement, à part");
         rapport.GetProperty("vehicleDetails")[0].GetProperty("totalCosts").GetDecimal().Should().Be(600m);
 
-        prompt.Should().Contain($"Coûts totaux (avoirs et remboursements déduits): {600m:N0}")
-            .And.Contain($"Autres: {350m:N0}");
+        prompt.Should().Contain($"Coûts totaux nets: {600m:N0}")
+            .And.Contain($"Autres: {600m:N0}")
+            .And.Contain($"Avoirs et remboursements: {-250m:N0} déjà déduits du total")
+            // L'intitulé net d'avant reste absent : c'est lui qui faisait mentir l'assistant.
+            .And.NotContain($"Autres: {350m:N0}");
     }
 
     [Fact]
     public async Task La_repartition_du_rapport_IA_retombe_sur_le_total_quand_les_credits_depassent_les_autres_frais()
     {
-        // Avoir de garage sur une période sans autres frais : « Autres » s'arrête à 0, le
-        // reste du crédit passe dans « credits ». Borné seul, il disparaissait de la
-        // répartition (1 000 affichés pour un total de 700).
+        // Avoir de garage sur une période sans frais divers : « Autres » vaut 0 parce qu'il
+        // n'y a rien dedans, et l'avoir entier passe dans « credits ». La légende doit
+        // retomber sur le total — sans la ligne de crédit, 1 000 s'affichaient pour 700.
         var jour = DateTime.UtcNow.AddDays(-2);
         using var ctx = await ParcAsync(
             new VehicleCost { VehicleId = 1, CompanyId = CompanyId, Type = "repair", Amount = 1000m, Date = jour },
