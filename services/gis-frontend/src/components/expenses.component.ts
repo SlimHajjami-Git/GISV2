@@ -8,8 +8,11 @@ import { PdfExportService, PdfGroup, GroupedPdfReportConfig } from '../services/
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { AppCurrencyPipe } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
-import { AuthService } from '../services/auth.service';
 import { costCreditFamily } from './vehicle-costs.component';
+import {
+  ScanFactureComponent, preparerImageFacture,
+  ResultatScanFacture, EchecScanFacture
+} from './shared/scan-facture.component';
 
 export interface Expense {
   id: string;
@@ -72,7 +75,7 @@ export interface RepairPart {
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, AppCurrencyPipe],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, AppCurrencyPipe, ScanFactureComponent],
   templateUrl: './expenses.component.html',
   styleUrls: ['./expenses.component.css']
 })
@@ -180,8 +183,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   /** Vrai quand le garde-fou a coupé le chargement : totaux et filtres sont partiels. */
   listTruncated = false;
 
-  // ── Invoice scan (IA) — extract → review → save as a generic cost ──────────
-  scanning = false;
+  // ── Facture scannée (IA) — revue puis enregistrement en dépense ────────────
   saving = false;
   showScanReview = false;
   scan: {
@@ -221,49 +223,12 @@ export class ExpensesComponent implements OnInit, OnDestroy {
 
   get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
 
-  // Invoice scan is gated to a single pilot user during testing.
-  /**
-   * Le scan de facture par l'IA est ouvert à quiconque a accès à cet écran.
-   * Jusqu'à la recette du 09/09/2026 il n'était affiché qu'à une seule adresse
-   * e-mail codée en dur (reste d'une phase de test) : les clients de l'offre
-   * GPA ne le voyaient pas. Le contrôle réel est côté serveur — quota mensuel
-   * par société (societes.invoice_scan_monthly_limit, sinon la valeur par défaut),
-   * appliqué avant tout appel payant à l'IA.
-   */
-  get canScanInvoice(): boolean {
-    return !!this.authService.getCurrentUserSync();
-  }
+  // Bouton « Scanner une facture », compteur de quota, préparation de la photo,
+  // appel et messages d'erreur : tout cela vit désormais dans <app-scan-facture>
+  // (shared/scan-facture.component.ts), partagé avec Entretien, Réparations,
+  // Échéances et Carburant. Cet écran ne garde que le remplissage de SES champs.
 
-  /** Quota mensuel de scans IA de la société (null tant que non chargé). */
-  scanQuota: { used: number; limit: number; remaining: number; resetsAt?: string } | null = null;
-
-  /** « 1er octobre » : jour de la prochaine remise à zéro du compteur de scans. */
-  get scanQuotaResetLabel(): string {
-    const iso = this.scanQuota?.resetsAt;
-    if (!iso) return 'le 1er du mois prochain';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return 'le 1er du mois prochain';
-    const mois = d.toLocaleDateString('fr-FR', { month: 'long', timeZone: 'UTC' });
-    return 'le ' + (d.getUTCDate() === 1 ? '1er' : String(d.getUTCDate())) + ' ' + mois;
-  }
-
-  /** Bulle d'aide du bouton : ce que veut dire le compteur, et quand il repart à zéro. */
-  get scanQuotaTitle(): string {
-    const q = this.scanQuota;
-    if (!q) return 'Scanner une facture avec l\'IA';
-    if (q.remaining === 0) return `Quota mensuel atteint (${q.used}/${q.limit}) — nouveau quota ${this.scanQuotaResetLabel}. Votre administrateur peut augmenter la limite.`;
-    return `${q.used} scan${q.used > 1 ? 's' : ''} utilisé${q.used > 1 ? 's' : ''} sur ${q.limit} ce mois-ci — il en reste ${q.remaining}. Compteur remis à zéro ${this.scanQuotaResetLabel}.`;
-  }
-
-  private loadScanQuota(): void {
-    if (!this.canScanInvoice) return;
-    this.apiService.getScanQuota().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (q) => { this.scanQuota = q; this.cdr.detectChanges(); },
-      error: () => { /* quota indisponible → bouton reste utilisable, le serveur tranche */ }
-    });
-  }
-
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService, private authService: AuthService) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, private route: ActivatedRoute, private pdfService: PdfExportService, private userPrefs: UserPreferencesService) {}
 
   ngOnInit(): void {
     // Check for expenseId query param (from notification click)
@@ -272,7 +237,6 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       this.pendingExpenseId = qp['expenseId'];
     }
     this.loadAllData();
-    this.loadScanQuota();
   }
 
   ngOnDestroy(): void {
@@ -453,6 +417,10 @@ export class ExpensesComponent implements OnInit, OnDestroy {
             description: r.notes,
             createdAt: new Date(r.createdAt || r.repairDate),
             sourceTable: 'repairs',
+            // La réparation d'un sinistre vit maintenant ici (phase 5, migration 049) :
+            // sans ce report, le badge « Accident #N », son lien vers le dossier et le
+            // verrou du bouton Supprimer disparaissaient avec la dépense qu'elle remplace.
+            accidentEventId: r.accidentEventId ?? null,
             // Statut comparé sans casse ni espaces, comme l'écran Réparations : des
             // valeurs anciennes « Cancelled » restent en base.
             repairCancelled: (r.status || '').trim().toLowerCase() === 'cancelled'
@@ -847,98 +815,44 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     };
   }
 
-  /** Prépare la photo avant upload : rotation EXIF appliquée, côté max 2000 px,
-   *  ré-encodage JPEG qualité 0,85. Une photo de téléphone (4000×3000, ~6 Mo)
-   *  devient ~500 Ko — upload bien plus rapide et lecture IA plus fiable.
-   *  Les PDF et les petites images passent tels quels ; en cas d'échec de
-   *  décodage (navigateur ancien, format exotique) on renvoie l'original. */
-  private async prepareInvoiceImage(file: File): Promise<File> {
-    if (!file.type.startsWith('image/') || file.type === 'image/gif') return file;
-    const MAX_SIDE = 2000;
-    try {
-      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
-      const scale = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
-      if (scale === 1 && file.size < 1_500_000) { bmp.close(); return file; }
-      const w = Math.max(1, Math.round(bmp.width * scale));
-      const h = Math.max(1, Math.round(bmp.height * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { bmp.close(); return file; }
-      ctx.drawImage(bmp, 0, 0, w, h);
-      bmp.close();
-      const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.85));
-      if (!blob || blob.size >= file.size) return file;   // pas de gain → original
-      return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
-    } catch {
-      return file;
-    }
+  /**
+   * Facture scannée : <app-scan-facture> a déjà tout fait (envoi, quota, erreurs)
+   * et rend l'extraction brute. Cet écran ne décide que du remplissage de SON
+   * formulaire de revue — véhicule reconnu par la plaque, catégorie de dépense,
+   * montant et lignes. Rien n'est enregistré tant que l'utilisateur n'a pas validé.
+   */
+  onFactureScannee(res: ResultatScanFacture): void {
+    const x = res.extraction;
+    const veh = this.matchVehicleByPlate(x.vehiclePlate || undefined);
+    this.scan = {
+      vehicleId: veh ? String(veh.id) : '',
+      // « Avoir fournisseur » est une catégorie de DÉPENSE : la conversion reste ici.
+      category: x.isCreditNote ? 'credit_note' : (x.category || 'other'),
+      date: x.date || new Date().toISOString().split('T')[0],
+      amount: x.total ?? 0,
+      creditNote: x.isCreditNote,
+      supplierName: x.supplierName || '',
+      invoiceNumber: x.invoiceNumber || '',
+      description: x.descriptionComplete,
+      vehiclePlate: x.vehiclePlate || '',
+      confidence: x.confidence || '',
+      receiptUrl: res.receiptUrl,
+      items: x.items
+    };
+    this.showScanReview = true;
+    this.cdr.detectChanges();
   }
 
-  async onInvoiceFile(event: any): Promise<void> {
-    const file: File | undefined = event?.target?.files?.[0];
-    if (event?.target) event.target.value = '';       // allow re-selecting the same file
-    if (!file) return;
-    this.scanning = true;
+  /**
+   * Scan échoué : le message a déjà été montré par le composant. Le fichier est
+   * souvent stocké malgré tout (panne IA) — on ouvre alors la revue vide avec le
+   * justificatif rattaché, pour une saisie à la main.
+   */
+  onEchecScan(e: EchecScanFacture): void {
+    if (!e.receiptUrl) return;
+    this.scan = { ...this.emptyScan(), confidence: 'low', receiptUrl: e.receiptUrl };
+    this.showScanReview = true;
     this.cdr.detectChanges();
-    const prepared = await this.prepareInvoiceImage(file);
-    this.apiService.scanInvoice(prepared).subscribe({
-      next: (res: any) => {
-        this.scanning = false;
-        if (res?.quota) this.scanQuota = res.quota;   // compteur mis à jour par le serveur
-        const x = res?.extraction || {};
-        const veh = this.matchVehicleByPlate(x.vehiclePlate);
-        const desc = [x.supplierName, x.description].filter((s: string) => !!s).join(' — ');
-        const items = (Array.isArray(x.items) ? x.items : [])
-          .slice(0, 30)
-          .map((it: any) => ({
-            label: it?.label || '',
-            amount: typeof it?.amount === 'number' ? it.amount : 0,
-            category: it?.category || x.category || 'other'
-          }))
-          .filter((it: any) => it.label || it.amount);
-        // Facture négative = avoir fournisseur (décision du 16/09/2026). Le serveur la
-        // convertit déjà (isCreditNote, montants positifs) ; un total encore négatif
-        // (API plus ancienne) est converti ici, sinon le montant reste bloqué sous zéro.
-        const total = Number(x.amountTTC ?? x.amountHT ?? 0) || 0;
-        const creditNote = x.isCreditNote === true || total < 0;
-        if (total < 0 && items.reduce((s: number, it: any) => s + it.amount, 0) < 0) {
-          items.forEach((it: any) => it.amount = -it.amount || 0);
-        }
-        this.scan = {
-          vehicleId: veh ? String(veh.id) : '',
-          category: creditNote ? 'credit_note' : (x.category || 'other'),
-          date: x.date || new Date().toISOString().split('T')[0],
-          amount: Math.abs(total),
-          creditNote,
-          supplierName: x.supplierName || '',
-          invoiceNumber: x.invoiceNumber || '',
-          description: desc,
-          vehiclePlate: x.vehiclePlate || '',
-          confidence: x.confidence || '',
-          receiptUrl: res?.receiptUrl || '',
-          items
-        };
-        this.showScanReview = true;
-        this.cdr.detectChanges();
-      },
-      error: (err: any) => {
-        this.scanning = false;
-        const receiptUrl = err?.error?.receiptUrl || '';
-        // 413 = rejected by the proxy for size before reaching the API — the
-        // generic message would mislead the user into retrying the same file.
-        const msg = err?.status === 413
-          ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
-          : (err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir la dépense manuellement.");
-        alert(msg);
-        // The file may still be stored — let the user fill the fields by hand.
-        if (receiptUrl) {
-          this.scan = { ...this.emptyScan(), confidence: 'low', receiptUrl };
-          this.showScanReview = true;
-          this.cdr.detectChanges();
-        }
-      }
-    });
   }
 
   private matchVehicleByPlate(plate?: string): any {
@@ -1304,7 +1218,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
     // Même préparation que le scan de facture : rotation EXIF, 2000 px max,
     // JPEG 0,85 — une photo de téléphone passe de ~6 Mo à ~500 Ko.
-    const prepared = await this.prepareInvoiceImage(file);
+    const prepared = await preparerImageFacture(file);
     this.apiService.uploadAcquisitionPaymentReceipt(id, prepared).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res) => {
         this.uploadingReceiptId = null;

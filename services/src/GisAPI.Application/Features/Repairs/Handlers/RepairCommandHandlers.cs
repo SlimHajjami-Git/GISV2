@@ -168,10 +168,19 @@ public class CreateRepairCommandHandler : IRequestHandler<CreateRepairCommand, i
     /// portaient la même référence de facture (recette du 16/09/2026). Le nombre de lignes ne
     /// dit rien des numéros déjà sortis : on repart du plus grand numéro attribué dans le mois.
     /// </summary>
-    private async Task<string> NextReferenceAsync(int societeId, DateTime nowUtc, CancellationToken ct)
+    private Task<string> NextReferenceAsync(int societeId, DateTime nowUtc, CancellationToken ct) =>
+        NextReferenceAsync(_context, societeId, nowUtc, ct);
+
+    /// <summary>
+    /// Même numérotation pour tout écrivain de la table : la phase 5 d'un sinistre
+    /// crée aussi une réparation, et sa facture doit porter une référence du même
+    /// format, tirée de la même suite.
+    /// </summary>
+    internal static async Task<string> NextReferenceAsync(
+        IGisDbContext context, int societeId, DateTime nowUtc, CancellationToken ct)
     {
         var prefix = $"REP-{nowUtc:yyyyMM}-";
-        var references = await _context.Repairs
+        var references = await context.Repairs
             .Where(r => r.SocieteId == societeId && r.Reference.StartsWith(prefix))
             .Select(r => r.Reference)
             .ToListAsync(ct);
@@ -316,6 +325,23 @@ public class DeleteRepairCommandHandler : IRequestHandler<DeleteRepairCommand, b
         if (repair == null) return false;
         if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, repair.VehicleId, cancellationToken))
             return false;
+
+        // Réparation née de la phase 5 d'un sinistre (migration 049) : l'écran Dépenses
+        // verrouille déjà son bouton Supprimer, l'écran Réparations ne le faisait pas.
+        // Supprimée ici, le dossier gardait son coût réel, perdait sa fiche de réparation
+        // et le montant quittait les coûts sans un mot. Le retrait passe par le dossier,
+        // qui sait aussi détacher la ligne au lieu de la détruire.
+        if (repair.AccidentEventId is int dossierId)
+        {
+            var reference = await _context.AccidentEvents
+                .Where(e => e.Id == dossierId)
+                .Select(e => e.ReferenceCode)
+                .FirstOrDefaultAsync(cancellationToken);
+            var libelle = reference is { Length: > 0 } code ? code : $"#{dossierId}";
+            throw new DomainException(
+                $"Cette réparation appartient au dossier de sinistre {libelle} : videz le coût réel "
+                + "dans la phase 5 du dossier pour la retirer.");
+        }
 
         _context.RepairParts.RemoveRange(repair.Parts);
         _context.Repairs.Remove(repair);

@@ -81,7 +81,26 @@ public record AccidentReportDto(
 
     // Children
     List<AccidentReportDocumentDto> Documents,
-    List<AccidentReportThirdPartyDto> ThirdParties);
+    List<AccidentReportThirdPartyDto> ThirdParties,
+
+    /// <summary>
+    /// Dernière modification du dossier, pour signaler un PDF plus ancien que les
+    /// informations qu'il est censé porter.
+    /// </summary>
+    DateTime? UpdatedAt = null,
+
+    /// <summary>
+    /// Le dossier est rattaché à un véhicule qui existe encore. Un sinistre survit à la
+    /// suppression de son véhicule — la cascade met <c>vehicle_id</c> à NULL après avoir
+    /// figé <c>vehicle_label</c> — et ni la réparation ni le remboursement ne peuvent
+    /// alors être reportés. FAUX aussi quand le dossier n'a jamais eu de véhicule :
+    /// l'écran dit la même chose dans les deux cas, les montants ne sortent pas du
+    /// dossier.
+    /// </summary>
+    bool VehicleExists = true,
+
+    /// <summary>Référence de la réparation créée par la phase 5, si elle existe.</summary>
+    string? RepairReference = null);
 
 public record AccidentReportStoryEventDto(string Time, string Title, string Body, string Severity);
 public record AccidentReportReasonDto(string Title, string Text);

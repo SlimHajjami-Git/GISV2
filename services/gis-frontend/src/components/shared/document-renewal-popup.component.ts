@@ -5,6 +5,9 @@ import { trigger, transition, style, animate } from '@angular/animations';
 import { ApiService } from '../../services/api.service';
 import { UserPreferencesService } from '../../services/user-preferences.service';
 import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
+import {
+  ScanFactureComponent, ResultatScanFacture, EchecScanFacture, ExtractionFacture
+} from './scan-facture.component';
 
 export interface VehicleDocument {
   id?: number;
@@ -33,12 +36,14 @@ export interface RenewalFormData {
   provider: string;
   notes: string;
   reminderDays?: number;
+  /** Justificatif scanné (/uploads/invoices/...) — enregistré en ReceiptUrl du coût. */
+  documentUrl?: string;
 }
 
 @Component({
   selector: 'app-document-renewal-popup',
   standalone: true,
-  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, ScanFactureComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -105,6 +110,42 @@ export interface RenewalFormData {
           <div class="status-text">
             <span class="status-label">{{ getStatusText() }}</span>
             <span class="status-date">Expiration actuelle: {{ formatDate(document?.expiryDate) }}</span>
+          </div>
+        </div>
+
+        <!-- Scan IA : brique partagée avec Dépenses, Entretien, Réparations et
+             Carburant. Posée HORS du <form> à dessein — son bouton n'a pas de
+             type="button" et déclencherait l'enregistrement du renouvellement. -->
+        <div class="scan-bar">
+          <app-scan-facture libelle="Scanner la quittance"
+                            (scanne)="onFactureScannee($event)"
+                            (echec)="onEchecScan($event)"></app-scan-facture>
+          <span class="scan-hint">Montant, date, fournisseur et n° lus sur le document.</span>
+        </div>
+
+        <!-- Ce que le scan a posé, et ce qu'il a lu SANS l'imposer. -->
+        <div class="scan-recap" *ngIf="scanFait">
+          <div class="scan-recap-head">
+            <span class="scan-recap-title">Pré-rempli par le scan</span>
+            <span class="scan-conf" [ngClass]="'scan-conf-' + scanConfiance" *ngIf="scanConfiance">
+              Confiance {{ scanConfianceLabel() }}
+            </span>
+            <a class="scan-doc-link" *ngIf="formData.documentUrl"
+               [href]="formData.documentUrl" target="_blank" rel="noopener">Voir le document</a>
+          </div>
+          <ul class="scan-champs" *ngIf="scanChamps.length">
+            <li *ngFor="let champ of scanChamps">{{ champ }}</li>
+          </ul>
+          <p class="scan-vide" *ngIf="!scanChamps.length">
+            Rien n'a pu être lu : saisissez les informations à la main.
+          </p>
+          <p class="scan-warn" *ngFor="let avert of scanAvertissements">{{ avert }}</p>
+          <p class="scan-warn" *ngIf="scanFournisseurIntrouvable">
+            Fournisseur lu « {{ scanFournisseurIntrouvable }} » — absent de la liste ; « + Ajouter » le pré-remplit.
+          </p>
+          <div class="scan-propose" *ngIf="scanExpirationProposee">
+            <span>Validité lue sur le document : {{ formatInputDate(scanExpirationProposee) }}</span>
+            <button type="button" class="quick-btn" (click)="appliquerExpirationScannee()">Utiliser cette date</button>
           </div>
         </div>
 
@@ -447,6 +488,97 @@ export interface RenewalFormData {
     .status-date {
       font-size: 11px;
       color: #64748b;
+    }
+
+    /* ===== SCAN IA ===== */
+    /* La modale ne fait que 500 px : le bandeau passe à la ligne plutôt que de
+       déborder (aucun ascenseur horizontal, écran 1536 px de Karim). */
+    .scan-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 20px;
+      background: #faf9ff;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .scan-hint {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .scan-recap {
+      padding: 10px 20px 12px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .scan-recap-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    .scan-recap-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    .scan-conf {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10.5px;
+      font-weight: 700;
+    }
+
+    .scan-conf-high { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .scan-conf-medium { background: #fefce8; color: #a16207; border: 1px solid #fde68a; }
+    .scan-conf-low { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+    .scan-doc-link {
+      margin-left: auto;
+      font-size: 11px;
+      color: #3b82f6;
+      text-decoration: none;
+    }
+
+    .scan-doc-link:hover { text-decoration: underline; }
+
+    .scan-champs {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 11.5px;
+      color: #475569;
+    }
+
+    .scan-champs li { margin-bottom: 2px; }
+
+    .scan-vide {
+      margin: 0;
+      font-size: 11.5px;
+      color: #64748b;
+    }
+
+    .scan-warn {
+      margin: 6px 0 0;
+      font-size: 11.5px;
+      color: #b45309;
+    }
+
+    .scan-propose {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      font-size: 11.5px;
+      color: #475569;
     }
 
     /* ===== FORM ===== */
@@ -870,7 +1002,26 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
   formData: RenewalFormData = this.getEmptyForm();
   saving = false;
-  
+
+  // ── Scan IA de la quittance ────────────────────────────────────────────────
+  /** Un scan a été tenté : le récapitulatif est affiché. */
+  scanFait = false;
+  /** high | medium | low — confiance rendue par l'extraction. */
+  scanConfiance = '';
+  /** Champs réellement posés par le scan, tels qu'annoncés à l'utilisateur. */
+  scanChamps: string[] = [];
+  /** Valeurs lues mais NON posées (champ déjà saisi) ou qui détonnent. */
+  scanAvertissements: string[] = [];
+  /** Fournisseur lu absent de la liste : on ne peut pas le sélectionner. */
+  scanFournisseurIntrouvable = '';
+  /** Validité lue sur le document : proposée, jamais posée d'office. */
+  scanExpirationProposee = '';
+  /** Nom lu sur la facture, gardé pour le pré-remplissage de « + Ajouter ». */
+  private nomFournisseurScanne = '';
+  /** Date de paiement posée à l'ouverture : repère « l'utilisateur n'y a pas touché ». */
+  private dateParDefaut = '';
+
+
   // Suppliers
   allSuppliers: { id: number; name: string; type: string; city?: string }[] = [];
   filteredSuppliers: { id: number; name: string; type: string; city?: string }[] = [];
@@ -900,10 +1051,15 @@ export class DocumentRenewalPopupComponent implements OnChanges {
         this.formData.vehicleId = this.document.vehicleId;
         this.formData.type = this.getCostType(this.document.type);
         this.formData.date = new Date().toISOString().split('T')[0];
-        
+        this.dateParDefaut = this.formData.date;
+
         // Set default expiry to 1 year from now
         this.setExpiryFromNow(12);
-        
+
+        // Un renouvellement en chasse un autre : le récapitulatif du scan
+        // précédent ne doit pas survivre à la réouverture de la modale.
+        this.reinitialiserScan();
+
         // Load suppliers filtered by document type
         this.loadSuppliers();
       }
@@ -920,6 +1076,9 @@ export class DocumentRenewalPopupComponent implements OnChanges {
           city: s.city
         }));
         this.filterSuppliersByDocumentType();
+        // La liste peut arriver APRÈS le scan (modale ouverte puis fichier choisi
+        // dans la foulée) : on rejoue l'association du fournisseur lu.
+        this.rattacherFournisseurScanne();
       },
       error: (err) => console.error('Error loading suppliers:', err)
     });
@@ -947,9 +1106,10 @@ export class DocumentRenewalPopupComponent implements OnChanges {
   toggleNewSupplierForm(): void {
     this.showNewSupplierForm = !this.showNewSupplierForm;
     if (this.showNewSupplierForm) {
-      // Reset form avec le type par défaut
+      // Reset form avec le type par défaut ; le nom lu sur la quittance évite de
+      // le retaper quand le fournisseur n'existe pas encore dans la liste.
       this.newSupplier = {
-        name: '',
+        name: this.nomFournisseurScanne,
         type: this.getSupplierTypeForDocument(),
         address: '',
         city: '',
@@ -987,7 +1147,9 @@ export class DocumentRenewalPopupComponent implements OnChanges {
         this.allSuppliers.push(createdSupplier);
         this.filterSuppliersByDocumentType();
         this.formData.provider = this.newSupplier.name;
-        
+        // Le fournisseur lu sur la quittance existe maintenant : l'avertissement n'a plus lieu d'être.
+        this.scanFournisseurIntrouvable = '';
+
         // Reset form
         this.showNewSupplierForm = false;
         this.creatingSupplier = false;
@@ -1033,7 +1195,8 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       documentNumber: '',
       provider: '',
       notes: '',
-      reminderDays: 30
+      reminderDays: 30,
+      documentUrl: ''
     };
   }
 
@@ -1133,11 +1296,238 @@ export class DocumentRenewalPopupComponent implements OnChanges {
 
   formatInputDate(dateStr: string): string {
     if (!dateStr) return '-';
+    // Un yyyy-MM-dd est lu en minuit UTC : sans timeZone, un fuseau en retard
+    // sur UTC afficherait la veille. Même convention que formatDate (DEF-035).
     return new Date(dateStr).toLocaleDateString('fr-FR', {
       day: '2-digit',
       month: 'long',
-      year: 'numeric'
+      year: 'numeric',
+      timeZone: 'UTC'
     });
+  }
+
+  // ── Scan IA de la quittance ────────────────────────────────────────────────
+
+  /** Remet le récapitulatif à zéro — sans toucher au formulaire. */
+  private reinitialiserScan(): void {
+    this.scanFait = false;
+    this.scanConfiance = '';
+    this.scanChamps = [];
+    this.scanAvertissements = [];
+    this.scanFournisseurIntrouvable = '';
+    this.scanExpirationProposee = '';
+    this.nomFournisseurScanne = '';
+  }
+
+  /**
+   * Quittance scannée : <app-scan-facture> a déjà tout fait (envoi, quota,
+   * erreurs) et rend l'extraction brute. Ici on ne fait que PROPOSER :
+   * un champ déjà saisi n'est jamais écrasé en silence, la valeur lue part
+   * alors dans les avertissements pour que l'utilisateur tranche lui-même.
+   */
+  onFactureScannee(res: ResultatScanFacture): void {
+    const x = res.extraction;
+    this.reinitialiserScan();
+    this.scanFait = true;
+    this.scanConfiance = x.confidence || '';
+    if (res.receiptUrl) {
+      this.formData.documentUrl = res.receiptUrl;
+      this.scanChamps.push('Justificatif rattaché au renouvellement');
+    }
+
+    // Montant payé — facultatif ici, donc 0 vaut « non saisi ».
+    if (x.total !== null) {
+      if (!(Number(this.formData.amount) > 0)) {
+        this.formData.amount = x.total;
+        this.scanChamps.push(`Montant payé : ${this.formatMontant(x.total)}`);
+      } else if (Math.abs(Number(this.formData.amount) - x.total) > 0.001) {
+        this.scanAvertissements.push(`Montant lu ${this.formatMontant(x.total)} — champ déjà saisi, non remplacé.`);
+      }
+    }
+
+    // Date de paiement — la date du jour posée à l'ouverture n'est qu'un défaut.
+    if (x.date) {
+      if (!this.formData.date || this.formData.date === this.dateParDefaut) {
+        this.formData.date = x.date;
+        this.scanChamps.push(`Date de paiement : ${this.formatInputDate(x.date)}`);
+      } else if (this.formData.date !== x.date) {
+        this.scanAvertissements.push(`Date lue ${this.formatInputDate(x.date)} — date déjà modifiée, non remplacée.`);
+      }
+    }
+
+    // N° de police / vignette / PV.
+    if (x.invoiceNumber && !this.formData.documentNumber) {
+      this.formData.documentNumber = x.invoiceNumber.slice(0, 100);
+      this.scanChamps.push(`${this.getDocumentNumberLabel()} : ${this.formData.documentNumber}`);
+    } else if (x.invoiceNumber && this.formData.documentNumber !== x.invoiceNumber) {
+      this.scanAvertissements.push(`N° lu « ${x.invoiceNumber} » — champ déjà saisi, non remplacé.`);
+    }
+
+    // Notes — la description SEULE : le fournisseur a déjà son propre champ.
+    if (x.description && !this.formData.notes) {
+      this.formData.notes = x.description.slice(0, 1000);
+      this.scanChamps.push('Notes reprises de la facture');
+    }
+
+    // Fournisseur : la liste déroulante n'accepte qu'un nom qu'elle connaît.
+    this.nomFournisseurScanne = x.supplierName || '';
+    this.rattacherFournisseurScanne();
+
+    // Nouvelle date d'expiration : jamais devinée depuis une facture — seul le
+    // document qui écrit lui-même sa validité donne lieu à une PROPOSITION.
+    const validite = this.lireDateValidite(x);
+    if (validite && validite !== this.formData.newExpiryDate) this.scanExpirationProposee = validite;
+
+    this.verifierCoherence(x);
+  }
+
+  /**
+   * Scan échoué : le message a déjà été montré par la brique. Le fichier est
+   * souvent stocké malgré tout (panne IA) — on le rattache alors au
+   * renouvellement, la saisie se fait à la main. Le formulaire reste utilisable
+   * dans tous les cas, y compris quota atteint ou fonction désactivée.
+   */
+  onEchecScan(e: EchecScanFacture): void {
+    if (!e.receiptUrl) return;
+    this.reinitialiserScan();
+    this.scanFait = true;
+    this.scanConfiance = 'low';
+    this.formData.documentUrl = e.receiptUrl;
+    this.scanChamps.push('Justificatif rattaché au renouvellement');
+    this.scanAvertissements.push('Document illisible par l\'IA : saisissez les informations à la main.');
+  }
+
+  /** Sélectionne le fournisseur lu s'il figure dans la liste filtrée, sinon le signale. */
+  private rattacherFournisseurScanne(): void {
+    const nom = this.nomFournisseurScanne;
+    if (!nom || this.formData.provider) return;
+    const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cible = norm(nom);
+    if (!cible) return;
+    const trouve = this.filteredSuppliers.find(s => norm(s.name) === cible)
+      || this.filteredSuppliers.find(s => norm(s.name) && (norm(s.name).includes(cible) || cible.includes(norm(s.name))));
+    if (trouve) {
+      this.formData.provider = trouve.name;
+      this.scanFournisseurIntrouvable = '';
+      this.scanChamps.push(`Fournisseur : ${trouve.name}`);
+    } else {
+      this.scanFournisseurIntrouvable = nom;
+    }
+  }
+
+  /** Nombre de caractères lus après le mot d'ancrage — « du 01/01/2026 au 31/12/2026 » tient dedans. */
+  private static readonly FENETRE_VALIDITE = 64;
+
+  /**
+   * Une quittance d'assurance ou de vignette porte parfois sa propre validité.
+   * C'est le SEUL cas où l'IA peut dire quelque chose de la nouvelle échéance :
+   * on lit la mention explicite dans la description et les lignes, et on se tait
+   * s'il n'y en a pas. Deux règles tirées des formulations réelles :
+   *  - une période en donne DEUX (« Période de validité du 01/01/2026 au
+   *    31/12/2026 ») et c'est la PLUS TARDIVE qui est l'échéance, jamais la
+   *    première venue ;
+   *  - une date passée n'est pas une échéance à venir (« Police expirée le
+   *    01/09/2025 ») : on ne propose rien plutôt que de faire poser en un clic
+   *    une échéance déjà expirée. Le calcul par défaut (+1 an) garde la main.
+   */
+  private lireDateValidite(x: ExtractionFacture): string {
+    const textes = [x.description || '', ...(x.items || []).map(i => i.label || '')].join(' ');
+    const ancres = /valable|valide|validit|expir|jusqu/gi;
+    const dates = /(\d{4})-(\d{2})-(\d{2})|(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/g;
+
+    let meilleure = '';
+    let ancre: RegExpExecArray | null;
+    while ((ancre = ancres.exec(textes)) !== null) {
+      const debut = ancre.index + ancre[0].length;
+      const fenetre = textes.slice(debut, debut + DocumentRenewalPopupComponent.FENETRE_VALIDITE);
+      dates.lastIndex = 0;
+      let d: RegExpExecArray | null;
+      while ((d = dates.exec(fenetre)) !== null) {
+        const iso = d[1]
+          ? this.isoSiEcheanceAVenir(+d[1], +d[2], +d[3])
+          : this.isoSiEcheanceAVenir(+d[6], +d[5], +d[4]);
+        // Tri lexicographique = tri chronologique sur du yyyy-MM-dd complété.
+        if (iso > meilleure) meilleure = iso;
+      }
+    }
+    return meilleure;
+  }
+
+  /**
+   * Rend yyyy-MM-dd si le triplet lu est une vraie date du calendrier ET qu'elle
+   * est strictement postérieure à aujourd'hui, sinon '' (candidat écarté).
+   */
+  private isoSiEcheanceAVenir(an: number, mois: number, jour: number): string {
+    if (an < 1970 || mois < 1 || mois > 12 || jour < 1 || jour > 31) return '';
+    const ms = Date.UTC(an, mois - 1, jour);
+    const d = new Date(ms);
+    // Un 31/02 glisserait au 3 mars : on écarte au lieu de proposer autre chose.
+    if (d.getUTCFullYear() !== an || d.getUTCMonth() !== mois - 1 || d.getUTCDate() !== jour) return '';
+    const auj = new Date();
+    if (ms <= Date.UTC(auj.getFullYear(), auj.getMonth(), auj.getDate())) return '';
+    return `${an}-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`;
+  }
+
+  /** L'utilisateur accepte la validité lue : elle remplace le calcul par défaut. */
+  appliquerExpirationScannee(): void {
+    if (!this.scanExpirationProposee) return;
+    this.formData.newExpiryDate = this.scanExpirationProposee;
+    this.scanChamps.push(`Nouvelle date d'expiration : ${this.formatInputDate(this.scanExpirationProposee)}`);
+    this.scanExpirationProposee = '';
+  }
+
+  /** Le document scanné ressemble-t-il à ce qu'on renouvelle ? On avertit sans bloquer. */
+  private verifierCoherence(x: ExtractionFacture): void {
+    if (x.isCreditNote) {
+      this.scanAvertissements.push('Avoir fournisseur détecté : ce document est un remboursement, pas un paiement.');
+    }
+
+    const attendues = this.categoriesAttendues(this.document?.type);
+    if (x.category && x.category !== 'other' && !attendues.includes(x.category)) {
+      this.scanAvertissements.push(
+        `Document lu comme « ${this.libelleCategorie(x.category)} » alors que vous renouvelez ${this.getTypeLabel(this.document?.type)} — vérifiez le fichier.`
+      );
+    }
+
+    const plaqueVehicule = this.document?.vehiclePlate || '';
+    if (x.vehiclePlate && plaqueVehicule) {
+      const norm = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const lue = norm(x.vehiclePlate);
+      const attendue = norm(plaqueVehicule);
+      if (lue && attendue && !lue.includes(attendue) && !attendue.includes(lue)) {
+        this.scanAvertissements.push(
+          `Plaque détectée « ${x.vehiclePlate} » — différente de ${plaqueVehicule}. Le renouvellement reste sur ce véhicule.`
+        );
+      }
+    }
+  }
+
+  private categoriesAttendues(docType: string | undefined): string[] {
+    switch (docType) {
+      case 'insurance': return ['insurance'];
+      case 'tax': return ['tax'];
+      case 'technical_inspection': return ['maintenance', 'repair'];
+      // Carte grise, autorisation de transport : taxes et frais administratifs.
+      default: return ['tax', 'insurance'];
+    }
+  }
+
+  private libelleCategorie(code: string): string {
+    const labels: { [key: string]: string } = {
+      fuel: 'Carburant', maintenance: 'Entretien', repair: 'Réparation',
+      insurance: 'Assurance', tax: 'Vignette', toll: 'Péage',
+      parking: 'Stationnement', fine: 'Amende', other: 'Autre',
+      credit_note: 'Avoir fournisseur'
+    };
+    return labels[code] || code;
+  }
+
+  scanConfianceLabel(): string {
+    return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as { [key: string]: string })[this.scanConfiance] || this.scanConfiance;
+  }
+
+  private formatMontant(montant: number): string {
+    return montant.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 3 }) + ' ' + this.currencyCode;
   }
 
   close(): void {
@@ -1160,7 +1550,9 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       newExpiryDate: this.formData.newExpiryDate,
       documentNumber: this.formData.documentNumber || undefined,
       provider: this.formData.provider || undefined,
-      notes: this.formData.notes || undefined
+      notes: this.formData.notes || undefined,
+      // Quittance scannée : le serveur la range en ReceiptUrl du coût créé.
+      documentUrl: this.formData.documentUrl || undefined
     };
 
     this.apiService.renewDocument(this.document.vehicleId, renewRequest).subscribe({

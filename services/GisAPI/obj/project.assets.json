@@ -229,6 +229,36 @@
           "lib/netstandard1.6/Irony.dll": {}
         }
       },
+      "MaxMind.Db/4.1.0": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/MaxMind.Db.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/MaxMind.Db.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "MaxMind.GeoIP2/5.2.0": {
+        "type": "package",
+        "dependencies": {
+          "MaxMind.Db": "4.1.0",
+          "Microsoft.Extensions.Options": "8.0.0"
+        },
+        "compile": {
+          "lib/net8.0/MaxMind.GeoIP2.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/MaxMind.GeoIP2.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "MediatR/12.2.0": {
         "type": "package",
         "dependencies": {
@@ -3587,6 +3617,52 @@
         "lib/net452/Irony.dll",
         "lib/net461/Irony.dll",
         "lib/netstandard1.6/Irony.dll"
+      ]
+    },
+    "MaxMind.Db/4.1.0": {
+      "sha512": "lEjCFX0TUQCRmFS8xrXIQSi+4omJ1Fwy0gAHlbnjg8cgSBa0cllP5zOEftQ23EP247EbnF7mNCQ3JsG/bMkHAA==",
+      "type": "package",
+      "path": "maxmind.db/4.1.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "MaxMind-logo.png",
+        "README.md",
+        "lib/net6.0/MaxMind.Db.dll",
+        "lib/net6.0/MaxMind.Db.xml",
+        "lib/net7.0/MaxMind.Db.dll",
+        "lib/net7.0/MaxMind.Db.xml",
+        "lib/net8.0/MaxMind.Db.dll",
+        "lib/net8.0/MaxMind.Db.xml",
+        "lib/netstandard2.0/MaxMind.Db.dll",
+        "lib/netstandard2.0/MaxMind.Db.xml",
+        "lib/netstandard2.1/MaxMind.Db.dll",
+        "lib/netstandard2.1/MaxMind.Db.xml",
+        "maxmind.db.4.1.0.nupkg.sha512",
+        "maxmind.db.nuspec"
+      ]
+    },
+    "MaxMind.GeoIP2/5.2.0": {
+      "sha512": "E8i6yQPlAznLTfS8w208uY3oqCg6i7sQ9cxKmlDdhFMXVLfm4sKphOTMsIWdAHJCV7RxW2a3DlqxAPkQrqmqlA==",
+      "type": "package",
+      "path": "maxmind.geoip2/5.2.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "MaxMind-logo.png",
+        "README.md",
+        "lib/net6.0/MaxMind.GeoIP2.dll",
+        "lib/net6.0/MaxMind.GeoIP2.xml",
+        "lib/net7.0/MaxMind.GeoIP2.dll",
+        "lib/net7.0/MaxMind.GeoIP2.xml",
+        "lib/net8.0/MaxMind.GeoIP2.dll",
+        "lib/net8.0/MaxMind.GeoIP2.xml",
+        "lib/netstandard2.0/MaxMind.GeoIP2.dll",
+        "lib/netstandard2.0/MaxMind.GeoIP2.xml",
+        "lib/netstandard2.1/MaxMind.GeoIP2.dll",
+        "lib/netstandard2.1/MaxMind.GeoIP2.xml",
+        "maxmind.geoip2.5.2.0.nupkg.sha512",
+        "maxmind.geoip2.nuspec"
       ]
     },
     "MediatR/12.2.0": {
@@ -10069,6 +10145,7 @@
       "GisAPI.Domain >= 1.0.0",
       "GisAPI.Infrastructure >= 1.0.0",
       "GisAPI.Shared >= 1.0.0",
+      "MaxMind.GeoIP2 >= 5.2.0",
       "Microsoft.AspNetCore.Authentication.JwtBearer >= 9.0.0",
       "Microsoft.AspNetCore.OpenApi >= 9.0.2",
       "Microsoft.AspNetCore.SignalR.Common >= 9.0.0",
@@ -10088,11 +10165,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\GisAPI.csproj",
+      "projectUniqueName": "C:\\Users\\Mega-PC\\wtk2\\services\\GisAPI\\GisAPI.csproj",
       "projectName": "GisAPI",
-      "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\GisAPI.csproj",
+      "projectPath": "C:\\Users\\Mega-PC\\wtk2\\services\\GisAPI\\GisAPI.csproj",
       "packagesPath": "C:\\Users\\Mega-PC\\.nuget\\packages\\",
-      "outputPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\GisAPI\\obj\\",
+      "outputPath": "C:\\Users\\Mega-PC\\wtk2\\services\\GisAPI\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -10113,17 +10190,17 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "projectReferences": {
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj"
+            "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Application\\GisAPI.Application.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj"
+            "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Domain\\GisAPI.Domain.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj"
+            "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Infrastructure\\GisAPI.Infrastructure.csproj"
             },
-            "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj": {
-              "projectPath": "C:\\Users\\Mega-PC\\Desktop\\GISV2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj"
+            "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj": {
+              "projectPath": "C:\\Users\\Mega-PC\\wtk2\\services\\src\\GisAPI.Shared\\GisAPI.Shared.csproj"
             }
           }
         }
@@ -10155,6 +10232,10 @@
           "FirebaseAdmin": {
             "target": "Package",
             "version": "[3.2.0, )"
+          },
+          "MaxMind.GeoIP2": {
+            "target": "Package",
+            "version": "[5.2.0, )"
           },
           "Microsoft.AspNetCore.Authentication.JwtBearer": {
             "target": "Package",

@@ -185,7 +185,12 @@ export class UserPreferencesService {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
     });
-    return `${formatted} ${UserPreferencesService.currencySymbol(this.current.currency)}`;
+    // Espace FINE INSÉCABLE (U+202F) et non une espace ordinaire : en dinar,
+    // « 2 615,55 » et « TND » tombaient sur deux lignes dans une cellule
+    // étroite (recette de Karim du 19/09/2026 — une valeur reste sur UNE
+    // ligne). C'est déjà le séparateur de milliers que pose toLocaleString
+    // en fr-FR : le montant entier se compose donc d'une seule espace.
+    return `${formatted}\u202F${UserPreferencesService.currencySymbol(this.current.currency)}`;
   }
 
   /** Symbole d’affichage d’une devise, code ISO par defaut.

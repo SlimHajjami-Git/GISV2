@@ -618,7 +618,12 @@ public class GetGpaDashboardQueryHandler : IRequestHandler<GetGpaDashboardQuery,
     {
         var fuel = R(b.Fuel);
         var maintenance = R(b.Maintenance);
-        var repair = R(b.Repair);
+        // Ce bloc n'a que quatre postes : les avoirs et remboursements s'y déduisent
+        // des Réparations (règle du 18/09/2026), là où les rapports leur donnent une
+        // ligne à part. Le total reste le même des deux côtés. Le poste peut passer
+        // sous zéro (un mois qui rembourse plus qu'il ne répare) : le borner à zéro
+        // le ferait diverger du total, et c'est justement l'information à montrer.
+        var repair = R(b.RepairNetOfCredit);
         var other = R(b.Other);
         return new GpaCostsDto(fuel, maintenance, repair, other, fuel + maintenance + repair + other);
     }

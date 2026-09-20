@@ -621,22 +621,30 @@
               <tr>
                 <th>Catégorie</th>
                 <th>Montant</th>
-                <th>%</th>
+                <th>% des dépenses</th>
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let c of report.costAnalysis.byCategory">
+              <!-- Pourcentages recalculés sur les dépenses BRUTES (voir categoriesCouts) :
+                   ceux du serveur portent sur le total NET et donnaient une part négative,
+                   donc une largeur de barre refusée par le navigateur, sur la ligne d'avoir. -->
+              <tr *ngFor="let c of categoriesCouts">
                 <td>{{ c.category }}</td>
-                <td>{{ formatCurrency(c.amount) }}</td>
+                <td [class.montant-credit]="c.percent === null">{{ formatCurrency(c.amount) }}</td>
                 <td>
-                  <div class="progress-bar">
-                    <div class="progress" [style.width.%]="c.percentage"></div>
-                    <span>{{ formatPercent(c.percentage) }}</span>
+                  <div class="progress-bar" *ngIf="c.percent !== null">
+                    <div class="progress" [style.width.%]="c.percent"></div>
+                    <span>{{ formatPercent(c.percent) }}</span>
                   </div>
+                  <span class="part-credit" *ngIf="c.percent === null" [title]="infoBulleAvoirs">—</span>
                 </td>
               </tr>
             </tbody>
           </table>
+          <p class="section-note" *ngIf="aDesAvoirs">
+            Les pourcentages portent sur les dépenses brutes. Les avoirs et remboursements ne sont pas
+            des dépenses : ils gardent leur ligne, en négatif, et le coût total ci-dessus en est net.
+          </p>
         </div>
 
         <div class="data-table-container">
@@ -728,7 +736,10 @@
             </div>
             <div class="kpi-progress">
               <div class="progress-bar">
-                <div class="progress" [style.width.%]="Math.min((kpi.value / kpi.target) * 100, 100)"></div>
+                <!-- Borne basse à 0 : le coût au km est net des avoirs et peut être négatif
+                     un mois de gros remboursement. Une largeur négative est refusée par le
+                     navigateur, qui laissait alors la barre pleine. -->
+                <div class="progress" [style.width.%]="largeurKpi(kpi)"></div>
               </div>
             </div>
           </div>

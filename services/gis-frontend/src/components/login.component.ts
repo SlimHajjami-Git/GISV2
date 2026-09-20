@@ -80,16 +80,37 @@ import { environment } from '../environments/environment';
 
       <div class="auth-card">
         <div class="auth-header">
-          <div class="logo">
-            <span class="logo-icon">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M5 13l4 4L19 7"/>
-              </svg>
-            </span>
-            <div class="logo-text">
-              <span class="brand">{{ brand }}</span>
+          <!--
+            Première chose que voit un client : la page de connexion portait une
+            pastille indigo générique avec une simple coche — un badge « validé »
+            qui n'est le logo de personne, encore moins celui de Calypso.
+            Remplacée par le vrai fichier de marque, celui de la barre de
+            navigation et du rapport de sinistre.
+
+            Version CLAIRE du logo : la carte de connexion est blanche (#fff),
+            seul le fond de page est sombre. Le mot CALYPSO du fichier clair y
+            donne ~5:1, le fichier sombre y serait illisible.
+
+            Même garde-fou de marque qu'ailleurs : un déploiement sous une autre
+            marque garde EXACTEMENT l'ancien rendu, pastille comprise — rien ne
+            change pour lui.
+          -->
+          <div class="logo" [class.logo-marque]="estMarqueCalypso">
+            @if (estMarqueCalypso) {
+              <img class="logo-mark" src="/assets/calypso-logo.svg"
+                   [alt]="brand" width="504" height="170" draggable="false">
               <span class="subtitle">Gestion de flotte</span>
-            </div>
+            } @else {
+              <span class="logo-icon">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 13l4 4L19 7"/>
+                </svg>
+              </span>
+              <div class="logo-text">
+                <span class="brand">{{ brand }}</span>
+                <span class="subtitle">Gestion de flotte</span>
+              </div>
+            }
           </div>
           <h1>Connexion</h1>
           <p>Accédez à votre tableau de bord</p>
@@ -261,6 +282,12 @@ import { environment } from '../environments/environment';
     .auth-header { margin-bottom: 28px; }
 
     .logo { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+    /* Le logo porte déjà le mot CALYPSO : il remplace le couple pastille + nom,
+       et la ligne « Gestion de flotte » passe dessous plutôt qu'à côté. 36 px de
+       haut, soit à peu près la hauteur du bloc pastille + texte d'avant (52 px
+       avec son cartouche), pour ne pas décaler tout le formulaire. */
+    .logo-marque { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .logo-mark { display: block; height: 36px; width: auto; user-select: none; }
     .logo-icon {
       width: 52px; height: 52px;
       background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
@@ -408,6 +435,16 @@ export class LoginComponent {
   isLoading = false;
   errorMessage = '';
   brand = (environment as any).brandName || 'Calypso';
+
+  /**
+   * Garde-fou de marque, identique à la barre de navigation, au rapport de
+   * sinistre et au service d'export PDF : le logo Calypso ne s'affiche QUE pour
+   * le déploiement Calypso. brandName vient de environment.ts, en copie locale
+   * sur chaque serveur (« Bougeo » ailleurs) ; un client d'une autre marque ne
+   * doit pas se connecter sous le logo d'un concurrent.
+   */
+  readonly estMarqueCalypso = ((environment as any).brandName || '').trim().toLowerCase() === 'calypso';
+
   // Même drapeau par déploiement que la route /inscription : sur un serveur qui ne
   // vend pas l'inscription libre, la route n'existe pas et le lien mènerait nulle part.
   signupEnabled = (environment as any).selfSignup === true;

@@ -667,8 +667,38 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  /* « auto » et non « hidden » : trois branches remplissent cet espace SANS
+     cadre de tableau — le rapport IA, « Carburant réel vs GPS » et l'analyse de
+     consommation empilent graphes et cartes sur une page longue. Bornées et en
+     « hidden », leur bas devenait INATTEIGNABLE. Le tableau générique, lui, ne
+     déclenche jamais cet ascenseur : .table-section prend exactement la place
+     qui reste (flex: 1 + min-height: 0). */
+  overflow-y: auto;
+  /* Le cadre du tableau ne peut défiler que si un ancêtre a une hauteur
+     DÉFINIE : .reports-page n'a qu'un min-height, si bien que toute la chaîne
+     flex retombait sur la hauteur du CONTENU. Résultat mesuré : l'en-tête
+     collant tenait jusqu'à seize lignes et lâchait à la dix-septième, alors que
+     la pagination par défaut en affiche cinquante — on perdait l'en-tête, la
+     barre de pagination et les boutons d'export.
+     La borne est posée ICI et non sur .reports-page : les cinq branches
+     .monthly-cost-report-workspace (dont « Coût d'exploitation réel », validé
+     le 19/09/2026) n'ont pas de défileur interne, les borner rendrait leur bas
+     INATTEIGNABLE. .workspace-content n'habille que les rapports à tableau.
+     « flex: 1 1 auto » et non « flex: 1 » : ce dernier vaut « flex-basis: 0 »,
+     qui l'emporte sur la hauteur et laissait la chaîne repartir du contenu —
+     mesuré au banc, la page faisait encore 1 860 px de haut. */
+  flex: 1 1 auto;
+  height: calc(100vh - 42px);
 }
+
+/* Le rapport IA est une page longue (indicateurs, graphes, cartes, questions)
+   sans tableau bordé : rien ne doit l'empêcher de défiler dans le cadre. */
+.workspace-content.ai-fleet-workspace { min-height: 0; }
+
+/* Rapports intégrés dans une page hôte (admin) : aucune barre d'application
+   au-dessus, la hauteur de fenêtre ne veut plus rien dire. */
+.reports-page.rp-embarque .workspace-content { height: auto; }
 
 /* Chart Section */
 .chart-section {
@@ -970,6 +1000,66 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   overflow: auto;
   min-height: 200px;
   height: 100%;
+}
+
+/* LE CADRE DU TABLEAU — même motif que .evolution-recap-wrapper,
+   .mf-recap-wrapper et .oc-table-wrapper : cadre borné, défilement vertical
+   INTERNE, en-tête et ligne de total épinglés.
+   Sélecteur d'ENFANT DIRECT de .table-section, et non « .table-wrapper » nu :
+   le gabarit en compte quatorze, dont deux déjà réglées par les rapports
+   validés (mf-recap-wrapper, evolution-recap-wrapper). Une règle globale
+   entrerait en conflit avec elles. Ne restent ici que le tableau générique
+   (douze rapports) et le détail de l'estimation carburant.
+   Aucun plafond en dur : le cadre prend la place qui RESTE sous le graphe et
+   la barre d'outils — c'est le défaut qu'on vient de corriger sur « Coût
+   d'exploitation réel », où 420 px écrits en dur ne tenaient que pour la
+   flotte de recette. */
+.table-section > .table-wrapper {
+  flex: 1 1 auto;
+  height: auto;
+  /* Plancher volontairement bas : sur un portable court, mieux vaut un cadre
+     serré qu'un cadre qui repousse la pagination hors de l'écran. */
+  min-height: 120px;
+  overflow-y: auto;
+  /* « auto » et non « hidden » : à 1536 px aucune colonne ne déborde, mais sur
+     un écran de tablette mieux vaut un ascenseur qu'une colonne rognée. */
+  overflow-x: auto;
+}
+
+/* Ascenseur fin : sa largeur s'ôte de celle offerte aux colonnes.
+   (Pas de « scrollbar-width », Chrome ignorerait ces règles.) */
+.table-section > .table-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+.table-section > .table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* L'en-tête est déjà collant (.data-table th) ; il lui manquait un plan de
+   superposition au-dessus des pastilles et des badges des lignes. */
+.table-section > .table-wrapper .data-table thead th { z-index: 3; }
+
+/* Ligne de total épinglée au BAS du cadre, quand le tableau en porte une —
+   même mécanisme que .evolution-recap-wrapper. */
+.table-section > .table-wrapper .data-table tfoot .dept-total-row td {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: #eef2f7;
+  color: #0f172a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 2px 0 #cbd5e1;
+  border-top: 0;
+  border-bottom: 0;
+  white-space: nowrap;
+}
+
+/* MONTANTS — classe DÉDIÉE. .data-table td sert les douze rapports : y poser
+   un text-align ou un max-width régresserait Carburant, Journalier,
+   Kilométrage, Trajets, Arrêts, Vitesse, Infractions et Comportement, dont les
+   colonnes sont du texte. */
+.data-table th.num { text-align: right; }
+.data-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Ensure table has proper dimensions */
@@ -2466,6 +2556,17 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: #334155;
+  /* AUCUN white-space: nowrap ici — relecture du 20/09/2026. Il avait été posé
+     au nom de la règle 3 (« une valeur tient sur UNE ligne ») : c'était une
+     erreur. Ce sélecteur sert SEPT tableaux, dont le récapitulatif d'« Évolution
+     des coûts », dont le cadre (.evolution-recap-wrapper) est en
+     overflow-x: hidden : ce qui dépasse y est COUPÉ, sans ascenseur et sans
+     aucun signe. Mesuré à 1 536 px, les colonnes « Total » et
+     « Var. / mois préc. » sortaient du champ en dinar.
+     La règle 3 est déjà tenue sans lui : l'espace FINE INSÉCABLE de
+     formatCurrency empêche à elle seule « 2 615,55 » et « TND » de se séparer,
+     et la devise sans symbole passe désormais dans l'INTITULÉ de colonne
+     (mfMontant / mfDeviseEntete) — il ne reste rien à couper dans la cellule. */
 }
 
 
@@ -2501,6 +2602,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 .monthly-cost-table tfoot .dept-total-row td.num {
   text-align: right;
+  /* Pas de nowrap non plus : même cause, même conséquence que dans le corps —
+     et la ligne TOTAL est justement la plus large du tableau. */
 }
 
 .table-wrapper {
@@ -2663,16 +2766,25 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
    (intitulés raccourcis, voir le HTML), et un ascenseur VERTICAL au-delà de
    12 mois (période personnalisée longue) pour que la page reste compacte.
    Douze mois et le TOTAL tiennent sans défiler (448 px) : un ascenseur pour
-   18 px n'aidait personne. En-têtes et ligne TOTAL restent épinglés. */
-.evolution-workspace .evolution-recap-wrapper { max-height: 460px; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+   18 px n'aidait personne. En-têtes et ligne TOTAL restent épinglés.
+   overflow-x AUTO et non hidden (20/09/2026) : « hidden » coupait « Total » et
+   « Var. / mois préc. » SANS RIEN DIRE dès que la colonne des avoirs
+   s'ajoutait ou qu'un total passait à sept chiffres. Même arbitrage que
+   .oc-table-wrapper : mieux vaut un ascenseur qu'une colonne rognée en
+   silence. */
+.evolution-workspace .evolution-recap-wrapper { max-height: 460px; min-height: 0; overflow-x: auto; overflow-y: auto; }
 .evolution-workspace .evolution-recap-wrapper::-webkit-scrollbar { width: 6px; }
 .evolution-workspace .evolution-recap-wrapper thead th { position: sticky; top: 0; z-index: 2; }
 .evolution-workspace .evolution-recap-wrapper tfoot .dept-total-row td { position: sticky; bottom: 0; z-index: 2; box-shadow: inset 0 2px 0 #cbd5e1; border-top: 0; }
-/* Sous 1536 px la colonne rétrécit encore : les intitulés passent à la ligne
-   plutôt que de déborder. */
-@media (max-width: 1535px) {
-  .evolution-workspace .evolution-recap-wrapper thead th { white-space: normal; }
-}
+/* Les intitulés de CE tableau passent à la ligne, à toute largeur. C'était
+   déjà le cas sous 1536 px ; la borne tombe parce que l'intitulé porte
+   désormais le code devise (« CARBURANT TND »), et que .monthly-cost-table
+   thead th est en nowrap : tenus sur une seule ligne, six intitulés réclamaient
+   à eux seuls 622 px des 786 offerts, et « Total » comme « Var. / mois préc. »
+   sortaient d'un cadre en overflow-x: hidden — donc COUPÉES, sans aucun signe.
+   Mesuré à 1 536 px : avec cette règle, le récapitulatif tient exactement dans
+   son cadre en euro comme en dinar, avec ou sans colonne d'avoirs. */
+.evolution-workspace .evolution-recap-wrapper thead th { white-space: normal; }
 @media (max-width: 1100px) {
   .donut-split { flex-direction: column; align-items: stretch; }
   .donut-split-canvas { align-self: center; }
@@ -2940,3 +3052,165 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .chart-color-legend .ccl-below { background: rgba(59, 130, 246, .75); border: 1px solid #2563eb; }
 .chart-color-legend .ccl-line { width: 8px; height: 0; margin-top: 7px; border-top: 2px dashed #94a3b8; border-radius: 0; }
 .chart-color-legend .ccl-note { color: #64748b; }
+
+/* ══════ « Coût d'exploitation réel » — ergonomie du 19/09/2026 ══════════════
+   Constat sur la capture de Karim (période Année, 12 véhicules, colonne
+   « Avoirs ») : « 10 527,26 € » s'écrivait sur DEUX lignes, le « € » seul en
+   dessous, et la colonne « Écart » sortait de la carte derrière un ascenseur
+   horizontal. Pourquoi : la feuille était calibrée pour neuf colonnes (voir le
+   commentaire de .cost-table plus haut) ; la colonne « Avoirs » du 18/09 en
+   fait DIX au détail par véhicule et ONZE au classement.
+   Pourquoi ces règles sont portées par .oc-workspace et non par
+   .cost-report-workspace : cette dernière est partagée avec « Coûts mensuels »,
+   « Évolution des coûts » et « Fréquence des réparations », que Karim veut voir
+   inchangés tant qu'il n'a pas validé ce rapport-ci. */
+
+/* 1. Aucune valeur ne passe à la ligne. Un montant, un pourcentage ou une date
+      coupés en deux ne se lisent plus : c'est le défaut cité nommément. */
+.oc-workspace .cost-table th,
+.oc-workspace .cost-table td { white-space: nowrap; }
+
+/* 2. La police et les gouttières suivent le NOMBRE de colonnes réellement
+      affichées. La classe est posée par le composant (classeDensiteCout), pas
+      par une mesure JavaScript : le rendu est le même au premier affichage
+      qu'après un changement de période. Jamais moins de 11 px pour une valeur,
+      en dessous le chiffre cesse d'être lisible. */
+.oc-workspace .cost-table {
+  --oc-police: 12.5px;        /* neuf colonnes : la densité d'origine */
+  --oc-police-entete: 10px;
+  --oc-gouttiere: 10px;
+}
+.oc-workspace .cost-table--c10 { --oc-police: 12px;   --oc-police-entete: 9.5px; --oc-gouttiere: 7px; }
+.oc-workspace .cost-table--c11 { --oc-police: 11.5px; --oc-police-entete: 9.5px; --oc-gouttiere: 4px; }
+/* Cran le plus serré : l'en-tête reste à 9,5 px comme ses voisins. À 9 px, en
+   capitales et interlettré, les intitulés cessaient d'être lisibles alors que
+   Karim demande de les garder lisibles — et la marge du tableau le permet (voir
+   les mesures du banc, vue classement + Avoirs + devise à trois lettres). Le
+   plancher de 11 px des VALEURS, lui, ne bouge pas. */
+.oc-workspace .cost-table--c12 { --oc-police: 11px;   --oc-police-entete: 9.5px; --oc-gouttiere: 3px; }
+/* Colonne de rang du classement : 36 px de large fixes ailleurs, elle ne porte
+   jamais plus de deux chiffres. Aux deux crans les plus serrés on lui rend
+   10 px, qui manquaient aux colonnes de montants. */
+.oc-workspace .cost-table--c11 th.rank-col,
+.oc-workspace .cost-table--c12 th.rank-col { width: 26px; }
+/* Écran plus étroit que celui de recette : le partage 65 / 35 ne laisse plus
+   assez au tableau (l'arithmétique le donne à partir de 1 515 px d'écran ;
+   en dessous il manque jusqu'à 35 px). Plutôt que de rapetisser encore les
+   chiffres, on empile : le tableau prend toute la largeur, le classement passe
+   dessous. Le seuil est sous 1 521 px, la largeur de mise en page de l'écran de
+   recette (1 536 px moins l'ascenseur du navigateur), pour que Karim garde ses
+   deux colonnes côte à côte. */
+@media (max-width: 1500px) {
+  .oc-workspace .cost-two-col { grid-template-columns: minmax(0, 1fr); }
+}
+/* Même repli, décidé cette fois par le CONTENU et non par la largeur d'écran :
+   quand même le cran le plus serré ne suffit plus aux montants (classe posée
+   par empilerBlocsCout()), on empile. Le tableau passe de 776 à 1 169 px utiles
+   sur l'écran de recette — de quoi absorber quatre chiffres de plus par colonne.
+   Empiler plutôt que rogner une colonne ou rouvrir un ascenseur horizontal. */
+.oc-workspace .cost-two-col.oc-empile { grid-template-columns: minmax(0, 1fr); }
+.oc-workspace .cost-table thead th {
+  font-size: var(--oc-police-entete);
+  padding: 9px var(--oc-gouttiere);
+  letter-spacing: 0.3px;
+}
+.oc-workspace .cost-table tbody td { font-size: var(--oc-police); padding: 8px var(--oc-gouttiere); }
+.oc-workspace .cost-table tfoot .dept-total-row td { font-size: var(--oc-police); padding: 10px var(--oc-gouttiere); }
+/* La colonne d'immatriculation est la seule à contenu variable : on lui donne
+   sa largeur naturelle et on la laisse tronquer plutôt que déborder. */
+.oc-workspace .cost-table td.vehicle-cell { max-width: 128px; overflow: hidden; text-overflow: ellipsis; }
+/* « TOTAL / MOYENNE » est un INTITULÉ, pas une valeur : c'est la seule cellule
+   du tableau autorisée à passer à la ligne. Tenue sur une ligne elle imposait
+   126 px à la première colonne — 49 de plus que l'immatriculation la plus
+   longue — et c'est de cela que le tableau débordait ; même composée à 10,5 px
+   elle en réclamait encore 116. Sur deux lignes la colonne retombe à la largeur
+   des plaques et la ligne de total gagne 16 px de hauteur, ce que l'ascenseur
+   vertical absorbe. */
+.oc-workspace .cost-table tfoot .dept-total-row td.total-label { white-space: normal; }
+
+/* 3. Les deux cartes de la rangée finissent à la même hauteur. Le tableau
+      défile VERTICALEMENT dans son cadre, en-têtes et ligne de total épinglés —
+      même mécanisme que .evolution-recap-wrapper. L'ascenseur vertical est la
+      façon d'aligner les blocs ; l'horizontal reste proscrit. */
+.oc-workspace .cost-two-col > .dept-group > .oc-table-wrapper {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Le plafond SUIT la hauteur du graphe d'en face ; il est posé en variable
+     par le gabarit (plafondCadreTableauCout()). Écrit en dur à 420 px il ne
+     tenait que pour la flotte de recette : le graphe grandit de 28 px par
+     véhicule, dès treize véhicules il dépassait le cadre, la rangée prenait SA
+     hauteur et le vide blanc réapparaissait sous le tableau — 481 px à trente
+     véhicules, 761 px à quarante. Le repli 420 px reste le plancher, pour la
+     flotte courte où c'est le tableau qui est le plus court des deux. */
+  max-height: var(--oc-plafond-tableau, 420px);
+  /* « auto » et non « hidden » : à 1536 px l'arithmétique garantit qu'aucun
+     ascenseur horizontal n'apparaît (740,9 px exigés pour 771 offerts). Sur un
+     écran de tablette, mieux vaut un ascenseur qu'une colonne « Écart » rognée
+     en silence. */
+  overflow-x: auto;
+  overflow-y: auto;
+}
+/* Ascenseur fin : sa largeur s'ôte de celle offerte aux colonnes, elle entre
+   dans le calcul. (Pas de « scrollbar-width », Chrome ignorerait ces règles.) */
+.oc-workspace .oc-table-wrapper::-webkit-scrollbar { width: 6px; }
+.oc-workspace .oc-table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+.oc-workspace .oc-table-wrapper thead th { position: sticky; top: 0; z-index: 2; }
+.oc-workspace .oc-table-wrapper tfoot .dept-total-row td {
+  position: sticky; bottom: 0; z-index: 2;
+  box-shadow: inset 0 2px 0 #cbd5e1;
+  border-top: 0;
+}
+/* Même hauteur d'en-tête des deux côtés : la carte de gauche porte un badge et
+   un compteur, celle de droite un badge seul ; les deux titres ne tombaient pas
+   sur la même ligne. */
+.oc-workspace .cost-two-col > .dept-group > .dept-header { min-height: 52px; box-sizing: border-box; }
+/* La boite du graphe garde la hauteur que le composant lui demande
+   (operatingCostChartHeight(), 28 px par véhicule) : le min-height de 380 px de
+   la règle générale l'étirait de quarante pixels dans « Véhicules les plus
+   coûteux », dont le Top 10 ne réclame que 340 px. Le graphe partait donc plus
+   bas que le tableau et c'est ce qui laissait le vide blanc ouvert sous
+   celui-ci (79,7 px mesurés en dinar). Le graphe peut toujours GRANDIR
+   (flex: 1 1 auto) si c'est le tableau qui est le plus haut : il n'a pas besoin
+   d'un plancher pour cela. */
+.oc-workspace .cost-two-col > .dept-group > .cost-chart-box { min-height: 0; }
+
+/* 4. Les quatre cartes de synthèse : même largeur, même hauteur, même graisse.
+      Les quatre colonnes sont explicites (repeat(4, 1fr)) : en « auto-fit » la
+      rangée se recomposait au gré de la largeur disponible. Chaque carte porte
+      désormais exactement une valeur, un intitulé et un sous-titre d'UNE ligne
+      (204 px utiles par carte, les quatre libellés sont taillés pour) : les
+      quatre cartes tombent à la même hauteur sans qu'aucune règle ne les force. */
+.oc-workspace .stats-cards-row { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1100px) { .oc-workspace .stats-cards-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px)  { .oc-workspace .stats-cards-row { grid-template-columns: minmax(0, 1fr); } }
+/* Une valeur plus large que sa carte (204 px utiles) est COUPÉE VISIBLEMENT,
+   avec les points de suspension, et l'info-bulle du gabarit en donne le montant
+   entier. Sans « text-overflow », la carte (overflow: hidden) tranchait le
+   dernier caractère sans le dire : « 46 322,78 DZD » se lisait « 46 322,78 DZ »,
+   faux et silencieux. Même règle que les KPI de « Fréquence des réparations ». */
+.oc-workspace .stat-card .stat-value { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 5. La ventilation des postes SORT de la première carte, où elle formait un
+      paragraphe serré qui passait à la ligne entre un montant et son symbole et
+      qui faisait grandir la carte pendant que les trois autres restaient vides.
+      Elle devient un bandeau à elle, sur toute la largeur : les cinq postes y
+      tiennent sur UNE ligne (602 px de contenu pour 1 212 px offerts), chacun
+      insécable, et les quatre cartes retrouvent la même hauteur. */
+.oc-workspace .oc-ventilation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 22px;
+  padding: 11px 18px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+.oc-workspace .oc-ventilation .vent-titre {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: #64748b;
+}
+.oc-workspace .oc-ventilation .vent { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.oc-workspace .oc-ventilation .vent > span { font-size: 11.5px; color: #64748b; }
+.oc-workspace .oc-ventilation .vent > b { font-size: 13px; font-weight: 700; color: #1e293b; font-variant-numeric: tabular-nums; }
+/* Un avoir allège le coût : teinte de crédit, la même que la part du camembert. */
+.oc-workspace .oc-ventilation .vent--avoir > b { color: #0d9488; }

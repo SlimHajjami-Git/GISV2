@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { environment } from '../environments/environment';
 
 /** Une colonne d\'un tableau PDF.
  *  `weight` est une largeur RELATIVE facultative : la largeur reelle vaut
@@ -65,19 +66,44 @@ export interface GroupedPdfReportConfig {
 @Injectable({ providedIn: 'root' })
 export class PdfExportService {
 
+  /**
+   * Garde-fou de marque, le même que la barre de navigation, la page de connexion
+   * et le rapport de sinistre : brandName vient de environment.ts, que chaque
+   * serveur garde en copie locale (« Bougeo » en Algérie).
+   *
+   * Déclaré EN TÊTE de la classe parce que les couleurs ci-dessous le lisent dans
+   * leur initialiseur, et qu'un initialiseur de champ ne voit que les champs
+   * déclarés AVANT lui — les suivants valent encore undefined. Sa position par
+   * rapport au constructeur, elle, est sans importance : tous les initialiseurs
+   * s'exécutent avant le corps du constructeur.
+   */
+  private readonly estMarqueCalypso = (environment.brandName || '').trim().toLowerCase() === 'calypso';
+
   // Couleurs relevées sur la charte Calypso (« logo Calypso.pdf », planche des
   // déclinaisons) plutôt que sur une palette générique : le bleu profond du
   // dégradé, le bleu vif de la signature, et l'orange des facettes du « C ».
-  private readonly primaryColor: [number, number, number] = [8, 64, 160];    // #0840A0
-  private readonly accentColor: [number, number, number] = [0, 112, 192];    // #0070C0
-  private readonly brandOrange: [number, number, number] = [255, 88, 40];    // #FF5828
+  //
+  // Le garde-fou de marque ne portait QUE le logo : sur un déploiement Bougeo, le
+  // logo disparaissait bien du bandeau, mais toute la charte Calypso restait —
+  // titre en bleu #0840A0, liseré orange #FF5828, en-têtes de tableaux bleus, fond
+  // de bandeau bleuté. Le client recevait un rapport aux couleurs d'un concurrent,
+  // simplement privé de son logo. Une autre marque reçoit donc une palette NEUTRE
+  // (ardoise), qui n'appartient à personne, plutôt que celle de Calypso.
+  private readonly primaryColor: [number, number, number] =
+    this.estMarqueCalypso ? [8, 64, 160] : [30, 41, 59];      // #0840A0 / ardoise #1E293B
+  private readonly accentColor: [number, number, number] =
+    this.estMarqueCalypso ? [0, 112, 192] : [71, 85, 105];    // #0070C0 / ardoise #475569
+  /** Liseré de pied de bandeau : orange de charte pour Calypso, ardoise sinon. */
+  private readonly brandRuleColor: [number, number, number] =
+    this.estMarqueCalypso ? [255, 88, 40] : [148, 163, 184];  // #FF5828 / ardoise #94A3B8
+  /** Fond des cartes de statistiques — ardoise très pâle, déjà neutre. */
   private readonly lightBg: [number, number, number] = [241, 245, 249];
 
   /**
    * Calypso 7 — branding PDF : on charge le logo Calypso une seule fois au
    * boot du service (data URL base64) puis on l'embarque dans chaque PDF
-   * via doc.addImage(). Le footer est rebrandé « Calypso · Belive » au
-   * lieu de l'ancien « GIS Fleet Management ».
+   * via doc.addImage(). Le footer porte « Calypso » tout court (voir
+   * footerBrand) au lieu de l'ancien « GIS Fleet Management ».
    */
   private logoDataUrl: string | null = null;
   private logoLoading: Promise<string | null> | null = null;
@@ -94,10 +120,30 @@ export class PdfExportService {
     return this.preloadLogo();
   }
 
+  /** Prépare un document composé DEHORS du service (rapport de sinistre, rapport de
+   *  tournée) : logo et polices chargés, puis la police de marque déclarée dans CE
+   *  document — le magasin de fichiers de jsPDF est porté par l'instance, une police
+   *  chargée pour un autre document n'y existe pas. Retourne le nom de police à passer
+   *  aux tableaux (autoTable), Helvetica si la marque n'a pas pu être chargée. */
+  async prepareBrandDocument(doc: jsPDF): Promise<string> {
+    await Promise.all([this.preloadLogo(), this.preloadFonts()]);
+    return this.applyBrandToDocument(doc);
+  }
+
+  /** Variante synchrone, pour un appelant qui ne peut pas attendre (génération
+   *  automatique du PDF à la confirmation d'un accident) : la police de marque n'est
+   *  déclarée que si elle est DÉJÀ chargée, sinon le document reste en Helvetica.
+   *  À appeler avant de dessiner : sans elle, un document composé hors du service
+   *  demanderait une police absente de son propre magasin de fichiers. */
+  applyBrandToDocument(doc: jsPDF): string {
+    this.applyBrandFont(doc);
+    return this.brandFont;
+  }
+
   /**
    * Dessine l'en-tête de marque commun à TOUS les PDF de l'application :
-   * bandeau bleu Calypso, logo dans son cartouche blanc, titre, et ligne de
-   * métadonnées. Retourne l'ordonnée à laquelle le corps peut commencer.
+   * bandeau clair en dégradé, logo posé dessus sans cartouche, titre, et ligne
+   * de métadonnées. Retourne l'ordonnée à laquelle le corps peut commencer.
    *
    * Extrait de exportReportSync pour être réutilisable par les rapports qui
    * ne sont pas de simples « stats + tableau » — sans cela chaque écran
@@ -111,7 +157,9 @@ export class PdfExportService {
   private drawHeaderGradient(doc: jsPDF, bandH: number): void {
     const pageWidth = doc.internal.pageSize.getWidth();
     const from: [number, number, number] = [248, 251, 255];
-    const to: [number, number, number] = [219, 233, 250];
+    // Arrivée du dégradé : bleu pâle de la charte pour Calypso, ardoise pâle pour
+    // une autre marque — voir le garde-fou en tête de classe.
+    const to: [number, number, number] = this.estMarqueCalypso ? [219, 233, 250] : [226, 232, 240];
     const steps = 160;
     const stepW = pageWidth / steps;
     for (let i = 0; i < steps; i++) {
@@ -139,7 +187,7 @@ export class PdfExportService {
     doc.setFontSize(9);
     doc.setFont(this.brandFont, 'bold');
     doc.text(this.sanitizeText(title), left, 8);
-    doc.setFillColor(...this.brandOrange);
+    doc.setFillColor(...this.brandRuleColor);
     doc.rect(0, bandH, pageWidth, 0.8, 'F');
   }
 
@@ -249,14 +297,14 @@ export class PdfExportService {
 
     // Liseré orange en pied de bandeau : la seule touche de la couleur
     // d'accent de la charte, qui rappelle les facettes du « C ».
-    doc.setFillColor(...this.brandOrange);
+    doc.setFillColor(...this.brandRuleColor);
     doc.rect(0, bandH, pageWidth, 1.4, 'F');
 
     doc.setTextColor(0, 0, 0);
     return 38;
   }
 
-  /** Pied de page de marque commun (« Calypso · Belive » + date + pagination).
+  /** Pied de page de marque commun (« Calypso » + date + pagination).
    *  `bannerTitle` rappelle en plus un bandeau réduit en haut des pages 2+,
    *  sans quoi les pages suivantes n'avaient aucune identité visuelle. */
   drawBrandFooter(doc: jsPDF, bannerTitle?: string): void {
@@ -379,6 +427,15 @@ export class PdfExportService {
   private preloadLogo(): Promise<string | null> {
     if (this.logoDataUrl) return Promise.resolve(this.logoDataUrl);
     if (this.logoLoading) return this.logoLoading;
+    // Même garde-fou de marque que la barre de navigation : le logo Calypso ne
+    // part JAMAIS dans le rapport d'un autre déploiement (environment.ts est en
+    // copie locale sur chaque serveur, brandName peut valoir Bougeo). L'en-tête
+    // sait déjà se passer de logo (voir le « if (logo) » de drawBrandHeader) :
+    // il cale alors le titre sur la marge de gauche.
+    if (!this.estMarqueCalypso) {
+      this.logoLoading = Promise.resolve(null);
+      return this.logoLoading;
+    }
     // Version COULEUR, a FOND TRANSPARENT : c'est celle que le client veut voir
     // sur ses rapports, et elle se pose directement sur le fond clair de
     // l'en-tête (voir drawBrandHeader). Le fichier rasterisé depuis le PDF de
@@ -427,8 +484,21 @@ export class PdfExportService {
    *  vue par le client. Un rapport remis à un client français portait donc le nom
    *  d'une société tunisienne qui ne lui dit rien. Calypso est la marque du
    *  produit et se suffit. S'applique à TOUS les rapports, pas au seul rapport
-   *  des réparations. */
-  private readonly footerBrand = 'Calypso';
+   *  des réparations.
+   *  Lu dans environment.brandName plutôt qu'écrit en dur : vaut « Calypso » sur
+   *  TN et sur la France, et suit la marque des autres déploiements au lieu de
+   *  leur imprimer celle d'un concurrent. Repli sur « Calypso » si la valeur est
+   *  vide.
+   *
+   *  Aligné sur le garde-fou, qui compare en minuscules : un environment.ts qui
+   *  porterait « CALYPSO » ou « calypso » passait le test (logo posé, palette de
+   *  charte) mais imprimait la valeur brute en pied de page, à côté d'un logo dont
+   *  le mot est gravé « CALYPSO ». Dès que le garde-fou reconnaît la marque, le
+   *  pied de page écrit la forme canonique ; les autres marques gardent la leur,
+   *  telle qu'elles l'ont écrite. */
+  private readonly footerBrand = this.estMarqueCalypso
+    ? 'Calypso'
+    : ((environment.brandName || '').trim() || 'Calypso');
 
   private sanitizeText(text: string): string {
     if (!text) return '';
@@ -919,14 +989,29 @@ export class PdfExportService {
           { header: 'Adresse', dataKey: 'address' }
         ];
       case 'mileage':
-        return [
-          { header: 'Date', dataKey: 'date' },
-          { header: 'Distance', dataKey: 'distance' },
-          { header: 'Trajets', dataKey: 'tripCount' },
-          { header: 'Temps conduite', dataKey: 'drivingTime' },
-          { header: 'Vit. max', dataKey: 'maxSpeed' },
-          { header: 'Odom\u00e8tre', dataKey: 'odometer' }
-        ];
+        // Relecture du 20/09/2026. Sans véhicule choisi, une ligne décrit un
+        // VÉHICULE et non un jour (processMileageReportAllVehicles) : l'écran a
+        // reçu une colonne « Véhicule », mais l'export ignorait l'option et
+        // sortait un PDF et un classeur où PLUS RIEN n'identifiait les lignes —
+        // « Date » et « Odomètre », vides, y étaient de surcroît retirées par
+        // colonnesAlimentees. Colonnes conditionnelles, comme 'mileage-period'
+        // juste en dessous.
+        return options?.allVehicles
+          ? [
+              { header: 'V\u00e9hicule', dataKey: '_vehicule' },
+              { header: 'Distance', dataKey: 'distance' },
+              { header: 'Trajets', dataKey: 'tripCount' },
+              { header: 'Temps conduite', dataKey: 'drivingTime' },
+              { header: 'Vit. max', dataKey: 'maxSpeed' }
+            ]
+          : [
+              { header: 'Date', dataKey: 'date' },
+              { header: 'Distance', dataKey: 'distance' },
+              { header: 'Trajets', dataKey: 'tripCount' },
+              { header: 'Temps conduite', dataKey: 'drivingTime' },
+              { header: 'Vit. max', dataKey: 'maxSpeed' },
+              { header: 'Odom\u00e8tre', dataKey: 'odometer' }
+            ];
       case 'mileage-period':
         const cols = [{ header: 'Période', dataKey: 'period' }];
         if (options?.periodType === 'day') cols.push({ header: 'Jour', dataKey: 'dayOfWeek' });
@@ -1061,6 +1146,14 @@ export class PdfExportService {
       case 'stops':
         return {
           '_typeLabel': (_v: any, row: any) => `${row.typeCode} - ${row.typeLabel}`
+        };
+      case 'mileage':
+        return {
+          // EXACTEMENT ce que rend l'écran : la plaque quand elle existe
+          // (« - » est le remplissage de processMileageReportAllVehicles),
+          // le nom du véhicule sinon.
+          '_vehicule': (_v: any, row: any) =>
+            (row.plate && row.plate !== '-') ? row.plate : (row.vehicleName || '')
         };
       default:
         return {};

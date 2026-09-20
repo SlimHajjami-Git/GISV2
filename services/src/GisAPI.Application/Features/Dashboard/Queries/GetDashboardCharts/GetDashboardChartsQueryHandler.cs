@@ -1,5 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Repairs;
+using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -108,22 +110,14 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
             .GroupBy(x => x.Day)
             .ToDictionary(g => g.Key, g => g.Select(x => x.DeviceId).Distinct().Count());
 
-        // Dépenses d'entretien de la période — indépendantes du GPS, donc
-        // disponibles pour un abonnement sans boîtier. Seuls les montants et la
-        // date sont ramenés : la courbe n'a besoin de rien d'autre.
-        var maintenanceCosts = vehicleIds.Count == 0
-            ? new List<MaintenanceCostPoint>()
-            : await _context.VehicleCosts.AsNoTracking()
-                .Where(c => vehicleIds.Contains(c.VehicleId)
-                            && (c.Type == "maintenance" || c.Type == "repair")
-                            && c.Date >= periodStart && c.Date <= periodEnd)
-                .Select(c => new MaintenanceCostPoint
-                {
-                    VehicleId = c.VehicleId,
-                    Date = c.Date,
-                    Amount = c.Amount
-                })
-                .ToListAsync(cancellationToken);
+        // Entretien de la période — indépendant du GPS, donc disponible pour un
+        // abonnement sans boîtier. Même définition que les rapports de coûts
+        // (OperatingCostAggregator) : les réparations de l'écran Réparations ET les
+        // dépenses de catégorie Entretien ou Réparation. La courbe ne lisait que
+        // vehicle_costs : depuis que la phase 5 d'un sinistre écrit dans repairs, son
+        // montant disparaissait du mois. Seuls véhicule, type, date et montant sont ramenés.
+        var maintenanceCosts = await LoadMaintenanceCostsAsync(
+            companyId, vehicleIds, periodStart, periodEnd, cancellationToken);
 
         // Build charts
         var result = new DashboardChartsDto
@@ -141,6 +135,65 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
         };
 
         return result;
+    }
+
+    /// <summary>
+    /// Valeurs brutes de <c>vehicle_costs.type</c> que <see cref="VehicleCostCategory"/>
+    /// range en Entretien ou en Réparation : codes écrits par l'application, plus les
+    /// synonymes et libellés d'export encore présents sur les lignes anciennes.
+    ///
+    /// <para>Filtre GROSSIER, posé en SQL pour ne plus ramener tout le carburant du mois
+    /// — de loin le plus gros volume — sur la première page ouverte après connexion. Le
+    /// classement reste fait par <see cref="VehicleCostCategory"/> sur ce sous-ensemble :
+    /// cette liste ne peut qu'être trop large, jamais trop étroite.</para>
+    /// </summary>
+    private static readonly string[] TypesEntretienOuReparation =
+    {
+        "maintenance", "entretien",
+        "repair", "reparation", "réparation",
+        "reparation accident", "réparation accident",
+    };
+
+    /// <summary>
+    /// Lignes d'entretien de la période, dans la définition des rapports de coûts :
+    /// réparations de la table <c>repairs</c> (annulées exclues, société filtrée
+    /// explicitement — <c>repairs</c> n'a pas de filtre de requête global) et dépenses
+    /// de catégorie Entretien ou Réparation, synonymes compris
+    /// (<see cref="VehicleCostCategory"/>, dont la règle n'a pas d'équivalent SQL).
+    /// </summary>
+    private async Task<List<MaintenanceCostPoint>> LoadMaintenanceCostsAsync(
+        int companyId,
+        List<int> vehicleIds,
+        DateTime periodStart,
+        DateTime periodEnd,
+        CancellationToken ct)
+    {
+        var points = new List<MaintenanceCostPoint>();
+        if (vehicleIds.Count == 0) return points;
+
+        var costs = await _context.VehicleCosts.AsNoTracking()
+            .Where(c => vehicleIds.Contains(c.VehicleId)
+                        && c.Date >= periodStart && c.Date <= periodEnd
+                        && TypesEntretienOuReparation.Contains(c.Type.Trim().ToLower()))
+            .Select(c => new { c.VehicleId, c.Type, c.Amount, c.Date })
+            .ToListAsync(ct);
+
+        points.AddRange(costs
+            .Where(c => VehicleCostCategory.IsMaintenance(c.Type) || VehicleCostCategory.IsRepair(c.Type))
+            .Select(c => new MaintenanceCostPoint { VehicleId = c.VehicleId, Date = c.Date, Amount = c.Amount }));
+
+        var repairs = await _context.Repairs.AsNoTracking()
+            .Where(r => r.SocieteId == companyId
+                        && vehicleIds.Contains(r.VehicleId)
+                        && r.RepairDate >= periodStart && r.RepairDate <= periodEnd)
+            .Select(r => new { r.VehicleId, r.RepairDate, r.TotalCost, r.Status })
+            .ToListAsync(ct);
+
+        points.AddRange(repairs
+            .Where(r => !RepairInputRules.HasStatus(r.Status, RepairInputRules.Cancelled))
+            .Select(r => new MaintenanceCostPoint { VehicleId = r.VehicleId, Date = r.RepairDate, Amount = r.TotalCost }));
+
+        return points;
     }
 
     private BarChartDataDto BuildDistanceByVehicleChart(
@@ -204,9 +257,10 @@ public class GetDashboardChartsQueryHandler : IRequestHandler<GetDashboardCharts
     /// Les valeurs étaient tirées au sort (Random.Shared) et présentées comme des
     /// « coûts de maintenance par période » : le graphique changeait à chaque
     /// rechargement de la page et un client pouvait bâtir un budget dessus. Les
-    /// dépenses d'entretien sont pourtant en base (vehicle_costs, type
-    /// 'maintenance' ou 'repair') et ne dépendent d'aucun boîtier — elles sont
-    /// donc disponibles y compris pour un abonnement sans GPS.
+    /// dépenses d'entretien sont pourtant en base (réparations de l'écran
+    /// Réparations et dépenses d'entretien, voir <c>LoadMaintenanceCostsAsync</c>)
+    /// et ne dépendent d'aucun boîtier — elles sont donc disponibles y compris pour
+    /// un abonnement sans GPS.
     /// </summary>
     private AreaChartDataDto BuildMaintenanceTrendChart(
         List<Vehicle> vehicles,

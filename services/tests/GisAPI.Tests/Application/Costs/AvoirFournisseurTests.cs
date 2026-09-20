@@ -179,7 +179,9 @@ public class AvoirFournisseurTests
             new DateTime(2026, 8, 1, 0, 0, 0, DateTimeKind.Utc), new DateTime(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc),
             null, null, CancellationToken.None);
 
-        aggregate.Vehicles.Single().Total.Other.Should().Be(450m, "600 d'assurance moins 150 d'avoir");
+        // « Autres » reste BRUT depuis le 18/09/2026, l'avoir a son seau ; le total est net.
+        var seaux = aggregate.Vehicles.Single().Total;
+        (seaux.Other, seaux.Credit, seaux.Total).Should().Be((600m, -150m, 450m));
         var categories = rapport.CostAnalysis.ByCategory;
         categories.Single(c => c.Category == "Avoir fournisseur").Amount.Should().Be(-150m);
         categories.Sum(c => c.Amount).Should().Be(rapport.CostAnalysis.TotalOperationalCost);

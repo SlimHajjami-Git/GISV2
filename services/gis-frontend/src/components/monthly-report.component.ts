@@ -12,6 +12,24 @@ import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
 Chart.register(...registerables);
 
+/**
+ * Parts d'un camembert de coûts : les parts ≤ 0 sont écartées et les pourcentages des
+ * parts restantes sont mesurés sur elles seules, pour qu'ils fassent bien 100. Les
+ * parts écartées restent lisibles, avec leur signe, dans le tableau à côté.
+ *
+ * Copie fidèle de `partsCamembert` de reports.component.ts (19/09/2026), à garder
+ * alignée sur elle. L'original est bien exporté, mais son module charge `marked` et
+ * `leaflet` au passage : l'importer ici obligerait chaque test touchant cet écran à
+ * les mocker. Le bon geste serait de sortir la fonction dans un utilitaire partagé —
+ * il faudrait modifier reports.component.ts, en relecture.
+ */
+export function partsCoutsPositives<T extends { amount: number }>(parts: T[]): (T & { percent: number })[] {
+  const affichees = parts.filter(p => (Number(p.amount) || 0) > 0);
+  const base = affichees.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  if (base <= 0) return [];
+  return affichees.map(p => ({ ...p, percent: (Number(p.amount) || 0) / base * 100 }));
+}
+
 @Component({
   selector: 'app-monthly-report',
   standalone: true,
@@ -21,8 +39,7 @@ Chart.register(...registerables);
 })
 export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit {
   private destroy$ = new Subject<void>();
-  Math = Math; // Expose Math to template
-  
+
   @ViewChild('fleetCompositionChart') fleetCompositionChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('costDistributionChart') costDistributionChartRef?: ElementRef<HTMLCanvasElement>;
   @ViewChild('utilizationTrendChart') utilizationTrendChartRef?: ElementRef<HTMLCanvasElement>;
@@ -105,6 +122,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
       next: (data) => {
         this.report = data;
         this.comparaisonMoisPrecedent = this.construireComparaisonMoisPrecedent(data);
+        this.categoriesCouts = MonthlyReportComponent.construireCategoriesCouts(data);
         this.loading = false;
         setTimeout(() => this.createCharts(), 100);
       },
@@ -309,6 +327,50 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
     this.charts.set(id, chart);
   }
 
+  /**
+   * Répartition par catégorie avec le pourcentage RECALCULÉ sur les dépenses BRUTES.
+   * Le champ « percentage » du serveur (GetMonthlyFleetReportQueryHandler,
+   * BuildCostCategories) rapporte chaque ligne au total NET des avoirs : sur la société
+   * de test, septembre 2026 (carburant 1 071,13, entretien 1 830, réparations 1 300,
+   * assurance 625, remboursement −1 200, net 3 626,13), il annonçait Carburant 29,5 %,
+   * Entretien 50,5 %, Réparations 35,9 %, Assurance 17,2 % et, pour le remboursement,
+   * −33,1 % avec une barre de largeur négative — refusée par le navigateur, la barre
+   * restait donc remplie sur toute la ligne, comme la plus grosse dépense du mois.
+   * Sur les dépenses brutes (4 826,13) : 22,2 / 37,9 / 26,9 / 13,0 %, et la ligne de
+   * crédit n'a pas de part (« — ») : ce n'est pas une dépense, c'est ce qui en est
+   * retranché. Même règle que la légende du camembert de l'écran Rapports
+   * (reports.component.mfCategoriesLegende, 19/09/2026).
+   *
+   * Calculée une fois au chargement, comme comparaisonMoisPrecedent : en getter, elle
+   * rendait un nouveau tableau à chaque détection de changements et *ngFor recréait
+   * toutes les lignes.
+   */
+  categoriesCouts: { category: string; amount: number; percent: number | null }[] = [];
+
+  private static construireCategoriesCouts(
+    report: MonthlyFleetReport
+  ): { category: string; amount: number; percent: number | null }[] {
+    const categories = report?.costAnalysis?.byCategory ?? [];
+    // Repérage par INDEX et non par libellé : deux catégories pourraient porter le même.
+    const dessinees = new Map(
+      partsCoutsPositives(categories.map((c, i) => ({ i, amount: Number(c.amount) || 0 }))).map(p => [p.i, p.percent])
+    );
+    return categories.map((c, i) => ({
+      category: c.category,
+      amount: Number(c.amount) || 0,
+      percent: dessinees.get(i) ?? null
+    }));
+  }
+
+  /** Vrai dès qu'une ligne de crédit est affichée : la note qui explique la base ne
+   *  s'affiche que là, elle n'a rien à dire d'un mois sans avoir. */
+  get aDesAvoirs(): boolean {
+    return this.categoriesCouts.some(c => c.percent === null);
+  }
+
+  readonly infoBulleAvoirs =
+    "Avoirs fournisseurs et remboursements d'assurance : déduits du coût total, sans part de dépense";
+
   /** Libellé des indicateurs que seul un boîtier GPS mesure. */
   readonly nonDisponible = 'Non disponible sans boîtier';
 
@@ -338,6 +400,15 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
       { nom: 'Trajets', metrique: mom.trips ?? null },
       { nom: 'Utilisation', metrique: mom.utilization ?? null }
     ];
+  }
+
+  /** Remplissage de la jauge d'un KPI, borné à [0, 100] : objectif nul ou valeur
+   *  négative (coût au km d'un mois très remboursé) donnaient NaN ou une largeur
+   *  négative, que le navigateur refuse — la barre restait alors pleine. */
+  largeurKpi(kpi: Kpi): number {
+    if (!kpi?.target) return 0;
+    const part = (kpi.value / kpi.target) * 100;
+    return Number.isFinite(part) ? Math.min(Math.max(part, 0), 100) : 0;
   }
 
   // Helper methods

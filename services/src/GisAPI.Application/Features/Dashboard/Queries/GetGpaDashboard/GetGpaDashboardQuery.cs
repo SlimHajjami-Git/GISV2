@@ -85,7 +85,13 @@ public sealed record GpaSectionAccess(
     }
 }
 
-/// <summary>Coûts d'exploitation de la période — définition du rapport « Coût d'exploitation » (acquisitions exclues).</summary>
+/// <summary>
+/// Coûts d'exploitation de la période — définition du rapport « Coût d'exploitation »
+/// (acquisitions exclues). <c>Repair</c> est NET des avoirs et
+/// remboursements (règle du 18/09/2026 : ce bloc n'a pas la place d'une ligne de
+/// crédit, contrairement aux rapports) et peut donc être négatif ; <c>Other</c>
+/// reste brut. <c>Total</c> est identique à celui des rapports.
+/// </summary>
 public record GpaCostsDto(decimal Fuel, decimal Maintenance, decimal Repair, decimal Other, decimal Total);
 
 /// <summary>
@@ -131,8 +137,8 @@ public record GpaMonthDto(
     string Label,                          // « Oct. 2025 »
     decimal Fuel,
     decimal Maintenance,
-    decimal Repair,
-    decimal Other,
+    decimal Repair,                        // NET des avoirs et remboursements, peut être négatif
+    decimal Other,                         // BRUT
     decimal Total,
     bool IsPartial);                       // mois en cours, pas encore terminé
 

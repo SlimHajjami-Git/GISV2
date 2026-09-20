@@ -15,6 +15,10 @@ namespace GisAPI.Tests.Application.AccidentEvents;
 /// approuvé ou un coût de réparation créait la dépense liée — vehicle_costs exige
 /// un véhicule existant. Comme pour un accident sans véhicule, la phase et son
 /// montant s'enregistrent ; seule la dépense liée est omise.
+///
+/// <para>Contrat complété le 18/09/2026 : la phase ne se contente plus d'omettre, elle
+/// AVERTIT l'appelant (<c>PhaseSyncResult.Synced == false</c>) — ce fichier le vérifie,
+/// sans quoi il documentait un contrat périmé.</para>
 /// </summary>
 public class PhaseCostDeletedVehicleTests
 {
@@ -54,10 +58,11 @@ public class PhaseCostDeletedVehicleTests
         using var context = CreerContexte(VehiculeSupprime);
         var handler = new RegisterClaimCommandHandler(context, Tenant(), NullLogger<RegisterClaimCommandHandler>.Instance);
 
-        await handler.Handle(
+        var result = await handler.Handle(
             new RegisterClaimCommand(AccidentId, "QA-SIN-001", DepotSinistre, 900m, "approved", null),
             CancellationToken.None);
 
+        result.Synced.Should().BeFalse("l'écran doit pouvoir dire que rien n'a été reporté");
         context.ChangeTracker.Clear();
         (await context.VehicleCosts.CountAsync()).Should().Be(0);
         var ev = await context.AccidentEvents.AsNoTracking().SingleAsync(e => e.Id == AccidentId);
@@ -86,10 +91,11 @@ public class PhaseCostDeletedVehicleTests
         using var context = CreerContexte(VehiculeSupprime);
         var handler = new RegisterRepairCommandHandler(context, Tenant(), NullLogger<RegisterRepairCommandHandler>.Instance);
 
-        await handler.Handle(
+        var result = await handler.Handle(
             new RegisterRepairCommand(AccidentId, null, DepotSinistre, 1200m),
             CancellationToken.None);
 
+        result.Synced.Should().BeFalse("l'écran doit pouvoir dire que rien n'a été reporté");
         context.ChangeTracker.Clear();
         (await context.VehicleCosts.CountAsync()).Should().Be(0);
         (await context.AccidentEvents.AsNoTracking().SingleAsync(e => e.Id == AccidentId)).ActualRepairCost.Should().Be(1200m);

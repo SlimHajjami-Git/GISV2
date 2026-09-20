@@ -18,6 +18,13 @@ namespace GisAPI.Tests.Services;
 /// en positif. Société 1, avril 2026 : la dépense « repair » de 1 143 400 était en
 /// Réparations dans un écran et en Autres dans le voisin ; un remboursement R
 /// écartait les totaux de 2R.
+///
+/// <para>Décision de Karim du 18/09/2026 : les CRÉDITS (avoir fournisseur,
+/// remboursement d'assurance) ne se rangent plus au même endroit selon l'écran —
+/// ligne à part dans les rapports détaillés, déduction des Réparations dans les
+/// blocs à quatre postes des tableaux de bord, qui n'ont pas la place d'une ligne
+/// de plus. La parité porte donc sur les postes de DÉPENSE et sur le TOTAL, qui
+/// doit rester identique des deux côtés.</para>
 /// </summary>
 public class CostCategoryParityTests
 {
@@ -79,11 +86,21 @@ public class CostCategoryParityTests
             .Handle(new GetMonthlyCostReportQuery(2026, 9), CancellationToken.None);
 
         // Carburant 100 + 60 ; entretiens 120 + 50 ; réparations 100 (l'annulée exclue)
-        // + facture 300 ; autres 600 − 250 (remboursement) + 20 − 30 (avoir).
-        (fuel, maintenance, repair, other).Should().Be((160m, 170m, 400m, 340m));
-        (total.Fuel, total.Maintenance, total.Repair, total.Other).Should().Be((fuel, maintenance, repair, other));
-        (monthly.TotalFuelCostDzd, monthly.TotalMaintenanceCostDzd, monthly.TotalRepairCostDzd, monthly.TotalOtherCostDzd)
-            .Should().Be((fuel, maintenance, repair, other));
+        // + facture 300 ; autres 600 + 20, BRUTS ; crédits 250 (remboursement) + 30 (avoir).
+        // Tableau de bord GPS : quatre postes, le crédit de 280 déduit des Réparations.
+        (fuel, maintenance, repair, other).Should().Be((160m, 170m, 120m, 620m));
+        (fuel + maintenance + repair + other).Should().Be(1_070m);
+
+        // Agrégateur (rapports) : postes BRUTS + un seau de crédits, même total.
+        (total.Fuel, total.Maintenance, total.Repair, total.Other, total.Credit)
+            .Should().Be((160m, 170m, 400m, 620m, -280m));
+        total.Total.Should().Be(1_070m);
+        total.RepairNetOfCredit.Should().Be(repair, "c'est la valeur que montre le tableau de bord");
+
+        // « Coûts mensuels par véhicule » : même présentation que les rapports.
+        (monthly.TotalFuelCostDzd, monthly.TotalMaintenanceCostDzd, monthly.TotalRepairCostDzd,
+                monthly.TotalOtherCostDzd, monthly.TotalCreditAmountDzd)
+            .Should().Be((total.Fuel, total.Maintenance, total.Repair, total.Other, total.Credit));
         monthly.TotalCostDzd.Should().Be(1_070m).And.Be(total.Total);
     }
 }

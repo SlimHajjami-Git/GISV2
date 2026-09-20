@@ -20,7 +20,7 @@
 -- ORDRE DE DÉPLOIEMENT — le code livré dans le même changement MAPPE ces trois
 -- colonnes (VehicleCostConfiguration) : un pod API démarré sans elles fait
 -- échouer en 42703 toute requête qui charge une dépense de vehicle_costs.
--- CE SQL SE JOUE AVANT LE NOUVEAU POD API, sur DZ puis TN.
+-- CE SQL SE JOUE AVANT LE NOUVEAU POD API, sur TN.
 -- RENUMÉROTÉE le 18/09/2026 : écrite en 047 le 13/09, jamais poussée ; Slim a publié
 -- 047_gps_positions_battery_raw.sql entre-temps. Aucun serveur ne l'a jouée sous l'ancien nom.
 

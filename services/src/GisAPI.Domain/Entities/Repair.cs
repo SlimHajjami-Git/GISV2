@@ -56,6 +56,16 @@ public class Repair
     [Column("repair_type")]
     public string? RepairType { get; set; }
 
+    /// <summary>
+    /// Sinistre à l'origine de la réparation (migration 049, nullable). La phase 5
+    /// d'un dossier écrit ICI plutôt qu'une dépense : le client cherche la
+    /// réparation d'un accident dans l'écran Réparations, avec les autres. Le lien
+    /// sert à retrouver la ligne pour la mettre à jour au lieu d'en empiler une
+    /// nouvelle à chaque enregistrement de la phase.
+    /// </summary>
+    [Column("accident_event_id")]
+    public int? AccidentEventId { get; set; }
+
     [MaxLength(100)]
     [Column("invoice_number")]
     public string? InvoiceNumber { get; set; }

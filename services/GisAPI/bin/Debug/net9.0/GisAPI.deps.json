@@ -15,6 +15,7 @@
           "GisAPI.Domain": "1.0.0",
           "GisAPI.Infrastructure": "1.0.0",
           "GisAPI.Shared": "1.0.0",
+          "MaxMind.GeoIP2": "5.2.0",
           "Microsoft.AspNetCore.Authentication.JwtBearer": "9.0.0",
           "Microsoft.AspNetCore.OpenApi": "9.0.2",
           "Microsoft.AspNetCore.SignalR.Common": "9.0.0",
@@ -188,6 +189,26 @@
           "lib/netstandard1.6/Irony.dll": {
             "assemblyVersion": "1.0.11.0",
             "fileVersion": "1.0.11.0"
+          }
+        }
+      },
+      "MaxMind.Db/4.1.0": {
+        "runtime": {
+          "lib/net8.0/MaxMind.Db.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "4.0.0.0"
+          }
+        }
+      },
+      "MaxMind.GeoIP2/5.2.0": {
+        "dependencies": {
+          "MaxMind.Db": "4.1.0",
+          "Microsoft.Extensions.Options": "9.0.1"
+        },
+        "runtime": {
+          "lib/net8.0/MaxMind.GeoIP2.dll": {
+            "assemblyVersion": "4.0.0.0",
+            "fileVersion": "4.0.0.0"
           }
         }
       },
@@ -2069,6 +2090,20 @@
       "sha512": "sha512-/2MCkqdhEjPiSTZKYXg6u9AO9o3m68biqcFHAnM28WdnrcZii2vYbmKPzT5ejByyV72FUlygOtHBMt8SLnUyNw==",
       "path": "irony.netcore/1.0.11",
       "hashPath": "irony.netcore.1.0.11.nupkg.sha512"
+    },
+    "MaxMind.Db/4.1.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-lEjCFX0TUQCRmFS8xrXIQSi+4omJ1Fwy0gAHlbnjg8cgSBa0cllP5zOEftQ23EP247EbnF7mNCQ3JsG/bMkHAA==",
+      "path": "maxmind.db/4.1.0",
+      "hashPath": "maxmind.db.4.1.0.nupkg.sha512"
+    },
+    "MaxMind.GeoIP2/5.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-E8i6yQPlAznLTfS8w208uY3oqCg6i7sQ9cxKmlDdhFMXVLfm4sKphOTMsIWdAHJCV7RxW2a3DlqxAPkQrqmqlA==",
+      "path": "maxmind.geoip2/5.2.0",
+      "hashPath": "maxmind.geoip2.5.2.0.nupkg.sha512"
     },
     "MediatR/12.2.0": {
       "type": "package",

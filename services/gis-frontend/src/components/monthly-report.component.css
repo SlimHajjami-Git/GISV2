@@ -470,6 +470,19 @@
   transition: width 0.3s;
 }
 
+/* Ligne d'avoir ou de remboursement de la répartition par catégorie : un crédit se
+   reconnaît au premier coup d'œil, et sa case « % » porte un tiret plutôt qu'une
+   barre — il n'a pas de part de dépense, il en est retranché. */
+.data-table .montant-credit {
+  color: #0d9488;
+  font-weight: 600;
+}
+
+.data-table .part-credit {
+  color: #64748b;
+  cursor: help;
+}
+
 .progress-bar span {
   position: absolute;
   left: 50%;

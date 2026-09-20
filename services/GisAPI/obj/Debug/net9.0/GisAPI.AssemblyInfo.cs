@@ -13,10 +13,11 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e1ecf89fb739bfea8e52c2a0c73d3caf0939f7c8")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+216f3fd4d3fe981601195f38b0ab6143fc070144")]
 [assembly: System.Reflection.AssemblyProductAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyTitleAttribute("GisAPI")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("GisAPI.Tests")]
 
 // Généré par la classe MSBuild WriteCodeFragment.
 

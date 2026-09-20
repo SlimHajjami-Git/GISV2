@@ -98,35 +98,65 @@ public class CostsController : ControllerBase
             .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId, ct);
     }
 
-    /// <summary>Default monthly AI invoice-scan quota when the société has no
-    /// explicit limit. The sys admin can raise/lower it per société from the
-    /// admin company page (0 = feature disabled).</summary>
+    // ════════════════════════════════════════════════════════════════════════════
+    // SCAN DE FACTURE IA — deux actions qui ne relèvent PAS du module Dépenses
+    //
+    // Décision de Karim du 19/09/2026 : le scan est une fonction d'IA commandée par
+    // le QUOTA DE LA SOCIÉTÉ (societes.InvoiceScanMonthlyLimit, 0 = désactivé), pas
+    // par l'abonnement aux Dépenses. Il est ouvert à tout utilisateur AUTHENTIFIÉ de
+    // la société : c'est l'écran qui l'appelle (Carburant, Entretien effectué,
+    // Nouvelle réparation, Échéances, Dépenses) qui reste gardé par SON propre droit,
+    // et c'est lui qui décide de ce qu'on fait du résultat. Le scan n'enregistre rien.
+    //
+    // Elles restent rangées dans ce contrôleur, donc sous « /api/costs/… », et c'est
+    // PermissionMiddleware qui les sort de la règle du préfixe par deux clés explicites
+    // (voir PermissionNonRequise). Déplacer les chemins aurait aussi fallu déplacer le
+    // plafond de débit, qui reconnaît le scan à son chemin — RateLimitPolicies.IsInvoiceScan,
+    // 12 requêtes par minute et par IP devant un appel payant au modèle vision.
+    // ════════════════════════════════════════════════════════════════════════════
+
+    /// <summary>Quota mensuel de scans IA par défaut, quand la société n'a pas de limite
+    /// propre. L'administrateur système le relève ou l'abaisse société par société depuis
+    /// la fiche d'administration (0 = fonction désactivée).</summary>
     private const int DefaultScanMonthlyLimit = 20;
 
     /// <summary>
     /// Quota du MOIS CIVIL en cours : le compteur repart à zéro le 1er de chaque mois
     /// (minuit UTC). <c>ResetsAt</c> est cette prochaine remise à zéro — l'écran l'affiche,
     /// sans quoi le client croyait ses scans cumulés sans fin (recette du 11/09/2026).
+    ///
+    /// <para>Tout est compté PAR SOCIÉTÉ : la limite est lue sur la société de l'appelant et
+    /// les scans consommés ne comptent que ceux journalisés sous cette même société.</para>
     /// </summary>
     private async Task<(int Limit, int Used, DateTime ResetsAt)> GetScanQuotaAsync(int companyId, CancellationToken ct)
     {
-        var limit = await _context.Societes
-            .AsNoTracking()
-            .Where(s => s.Id == companyId)
-            .Select(s => s.InvoiceScanMonthlyLimit)
-            .FirstOrDefaultAsync(ct) ?? DefaultScanMonthlyLimit;
-
         var now = DateTime.UtcNow;
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var resetsAt = monthStart.AddMonths(1);
+
+        // Société introuvable (jeton sans revendication companyId, société supprimée) :
+        // quota NUL, jamais le défaut de la plateforme. Depuis que le scan ne dépend plus
+        // du module Dépenses, ce quota porte SEUL le droit d'user de l'IA : lire la limite
+        // par un FirstOrDefault sur la colonne rendait « société absente » indiscernable de
+        // « société sans limite propre » et offrait 20 scans à un jeton hors société, dont
+        // les journaux seraient partis sous CompanyId 0.
+        var societe = await _context.Societes
+            .AsNoTracking()
+            .Where(s => s.Id == companyId)
+            .Select(s => new { s.InvoiceScanMonthlyLimit })
+            .FirstOrDefaultAsync(ct);
+        if (societe is null)
+            return (0, 0, resetsAt);
+
         var used = await _context.InvoiceScanLogs
             .AsNoTracking()
             .CountAsync(l => l.CompanyId == companyId && l.CreatedAt >= monthStart, ct);
 
-        return (limit, used, monthStart.AddMonths(1));
+        return (societe.InvoiceScanMonthlyLimit ?? DefaultScanMonthlyLimit, used, resetsAt);
     }
 
-    /// <summary>Current company's monthly scan quota — drives the counter shown
-    /// next to the "Scanner une facture" button.</summary>
+    /// <summary>Quota mensuel de la société de l'appelant — alimente le compteur affiché
+    /// à côté du bouton « Scanner une facture », sur les cinq écrans qui le portent.</summary>
     [HttpGet("scan-quota")]
     public async Task<ActionResult> GetScanQuota(CancellationToken ct)
     {
@@ -135,10 +165,10 @@ public class CostsController : ControllerBase
     }
 
     /// <summary>
-    /// Scan an invoice (image or PDF) with AI and return the EXTRACTED fields for
-    /// the user to review — nothing is saved to costs here. The invoice file is
-    /// stored and its URL returned so the confirmed cost can reference it
-    /// (receiptUrl). The user saves via the normal POST /api/costs afterwards.
+    /// Analyse une facture (image ou PDF) par l'IA et rend les champs EXTRAITS pour
+    /// relecture — rien n'est enregistré en dépense ici. Le fichier est stocké et son
+    /// URL renvoyée pour que l'écran appelant puisse l'attacher en justificatif
+    /// (receiptUrl) à ce qu'il enregistrera, lui, sous son propre droit.
     /// </summary>
     [HttpPost("scan-invoice")]
     [RequestSizeLimit(12_000_000)]
@@ -152,8 +182,9 @@ public class CostsController : ControllerBase
         if (!allowed.Contains(ext))
             return BadRequest(new { message = "Format non supporté. Envoyez une image (JPG/PNG) ou un PDF." });
 
-        // Monthly quota per société — checked BEFORE storing anything or paying
-        // for a Groq call. Only successful scans count against the quota.
+        // Quota mensuel de la société : c'est LE contrôle d'accès de la fonction, et il
+        // passe AVANT tout stockage de fichier comme avant tout appel payant à Groq.
+        // Seuls les scans réussis sont décomptés.
         var companyId = GetCompanyId();
         var (limit, used, resetsAt) = await GetScanQuotaAsync(companyId, ct);
         if (limit <= 0)

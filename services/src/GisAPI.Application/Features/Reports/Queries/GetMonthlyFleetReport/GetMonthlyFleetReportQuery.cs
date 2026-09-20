@@ -106,8 +106,13 @@ public class MonthlyVehicleRowDto
 
     public decimal FuelCost { get; set; }
     public decimal MaintenanceCost { get; set; }
+    /// <summary>BRUT : les avoirs et remboursements ne s'y déduisent pas (18/09/2026).</summary>
     public decimal RepairCost { get; set; }
+    /// <summary>BRUT également.</summary>
     public decimal OtherCost { get; set; }
+    /// <summary>Avoirs et remboursements du véhicule, en NÉGATIF.</summary>
+    public decimal CreditAmount { get; set; }
+    /// <summary>NET : postes bruts + <see cref="CreditAmount"/>.</summary>
     public decimal TotalCost { get; set; }
     /// <summary>null sans kilométrage.</summary>
     public decimal? CostPerKm { get; set; }
@@ -135,6 +140,8 @@ public class MonthlyFleetTotalsDto
     public decimal MaintenanceCost { get; set; }
     public decimal RepairCost { get; set; }
     public decimal OtherCost { get; set; }
+    /// <summary>Avoirs et remboursements du parc, en NÉGATIF (18/09/2026).</summary>
+    public decimal CreditAmount { get; set; }
     public decimal TotalCost { get; set; }
     /// <summary>Coût des véhicules MESURÉS rapporté à leur kilométrage (celui d'un
     /// véhicule sans kilométrage n'y entre pas) ; null sans kilométrage.</summary>
@@ -460,6 +467,9 @@ public class CostAnalysisDto
     public decimal MaintenanceCost { get; set; }
     public decimal InsuranceCost { get; set; }
     public decimal OtherCosts { get; set; }
+    /// <summary>Avoirs et remboursements, en NÉGATIF (18/09/2026) : cinquième terme
+    /// dont la somme avec les quatre postes bruts redonne le total.</summary>
+    public decimal CreditAmount { get; set; }
     public decimal CostPerKm { get; set; }
     public decimal CostPerVehicle { get; set; }
     public List<CostBreakdownDto> ByCategory { get; set; } = new();

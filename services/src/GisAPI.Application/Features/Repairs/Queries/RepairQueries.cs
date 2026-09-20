@@ -13,10 +13,16 @@ public record GetRepairsQuery(
 
 public record GetRepairByIdQuery(int Id) : IRequest<RepairDto?>;
 
+// Status en DERNIER et optionnel : les appelants existants passent encore
+// (vehicleId, fromDate, toDate) par position et continuent de compiler.
+// Sans lui, l'écran Réparations filtré sur un statut ne pouvait pas demander ses
+// compteurs au serveur — il les calculait sur les lignes chargées, donc faux
+// au-delà d'une page.
 public record GetRepairStatsQuery(
     int? VehicleId = null,
     DateTime? FromDate = null,
-    DateTime? ToDate = null
+    DateTime? ToDate = null,
+    string? Status = null
 ) : IRequest<RepairStatsDto>;
 
 public record RepairsListResult(

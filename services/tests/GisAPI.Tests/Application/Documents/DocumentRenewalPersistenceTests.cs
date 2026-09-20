@@ -248,4 +248,69 @@ public class DocumentRenewalPersistenceTests
 
         historique.Single(h => h.Id == 238).Provider.Should().Be(fournisseurAttendu);
     }
+
+    /// <summary>
+    /// Renouvellement SANS montant (19/09/2026) : aucune dépense n'est créée —
+    /// règle du 26/08/2026, une ligne à zéro fausserait les totaux — mais plus
+    /// personne ne portait alors le lien de la quittance scannée. Le fichier
+    /// n'était référencé nulle part et le balayage des factures orphelines
+    /// l'effaçait le lendemain, sans message. Il est désormais rangé dans les
+    /// documents du véhicule.
+    /// </summary>
+    [Fact]
+    public async Task Sans_montant_la_quittance_est_rangee_dans_les_documents_du_vehicule()
+    {
+        using var ctx = await AvecVehiculeAsync();
+
+        var costId = await Handler(ctx).Handle(Renouvellement(0m), CancellationToken.None);
+
+        costId.Should().Be(0, "aucune dépense n'est créée sans montant");
+        ctx.ChangeTracker.Clear();
+        ctx.VehicleCosts.AsNoTracking().Should().BeEmpty();
+
+        var doc = ctx.VehicleDocuments.AsNoTracking().Single();
+        doc.VehicleId.Should().Be(84);
+        doc.Type.Should().Be("insurance");
+        doc.FileUrl.Should().Be("/uploads/qa-police.pdf");
+        doc.Name.Should().Be("Renouvellement Assurance - QA-Assureur");
+        doc.ExpiryDate.Should().Be(new DateTime(2027, 9, 15, 0, 0, 0, DateTimeKind.Utc));
+    }
+
+    /// Avec un montant, la quittance reste sur la dépense : pas de doublon.
+    [Fact]
+    public async Task Avec_un_montant_la_quittance_reste_sur_la_depense_et_ne_double_pas()
+    {
+        using var ctx = await AvecVehiculeAsync();
+
+        var costId = await Handler(ctx).Handle(Renouvellement(321.50m), CancellationToken.None);
+
+        Relue(ctx, costId).ReceiptUrl.Should().Be("/uploads/qa-police.pdf");
+        ctx.VehicleDocuments.AsNoTracking().Should().BeEmpty();
+    }
+
+    /// Deux renouvellements sans montant sur la même quittance : une seule ligne.
+    [Fact]
+    public async Task Deux_renouvellements_sans_montant_ne_rangent_la_quittance_qu_une_fois()
+    {
+        using var ctx = await AvecVehiculeAsync();
+
+        await Handler(ctx).Handle(Renouvellement(0m), CancellationToken.None);
+        ctx.ChangeTracker.Clear();
+        await Handler(ctx).Handle(Renouvellement(0m), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        ctx.VehicleDocuments.AsNoTracking().Should().HaveCount(1);
+    }
+
+    /// Sans montant ET sans quittance : rien n'est rangé.
+    [Fact]
+    public async Task Sans_montant_ni_quittance_aucun_document_n_est_cree()
+    {
+        using var ctx = await AvecVehiculeAsync();
+
+        await Handler(ctx).Handle(Renouvellement(0m, documentUrl: null), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        ctx.VehicleDocuments.AsNoTracking().Should().BeEmpty();
+    }
 }

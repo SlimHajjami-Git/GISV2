@@ -3,6 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
+import {
+  ScanFactureComponent, ExtractionFacture,
+  ResultatScanFacture, EchecScanFacture
+} from './shared/scan-facture.component';
 import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto } from '../services/api.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 declare const XLSX: any;
@@ -33,10 +37,62 @@ interface ColumnMapping {
   odometerKm: number | null;
 }
 
+/**
+ * Ce qu'un ticket scanné a donné — bandeau de revue au-dessus du formulaire.
+ * L'utilisateur doit voir ce qui a été prérempli, avec quelle confiance, et ce
+ * que l'IA n'a pas su lire ; rien n'est enregistré tant qu'il n'a pas validé.
+ */
+interface RevueTicketScanne {
+  actif: boolean;
+  /** Analyse impossible (panne IA, document illisible) : seul le document est rattaché. */
+  echec: boolean;
+  /** high | medium | low, tel que rendu par l'extraction. */
+  confiance: string;
+  /** Champs réellement préremplis, listés à l'utilisateur. */
+  champs: string[];
+  /** Matricule lu sans rapprochement sûr (absent, ambigu, trop court) : le champ reste vide et on l'affiche. */
+  plaqueNonReconnue: string;
+  /** Matricule lu quand le rapprochement n'est PAS une égalité : montré tel quel… */
+  plaqueRapprochee: string;
+  /** …à côté du matricule du parc retenu, pour que l'utilisateur tranche. */
+  plaqueRetenue: string;
+  /** Date absente du ticket : la date du jour reste en place, il faut le dire. */
+  dateNonLue: boolean;
+  typeNonLu: boolean;
+  /** Catégorie rendue autre que « carburant » : on avertit sans bloquer. */
+  categorieInattendue: string;
+  avoir: boolean;
+  receiptUrl: string;
+  stationName: string;
+  invoiceNumber: string;
+}
+
+/** Ce qu'a donné le rapprochement d'un matricule lu avec le parc. */
+interface RapprochementMatricule {
+  vehicule: VehicleWithPositionDto | null;
+  /** true = égalité sur les lettres et les chiffres ; false = rapprochement approché, à annoncer. */
+  exact: boolean;
+}
+
+/**
+ * Longueur minimale (lettres et chiffres seuls) pour qu'un rapprochement APPROCHÉ
+ * de matricule ait un sens. Vérifié sur les 12 matricules réels de la société 7 :
+ * en dessous, « 1 » désigne GA-214-RK, « 12 » GK-128-ZF et « 694 » GL-694-PN —
+ * c'est-à-dire n'importe quoi.
+ */
+const LONGUEUR_MIN_RAPPROCHEMENT = 5;
+
+/**
+ * Écart de longueur toléré entre le matricule lu et celui du parc. Au-delà de
+ * deux caractères, l'inclusion ne prouve plus rien : un fragment est trop maigre,
+ * un pavé de texte contient tout et son contraire.
+ */
+const ECART_MAX_RAPPROCHEMENT = 2;
+
 @Component({
   selector: 'app-carburant',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, ...USER_PREF_PIPES],
   template: `
     <app-layout>
       <div class="carburant-page">
@@ -131,10 +187,57 @@ interface ColumnMapping {
           <!-- TAB: Manual Entry -->
           <div class="tab-panel" *ngIf="activeTab === 'manual'">
             <div class="panel-header">
-              <h2>Nouvelle Entrée Carburant</h2>
-              <p>Saisissez les informations de la facture carburant</p>
+              <div class="panel-title">
+                <h2>Nouvelle Entrée Carburant</h2>
+                <p>Saisissez les informations de la facture carburant</p>
+              </div>
+              <!-- Bouton + compteur de quota + envoi : brique partagée avec Dépenses,
+                   Entretien, Réparations et Échéances (shared/scan-facture.component.ts).
+                   « Ticket » ici : c'est le reçu de la station, pas une facture. -->
+              <app-scan-facture libelle="Scanner un ticket"
+                                (scanne)="onTicketScanne($event)"
+                                (echec)="onEchecScan($event)"></app-scan-facture>
             </div>
-            
+
+            <!-- Ce que le ticket a donné : sans ce rappel, l'utilisateur ne sait pas
+                 quels champs viennent de l'IA ni ce qu'elle n'a pas su lire. -->
+            <div class="scan-banner" *ngIf="scanTicket.actif">
+              <div class="scan-banner-head">
+                <span class="scan-banner-title">{{ scanTicket.echec ? 'Ticket non analysé' : 'Ticket scanné' }}</span>
+                <span class="scan-conf scan-conf-{{ scanTicket.confiance }}" *ngIf="scanTicket.confiance">
+                  Confiance {{ libelleConfiance() }}
+                </span>
+                <a class="scan-doc" *ngIf="scanTicket.receiptUrl" [href]="scanTicket.receiptUrl" target="_blank">Voir le document</a>
+                <button class="scan-banner-close" (click)="detacherTicket()" title="Détacher le ticket de cette saisie">✕</button>
+              </div>
+              <p class="scan-banner-line" *ngIf="scanTicket.champs.length > 0">
+                Préremplis : {{ scanTicket.champs.join(', ') }} — relisez avant d'enregistrer.
+              </p>
+              <p class="scan-banner-line" *ngIf="scanTicket.echec">
+                Saisissez les informations à la main : le document reste rattaché à l'entrée.
+              </p>
+              <p class="scan-alerte" *ngIf="scanTicket.plaqueNonReconnue">
+                ⚠ Matricule lu « {{ scanTicket.plaqueNonReconnue }} » — introuvable dans le parc ou trop incertain, choisissez le véhicule.
+              </p>
+              <!-- Rapprochement approché : le champ est rempli, mais jamais en silence. -->
+              <p class="scan-alerte" *ngIf="scanTicket.plaqueRapprochee">
+                ⚠ Matricule lu « {{ scanTicket.plaqueRapprochee }} » — rapproché de « {{ scanTicket.plaqueRetenue }} », vérifiez que c'est le bon véhicule.
+              </p>
+              <p class="scan-alerte" *ngIf="scanTicket.typeNonLu && !scanTicket.echec">
+                ⚠ Type de carburant absent du ticket — choisissez-le.
+              </p>
+              <!-- Sans cette ligne, la date du jour passerait pour la date du plein. -->
+              <p class="scan-alerte" *ngIf="scanTicket.dateNonLue && !scanTicket.echec">
+                ⚠ Date absente du ticket — la date en place n'a pas été lue sur le document, vérifiez-la.
+              </p>
+              <p class="scan-alerte" *ngIf="scanTicket.categorieInattendue">
+                ⚠ Document analysé comme « {{ scanTicket.categorieInattendue }} » — vérifiez qu'il s'agit bien d'un plein.
+              </p>
+              <p class="scan-alerte" *ngIf="scanTicket.avoir">
+                ⚠ Avoir détecté : cet écran enregistre des pleins, pas des remboursements.
+              </p>
+            </div>
+
             <div class="form-card">
               <div class="form-grid">
                 <div class="form-group">
@@ -513,6 +616,18 @@ interface ColumnMapping {
     .panel-header p { margin: 4px 0 0; font-size: 12px; color: #64748b; }
     .btn-link { background: none; border: none; color: #64748b; font-size: 12px; cursor: pointer; }
     .btn-link:hover { color: #ef4444; }
+    /* Bandeau de revue du ticket scanné — violet de la brique de scan. */
+    .scan-banner { margin: 14px 16px 0; padding: 10px 12px; background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 6px; }
+    .scan-banner-head { display: flex; align-items: center; gap: 8px; }
+    .scan-banner-title { font-size: 12px; font-weight: 600; color: #5b21b6; }
+    .scan-conf { padding: 1px 7px; border-radius: 999px; font-size: 10.5px; font-weight: 700; }
+    .scan-conf-high { background: #dcfce7; color: #166534; }
+    .scan-conf-medium { background: #fef3c7; color: #92400e; }
+    .scan-conf-low { background: #fee2e2; color: #991b1b; }
+    .scan-doc { margin-left: auto; font-size: 11px; color: #6d28d9; }
+    .scan-banner-close { background: none; border: none; color: #94a3b8; font-size: 12px; cursor: pointer; padding: 0 2px; }
+    .scan-banner-line { margin: 6px 0 0; font-size: 11.5px; color: #475569; }
+    .scan-alerte { margin: 4px 0 0; font-size: 11.5px; color: #92400e; }
     .form-card { padding: 16px; }
     .form-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
     .form-group { display: flex; flex-direction: column; gap: 6px; }
@@ -602,8 +717,18 @@ export class CarburantComponent implements OnInit, OnDestroy {
   // totalAmountTouched stays false until the operator types in the total
   // field directly; before then any volume/price change keeps the total
   // auto-synced as volume × pricePerLiter.
-  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0], odometerKm: null as number | null };
+  // volume / prix / total acceptent null depuis le scan : un ticket qui n'imprime
+  // pas le volume doit laisser le champ VIDE (un « 0 » se lirait comme une valeur
+  // lue sur le document). La saisie à la main part toujours de 0, comme avant.
+  // Date posée d'office à l'ouverture et après chaque remise à zéro. Tant que le
+  // champ vaut encore cette valeur, personne ne l'a choisie : c'est ce qui permet
+  // à saisieCommencee() de distinguer une date saisie d'une date par défaut.
+  private dateParDefaut = new Date().toISOString().split('T')[0];
+  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0 as number | null, pricePerLiter: 0 as number | null, totalAmount: 0 as number | null, invoiceDate: this.dateParDefaut, odometerKm: null as number | null };
   totalAmountTouched = false;
+
+  /** Ticket scanné en cours de revue (voir onTicketScanne). */
+  scanTicket: RevueTicketScanne = this.revueVide();
   
   // Upload
   isDragOver = false;
@@ -739,20 +864,225 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.totalAmountTouched = t > 0;
   }
 
+  // ── Ticket scanné (IA) ─────────────────────────────────────────────────────
+  private revueVide(): RevueTicketScanne {
+    return {
+      actif: false, echec: false, confiance: '', champs: [], plaqueNonReconnue: '',
+      plaqueRapprochee: '', plaqueRetenue: '',
+      dateNonLue: false, typeNonLu: false, categorieInattendue: '', avoir: false,
+      receiptUrl: '', stationName: '', invoiceNumber: ''
+    };
+  }
+
+  /**
+   * Ticket scanné : <app-scan-facture> a déjà tout fait (envoi, quota, messages
+   * d'erreur) et rend l'extraction brute. Cet écran ne décide que du remplissage
+   * de SES champs. Rien n'est enregistré : l'utilisateur relit puis valide.
+   */
+  onTicketScanne(res: ResultatScanFacture): void {
+    // Le scan PROPOSE, l'utilisateur DISPOSE : une saisie déjà commencée n'est
+    // jamais remplacée en silence.
+    if (this.saisieCommencee()
+        && !confirm('Une saisie est déjà commencée. La remplacer par les valeurs du ticket ?')) {
+      return;
+    }
+    const x = res.extraction;
+    const rapprochement = this.trouverVehiculeParMatricule(x.vehiclePlate);
+    const vehicule = rapprochement.vehicule;
+    const plaqueLue = this.tronquer(x.vehiclePlate || '', 20);
+    const champs: string[] = [];
+
+    this.manualEntry.vehiclePlate = vehicule ? (vehicule.plate || vehicule.name) : '';
+    if (vehicule) champs.push('matricule');
+    if (x.date) { this.manualEntry.invoiceDate = x.date; champs.push('date'); }
+
+    // null = non imprimé sur le ticket : le champ reste VIDE et l'écran ne
+    // recalcule rien (le serveur déduit déjà la valeur manquante quand les deux
+    // autres sont lisibles).
+    this.manualEntry.volume = x.liters;
+    if (x.liters !== null) champs.push('volume');
+    this.manualEntry.pricePerLiter = x.pricePerLiter;
+    if (x.pricePerLiter !== null) champs.push('prix au litre');
+
+    const typeId = this.deduireTypeCarburant(x);
+    if (typeId !== null) { this.manualEntry.fuelTypeId = typeId; champs.push('type'); }
+
+    // Le total du ticket fait foi : timbre fiscal et remise compris, il ne vaut
+    // pas toujours volume × prix. On le pose comme un total saisi, ce que le
+    // calcul automatique de l'écran respecte déjà (totalAmountTouched) ; sans
+    // total lisible, on laisse ce même calcul faire son travail.
+    if (x.total !== null && x.total > 0) {
+      this.manualEntry.totalAmount = x.total;
+      this.totalAmountTouched = true;
+      champs.push('montant');
+    } else {
+      this.totalAmountTouched = false;
+      this.onVolumeOrPriceChange();
+    }
+
+    const categorie = x.category || '';
+    this.scanTicket = {
+      actif: true,
+      echec: false,
+      confiance: x.confidence || '',
+      champs,
+      plaqueNonReconnue: vehicule ? '' : plaqueLue,
+      // Rapprochement qui n'est pas une égalité : on montre TOUJOURS le lu et le retenu.
+      plaqueRapprochee: vehicule && !rapprochement.exact ? plaqueLue : '',
+      plaqueRetenue: vehicule && !rapprochement.exact ? (vehicule.plate || vehicule.name || '') : '',
+      dateNonLue: !x.date,
+      typeNonLu: typeId === null,
+      // L'avoir a son propre avertissement : inutile de le répéter en catégorie.
+      categorieInattendue: categorie && categorie !== 'fuel' && categorie !== 'credit_note'
+        ? this.libelleCategorieScan(categorie) : '',
+      avoir: x.isCreditNote,
+      receiptUrl: res.receiptUrl,
+      stationName: this.tronquer(x.supplierName || '', 100),
+      invoiceNumber: this.tronquer(x.invoiceNumber || '', 50)
+    };
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Scan échoué : le message a déjà été montré par la brique. Le fichier est
+   * souvent stocké malgré tout (panne IA) — le formulaire reste utilisable tel
+   * quel et le document reste rattaché pour une saisie à la main.
+   */
+  onEchecScan(e: EchecScanFacture): void {
+    if (!e.receiptUrl) return;   // rien à rattacher, il n'y a rien à dire de plus
+    this.scanTicket = { ...this.revueVide(), actif: true, echec: true, confiance: 'low', receiptUrl: e.receiptUrl };
+    this.cdr.detectChanges();
+  }
+
+  /** Le ticket ne sera pas rattaché à l'entrée : le bandeau disparaît avec lui. */
+  detacherTicket(): void {
+    this.scanTicket = this.revueVide();
+  }
+
+  libelleConfiance(): string {
+    const c = this.scanTicket.confiance;
+    return ({ high: 'élevée', medium: 'moyenne', low: 'faible' } as Record<string, string>)[c] || c;
+  }
+
+  /**
+   * Une saisie est en cours dès qu'une valeur vient de l'utilisateur — TOUS les
+   * champs qu'un ticket écrase comptent, pas seulement les montants : le type de
+   * carburant et la date étaient remplacés sans question alors qu'ils se
+   * choisissent aussi à la main.
+   *
+   * Deux champs ne comptent pas, parce qu'ils ne viennent pas d'une frappe :
+   *  - le prix au litre, posé automatiquement par le choix du type (prix de référence) ;
+   *  - la date tant qu'elle vaut encore celle posée à l'ouverture (dateParDefaut) —
+   *    sinon le bandeau de confirmation s'ouvrirait à chaque scan sur un écran neuf.
+   */
+  private saisieCommencee(): boolean {
+    const m = this.manualEntry;
+    return !!m.vehiclePlate
+        || m.fuelTypeId !== null
+        || (m.volume ?? 0) > 0
+        || (m.totalAmount ?? 0) > 0
+        || !!m.odometerKm
+        || m.invoiceDate !== this.dateParDefaut;
+  }
+
+  /**
+   * Véhicule reconnu à partir du matricule lu sur le ticket. Comparaison sur les
+   * lettres et les chiffres seuls (« GA-214-RK » face à « ga 214 rk ») :
+   *
+   *  1. ÉGALITÉ — c'est sûr, le champ est rempli sans autre commentaire ;
+   *  2. à défaut, RAPPROCHEMENT par inclusion, accepté seulement s'il est
+   *     NON AMBIGU (un SEUL véhicule du parc y répond) et assez long pour
+   *     vouloir dire quelque chose ; il est alors annoncé à l'utilisateur
+   *     (plaqueRapprochee / plaqueRetenue dans le bandeau) ;
+   *  3. sinon — rien. Champ laissé vide et matricule lu affiché.
+   *
+   * L'inclusion nue d'avant remplissait le champ en silence à partir d'un simple
+   * fragment : sur les 12 matricules réels de la société 7, « G » rendait
+   * GA-214-RK, « 12 » GK-128-ZF et « 694 » GL-694-PN. Un champ vide et un
+   * avertissement valent mieux qu'un plein imputé au mauvais véhicule.
+   */
+  private trouverVehiculeParMatricule(matricule: string | null): RapprochementMatricule {
+    const aucun: RapprochementMatricule = { vehicule: null, exact: false };
+    if (!matricule) return aucun;
+    const cle = (s?: string) => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cible = cle(matricule);
+    if (!cible) return aucun;
+
+    const egal = this.vehicles.find(v => !!cle(v.plate) && cle(v.plate) === cible);
+    if (egal) return { vehicule: egal, exact: true };
+
+    const candidats = this.vehicles.filter(v => {
+      const plaque = cle(v.plate);
+      if (!plaque) return false;                                            // sans matricule, rien à comparer
+      if (Math.min(plaque.length, cible.length) < LONGUEUR_MIN_RAPPROCHEMENT) return false;
+      if (Math.abs(plaque.length - cible.length) > ECART_MAX_RAPPROCHEMENT) return false;
+      return plaque.includes(cible) || cible.includes(plaque);
+    });
+    // Deux candidats = on ne sait pas : mieux vaut un champ vide qu'un mauvais véhicule.
+    return candidats.length === 1 ? { vehicule: candidats[0], exact: false } : aucun;
+  }
+
+  /**
+   * Type de carburant déduit du ticket, UNIQUEMENT s'il y est écrit. Deviner
+   * « Diesel » parce que le parc en est plein fausserait la consommation d'un
+   * véhicule essence : sans mention, l'utilisateur choisit.
+   */
+  private deduireTypeCarburant(x: ExtractionFacture): number | null {
+    // Description et lignes seulement : le nom du fournisseur est écarté, une
+    // « Station Essence du Nord » qui vend du gazole ferait dire n'importe quoi.
+    const texte = [x.description, ...x.items.map(i => i.label)]
+      .filter(t => !!t).join(' ').toLowerCase();
+    if (!texte) return null;
+    // Ordre important : « sans plomb » et « SP95 » avant « essence », sinon un
+    // ticket « Essence Sans Plomb 95 » retomberait sur Essence.
+    const regles: Array<{ motif: RegExp; codes: string[] }> = [
+      { motif: /sans[\s-]?plomb|\bsp\s?9[58]\b|\be10\b/, codes: ['sans_plomb', 'essence'] },
+      { motif: /gazole|gazoil|gas[\s-]?oil|diesel/, codes: ['diesel'] },
+      { motif: /\bgpl\b|\blpg\b/, codes: ['gpl'] },
+      { motif: /\bgnv\b|\bcng\b/, codes: ['gnv'] },
+      { motif: /essence|super/, codes: ['essence', 'sans_plomb'] }
+    ];
+    for (const regle of regles) {
+      if (!regle.motif.test(texte)) continue;
+      for (const code of regle.codes) {
+        const type = this.fuelTypes.find(t => (t.code || '').toLowerCase() === code);
+        if (type) return type.id;
+      }
+    }
+    return null;
+  }
+
+  /** Libellé FR d'une catégorie rendue par le scan (vocabulaire de l'écran Dépenses). */
+  private libelleCategorieScan(categorie: string): string {
+    return ({
+      maintenance: 'entretien', repair: 'réparation', insurance: 'assurance', tax: 'taxe',
+      toll: 'péage', parking: 'stationnement', fine: 'amende', other: 'divers'
+    } as Record<string, string>)[categorie] || categorie;
+  }
+
+  /** Coupe à la longueur de la colonne : au-delà, le serveur refuse l'enregistrement. */
+  private tronquer(valeur: string, max: number): string {
+    return valeur.length > max ? valeur.slice(0, max) : valeur;
+  }
+
   // Manual entry — accept either (volume + price) OR a free total.
   // Both modes still need a vehicle, a fuel type and a date.
   isManualEntryValid(): boolean {
     if (!this.manualEntry.vehiclePlate || this.manualEntry.fuelTypeId === null || !this.manualEntry.invoiceDate) {
       return false;
     }
-    const hasVolumeAndPrice = this.manualEntry.volume > 0 && this.manualEntry.pricePerLiter > 0;
-    const hasTotal = this.manualEntry.totalAmount > 0;
+    const hasVolumeAndPrice = (this.manualEntry.volume ?? 0) > 0 && (this.manualEntry.pricePerLiter ?? 0) > 0;
+    const hasTotal = (this.manualEntry.totalAmount ?? 0) > 0;
     return hasVolumeAndPrice || hasTotal;
   }
 
   resetManualEntry() {
-    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: new Date().toISOString().split('T')[0], odometerKm: null };
+    this.dateParDefaut = new Date().toISOString().split('T')[0];
+    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: this.dateParDefaut, odometerKm: null };
     this.totalAmountTouched = false;
+    // Le ticket scanné ne survit pas à une remise à zéro : sinon sa station et son
+    // justificatif partiraient avec une saisie qui n'a plus rien à voir avec lui.
+    this.scanTicket = this.revueVide();
   }
 
   saveManualEntry() {
@@ -763,19 +1093,27 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.isSaving = true;
     // Use the user-entered total when they typed one directly; otherwise
     // fall back to volume × price (already kept in sync by onVolumeOrPriceChange).
-    const total = this.totalAmountTouched && this.manualEntry.totalAmount > 0
-      ? this.manualEntry.totalAmount
-      : this.manualEntry.volume * this.manualEntry.pricePerLiter;
+    const total = this.totalAmountTouched && (this.manualEntry.totalAmount ?? 0) > 0
+      ? (this.manualEntry.totalAmount ?? 0)
+      : (this.manualEntry.volume ?? 0) * (this.manualEntry.pricePerLiter ?? 0);
+    const ticket = this.scanTicket;
     this.apiService.createFuelEntry({
       vehiclePlate: this.manualEntry.vehiclePlate,
       fuelTypeId: this.manualEntry.fuelTypeId!,
-      volume: this.manualEntry.volume,
-      pricePerLiter: this.manualEntry.pricePerLiter,
+      volume: this.manualEntry.volume ?? 0,
+      pricePerLiter: this.manualEntry.pricePerLiter ?? 0,
       totalAmount: total,
       invoiceDate: this.manualEntry.invoiceDate,
       odometerKm: this.manualEntry.odometerKm && this.manualEntry.odometerKm > 0
         ? this.manualEntry.odometerKm
-        : undefined
+        : undefined,
+      // Ce que le ticket apporte en plus des champs du formulaire : la station et
+      // le numéro de ticket ont déjà leur colonne côté serveur.
+      stationName: ticket.stationName || undefined,
+      invoiceNumber: ticket.invoiceNumber || undefined,
+      // fuel_entries n'a PAS de colonne justificatif : sans cette note, le fichier
+      // stocké par le serveur ne serait rattaché à rien et deviendrait orphelin.
+      notes: ticket.receiptUrl ? this.tronquer('Ticket scanné : ' + ticket.receiptUrl, 500) : undefined
     }).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => {
         this.isSaving = false;

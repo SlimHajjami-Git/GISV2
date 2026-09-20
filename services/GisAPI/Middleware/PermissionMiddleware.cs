@@ -9,6 +9,19 @@ public class PermissionMiddleware
 {
     private readonly RequestDelegate _next;
 
+    /// <summary>
+    /// Marque « aucune case de module exigée » dans <see cref="_modulePermissions"/> : le chemin
+    /// reste soumis à tous les contrôles de société (jeton d'un utilisateur supprimé refusé,
+    /// société courante chargée), mais aucun droit de module n'est demandé.
+    ///
+    /// <para>Une entrée EXPLICITE plutôt qu'une absence de clé : sans elle, c'est le préfixe
+    /// parent qui reprend la main (« /api/costs » impose CanCosts à tout ce qui est rangé
+    /// dessous). Elle n'est pas non plus rangée dans <c>_skipRoutes</c>, qui rendrait la main
+    /// AVANT le chargement de l'utilisateur — le jeton encore valide d'un compte supprimé
+    /// pourrait alors consommer le quota d'IA de la société.</para>
+    /// </summary>
+    internal const string PermissionNonRequise = "AucunePermissionDeModule";
+
     // Map API route prefixes to the required user permission field
     private static readonly Dictionary<string, string> _modulePermissions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -54,6 +67,19 @@ public class PermissionMiddleware
         // Journaux d'entretien de toute la flotte : seule source du rapport « Maintenance »
         // (reports.component), que le front ouvre sur canReportMaintenance et non canMaintenance.
         { "/api/vehicle-maintenance/logs", "CanReportMaintenance" },
+        // Scan de facture IA (décision de Karim du 19/09/2026) : ces deux actions ne relèvent
+        // PAS du module Dépenses. Elles n'enregistrent rien — elles rendent les champs LUS sur
+        // un document, que l'écran appelant (Carburant, Entretien effectué, Nouvelle réparation,
+        // Échéances, Dépenses) remplit ensuite à sa façon, sous SON propre droit. Ce qui gouverne
+        // le scan est le QUOTA DE LA SOCIÉTÉ (societes.InvoiceScanMonthlyLimit, 0 = désactivé),
+        // contrôlé dans CostsController. Sans ces deux clés, le préfixe « /api/costs » ci-dessous
+        // imposait CanCosts ET ModuleCosts : un client abonné à Carburant mais pas à Dépenses, ou
+        // un utilisateur sans la case Dépenses, voyait le bouton sur ces quatre écrans et se
+        // faisait refuser avec un message parlant d'un AUTRE module. Clés PLUS LONGUES que
+        // « /api/costs », donc retenues par MostSpecificRuleKey — et appariées à la frontière
+        // de segment, parce qu'elles OUVRENT (voir _clesOuvrantes).
+        { "/api/costs/scan-quota", PermissionNonRequise },
+        { "/api/costs/scan-invoice", PermissionNonRequise },
         { "/api/costs", "CanCosts" },
         // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, mêmes droits que /api/costs.
         { "/api/acquisition-payments", "CanCosts" },
@@ -125,6 +151,11 @@ public class PermissionMiddleware
         { "/api/maintenance-templates", sub => sub.ModuleMaintenance },
         { "/api/vehicle-maintenance", sub => sub.ModuleMaintenance },
         { "/api/vehicle-maintenance/logs", sub => sub.ModuleReports && sub.ReportMaintenance },
+        // Scan de facture IA : même raison que dans _modulePermissions ci-dessus — c'est le quota
+        // mensuel de la société qui ouvre ou ferme la fonction, pas l'abonnement Dépenses. Le
+        // refus « fonction non activée » est rendu par CostsController, avec le bon message.
+        { "/api/costs/scan-quota", _ => true },
+        { "/api/costs/scan-invoice", _ => true },
         { "/api/costs", sub => sub.ModuleCosts },
         // Échéances d'acquisition (07/09/2026) : lignes de l'écran Dépenses, même module que /api/costs.
         { "/api/acquisition-payments", sub => sub.ModuleCosts },
@@ -180,14 +211,59 @@ public class PermissionMiddleware
     };
 
     /// <summary>
-    /// Clé la plus précise (préfixe le plus long) qui vise ce chemin dans une table de règles ;
-    /// null si aucune. Une règle plus longue ne peut qu'AJOUTER du contrôle, d'où le préfixe.
+    /// Clés des deux tables ci-dessus qui OUVRENT un accès au lieu de le restreindre :
+    /// aujourd'hui les deux routes du scan de facture IA, qui retirent la case Dépenses
+    /// et l'abonnement Dépenses à ce qui vit sous « /api/costs ».
+    ///
+    /// <para>Elles s'apparient à la FRONTIÈRE DE SEGMENT, jamais par simple préfixe : c'est
+    /// la leçon de la recette du 16/09/2026, écrite plus bas dans <see cref="IsRouteOrSubRoute"/>
+    /// — « /api/vehiclestops » commence par « /api/vehicles » sans en être une sous-route.
+    /// Sans cela, une route future « /api/costs/scan-quota-detaillee » hériterait de
+    /// l'ouverture sans que personne ne l'ait décidé ; avec, elle retombe sur « /api/costs »
+    /// et reste gardée. Les clés qui RESTREIGNENT gardent le préfixe : il ne peut qu'AJOUTER
+    /// du contrôle, et le restreindre à la frontière de segment ouvrirait des sous-routes
+    /// aujourd'hui gardées (« /api/costs/812 » n'est pas « /api/costs », mais doit bien
+    /// exiger CanCosts).</para>
+    /// </summary>
+    private static readonly HashSet<string> _clesOuvrantes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "/api/costs/scan-quota",
+        "/api/costs/scan-invoice",
+    };
+
+    /// <summary>Cette clé ouvre-t-elle un accès (frontière de segment) ? (Interne pour les tests.)</summary>
+    internal static bool EstCleOuvrante(string cle) => _clesOuvrantes.Contains(cle);
+
+    /// <summary>
+    /// Clés de <see cref="_modulePermissions"/> qui n'exigent aucune case de module : elles
+    /// OUVRENT, donc elles doivent toutes figurer dans <see cref="_clesOuvrantes"/>. Exposé
+    /// pour qu'un test tienne les deux listes ensemble. (Interne pour les tests.)
+    /// </summary>
+    internal static IEnumerable<string> ClesSansPermissionDeModule =>
+        _modulePermissions.Where(e => e.Value == PermissionNonRequise).Select(e => e.Key);
+
+    /// <summary>
+    /// Clé la plus précise qui vise ce chemin dans une table de règles ; null si aucune.
+    /// Une règle plus longue AFFINE celle du préfixe : le plus souvent elle ajoute du
+    /// contrôle (un rapport exige sa propre case en plus du module Rapports), mais elle
+    /// peut aussi en RETIRER — le scan de facture IA, rangé sous « /api/costs », n'exige
+    /// ni la case Dépenses ni l'abonnement Dépenses. Dans les deux sens, c'est la clé la plus
+    /// longue qui fait foi : une règle qui OUVRE doit donc être écrite en toutes lettres dans
+    /// les deux tables, jamais laissée à l'absence de clé — et s'apparier à la frontière de
+    /// segment (voir <see cref="_clesOuvrantes"/>).
     /// </summary>
     private static string? MostSpecificRuleKey(IEnumerable<string> keys, string path) =>
         keys
-            .Where(k => path.StartsWith(k, StringComparison.OrdinalIgnoreCase))
+            .Where(k => Vise(k, path))
             .OrderByDescending(k => k.Length)
             .FirstOrDefault();
+
+    /// <summary>Cette clé vise-t-elle ce chemin ? Préfixe pour une règle qui restreint,
+    /// frontière de segment pour une règle qui ouvre.</summary>
+    private static bool Vise(string cle, string chemin) =>
+        EstCleOuvrante(cle)
+            ? IsRouteOrSubRoute(chemin, cle)
+            : chemin.StartsWith(cle, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Permission utilisateur exigée par un chemin (préfixe le plus long) ; null si aucune.</summary>
     internal static string? RequiredUserPermission(string path) =>
@@ -199,6 +275,9 @@ public class PermissionMiddleware
     /// </summary>
     internal static bool IsGranted(GisAPI.Domain.Entities.User currentUser, string permission) => permission switch
     {
+        // Ouverture VOULUE, écrite dans la table : voir PermissionNonRequise (scan de facture IA).
+        // Déclarée avant le reste pour qu'elle ne se confonde pas avec le « nom inconnu » du bas.
+        PermissionNonRequise => true,
         "CanMonitoring" => currentUser.CanMonitoring,
         "CanVehicles" => currentUser.CanVehicles,
         "CanUsers" => currentUser.CanUsers,

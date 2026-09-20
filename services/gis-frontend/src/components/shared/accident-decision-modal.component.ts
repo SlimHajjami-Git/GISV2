@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { SignalRService, SignalRNotification } from '../../services/signalr.service';
 import { AccidentPdfService } from '../../services/accident-pdf.service';
+import { PermissionService } from '../../services/permission.service';
 
 /**
  * Pending accident shown in the modal.
@@ -300,9 +301,19 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     private auth: AuthService,
     private api: ApiService,
     private accidentPdf: AccidentPdfService,
+    private permissions: PermissionService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef
   ) {}
+
+  /**
+   * Société équipée de boîtiers : même règle que la fiche du sinistre. Sans boîtier,
+   * le PDF ne doit porter ni coordonnées, ni IMEI, ni score de confiance — ils n'ont
+   * aucune donnée derrière eux. Ouvert quand les fonctionnalités sont inconnues.
+   */
+  private get hasGpsSubscription(): boolean {
+    return this.permissions.getSubscriptionFeatures()?.moduleMonitoring !== false;
+  }
 
   ngOnInit(): void {
     // Only admins get the modal at all. The backend already filters the
@@ -398,7 +409,9 @@ export class AccidentDecisionModalComponent implements OnInit, OnDestroy {
     this.api.getAccidentReport(accidentId).subscribe({
       next: (report) => {
         try {
-          const pdfBlob = this.accidentPdf.generate(report);
+          // Même option que la fiche : le rapport attaché à la confirmation imprimait
+          // latitude, longitude, IMEI et score de confiance sans condition.
+          const pdfBlob = this.accidentPdf.generate(report, { withLocation: this.hasGpsSubscription });
           this.api.uploadAccidentReportPdf(accidentId, pdfBlob, `rapport-accident-${accidentId}.pdf`).subscribe({
             next: () => {
               // Success — nothing visible to the user; the row will pick

@@ -24,7 +24,7 @@ Chart.register(...registerables);
 
 /** Barre « Répartition des coûts » du rapport IA : parts positives et crédits déduits hors barre. */
 export interface AiCostBreakdownView {
-  items: { label: string; value: number; pct: number; color: string }[];
+  items: { key: string; label: string; value: number; pct: number; color: string }[];
   credits: number;
 }
 
@@ -33,20 +33,44 @@ export interface AiCostBreakdownView {
  * pris pour base, les parts dépassaient 100 % dès que les crédits dépassaient les autres
  * frais, et la barre tronquée ne montrait pas la déduction. Base = somme des parts
  * positives ; credits absent (API antérieure) = 0.
+ *
+ * Le rapport IA reste le SEUL bloc où les crédits sont nets dans « Autres » et ressortent
+ * ensuite en « credits » : il vient d'AiChatController, hors du périmètre des rapports
+ * détaillés de la règle du 18/09/2026. Son total, lui, est le même qu'ailleurs.
+ * Une part négative ne prend AUCUNE largeur — dessinée, elle le serait en valeur absolue,
+ * comme une dépense de plus — mais la légende garde son montant en « − », qui est
+ * précisément l'information : ce poste a rendu de l'argent.
  */
 export function buildAiCostBreakdown(cb: any): AiCostBreakdownView {
   const num = (v: any) => Number(v) || 0;
+  // Clé technique portée jusqu'au gabarit : l'info-bulle qui dit la déduction se
+  // posait sur une comparaison de libellé, qu'un raccourcissement aurait rompue
+  // sans erreur ni test rouge.
   const parts = [
-    { label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
-    { label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
-    { label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
-    { label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
+    { key: 'fuel', label: 'Carburant', value: num(cb?.fuel), color: '#f59e0b' },
+    { key: 'maintenance', label: 'Maintenance', value: num(cb?.maintenance), color: '#3b82f6' },
+    { key: 'repair', label: 'Réparations', value: num(cb?.repairs), color: '#ef4444' },
+    { key: 'other', label: 'Autres', value: num(cb?.other), color: '#94a3b8' }
   ];
   const positiveTotal = parts.reduce((s, p) => s + Math.max(0, p.value), 0);
   return {
     items: parts.map(p => ({ ...p, pct: positiveTotal > 0 ? Math.max(0, p.value) / positiveTotal * 100 : 0 })),
     credits: Math.max(0, num(cb?.credits))
   };
+}
+
+/**
+ * Parts d'un camembert de coûts. Chart.js dessine une valeur négative en valeur
+ * ABSOLUE : un avoir ou un poste net négatif y prendrait la place d'une dépense de
+ * plus. Les parts ≤ 0 sont donc écartées du dessin, et les pourcentages des parts
+ * restantes sont mesurés sur elles seules, pour qu'ils fassent bien 100. Les parts
+ * écartées restent lisibles, avec leur signe, dans le tableau ou la légende à côté.
+ */
+export function partsCamembert<T extends { amount: number }>(parts: T[]): (T & { percent: number })[] {
+  const affichees = parts.filter(p => (Number(p.amount) || 0) > 0);
+  const base = affichees.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  if (base <= 0) return [];
+  return affichees.map(p => ({ ...p, percent: (Number(p.amount) || 0) / base * 100 }));
 }
 
 @Component({
@@ -824,24 +848,58 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${y}-${m}-${d}`;
   }
 
-  /** Chart container min-width capped to avoid exceeding browser canvas limits.
-   *  Calypso 7 — pour le rapport Carburant l utilisateur veut voir tout le
-   *  graphe d un coup, sans defiler horizontalement. La courbe etant lisse
-   *  (line chart sur evolution dans le temps) elle reste lisible meme tassee.
-   *  On force donc 'auto' pour ce template pour que le canvas se cale a la
-   *  largeur du conteneur. Pour les autres rapports (souvent des bar charts
-   *  avec beaucoup de categories) le comportement actuel reste le bon. */
-  getChartMinWidth(): string {
-    if (this.selectedTemplate?.type === 'fuel') return 'auto';
-    if (this.chartData.length <= 20) return 'auto';
-    return Math.min(this.chartData.length * 40, 5000) + 'px';
+  // ──────────────────────── Largeur des graphes ────────────────────────
+  //
+  // Recette de Karim du 19/09/2026 : la largeur minimale du graphe était calée
+  // sur un NOMBRE DE POINTS (« plus de vingt »), pas sur la place réelle. Deux
+  // symptômes opposés en découlaient, avec DEUX seuils indépendants :
+  //  - « Kilométrage », « Kilométrage par période », « Infractions de vitesse »
+  //    (24 barres horaires) : les boutons de défilement s'affichaient alors que
+  //    le graphe tenait largement dans le cadre ;
+  //  - une flotte nombreuse : le graphe débordait sans que la largeur exigée
+  //    ait le moindre rapport avec celle offerte.
+  // UNE seule condition, fondée sur la largeur disponible, règle les deux.
+
+  /** Pas minimal d'un point pour qu'une barre et son étiquette restent lisibles. */
+  private static readonly PAS_POINT_GRAPHE = 40;
+  /** Plafond de sécurité : au-delà, le canvas dépasse les limites du navigateur. */
+  private static readonly LARGEUR_MAX_GRAPHE = 5000;
+
+  /**
+   * Largeur réellement offerte au graphe : la fenêtre, moins la barre latérale
+   * des filtres (260 px) et les gouttières du cadre (24 px). Vérifié au banc :
+   * à 1 536 px, le conteneur du graphe mesure 1 252 px.
+   * Déduite de la FENÊTRE et non lue sur le DOM : une lecture de layout dans
+   * une liaison de gabarit peut changer de valeur entre les deux passes de
+   * vérification d'Angular (NG0100), et le banc doit pouvoir la rejouer.
+   */
+  largeurDisponibleGraphe(): number {
+    const fenetre = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1536;
+    return Math.max(320, fenetre - 260 - 24);
   }
 
-  /** True quand le rapport courant doit afficher les boutons de scroll
-   *  horizontal autour du graphe. Faux pour Carburant (fit-to-width). */
-  showChartScrollButtons(): boolean {
+  /** Largeur qu'exige le graphe pour rester lisible, tous ses points comptés. */
+  largeurExigeeGraphe(): number {
+    return this.chartData.length * ReportsComponent.PAS_POINT_GRAPHE;
+  }
+
+  /** Le graphe ne tient PAS dans la place disponible : seule raison de lui
+   *  imposer une largeur et de proposer des boutons de défilement.
+   *  Carburant reste hors jeu : sa courbe est lisse et l'utilisateur veut la
+   *  voir d'un coup, même tassée (Calypso 7). */
+  grapheDeborde(): boolean {
     if (this.selectedTemplate?.type === 'fuel') return false;
-    return this.chartData.length > 20;
+    return this.largeurExigeeGraphe() > this.largeurDisponibleGraphe();
+  }
+
+  getChartMinWidth(): string {
+    if (!this.grapheDeborde()) return 'auto';
+    return Math.min(this.largeurExigeeGraphe(), ReportsComponent.LARGEUR_MAX_GRAPHE) + 'px';
+  }
+
+  /** Les boutons suivent EXACTEMENT le débordement : plus de seuil séparé. */
+  showChartScrollButtons(): boolean {
+    return this.grapheDeborde();
   }
 
   selectTemplate(template: any) {
@@ -965,12 +1023,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return Math.ceil(this.tableData.length / this.pageSize) || 1;
   }
 
+  /**
+   * Nombre d'ÉLÉMENTS du rapport : les lignes-titres de jour (« 📅 18/09/2026 »)
+   * sont des séparateurs, pas des données. Karim, recette du 19/09/2026 : sur
+   * 30 jours et 200 trajets l'écran annonçait 230 éléments. L'export filtre
+   * déjà ces pseudo-lignes (buildGenericExport) : l'écran s'aligne dessus.
+   */
+  get itemCount(): number {
+    return this.tableData.filter((r: any) => r && r.isDayHeader !== true).length;
+  }
+
+  /** Éléments (hors lignes-titres) situés AVANT la page courante. */
+  private itemsBeforeCurrentPage(): number {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.tableData.slice(0, start).filter((r: any) => r && r.isDayHeader !== true).length;
+  }
+
   get startItem(): number {
-    return (this.currentPage - 1) * this.pageSize + 1;
+    // Une page qui ne contiendrait que des lignes-titres n'a pas de premier
+    // élément : on n'affiche pas « 1 » à tort.
+    const dejaVus = this.itemsBeforeCurrentPage();
+    return this.itemCount === 0 ? 0 : Math.min(dejaVus + 1, this.itemCount);
   }
 
   get endItem(): number {
-    return Math.min(this.currentPage * this.pageSize, this.tableData.length);
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.tableData
+      .slice(0, start + this.pageSize)
+      .filter((r: any) => r && r.isDayHeader !== true).length;
   }
 
   get paginatedData(): any[] {
@@ -3582,12 +3662,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   processMonthlyCostReport(report: MonthlyCostReport) {
     if (this.monthlyCostReportType === 'costs') {
+      // Mêmes chiffres que le bandeau de l'export : postes BRUTS, avoirs à part,
+      // total net — sans « Autres » la somme ne retombait pas sur le total.
       this.statisticsData = {
         'Période': report.reportPeriod,
         'KM Total': this.formatNumber(report.totalKm) + ' km',
         'Carburant': this.formatCurrency(report.totalFuelCostDzd),
         'Entretien': this.formatCurrency(report.totalMaintenanceCostDzd),
         'Réparation': this.formatCurrency(report.totalRepairCostDzd),
+        'Autres': this.formatCurrency(report.totalOtherCostDzd),
+        ...(this.aDesAvoirs(this.monthlyCostCredit())
+          ? { [this.libelleAvoirs]: this.formatCurrency(this.monthlyCostCredit()) } : {}),
         'Coût Total': this.formatCurrency(report.totalCostDzd)
       };
     } else {
@@ -3763,12 +3848,42 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return c.length > 1 ? ' ' + c : '';
   }
 
+  /**
+   * Légende du camembert « Répartition des coûts » : TOUTES les catégories, crédits
+   * compris, mais avec le pourcentage des seules parts DESSINÉES (celles qui sont
+   * positives), pour qu'il dise la même chose que l'anneau et que la colonne fasse
+   * 100. Le pourcentage du serveur, lui, rapporte chaque ligne au total NET : une
+   * assurance de 600 sur un total net de 500 y ressortait à « 120 % ». Une ligne de
+   * crédit n'a pas de part — ce n'est pas une dépense, c'est ce qui en est retranché.
+   */
+  mfCategoriesLegende(): { category: string; amount: number; percent: number | null }[] {
+    const cats = this.monthlyReport?.costAnalysis?.byCategory || [];
+    // Repérage par INDEX et non par libellé : deux catégories pourraient porter le même.
+    const dessinees = new Map(
+      partsCamembert(cats.map((c, i) => ({ i, amount: Number(c.amount) || 0 }))).map(p => [p.i, p.percent])
+    );
+    return cats.map((c, i) => ({
+      category: c.category,
+      amount: Number(c.amount) || 0,
+      percent: dessinees.get(i) ?? null
+    }));
+  }
+
   /** Donut « Répartition des coûts » : les catégories RÉELLES (costAnalysis.byCategory).
    *  Il remplace « Coûts de maintenance par période », qui répartissait chaque
    *  total à 25/30/20/25 % sur quatre semaines inventées. */
   drawMfCostDonut() {
     const canvas = this.mfCostDonutCanvasRef?.nativeElement;
-    const cats = this.monthlyReport?.costAnalysis?.byCategory || [];
+    // Lignes de CRÉDIT (« Remboursement assurance », « Avoir fournisseur ») écartées
+    // du dessin : leur montant est négatif et Chart.js le rendrait en valeur absolue,
+    // comme une dépense de plus. Elles restent dans la légende HTML à côté, avec leur
+    // signe. Filtrer la liste ELLE-MÊME, et pas seulement les valeurs : l'info-bulle
+    // se repère sur l'index du tableau. Le RANG d'origine est conservé : la couleur
+    // d'une catégorie inconnue se tire de la palette par son rang, et l'anneau ne
+    // doit pas la teinter autrement que la légende.
+    const cats = this.mfCategoriesLegende()
+      .map((c, rang) => ({ ...c, rang }))
+      .filter(c => c.percent !== null);
     if (!canvas || !cats.length) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -3778,8 +3893,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       data: {
         labels: cats.map(c => c.category),
         datasets: [{
-          data: cats.map(c => Math.max(0, Number(c.amount) || 0)),
-          backgroundColor: cats.map((c, i) => this.mfCouleurCategorie(c.category, i)),
+          data: cats.map(c => c.amount),
+          backgroundColor: cats.map(c => this.mfCouleurCategorie(c.category, c.rang)),
           borderColor: '#ffffff',
           borderWidth: 2,
           hoverOffset: 4
@@ -3795,9 +3910,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
           tooltip: {
             bodyFont: { family: police },
             callbacks: {
+              // Pourcentage RECALCULÉ sur les parts dessinées. Celui du serveur porte
+              // sur le total NET des crédits : avec 600 d'assurance et 400 d'avoirs
+              // pour un total de 500, il annonçait « 120 % » sur une part qui occupe
+              // les deux tiers de l'anneau.
               label: (item) => {
                 const c = cats[item.dataIndex];
-                return `${c.category} : ${this.formatCurrency(c.amount)} (${this.formatPct(c.percentage)})`;
+                return `${c.category} : ${this.formatCurrency(c.amount)} (${this.formatPct(c.percent ?? 0)})`;
               }
             }
           }
@@ -5874,10 +5993,35 @@ export class ReportsComponent implements OnInit, OnDestroy {
       vehicleName,
       dateRange,
       statistics: this.statisticsData,
-      columns,
+      columns: this.colonnesAlimentees(columns, data, formatters),
       data,
       formatters
     };
+  }
+
+  /**
+   * Retire de l'export les colonnes qu'AUCUNE ligne n'alimente — celles-là même
+   * que l'écran vient d'arrêter de rendre (« Date » et « Odomètre » du
+   * Kilométrage de flotte, « Jour » / « Moy. jour » / « Jours actifs » du
+   * Kilométrage par période sans véhicule choisi). Sans cela le PDF et le
+   * classeur gardaient une colonne vide que l'écran n'a plus.
+   * Une colonne SERVIE PAR UN FORMATEUR est conservée : sa valeur ne vient pas
+   * d'un champ homonyme de la ligne (« _tripNumber », « _address »).
+   */
+  private colonnesAlimentees(
+    columns: any[],
+    data: any[],
+    formatters: Record<string, (value: any, row: any) => string>
+  ): any[] {
+    if (!data.length) return columns;
+    const alimentee = (cle: string) =>
+      data.some((r: any) => {
+        const v = r?.[cle];
+        return v !== null && v !== undefined && v !== '';
+      });
+    const gardees = columns.filter(c => !!formatters?.[c.dataKey] || alimentee(c.dataKey));
+    // Garde-fou : on ne rend jamais un export sans colonne.
+    return gardees.length ? gardees : columns;
   }
 
   /** Coûts mensuels / carburant mensuel : mêmes colonnes que le tableau à l'écran. */
@@ -5926,6 +6070,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entretien ${cur}`, dataKey: 'maintenanceCost', weight: 2.1 },
           { header: `Répar. ${cur}`, dataKey: 'repairCost', weight: 1.9 },
           { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
+          // Colonne des crédits seulement s'il y en a : elle coûte 2,2 de largeur
+          // dans un tableau déjà à 11 colonnes, pour n'afficher sinon que des 0.
+          ...(this.aDesAvoirs(this.monthlyCostCredit())
+            ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.2 }] : []),
           { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
           { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.5 },
           { header: `Carb. ${cur}/100km`, dataKey: 'fuelPer100Km', weight: 2.5 },
@@ -5953,6 +6101,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(v.maintenanceCostDzd),
       repairCost: mt(v.repairCostDzd),
       otherCost: mt(v.otherCostDzd),
+      creditAmount: mt(v.creditAmountDzd),
       totalCost: mt(v.totalCostDzd),
       costPerKm: rt(v.costPerKm),
       fuelPer100Km: rt(v.fuelPer100Km),
@@ -5970,6 +6119,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
           'Carburant': String(mt(r.totalFuelCostDzd)),
           'Entretien': String(mt(r.totalMaintenanceCostDzd)),
           'Réparation': String(mt(r.totalRepairCostDzd)),
+          // « Autres » manquait à ce bandeau, et les avoirs s'y ajoutent depuis le
+          // 18/09/2026 : quatre chiffres bruts ne retombaient pas sur le total net,
+          // sans que le lecteur du PDF sache ce qui manquait entre les deux.
+          'Autres': String(mt(r.totalOtherCostDzd)),
+          ...(this.aDesAvoirs(this.monthlyCostCredit())
+            ? { [this.libelleAvoirs]: String(mt(this.monthlyCostCredit())) } : {}),
           'Coût total': String(mt(r.totalCostDzd))
         }
       : {
@@ -6003,6 +6158,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // distance mesurable dans le mois, il n’y a pas de ratio au kilometre.
       footnote: (isCosts
         ? `* ${cur}/km : coût total rapporté au kilomètre parcouru.   Carb. ${cur}/100km : dépense de carburant pour 100 km parcourus.   E+R ${cur}/100km : dépense d’Entretien et de Réparation pour 100 km parcourus.   `
+          // Les postes sont bruts, le total est net : sans cette phrase la ligne ne
+          // retombait pas sur ses colonnes dès qu'un avoir existait.
+          + (this.aDesAvoirs(this.monthlyCostCredit())
+            ? `${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; les autres postes restent bruts.   ` : '')
         : '* ')
         + 'Km « non mesuré » : kilométrage non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
     };
@@ -6115,6 +6274,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const parKm = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatCostPerKm(v) : n3(v));
     const pct = (v: number | null | undefined) => v == null ? vide : (pourPdf ? this.formatPct(v) : n1(v));
     const gps = r.fleetHasGps;
+    // Colonne des avoirs et remboursements seulement s'il y en a : elle coûte
+    // 2,3 de largeur dans un tableau déjà serré (recette à 1536 px).
+    const avoirs = this.aDesAvoirs(r.totals?.creditAmount);
 
     // Largeurs mesurées en Manrope : 168 mm pour 190 sans les colonnes GPS
     // (portrait), 193 mm avec (paysage).
@@ -6128,6 +6290,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entr. ${cur}`, dataKey: 'maintenance', weight: 2.0 },
           { header: `Répar. ${cur}`, dataKey: 'repair', weight: 2.0 },
           { header: `Autres ${cur}`, dataKey: 'other', weight: 2.0 },
+          ...(avoirs ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'credit', weight: 2.3 }] : []),
           { header: `Total ${cur}`, dataKey: 'total', weight: 2.1 },
           { header: `${cur}/km`, dataKey: 'perKm', weight: 1.4 },
           ...(gps ? [{ header: 'Util.', dataKey: 'util', weight: 1.4 }, { header: 'Trajets', dataKey: 'trips', weight: 1.3 }] : [])
@@ -6143,6 +6306,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: `Entretiens (${cur})`, dataKey: 'maintenance' },
           { header: `Réparations (${cur})`, dataKey: 'repair' },
           { header: `Autres dépenses (${cur})`, dataKey: 'other' },
+          ...(avoirs ? [{ header: `Avoirs et remboursements (${cur})`, dataKey: 'credit' }] : []),
           { header: `Coût total (${cur})`, dataKey: 'total' },
           { header: `Coût au km (${cur}/km)`, dataKey: 'perKm' },
           ...(gps ? [{ header: 'Utilisation (%)', dataKey: 'util' }, { header: 'Trajets', dataKey: 'trips' }] : [])
@@ -6159,6 +6323,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenance: mt(v.maintenanceCost),
       repair: mt(v.repairCost),
       other: mt(v.otherCost),
+      credit: mt(v.creditAmount),
       total: mt(v.totalCost),
       perKm: parKm(v.costPerKm),
       util: pct(v.utilizationRate),
@@ -6176,6 +6341,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenance: mt(t.maintenanceCost),
       repair: mt(t.repairCost),
       other: mt(t.otherCost),
+      credit: mt(t.creditAmount),
       total: mt(t.totalCost),
       perKm: parKm(t.costPerKm),
       util: gps ? pct(r.utilization.overallUtilizationRate) : vide,
@@ -6201,7 +6367,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       highlightLastRow: true,
       footnote: pourPdf
         ? `* Km : boîtier GPS pour un véhicule équipé, sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) ; « — » = non mesurable ce mois. `
-          + `L/100 = litres aux 100 km ; Entr. = entretiens ; Répar. = réparations ; Autres = assurance, vignette, péages… `
+          + `L/100 = litres aux 100 km ; Entr. = entretiens ; Répar. = réparations ; Autres = assurance, vignette, péages… Ces postes sont BRUTS. `
+          + (avoirs ? `${this.libelleAvoirs} = ${this.infoBulleAvoirs}. ` : '')
           + `Les mensualités d’acquisition ne sont pas comptées.`
         : undefined,
     };
@@ -7581,11 +7748,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
   executeCostsReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     
-    const options: any = {};
+    // Sans pageSize, le serveur applique son défaut de 50 lignes : le rapport
+    // se taisait sur tout ce qui dépassait, sans le dire (20/09/2026, même
+    // défaut que l'écran Réparations qui s'arrêtait à 100). La borne est haute
+    // et volontairement visible : au-delà, le récapitulatif le signale.
+    const options: any = { page: 1, pageSize: 2000 };
     if (vehicleId) options.vehicleId = vehicleId;
     if (startDate) options.fromDate = this.toLocalDate(startDate);
     if (endDate) options.toDate = this.toLocalDate(endDate);
-    
+
     this.apiService.getRepairs(options).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
@@ -8021,7 +8192,28 @@ export class ReportsComponent implements OnInit, OnDestroy {
   // setTimeout(…, 120), chart détruit en tête de chaque draw*().
 
   /** Couleurs des quatre catégories de dépense (barres empilées, donut, légendes, détail du mois). */
-  readonly costCategoryColors = { fuel: '#3b82f6', maintenance: '#22c55e', repair: '#f97316', other: '#a855f7', total: '#1e293b' };
+  readonly costCategoryColors = { fuel: '#3b82f6', maintenance: '#22c55e', repair: '#f97316', other: '#a855f7', credit: '#0d9488', total: '#1e293b' };
+
+  /**
+   * Avoirs fournisseurs et remboursements d'assurance (décision de Karim du
+   * 18/09/2026). Dans les rapports détaillés ils ne diminuent AUCUN poste : les
+   * postes restent bruts et ces crédits portent leur propre ligne, en négatif ;
+   * seul le coût total est net. Intitulé court, l'écran de recette fait 1536 px.
+   */
+  readonly libelleAvoirs = 'Avoirs et remb.';
+  readonly infoBulleAvoirs = "Avoirs fournisseurs et remboursements d'assurance, déduits du coût total";
+
+  /** Le rapport IA garde sa propre convention : « Autres » y est net des crédits. */
+  readonly infoBulleAutresIA =
+    "Autres dépenses du rapport IA : assurance, vignette, péages…, avoirs fournisseurs et "
+    + "remboursements d'assurance déduits. Les tableaux ci-dessus les montrent bruts, avec une "
+    + "ligne « Avoirs » à part. Même total.";
+
+  /** Vrai dès qu'un avoir ou un remboursement est à montrer : sans cela la
+   *  colonne s'ajouterait à un tableau déjà large pour n'afficher que des zéros. */
+  aDesAvoirs(montant: number | null | undefined): boolean {
+    return Math.abs(Number(montant) || 0) > 0.005;
+  }
 
   private readonly repairTypeColors: Record<string, string> = {
     electrique: '#eab308',
@@ -8057,6 +8249,171 @@ export class ReportsComponent implements OnInit, OnDestroy {
   deviationClass(value: number | null | undefined): string {
     if (value == null || Number(value) === 0) return '';
     return Number(value) > 0 ? 'over' : 'under';
+  }
+
+  // ── « Coût d'exploitation réel » : lisibilité du tableau (19/09/2026) ──────
+  // Constat de Karim, capture à l'appui : « 10 527,26 € » s'écrivait sur deux
+  // lignes, le « € » seul en dessous, et le séparateur de milliers n'avait pas
+  // la même largeur d'une colonne à l'autre. Pourquoi : formatCurrency colle le
+  // symbole après une espace ORDINAIRE, donc sécable, alors que toLocaleString
+  // sépare les milliers par une espace fine insécable (U+202F).
+
+  /**
+   * Valeur d'une cellule de ce rapport : toutes ses espaces deviennent des
+   * espaces FINES INSÉCABLES. Le montant ne peut plus se couper avant le
+   * symbole, et les milliers se lisent partout à la même largeur. Réservé à
+   * l'affichage : les exports Excel / PDF / CSV gardent formatCurrency tel quel,
+   * un caractère U+202F n'a rien à faire dans un classeur.
+   */
+  private insecable(texte: string): string {
+    return texte.replace(/[\s\u00A0\u202F]+/g, '\u202F');
+  }
+
+  /** Montant d'une cellule du rapport « Coût d'exploitation », insécable. */
+  montantCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatCurrency(value ?? 0));
+  }
+
+  /** Kilométrage d'une cellule, insécable ; « — » quand il n'est pas mesurable. */
+  kmCellule(value: number | null | undefined): string {
+    return value == null ? '—' : this.insecable(this.formatNumber(value));
+  }
+
+  /** Coût au km d'une cellule, insécable. */
+  coutKmCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatCostPerKm(value));
+  }
+
+  /** Écart à la moyenne d'une cellule (« +90,4 % »), insécable. */
+  ecartCellule(value: number | null | undefined): string {
+    return this.insecable(this.formatSignedPct(value));
+  }
+
+  /**
+   * Totaux du rapport « Coûts » : ceux de TOUT le rapport, pas de la page
+   * affichée. Karim, 19/09/2026 : un rapport de coûts sans total obligeait à
+   * additionner les lignes à la main. La ligne est épinglée au bas du cadre,
+   * elle reste donc lisible pendant qu'on défile.
+   */
+  totauxCouts(): { laborCost: number; partsCost: number; totalCost: number } {
+    return this.lignesDeDonnees().reduce(
+      (acc, r: any) => ({
+        laborCost: acc.laborCost + (Number(r.laborCost) || 0),
+        partsCost: acc.partsCost + (Number(r.partsCost) || 0),
+        totalCost: acc.totalCost + (Number(r.totalCost) || 0),
+      }),
+      { laborCost: 0, partsCost: 0, totalCost: 0 }
+    );
+  }
+
+  /** Total du rapport « Entretiens ». Les échéances PLANIFIÉES portent un coût
+   *  à 0 (rien n'a encore été dépensé) : elles n'ajoutent donc rien au total. */
+  totalEntretiens(): number {
+    return this.lignesDeDonnees().reduce((somme, r: any) => somme + (Number(r.cost) || 0), 0);
+  }
+
+  /** Les vraies lignes du tableau, sans les lignes-titres de jour. */
+  private lignesDeDonnees(): any[] {
+    return this.tableData.filter((r: any) => r && r.isDayHeader !== true);
+  }
+
+  /**
+   * Nombre de colonnes RÉELLEMENT affichées par le tableau de ce rapport.
+   * Détail par véhicule : immatriculation, km, quatre postes, coût total,
+   * coût au km et écart = neuf, plus « Avoirs » quand il y en a. Le classement
+   * ajoute la colonne de rang.
+   */
+  nbColonnesCoutExploitation(): number {
+    const avoirs = this.aDesAvoirs(this.operatingCost?.totalCreditAmount) ? 1 : 0;
+    return (this.isRanking ? 10 : 9) + avoirs;
+  }
+
+  /**
+   * Largeur du PLUS LONG MONTANT réellement affiché, comptée en caractères de
+   * la chaîne rendue (`montantCellule`) : chiffres, séparateurs de milliers,
+   * virgule, décimales, signe « - » d'un avoir, espace et devise.
+   *
+   * C'est cette longueur, et non le nombre de colonnes, qui fixe la largeur des
+   * six colonnes de chiffres : « 123 450 208,70 € » est cinq caractères plus
+   * large que « 46 322,78 € », six fois de suite. Une flotte de quarante
+   * véhicules produit mécaniquement ce chiffre de plus sur la ligne TOTAL, et
+   * l'ascenseur horizontal que Karim a signalé revenait alors que la densité,
+   * elle, ne bougeait pas (relecture du 19/09/2026).
+   *
+   * Toutes les cellules sont parcourues, pas seulement le total : une ligne
+   * peut être plus longue que lui quand un avoir est en négatif (le « - »
+   * compte pour un caractère), ou quand un véhicule porte à lui seul un montant
+   * que le total net des avoirs ne montre plus.
+   */
+  largeurMontantCoutMax(): number {
+    const r = this.operatingCost;
+    if (!r) return 0;
+    const avoirs = this.aDesAvoirs(r.totalCreditAmount);
+    const valeurs: (number | null | undefined)[] = [
+      r.totalCost, r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost
+    ];
+    if (avoirs) valeurs.push(r.totalCreditAmount);
+    for (const v of r.vehicles || []) {
+      valeurs.push(v.totalCost, v.fuelCost, v.maintenanceCost, v.repairCost, v.otherCost);
+      if (avoirs) valeurs.push(v.creditAmount);
+    }
+    let max = 0;
+    for (const v of valeurs) {
+      const l = this.montantCellule(v).length;
+      if (l > max) max = l;
+    }
+    return max;
+  }
+
+  /**
+   * Longueur de référence : « 46 322,78 € », le total de la société de recette,
+   * soit la densité d'origine (aucun cran de plus). Un caractère de moins ne
+   * rend rien : on ne remonte jamais au-dessus du cran de base.
+   */
+  private static readonly LARGEUR_MONTANT_REF = 11;
+  /**
+   * Caractères gagnés par cran. Mesuré au banc à 1521 px : passer d'un cran au
+   * suivant rend entre 40 et 60 px au tableau, un caractère de plus sur les six
+   * colonnes de montants en coûte une trentaine. Deux caractères par cran est
+   * la valeur qui tient sur toute la grille (cf. le tableau des marges).
+   */
+  private static readonly MONTANT_PAR_CRAN = 2;
+
+  /**
+   * Cran de densité DEMANDÉ, non borné : nombre de colonnes réellement
+   * affichées, plus les crans réclamés par la largeur des montants (devise
+   * comprise, « 46 322,78 TND » valant deux caractères de plus que son
+   * équivalent en euro). Au-delà de douze, plus aucun cran n'existe : c'est le
+   * signal d'empiler les deux blocs.
+   */
+  cranDensiteCout(): number {
+    const largeur = this.largeurMontantCoutMax();
+    const supplement = Math.max(0, Math.ceil(
+      (largeur - ReportsComponent.LARGEUR_MONTANT_REF) / ReportsComponent.MONTANT_PAR_CRAN));
+    return this.nbColonnesCoutExploitation() + supplement;
+  }
+
+  /**
+   * Cran de densité du tableau : la police et les gouttières suivent le cran
+   * demandé (voir .oc-workspace .cost-table--cNN dans le CSS), borné au plus
+   * serré. Posé depuis le composant plutôt que par une mesure JavaScript : le
+   * rendu est le même au premier affichage qu'après un changement de période.
+   * Le plancher de 11 px des VALEURS ne bouge pas : au-delà de c12 on empile
+   * plutôt que de rogner encore.
+   */
+  classeDensiteCout(): string {
+    return `cost-table--c${Math.min(12, Math.max(9, this.cranDensiteCout()))}`;
+  }
+
+  /**
+   * Vrai quand même le cran le plus serré ne suffit plus : les deux blocs
+   * s'empilent, le tableau prend toute la largeur de l'espace de travail
+   * (1 169 px au lieu de 776 mesurés à 1521 px) et le classement passe dessous.
+   * Mieux vaut empiler que rogner une colonne ou rouvrir un ascenseur
+   * horizontal — c'est le défaut même que Karim a signalé.
+   */
+  empilerBlocsCout(): boolean {
+    return this.cranDensiteCout() > 12;
   }
 
   /** Info-bulle de la colonne Kilométrage : origine (compteur / GPS) et fiabilité de la distance. */
@@ -8178,6 +8535,30 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Hauteur du graphe à barres horizontales : 28 px par véhicule, 240 px minimum. */
   operatingCostChartHeight(): number {
     return Math.max(240, 28 * this.operatingCostChartRows().length + 60);
+  }
+
+  /**
+   * Plafond du cadre du tableau, posé en variable CSS sur la rangée
+   * (--oc-plafond-tableau, lue par .oc-table-wrapper). Il SUIT la hauteur du
+   * graphe d'en face au lieu des 420 px écrits en dur : le graphe grandit de
+   * 28 px par véhicule, si bien qu'à partir de treize véhicules il dépassait le
+   * cadre du tableau, la rangée prenait SA hauteur et un grand vide blanc
+   * s'ouvrait sous le tableau (481 px à trente véhicules, 761 px à quarante).
+   * La société de recette n'en a que douze : le défaut ne se voyait pas.
+   *
+   * Plancher à 420 px — la valeur d'avant — pour le cas inverse, la flotte
+   * courte : le tableau doit pouvoir s'étirer jusqu'à la hauteur du graphe.
+   *
+   * Aucune rallonge pour la légende rouge/bleu du classement. Elle avait été
+   * ajoutée (80 px) le 19/09/2026 pour refermer le vide blanc de « Véhicules
+   * les plus coûteux » : elle ne le refermait pas — le tableau du Top 10 est
+   * plus COURT que son plafond, l'agrandir ne lui fait rien gagner — et elle
+   * l'agrandissait de 2 px. La vraie cause était le min-height de 380 px de
+   * .cost-chart-box, qui étirait le graphe du classement (340 px demandés) de
+   * quarante pixels ; elle est traitée dans la feuille.
+   */
+  plafondCadreTableauCout(): string {
+    return `${Math.max(420, this.operatingCostChartHeight())}px`;
   }
 
   /** Barres horizontales « Classement par coût d'exploitation » : valeur au bout de chaque barre et
@@ -8420,6 +8801,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return this.evolutionDetailRows().reduce((s, c) => s + (Number(c.amount) || 0), 0);
   }
 
+  /** Une ligne d'avoirs figure dans la répartition affichée : les pourcentages des
+   *  postes portent alors sur les DÉPENSES brutes, pas sur le total, qui est net —
+   *  la ligne Total ne peut donc plus annoncer « 100 % ». */
+  evolutionDetailAvecAvoirs(): boolean {
+    return this.evolutionDetailRows().some(c => c.key === 'credit');
+  }
+
   /** « Juil. 2026 », ou « Jan. 2026 à Sept. 2026 » pour toute la période. */
   evolutionDetailLabel(): string {
     const sel = this.selectedEvolutionMonth;
@@ -8450,27 +8838,40 @@ export class ReportsComponent implements OnInit, OnDestroy {
   evolutionCategoryTotals(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     const r = this.costEvolution;
     if (!r) return [];
-    return this.categoryBreakdown(r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost);
+    return this.categoryBreakdown(r.totalFuelCost, r.totalMaintenanceCost, r.totalRepairCost, r.totalOtherCost,
+      r.totalCreditAmount ?? 0);
   }
 
   /** Détail du mois sélectionné (Catégorie | Montant | % du total). */
   evolutionMonthDetail(): { key: string; label: string; amount: number; pct: number | null; color: string }[] {
     const m = this.selectedEvolutionMonth;
     if (!m) return [];
-    return this.categoryBreakdown(m.fuelCost, m.maintenanceCost, m.repairCost, m.otherCost);
+    return this.categoryBreakdown(m.fuelCost, m.maintenanceCost, m.repairCost, m.otherCost, m.creditAmount ?? 0);
   }
 
-  private categoryBreakdown(fuel: number, maintenance: number, repair: number, other: number) {
+  /**
+   * Les quatre postes BRUTS, puis les avoirs et remboursements en ligne à part,
+   * en négatif (18/09/2026). Les pourcentages se mesurent sur la somme des postes
+   * bruts et non sur le total net : sinon ils dépassaient 100 % dès qu'un crédit
+   * existait. La ligne de crédit n'a pas de pourcentage — ce n'est pas une part
+   * du coût, c'est ce qui en est retranché — et n'apparaît que si elle porte un
+   * montant. La somme de la colonne Montant redonne bien le coût net.
+   */
+  private categoryBreakdown(fuel: number, maintenance: number, repair: number, other: number, credit: number = 0) {
     const f = Number(fuel) || 0, m = Number(maintenance) || 0, r = Number(repair) || 0, o = Number(other) || 0;
-    const total = f + m + r + o;
-    const pct = (v: number) => total > 0 ? (v / total) * 100 : null;
+    const av = Number(credit) || 0;
+    const brut = f + m + r + o;
+    const pct = (v: number) => brut > 0 ? (v / brut) * 100 : null;
     const c = this.costCategoryColors;
-    return [
+    const lignes = [
       { key: 'fuel', label: 'Carburant', amount: f, pct: pct(f), color: c.fuel },
       { key: 'maintenance', label: 'Entretiens', amount: m, pct: pct(m), color: c.maintenance },
       { key: 'repair', label: 'Réparations', amount: r, pct: pct(r), color: c.repair },
       { key: 'other', label: 'Autres dépenses', amount: o, pct: pct(o), color: c.other }
     ];
+    if (this.aDesAvoirs(av))
+      lignes.push({ key: 'credit', label: this.libelleAvoirs, amount: av, pct: null, color: c.credit });
+    return lignes;
   }
 
   /** Barres EMPILÉES par catégorie + courbe Total ; clic sur un mois → détail à droite. */
@@ -8496,11 +8897,18 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const bar = (label: string, data: number[], color: string) => ({
       type: 'bar', label, data, backgroundColor: couleurs(color), stack: 'costs', borderRadius: 2, barPercentage: .7, categoryPercentage: .8
     });
+    // Avoirs et remboursements : une barre EMPILÉE de plus, en négatif, donc
+    // dessinée sous l'axe (Chart.js empile les valeurs négatives vers le bas —
+    // c'est le camembert, lui, qui les rendrait en valeur absolue). Ajoutée
+    // seulement s'il y a un crédit sur la période : sinon la légende porterait
+    // un poste toujours à zéro.
+    const avoirs = months.map(m => Number(m.creditAmount) || 0);
     const datasets: any[] = [
       bar('Carburant', months.map(m => m.fuelCost), c.fuel),
       bar('Entretiens', months.map(m => m.maintenanceCost), c.maintenance),
       bar('Réparations', months.map(m => m.repairCost), c.repair),
       bar('Autres dépenses', months.map(m => m.otherCost), c.other),
+      ...(this.aDesAvoirs(avoirs.reduce((s, v) => s + v, 0)) ? [bar(this.libelleAvoirs, avoirs, c.credit)] : []),
       {
         type: 'line', label: 'Total', data: months.map(m => m.totalCost),
         borderColor: c.total, backgroundColor: c.total, borderWidth: 2, tension: .3,
@@ -8549,9 +8957,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .join(' — ');
   }
 
-  /** Les trois postes de depense du rapport mensuel, avec leur part du total.
+  /** Les postes de depense du rapport mensuel, avec leur part du total.
    *  « Autres » n’est ajoute que s’il porte un montant : une part a zero dans
-   *  un camembert est une legende de plus a lire pour rien. */
+   *  un camembert est une legende de plus a lire pour rien.
+   *  Les postes sont BRUTS (18/09/2026) ; les avoirs et remboursements, qui sont
+   *  negatifs, n’entrent PAS dans ce camembert — Chart.js les dessinerait en
+   *  valeur absolue, comme une depense de plus. Ils se lisent dans la colonne
+   *  « Avoirs et remb. » du tableau. Les pourcentages portent donc sur les seules
+   *  parts dessinees et font 100 ; le camembert vaut alors le total BRUT, ce que
+   *  dit la carte. */
   monthlyCostCategoryTotals(): { key: string; label: string; amount: number; percent: number; color: string }[] {
     const r = this.monthlyCostReport;
     if (!r) return [];
@@ -8560,11 +8974,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { key: 'maintenance', label: 'Entretien', amount: r.totalMaintenanceCostDzd || 0, color: '#F59E0B' },
       { key: 'repair', label: 'Réparation', amount: r.totalRepairCostDzd || 0, color: '#EF4444' },
     ];
-    const autres = (r.totalCostDzd || 0) - postes.reduce((s, p) => s + p.amount, 0);
+    const autres = r.totalOtherCostDzd || 0;
     if (autres > 0.005) postes.push({ key: 'other', label: 'Autres', amount: autres, color: '#8B5CF6' });
-    const total = postes.reduce((s, p) => s + p.amount, 0);
-    if (total <= 0) return [];
-    return postes.filter(p => p.amount > 0).map(p => ({ ...p, percent: (p.amount / total) * 100 }));
+    return partsCamembert(postes);
+  }
+
+  /** Avoirs et remboursements du rapport « Coûts mensuels », en négatif. Repli sur
+   *  l’écart entre le total net et les postes quand l’API ne porte pas encore le champ. */
+  monthlyCostCredit(): number {
+    const r = this.monthlyCostReport;
+    if (!r) return 0;
+    if (r.totalCreditAmountDzd != null) return r.totalCreditAmountDzd;
+    return (r.totalCostDzd || 0) - (r.totalFuelCostDzd || 0) - (r.totalMaintenanceCostDzd || 0)
+      - (r.totalRepairCostDzd || 0) - (r.totalOtherCostDzd || 0);
   }
 
   /** Camembert de la sixieme carte du rapport mensuel. Format carte : pas de
@@ -8613,7 +9035,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (this.evolutionDonutChart) { this.evolutionDonutChart.destroy(); this.evolutionDonutChart = undefined; }
     const canvas = this.evolutionDonutCanvasRef?.nativeElement;
     if (!canvas) return;
-    const cats = this.evolutionCategoryTotals();
+    // Parts NÉGATIVES ou nulles écartées du camembert (voir partsCamembert) : la
+    // ligne des avoirs reste dans la légende à côté, avec son signe.
+    const cats = partsCamembert(this.evolutionCategoryTotals());
     const total = cats.reduce((s, x) => s + x.amount, 0);
     if (total <= 0) return;
     const ctx = canvas.getContext('2d');
@@ -9079,9 +9503,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const totalCol = { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2.3 };
     const perKmCol = { header: `${cur}/km`, dataKey: 'costPerKm', weight: 1.8 };
     const devCol = { header: 'Écart', dataKey: 'deviationPct', weight: 2.5 };
+    // Avoirs et remboursements : colonne ajoutée seulement s'il y en a, pour ne
+    // pas ajouter 2,4 de largeur à un PDF déjà calibré au millimètre.
+    const creditCols = this.aDesAvoirs(r.totalCreditAmount)
+      ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.4 }] : [];
     const columns = ranking
-      ? [{ header: '#', dataKey: 'rank', weight: 0.8 }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, devCol]
-      : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, totalCol, perKmCol, devCol];
+      ? [{ header: '#', dataKey: 'rank', weight: 0.8 }, vehicleCol, kmCol, totalCol, perKmCol, fuelCol, maintCol, repairCol, otherCol, ...creditCols, devCol]
+      : [vehicleCol, kmCol, fuelCol, maintCol, repairCol, otherCol, ...creditCols, totalCol, perKmCol, devCol];
 
     const data: any[] = (r.vehicles || []).map(v => ({
       rank: v.rank,
@@ -9093,6 +9521,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(v.maintenanceCost),
       repairCost: mt(v.repairCost),
       otherCost: mt(v.otherCost),
+      creditAmount: mt(v.creditAmount),
       totalCost: mt(v.totalCost),
       costPerKm: v.costPerKm == null ? (pourPdf ? '—' : '') : parKm(v.costPerKm),
       deviationPct: v.deviationFromAveragePct == null ? (pourPdf ? '—' : '') : pct(v.deviationFromAveragePct)
@@ -9105,6 +9534,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(r.totalMaintenanceCost),
       repairCost: mt(r.totalRepairCost),
       otherCost: mt(r.totalOtherCost),
+      creditAmount: mt(r.totalCreditAmount),
       totalCost: mt(r.totalCost),
       costPerKm: r.averageCostPerKm == null ? (pourPdf ? '—' : '') : parKm(r.averageCostPerKm),
       deviationPct: pourPdf ? '—' : ''
@@ -9129,6 +9559,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // La derniere ligne est « TOTAL / MOYENNE » : elle se confondait avec
       // les lignes de vehicules.
       highlightLastRow: true,
+      // Les postes sont bruts, le total est net : dit seulement quand un crédit
+      // existe, sinon la note serait du bruit.
+      footnote: pourPdf && creditCols.length
+        ? `* ${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; carburant, entretiens, réparations et autres restent bruts.`
+        : undefined,
     };
   }
 
@@ -9145,7 +9580,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
-    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    // mfMontant et non formatCurrency : les intitulés portent déjà le code
+    // devise, comme à l'écran depuis le 20/09/2026. Avec formatCurrency le PDF
+    // écrivait « Carburant TND » en titre ET « 18 420,55 TND » dans chaque
+    // cellule — l'export disait autre chose que l'écran du même rapport.
+    // mfMontant ne retire le code que lorsque la devise n'a pas de symbole :
+    // l'euro reste « 18 420,55 € ».
+    const mt = (v: any) => pourPdf ? this.mfMontant(Number(v) || 0) : n2(v);
     const pct = (v: number | null) => v == null
       ? (pourPdf ? '—' : '')
       : pourPdf
@@ -9155,13 +9596,22 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Largeurs mesurées (Manrope 7, 5 mm de marges internes) : la colonne la
     // plus exigeante est « Variation / mois préc. », 32,2 mm ; le tout fait
     // 159,5 mm pour 190, donc le PDF reste en portrait.
+    // Colonne des crédits seulement s'il y en a sur la période : elle prendrait
+    // 2,4 de largeur sur les 159,5 mm déjà mesurés, pour n'afficher que des 0.
+    const avoirs = this.aDesAvoirs(r.totalCreditAmount);
+    // Le code devise n'est répété dans l'intitulé que lorsque la cellule ne le
+    // porte pas : mfMontant le retire du PDF quand la devise n'a pas de symbole
+    // (TND, DZD) et le garde sinon (€). Le tableur, lui, reçoit des nombres nus,
+    // son intitulé doit donc toujours dire l'unité.
+    const dev = pourPdf ? this.mfDeviseEntete() : ` ${cur}`;
     const columns = [
       { header: 'Mois', dataKey: 'monthName', weight: 3.2 },
-      { header: `Carburant ${cur}`, dataKey: 'fuelCost', weight: 2.2 },
-      { header: `Entretiens ${cur}`, dataKey: 'maintenanceCost', weight: 2.2 },
-      { header: `Réparations ${cur}`, dataKey: 'repairCost', weight: 2.4 },
-      { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
-      { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
+      { header: `Carburant${dev}`, dataKey: 'fuelCost', weight: 2.2 },
+      { header: `Entretiens${dev}`, dataKey: 'maintenanceCost', weight: 2.2 },
+      { header: `Réparations${dev}`, dataKey: 'repairCost', weight: 2.4 },
+      { header: `Autres${dev}`, dataKey: 'otherCost', weight: 1.8 },
+      ...(avoirs ? [{ header: `${this.libelleAvoirs}${dev}`, dataKey: 'creditAmount', weight: 2.4 }] : []),
+      { header: `Total${dev}`, dataKey: 'totalCost', weight: 2 },
       { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
     const data: any[] = (r.months || []).map(m => ({
@@ -9172,6 +9622,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(m.maintenanceCost),
       repairCost: mt(m.repairCost),
       otherCost: mt(m.otherCost),
+      creditAmount: mt(m.creditAmount),
       totalCost: mt(m.totalCost),
       variationPct: pct(m.variationPct)
     }));
@@ -9182,6 +9633,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       maintenanceCost: mt(r.totalMaintenanceCost),
       repairCost: mt(r.totalRepairCost),
       otherCost: mt(r.totalOtherCost),
+      creditAmount: mt(r.totalCreditAmount),
       totalCost: mt(r.totalCost),
       variationPct: pourPdf ? '—' : ''
     });
@@ -9213,8 +9665,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
       // Dit pourquoi un mois incomplet n’a pas de variation et n’entre pas dans
       // les mois le plus et le moins élevés. La note ne parlait que du mois en
       // cours : un mois tronqué par la date de début n’était expliqué nulle part.
-      footnote: incomplets.length
-        ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+      footnote: (incomplets.length || avoirs)
+        ? [
+            incomplets.length
+              ? `* ${incomplets.map(m => m.monthName).join(', ')} : la période ne couvre pas le mois entier (elle commence après le 1er ou s’arrête avant la fin). Un mois incomplet n’est comparé à aucun autre et n’entre pas dans les mois le plus et le moins élevés, calculés sur les mois complets.`
+              : '',
+            // Postes bruts, total net : sans cette phrase la ligne ne retombait
+            // pas sur ses colonnes dès qu'un avoir existait.
+            avoirs ? `${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; les quatre postes restent bruts.` : ''
+          ].filter(Boolean).join('   ')
         : undefined,
     };
   }

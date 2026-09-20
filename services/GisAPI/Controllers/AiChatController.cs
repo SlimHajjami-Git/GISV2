@@ -832,6 +832,17 @@ public class AiChatController : ControllerBase
             .GroupBy(c => c.VehicleId)
             .ToDictionary(g => g.Key, g => g.Sum(c => VehicleCostCategory.SignedFromParts(c.Type, c.Positive, c.Negative)));
 
+        // Convention des RAPPORTS (règle du 18/09/2026) — c’est de rapports que parle le
+        // client quand il interroge l’assistant : les quatre postes restent BRUTS et les
+        // crédits (avoir fournisseur, remboursement d’assurance) portent leur propre ligne
+        // en négatif, seul le total est net. PeriodCostsAsync, elle, déduit les crédits des
+        // Réparations (un tableau de bord n’a que quatre cases) : on remet ce poste au brut,
+        // le total net ne bouge pas.
+        var totalCreditCost = costRows
+            .Where(c => VehicleCostCategory.IsCredit(c.Type))
+            .Sum(c => VehicleCostCategory.SignedFromParts(c.Type, c.Positive, c.Negative));   // négatif ou nul
+        totalRepairCost -= totalCreditCost;
+
         // ── Maintenance & Repairs ──
         var maintenance = await _context.MaintenanceRecords.AsNoTracking()
             .Where(m => vehicleIds.Contains(m.VehicleId) && m.Date >= periodStart)
@@ -882,9 +893,7 @@ public class AiChatController : ControllerBase
             .Include(s => s.Template)
             .ToListAsync();
 
-        // ══════════ BUILD CHART DATA ══════════
-        // totalOtherCost est net des crédits : négatif si les avoirs dépassent les autres frais.
-        var totalDistance = trips.Sum(t => t.DistanceKm);
+        // ══════════ BUILD CHART DATA ══════════        var totalDistance = trips.Sum(t => t.DistanceKm);
 
         // Health distribution
         var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
@@ -978,7 +987,16 @@ public class AiChatController : ControllerBase
         sb.AppendLine($"Véhicules actifs (avec trajets): {tripsByVehicle.Count}");
         sb.AppendLine($"Score santé moyen: {(healthScores.Any() ? healthScores.Average(h => h.Score) : 0):F0}/100");
         sb.AppendLine($"Distribution santé: Excellent={exc}, Bon={goo}, Moyen={fai}, Faible={poo}, Critique={cri}");
-        sb.AppendLine($"Coûts totaux (avoirs et remboursements déduits): {netCost:N0} {AppCurrency.Default} (Carburant: {totalFuelCost:N0}, Maintenance: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0})");
+        // Chaque poste est nommé pour ce qu'il CONTIENT, pas seulement le total : un intitulé
+        // qui ment au modèle fait mentir l'assistant devant le client. Postes bruts, ligne
+        // d'avoirs à part, total net — le tableau que le client a sous les yeux, à la ligne près.
+        // Plafond Groq (8 000 jetons/minute) : la ligne d'avoirs (56 caractères, ≈ 20 jetons)
+        // n'est écrite que s'il y a un crédit, et l'intitulé raccourci en rend la moitié.
+        // Sans elle, le modèle resoustrayait l'avoir d'un total qui l'avait déjà déduit.
+        var ligneAvoirs = totalCreditCost != 0m
+            ? $", Avoirs et remboursements: {totalCreditCost:N0} déjà déduits du total"
+            : "";
+        sb.AppendLine($"Coûts totaux nets: {netCost:N0} {AppCurrency.Default} (postes bruts — Carburant: {totalFuelCost:N0}, Entretiens: {totalMaintCost:N0}, Réparations: {totalRepairCost:N0}, Autres: {totalOtherCost:N0}{ligneAvoirs})");
         sb.AppendLine($"Alertes totales: {totalAlerts}");
         sb.AppendLine($"Entretiens réalisés: {maintenance.Count} | Réparations: {repairs.Count}");
         sb.AppendLine($"Entretiens en retard/critique: {schedules.Count(s => s.Status == "overdue" || s.Status == "critical")}");
@@ -998,7 +1016,9 @@ public class AiChatController : ControllerBase
         var notableIds = notable.Select(v => v.id).ToHashSet();
         var rest = vehicleDetails.Where(v => !notableIds.Contains(v.id)).ToList();
 
-        sb.AppendLine("═══ DÉTAIL PAR VÉHICULE ═══");
+        // « Coûts » par véhicule est un TOTAL (avoirs du véhicule déduits), pas un poste : dit une
+        // fois en tête plutôt que sur chaque ligne, qui multiplierait la mention par 25 véhicules.
+        sb.AppendLine("═══ DÉTAIL PAR VÉHICULE (Coûts = total net des avoirs) ═══");
         if (rest.Count > 0)
             sb.AppendLine($"(Flotte de {vehicleDetails.Count} véhicules — détail des {notable.Count} plus notables ci-dessous ; les {rest.Count} autres sont résumés à la fin.)");
         foreach (var v in notable)
@@ -1079,11 +1099,12 @@ Calendrier recommandé pour les 3 prochains mois.";
                 charts = new
                 {
                     healthDistribution = new { excellent = exc, good = goo, fair = fai, poor = poo, critical = cri },
-                    // Barre empilée des écrans : une part négative n'a pas de largeur, "Autres" s'arrête à 0.
-                    // Les crédits que les autres frais n'absorbent pas vont dans "credits" (positif) : bornés
-                    // seuls, ils disparaissaient et la légende ne retombait plus sur totalCosts.
+                    // Barre empilée des écrans, postes BRUTS comme dans les rapports : "other" porte
+                    // les seuls frais divers, "credits" les avoirs en positif (l'écran les affiche en
+                    // déduction, sous la barre). Bornés au net, 745 de frais et 1 200 d'avoirs se
+                    // réduisaient à 0 et 455 : la part "Autres" disparaissait de la barre.
                     // fuel + maintenance + repairs + other − credits = totalCosts.
-                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(Math.Max(0m, totalOtherCost), 0), credits = Math.Round(Math.Max(0m, -totalOtherCost), 0) },
+                    costBreakdown = new { fuel = Math.Round(totalFuelCost, 0), maintenance = Math.Round(totalMaintCost, 0), repairs = Math.Round(totalRepairCost, 0), other = Math.Round(totalOtherCost, 0), credits = Math.Round(-totalCreditCost, 0) },
                     topFuelConsumers = topFuel,
                     mileageByVehicle = mileageChart,
                     drivingScores = drivingChart

@@ -51,12 +51,17 @@ public class RepairsController : ControllerBase
     /// Get repair statistics
     /// </summary>
     [HttpGet("stats")]
+    /// <remarks>
+    /// status : même forme que sur GET /api/repairs (pending | in_progress | completed |
+    /// cancelled), pour que les compteurs de l'écran suivent le filtre affiché.
+    /// </remarks>
     public async Task<ActionResult<RepairStatsDto>> GetStats(
         [FromQuery] int? vehicleId = null,
         [FromQuery] DateTime? fromDate = null,
-        [FromQuery] DateTime? toDate = null)
+        [FromQuery] DateTime? toDate = null,
+        [FromQuery] string? status = null)
     {
-        var result = await _mediator.Send(new GetRepairStatsQuery(vehicleId, fromDate, toDate));
+        var result = await _mediator.Send(new GetRepairStatsQuery(vehicleId, fromDate, toDate, status));
         return Ok(result);
     }
 
