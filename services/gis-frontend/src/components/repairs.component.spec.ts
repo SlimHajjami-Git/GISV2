@@ -1063,4 +1063,25 @@ describe('RepairsComponent — parc au-delà de la limite de chargement', () => 
 
     expect(api.getRepairStats).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
   });
+
+  // Revue du 20/09/2026 : filtrer sur un véhicule rendait le sous-ensemble COMPLET
+  // (chargementComplet = true, bandeau disparu) ; revenir à « Tous les véhicules » ne
+  // rechargeait alors plus rien et l'écran présentait ce sous-ensemble comme tout le parc.
+  it('revenir à « Tous les véhicules » recharge au lieu de garder le sous-ensemble du filtre', () => {
+    component.filterVehicle = '1';
+    component.onFiltreServeur();
+    expect(api.getRepairs).toHaveBeenCalledWith(expect.objectContaining({ vehicleId: 1 }));
+
+    (api.getRepairs as jest.Mock).mockClear();
+    (api.getRepairs as jest.Mock).mockImplementation((o?: any) =>
+      of({ items: parc.slice(0, 100), totalCount: parc.length, page: o?.page ?? 1, pageSize: 100 }) as any);
+
+    component.filterVehicle = '';
+    component.onFiltreServeur();
+
+    expect(api.getRepairs).toHaveBeenCalled();
+    expect((api.getRepairs as jest.Mock).mock.calls[0][0]).toEqual(
+      expect.objectContaining({ vehicleId: undefined }));
+    expect(component.chargementComplet).toBe(false);
+  });
 });

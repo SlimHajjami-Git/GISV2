@@ -463,9 +463,6 @@ public class AccidentReportsController : ControllerBase
             .AnyAsync(d => d.AccidentEventId == ev.Id && d.FileUrl == ancienneUrl, ct);
         if (dejaJoint) return true;
 
-        // file_name est borné à 300 caractères, file_url à 500 comme pdf_report_url.
-        var nom = Path.GetFileName(ancienneUrl!);
-        if (nom.Length > 300) nom = nom[..300];
         _context.AccidentEventDocuments.Add(new AccidentEventDocument
         {
             AccidentEventId = ev.Id,
@@ -473,7 +470,12 @@ public class AccidentReportsController : ControllerBase
             // rien ne prouve que ce fichier-là en soit un. « Rapport d'expertise » serait
             // recopié tel quel dans le PDF remis à l'assureur ; l'utilisateur reclasse.
             DocumentType = "other",
-            FileName = string.IsNullOrWhiteSpace(nom) ? "document-du-dossier.pdf" : nom,
+            // Nom PARLANT plutôt que le « {guid}.pdf » du disque : sur un dossier manuel
+            // antérieur au préfixe « rapport- », ce fichier peut aussi bien être le
+            // document du client qu'un rapport que l'application avait déjà produit —
+            // impossible de trancher. « PDF précédent du dossier » est vrai dans les deux
+            // cas, là où un nom illisible laissait croire à une pièce fournie par le client.
+            FileName = "PDF précédent du dossier.pdf",
             FileUrl = ancienneUrl!,
             MimeType = "application/pdf",
             UploadedByUserId = _tenantService.UserId,
@@ -712,6 +714,16 @@ public class AccidentReportsController : ControllerBase
         var ev = await _context.AccidentEvents
             .FirstOrDefaultAsync(e => e.Id == id && e.CompanyId == companyId.Value, ct);
         if (ev == null) return (null, NotFound());
+
+        // Même périmètre que la LECTURE du dossier (GetAccidentReportQueryHandler, PdfStatus)
+        // et que sa suppression. Sans ce contrôle, un employé restreint à quelques véhicules
+        // qui reçoit 404 sur tout le reste du dossier pouvait quand même déposer un fichier
+        // dessus — et, pour le rapport, SUPPRIMER physiquement le PDF précédent.
+        // Portée nulle = administrateur, tout le parc.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (scope is not null && (ev.VehicleId == null || !scope.Contains(ev.VehicleId.Value)))
+            return (null, NotFound());
+
         return (ev, null);
     }
 

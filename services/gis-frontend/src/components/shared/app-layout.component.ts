@@ -541,8 +541,12 @@ type NotifBucket = Notification | NotifThreadGroup;
       <!-- Strictly-blocking accident decision modal.
            Subscribes to SignalR 'accident_detected' notifications with
            metadata.requiresDecision === 'true' and shows the confirm /
-           dismiss / postpone choice to company admins. -->
-      <app-accident-decision-modal></app-accident-decision-modal>
+           dismiss / postpone choice to company admins.
+           Réservé au module Sinistres : depuis le 20/09/2026 le serveur refuse
+           /api/accident-reports à qui n'a pas la case, et cette fenêtre bloquante
+           s'ouvrait chez TOUT le monde — l'utilisateur se retrouvait devant un
+           choix qu'il n'avait plus le droit d'enregistrer. -->
+      <app-accident-decision-modal *ngIf="hasModule('accidents')"></app-accident-decision-modal>
 
       <!-- Global Geofence Event Modal (opens from notification click on any page) -->
       <div class="gf-modal-overlay" *ngIf="showGeofenceModal" (click)="closeGeofenceModal()">

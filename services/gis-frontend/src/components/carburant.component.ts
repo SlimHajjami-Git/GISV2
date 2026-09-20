@@ -729,6 +729,13 @@ export class CarburantComponent implements OnInit, OnDestroy {
 
   /** Ticket scanné en cours de revue (voir onTicketScanne). */
   scanTicket: RevueTicketScanne = this.revueVide();
+
+  /**
+   * Le prix au litre affiché vient du TICKET, pas du tarif de référence. Choisir le
+   * type de carburant — ce que le bandeau du scan demande justement de faire quand le
+   * ticket ne le porte pas — écrasait sinon le prix lu, et le total avec lui.
+   */
+  prixLuSurTicket = false;
   
   // Upload
   isDragOver = false;
@@ -808,6 +815,12 @@ export class CarburantComponent implements OnInit, OnDestroy {
   }
 
   onFuelTypeChange(fuelTypeId: number | null) {
+    // Prix lu sur le ticket : il fait foi, le tarif de référence ne le remplace pas.
+    // On resynchronise seulement le total.
+    if (this.prixLuSurTicket && (this.manualEntry.pricePerLiter ?? 0) > 0) {
+      this.onVolumeOrPriceChange();
+      return;
+    }
     if (!fuelTypeId) {
       this.manualEntry.pricePerLiter = 0;
     } else {
@@ -902,6 +915,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.manualEntry.volume = x.liters;
     if (x.liters !== null) champs.push('volume');
     this.manualEntry.pricePerLiter = x.pricePerLiter;
+    this.prixLuSurTicket = x.pricePerLiter !== null && x.pricePerLiter > 0;
     if (x.pricePerLiter !== null) champs.push('prix au litre');
 
     const typeId = this.deduireTypeCarburant(x);
@@ -1080,6 +1094,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.dateParDefaut = new Date().toISOString().split('T')[0];
     this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: this.dateParDefaut, odometerKm: null };
     this.totalAmountTouched = false;
+    this.prixLuSurTicket = false;
     // Le ticket scanné ne survit pas à une remise à zéro : sinon sa station et son
     // justificatif partiraient avec une saisie qui n'a plus rien à voir avec lui.
     this.scanTicket = this.revueVide();

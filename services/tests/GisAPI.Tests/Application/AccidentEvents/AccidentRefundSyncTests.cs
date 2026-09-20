@@ -1,6 +1,7 @@
 using FluentAssertions;
 using GisAPI.Application.Features.AccidentEvents.Commands;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Tests.Common;
 using Microsoft.EntityFrameworkCore;
@@ -103,17 +104,26 @@ public class AccidentRefundSyncTests
         (await context.VehicleCosts.CountAsync()).Should().Be(0);
     }
 
+    /// <summary>
+    /// Un montant NÉGATIF est refusé au lieu d'être compris comme « efface la ligne » :
+    /// il était écrit tel quel sur le dossier (fiche et rapport PDF affichaient « −50 »)
+    /// alors que plus aucune dépense ne lui correspondait. Rien n'est enregistré.
+    /// </summary>
     [Fact]
-    public async Task MontantNegatif_SupprimeLaDepenseLiee()
+    public async Task MontantNegatif_EstRefuse_EtNeTouchePasAuDossier()
     {
         using var context = Contexte(VehiculeExistant);
 
         await Handler(context).Handle(Commande(900m), CancellationToken.None);
         context.ChangeTracker.Clear();
-        await Handler(context).Handle(Commande(-50m, "rejected"), CancellationToken.None);
-        context.ChangeTracker.Clear();
 
-        (await context.VehicleCosts.CountAsync()).Should().Be(0);
+        var refus = async () => await Handler(context).Handle(Commande(-50m, "rejected"), CancellationToken.None);
+        await refus.Should().ThrowAsync<DomainException>().WithMessage("*ne peut pas être négatif*");
+
+        context.ChangeTracker.Clear();
+        var dossier = await context.AccidentEvents.AsNoTracking().SingleAsync();
+        dossier.ClaimApprovedAmount.Should().Be(900m, "rien n'est enregistré quand la saisie est refusée");
+        (await context.VehicleCosts.CountAsync()).Should().Be(1);
     }
 
     [Fact]

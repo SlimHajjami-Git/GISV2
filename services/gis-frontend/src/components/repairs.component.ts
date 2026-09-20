@@ -1063,6 +1063,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
   /** Vrai quand tout le parc est en mémoire : les compteurs se calculent alors ici. */
   chargementComplet = true;
 
+  /** Filtres SERVEUR du dernier chargement : dire si l’ensemble en mémoire correspond encore à ce que l’écran demande. */
+  private filtreServeurCharge = { vehicle: '', status: '' };
+
   /** Chargement en cours : le pied de tableau le dit plutôt que de laisser croire à un parc vide. */
   chargementEnCours = false;
 
@@ -1232,6 +1235,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
 
   loadRepairs() {
     this.chargementEnCours = true;
+    this.filtreServeurCharge = { vehicle: this.filterVehicle, status: this.filterStatus };
     this.chargerPage(1, []);
   }
 
@@ -1246,7 +1250,14 @@ export class RepairsComponent implements OnInit, OnDestroy {
    * et le bandeau le dit.
    */
   onFiltreServeur() {
-    if (!this.chargementComplet) { this.loadRepairs(); return; }
+    // Recharger aussi quand le dernier chargement portait un filtre SERVEUR et qu'il
+    // vient de changer : sinon revenir à « Tous les véhicules » gardait en mémoire le
+    // seul sous-ensemble du véhicule précédent et l'écran l'affichait comme s'il était
+    // tout le parc — compteurs compris, sans le bandeau « Parc volumineux » qui a
+    // disparu en même temps que le chargement est devenu « complet » pour ce filtre.
+    const filtreChange = this.filtreServeurCharge.vehicle !== this.filterVehicle
+                      || this.filtreServeurCharge.status !== this.filterStatus;
+    if (!this.chargementComplet || filtreChange) { this.loadRepairs(); return; }
     this.filterRepairs();
   }
 

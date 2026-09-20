@@ -10,11 +10,18 @@
 #  Per-deployment config: TN uses the git defaults (Calypso / TND). DZ flips only
 #  the currency to DZD (sed) — brand/map stay identical to TN for now.
 #
-#  Flow on master: CI → deploy-dz → deploy-tn (auto). TN uses the 'tn-prod'
-#  Environment so a required-reviewer approval can be added later (GitHub Pro on
-#  private repos). The deploy jobs only run on master push, never on PRs.
+#  DÉPLOIEMENT MANUEL, JAMAIS AUTOMATIQUE (décision du 20/09/2026). Les deux jobs
+#  de déploiement partaient tout seuls à chaque poussée sur master, DZ puis TN
+#  enchaîné : pousser une correction destinée à la production repeignait d'abord
+#  le serveur de test, dont le frontend a divergé fichier par fichier, et
+#  personne ne validait entre les deux. Ils ne se lancent plus que depuis
+#  l'onglet Actions (« Run workflow »), un serveur à la fois, choisi à la main.
+#  Aucun runner auto-hébergé n'est installé aujourd'hui (vérifié sur TN et DZ le
+#  20/09) : ces jobs ne peuvent donc PAS se déclencher tant qu'on n'en installe
+#  pas un, et la mise en production se fait à la main (voir la compétence /deploy).
+#  La CI, elle, tourne toujours à chaque poussée et à chaque PR.
 #
-#  See docs/CICD-SETUP.md for the one-time runner + environment setup.
+#  (docs/CICD-SETUP.md, cité par la version d'origine, n'a jamais été écrit.)
 # ============================================================================
 name: CI/CD
 
@@ -24,6 +31,14 @@ on:
     paths-ignore: [ 'docs/**', '**/*.md' ]
   pull_request:
     branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      cible:
+        description: "Serveur à déployer (rien n'est déployé sans ce choix)"
+        required: true
+        type: choice
+        options: [ aucun, dz, tn ]
+        default: aucun
 
 permissions:
   contents: read
@@ -74,7 +89,8 @@ jobs:
   deploy-dz:
     name: Deploy · DZ (test)
     needs: [ backend-tests, frontend-build, ingest-build ]
-    if: github.ref == 'refs/heads/master'
+    # Jamais sur une poussée : uniquement « Run workflow » avec cible = dz.
+    if: github.event_name == 'workflow_dispatch' && inputs.cible == 'dz'
     runs-on: [ self-hosted, dz ]
     environment: dz-test
     steps:
@@ -92,8 +108,9 @@ jobs:
   # ─────────────────────────── Deploy TN (prod) ───────────────────────────
   deploy-tn:
     name: Deploy · TN (prod)
-    needs: [ deploy-dz ]
-    if: github.ref == 'refs/heads/master'
+    # Plus enchaîné derrière DZ : la production ne dépend pas du serveur de test.
+    needs: [ backend-tests, frontend-build, ingest-build ]
+    if: github.event_name == 'workflow_dispatch' && inputs.cible == 'tn'
     runs-on: [ self-hosted, tn ]
     environment: tn-prod
     steps:

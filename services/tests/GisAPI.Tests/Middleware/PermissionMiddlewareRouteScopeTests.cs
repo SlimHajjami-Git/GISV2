@@ -248,4 +248,58 @@ public class PermissionMiddlewareRouteScopeTests
         outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
         outcome.Body.Should().Contain("USER_PERMISSION_DENIED");
     }
+
+    // ── Même panne, module Sinistres (revue du 20/09/2026) ─────────────────────
+    //
+    // AccidentClaimsController a été remplacé par AccidentReportsController, routé
+    // « api/accident-reports » : la clé « /api/accidentclaims » ne visait plus aucun
+    // chemin servi, et les seize points d'entrée du module — liste, déclaration
+    // manuelle, phases, pièces jointes — passaient les deux contrôles. Seule la
+    // suppression portait sa propre garde. Chemin lu sur le contrôleur, comme pour
+    // la gestion de flotte : sa route ne peut plus changer en silence.
+
+    /// <summary>Chemin réel d'une action de <see cref="AccidentReportsController"/>.</summary>
+    private static string SinistrePath(string template = "") =>
+        $"/{typeof(AccidentReportsController).GetCustomAttribute<RouteAttribute>()!.Template}{template}";
+
+    [Fact]
+    public async Task Sans_le_module_Sinistres_la_vraie_route_du_controleur_est_bloquee()
+    {
+        await using var ctx = await SeedAsync(s => s.ModuleAccidents = false, companyAdmin: true);
+
+        var outcome = await SendAsync(ctx, "GET", SinistrePath());
+
+        outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        outcome.ReachedController.Should().BeFalse();
+        outcome.Body.Should().Contain("SUBSCRIPTION_MODULE_BLOCKED");
+    }
+
+    [Fact]
+    public async Task Avec_le_module_mais_sans_la_case_utilisateur_les_sinistres_restent_refuses()
+    {
+        await using var ctx = await SeedAsync(
+            s => s.ModuleAccidents = true,
+            u => u.CanAccidents = false);
+
+        // La phase 5 écrit désormais dans Réparations : c'est l'écriture la plus coûteuse
+        // que le trou laissait passer.
+        var outcome = await SendAsync(ctx, "PATCH", SinistrePath("/42/repair"));
+
+        outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        outcome.ReachedController.Should().BeFalse();
+        outcome.Body.Should().Contain("USER_PERMISSION_DENIED");
+    }
+
+    [Fact]
+    public async Task Avec_le_module_et_la_case_les_sinistres_restent_accessibles()
+    {
+        await using var ctx = await SeedAsync(
+            s => s.ModuleAccidents = true,
+            u => u.CanAccidents = true);
+
+        var outcome = await SendAsync(ctx, "GET", SinistrePath());
+
+        outcome.ReachedController.Should().BeTrue();
+        outcome.StatusCode.Should().Be(StatusCodes.Status200OK);
+    }
 }

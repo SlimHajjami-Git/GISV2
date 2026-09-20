@@ -92,6 +92,12 @@ public class PermissionMiddleware
         { "/api/fuelexpenses", "CanFuel" },
         { "/api/fuelrecords", "CanFuel" },
         { "/api/documents", "CanDocuments" },
+        // AccidentClaimsController a été remplacé par AccidentReportsController, routé
+        // « api/accident-reports » : la clé « /api/accidentclaims » ne correspondait plus à
+        // AUCUN chemin réel et tout le module Sinistres échappait aux deux contrôles — même
+        // panne que « /api/fleetmanagement » le 16/09/2026. L'ancienne clé est conservée :
+        // elle ne coûte rien et protège un éventuel appelant resté sur l'ancien chemin.
+        { "/api/accident-reports", "CanAccidents" },
         { "/api/accidentclaims", "CanAccidents" },
         { "/api/suppliers", "CanSuppliers" },
         // FleetManagementController est routé « api/fleet » : la clé « /api/fleetmanagement »
@@ -177,6 +183,8 @@ public class PermissionMiddleware
         { "/api/fuelexpenses", sub => sub.ModuleFuel },
         { "/api/fuelrecords", sub => sub.ModuleFuel },
         { "/api/documents", sub => sub.ModuleDocuments },
+        // Même correction que dans _modulePermissions : le [Route] EXACT du contrôleur.
+        { "/api/accident-reports", sub => sub.ModuleAccidents },
         { "/api/accidentclaims", sub => sub.ModuleAccidents },
         { "/api/suppliers", sub => sub.ModuleSuppliers },
         // Même clé que _modulePermissions ci-dessus : le [Route] EXACT du contrôleur.

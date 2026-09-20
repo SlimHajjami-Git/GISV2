@@ -178,9 +178,16 @@ public class RevueIntegrationCoutsTests
         await ctx.SaveChangesAsync();
         ctx.ChangeTracker.Clear();
 
-        var (_, _, _, autres) = await DashboardService.PeriodCostsAsync(
+        var (_, _, reparations, autres) = await DashboardService.PeriodCostsAsync(
             ctx, CompanyId, null, Jour.AddDays(-1), DateTime.UtcNow, CancellationToken.None);
-        autres.Should().Be(730m, "1 000 − 150 − 120 ; en signant la somme brute (30) : 970");
+        // Règle du 18/09/2026 : dans un tableau de bord (quatre cases, pas de ligne de
+        // crédit) l'avoir se déduit des RÉPARATIONS et les autres postes restent bruts.
+        // Ce qui est vérifié ici reste le signe : chaque avoir compte en valeur absolue,
+        // y compris celui saisi en négatif avant DEF-050 — en signant la somme brute du
+        // type (150 − 120 = 30) l'avoir n'aurait pesé que 30 au lieu de 270.
+        autres.Should().Be(1_000m, "les postes ne portent plus le crédit");
+        reparations.Should().Be(-270m, "−150 − 120, et non −30");
+        (autres + reparations).Should().Be(730m, "le total, lui, ne change pas");
 
         var ok = (await Couts(ctx).GetCostSummary(Jour.AddDays(-1), DateTime.UtcNow)).Should().BeOfType<OkObjectResult>().Subject;
         Json(ok.Value).GetProperty("TotalAmount").GetDecimal().Should().Be(730m);

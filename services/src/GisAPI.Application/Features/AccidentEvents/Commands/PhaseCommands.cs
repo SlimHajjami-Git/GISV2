@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Repairs;
 using GisAPI.Application.Features.Repairs.Handlers;
 using GisAPI.Application.Features.Reports.Common;
@@ -274,6 +275,32 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
         var avertissements = new List<string>();
         var repair = await Context.Repairs
             .FirstOrDefaultAsync(r => r.AccidentEventId == ev.Id && r.SocieteId == ev.CompanyId, ct);
+
+        // Ligne DÉTACHÉE par un effacement précédent du coût réel : quand le client y avait
+        // mis un numéro de facture ou des pièces, RemoveAccidentRepairAsync la conserve et
+        // coupe seulement le lien. Sans ce rattrapage, ressaisir le coût créait une SECONDE
+        // réparation pour le même sinistre et le montant comptait deux fois dans les coûts.
+        // Reconnue au véhicule et à la description, encore celle que la phase avait posée ;
+        // une description réécrite par le client appartient à l'écran Réparations et n'est
+        // pas reprise.
+        if (repair == null && ev.VehicleId.HasValue)
+        {
+            var descriptionDeLaPhase = Truncate($"{PrefixeDescription}{ReferenceLabel(ev)}", 500);
+            repair = await Context.Repairs
+                .Where(r => r.AccidentEventId == null
+                         && r.SocieteId == ev.CompanyId
+                         && r.VehicleId == ev.VehicleId.Value
+                         && r.Description == descriptionDeLaPhase)
+                .OrderByDescending(r => r.Id)
+                .FirstOrDefaultAsync(ct);
+            if (repair != null)
+            {
+                repair.AccidentEventId = ev.Id;
+                Logger.LogInformation(
+                    "Phase 5 : réparation {Reference} rattachée au sinistre {Accident} (elle en avait été détachée)",
+                    repair.Reference, ev.Id);
+            }
+        }
 
         var now = DateTime.UtcNow;
         var creation = repair == null;
@@ -761,6 +788,16 @@ public abstract class PhaseCommandHandlerBase
         var ev = await Context.AccidentEvents
             .FirstOrDefaultAsync(e => e.Id == accidentEventId && e.CompanyId == companyId, ct)
             ?? throw new NotFoundException("AccidentEvent", accidentEventId);
+
+        // Périmètre véhicules, comme la lecture du dossier et sa suppression : la lecture
+        // répondait 404 sur un dossier hors périmètre, mais les phases s'y écrivaient
+        // quand même — et depuis ce lot la phase 5 crée une ligne dans Réparations et
+        // retire la dépense correspondante, sur un véhicule que l'utilisateur ne voit pas.
+        // Portée nulle = administrateur, tout le parc.
+        var portee = await VehicleScope.AccessibleVehicleIdsAsync(Context, TenantService, ct);
+        if (portee is not null && (ev.VehicleId == null || !portee.Contains(ev.VehicleId.Value)))
+            throw new NotFoundException("AccidentEvent", accidentEventId);
+
         if (ev.Status is not "confirmed")
             throw new DomainException(
                 $"Impossible de modifier les phases: l'accident est en statut '{ev.Status}'. Confirmez-le d'abord.");
@@ -782,6 +819,12 @@ public abstract class PhaseCommandHandlerBase
     /// </summary>
     protected static void EnsureAmountFits(decimal? amount, string champ)
     {
+        // Négatif REFUSÉ : il était accepté et écrit sur le dossier (fiche et rapport PDF
+        // affichaient « −500 »), alors qu'aucune réparation ni aucun remboursement n'était
+        // créé en face — la ligne du sinistre contredisait les Réparations et les coûts.
+        // Vider le champ ou saisir 0 reste la façon de retirer le montant.
+        if (amount is < 0)
+            throw new DomainException($"{champ} : le montant ne peut pas être négatif.");
         if (amount is null || amount <= RepairInputRules.MaxAmount) return;
         var plafond = RepairInputRules.MaxAmount.ToString("N2", CultureInfo.GetCultureInfo("fr-FR"));
         throw new DomainException($"{champ} : le montant ne peut pas dépasser {plafond}.");

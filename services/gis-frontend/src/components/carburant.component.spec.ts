@@ -109,6 +109,33 @@ describe('CarburantComponent — scan d’un ticket de station', () => {
     expect(component.scanTicket.receiptUrl).toBe('/uploads/invoices/7/ticket.jpg');
   });
 
+  // Revue du 20/09/2026 : le bandeau du scan demande de choisir le type quand le ticket
+  // ne le porte pas ; ce choix écrasait le prix au litre LU sur le ticket par le tarif de
+  // référence de l'écran, et le total avec lui — sans un mot.
+  it('choisir le type de carburant ne remplace pas le prix lu sur le ticket', () => {
+    fixture.detectChanges();
+    component.fuelPrices = [{ fuelTypeId: 25, pricePerLiter: 1.75 } as any];
+
+    // Ticket sans type lisible : volume et prix lus, type à choisir.
+    component.onTicketScanne(ticket({ description: '', descriptionComplete: '', total: null, amountTTC: null }));
+    expect(component.manualEntry.pricePerLiter).toBe(2.5);
+
+    component.onFuelTypeChange(25);
+
+    expect(component.manualEntry.pricePerLiter).toBe(2.5);
+    expect(component.manualEntry.totalAmount).toBe(100);   // 40 × 2,500, pas 40 × 1,750
+  });
+
+  it('hors scan, choisir le type pose toujours le tarif de référence', () => {
+    fixture.detectChanges();
+    component.fuelPrices = [{ fuelTypeId: 25, pricePerLiter: 1.75 } as any];
+
+    component.manualEntry.volume = 40;
+    component.onFuelTypeChange(25);
+
+    expect(component.manualEntry.pricePerLiter).toBe(1.75);
+  });
+
   it('volume et prix absents du ticket : champs laissés vides, rien n’est recalculé', () => {
     fixture.detectChanges();
 

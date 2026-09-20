@@ -893,7 +893,8 @@ public class AiChatController : ControllerBase
             .Include(s => s.Template)
             .ToListAsync();
 
-        // ══════════ BUILD CHART DATA ══════════        var totalDistance = trips.Sum(t => t.DistanceKm);
+        // ══════════ BUILD CHART DATA ══════════
+        var totalDistance = trips.Sum(t => t.DistanceKm);
 
         // Health distribution
         var healthDist = new { excellent = 0, good = 0, fair = 0, poor = 0, critical = 0 };
