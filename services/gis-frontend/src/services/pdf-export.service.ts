@@ -989,14 +989,29 @@ export class PdfExportService {
           { header: 'Adresse', dataKey: 'address' }
         ];
       case 'mileage':
-        return [
-          { header: 'Date', dataKey: 'date' },
-          { header: 'Distance', dataKey: 'distance' },
-          { header: 'Trajets', dataKey: 'tripCount' },
-          { header: 'Temps conduite', dataKey: 'drivingTime' },
-          { header: 'Vit. max', dataKey: 'maxSpeed' },
-          { header: 'Odom\u00e8tre', dataKey: 'odometer' }
-        ];
+        // Relecture du 20/09/2026. Sans véhicule choisi, une ligne décrit un
+        // VÉHICULE et non un jour (processMileageReportAllVehicles) : l'écran a
+        // reçu une colonne « Véhicule », mais l'export ignorait l'option et
+        // sortait un PDF et un classeur où PLUS RIEN n'identifiait les lignes —
+        // « Date » et « Odomètre », vides, y étaient de surcroît retirées par
+        // colonnesAlimentees. Colonnes conditionnelles, comme 'mileage-period'
+        // juste en dessous.
+        return options?.allVehicles
+          ? [
+              { header: 'V\u00e9hicule', dataKey: '_vehicule' },
+              { header: 'Distance', dataKey: 'distance' },
+              { header: 'Trajets', dataKey: 'tripCount' },
+              { header: 'Temps conduite', dataKey: 'drivingTime' },
+              { header: 'Vit. max', dataKey: 'maxSpeed' }
+            ]
+          : [
+              { header: 'Date', dataKey: 'date' },
+              { header: 'Distance', dataKey: 'distance' },
+              { header: 'Trajets', dataKey: 'tripCount' },
+              { header: 'Temps conduite', dataKey: 'drivingTime' },
+              { header: 'Vit. max', dataKey: 'maxSpeed' },
+              { header: 'Odom\u00e8tre', dataKey: 'odometer' }
+            ];
       case 'mileage-period':
         const cols = [{ header: 'Période', dataKey: 'period' }];
         if (options?.periodType === 'day') cols.push({ header: 'Jour', dataKey: 'dayOfWeek' });
@@ -1131,6 +1146,14 @@ export class PdfExportService {
       case 'stops':
         return {
           '_typeLabel': (_v: any, row: any) => `${row.typeCode} - ${row.typeLabel}`
+        };
+      case 'mileage':
+        return {
+          // EXACTEMENT ce que rend l'écran : la plaque quand elle existe
+          // (« - » est le remplissage de processMileageReportAllVehicles),
+          // le nom du véhicule sinon.
+          '_vehicule': (_v: any, row: any) =>
+            (row.plate && row.plate !== '-') ? row.plate : (row.vehicleName || '')
         };
       default:
         return {};

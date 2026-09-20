@@ -12,6 +12,13 @@ function fmt(value: number, digits: number): string {
   });
 }
 
+/** Espace FINE INSÉCABLE entre la valeur et son unité. Une espace ordinaire est
+ *  SÉCABLE : dans une cellule étroite « 2 615,55 » et « TND » tombaient sur deux
+ *  lignes (recette de Karim du 19/09/2026 — une valeur reste sur UNE ligne).
+ *  C'est aussi le séparateur de milliers de fr-FR : la valeur entière se compose
+ *  donc d'une seule et même espace. */
+const ESPACE_INSECABLE = '\u202F';
+
 /**
  * Pipes that read from UserPreferencesService and re-emit when the
  * relevant preference changes. Each pipe holds a subscription on the
@@ -43,7 +50,7 @@ export class AppDistancePipe implements PipeTransform, OnDestroy {
   transform(km: number | null | undefined, digits: number = 0): string {
     if (km === null || km === undefined || isNaN(km as number)) return '-';
     const { value, unit } = this.prefs.convertDistance(km);
-    return `${fmt(value, digits)} ${unit}`;
+    return `${fmt(value, digits)}${ESPACE_INSECABLE}${unit}`;
   }
 }
 
@@ -57,7 +64,7 @@ export class AppSpeedPipe implements PipeTransform, OnDestroy {
   transform(kmh: number | null | undefined, digits: number = 0): string {
     if (kmh === null || kmh === undefined || isNaN(kmh as number)) return '-';
     const { value, unit } = this.prefs.convertSpeed(kmh);
-    return `${fmt(value, digits)} ${unit}`;
+    return `${fmt(value, digits)}${ESPACE_INSECABLE}${unit}`;
   }
 }
 
@@ -71,7 +78,7 @@ export class AppVolumePipe implements PipeTransform, OnDestroy {
   transform(liters: number | null | undefined, digits: number = 1): string {
     if (liters === null || liters === undefined || isNaN(liters as number)) return '-';
     const { value, unit } = this.prefs.convertVolume(liters);
-    return `${fmt(value, digits)} ${unit}`;
+    return `${fmt(value, digits)}${ESPACE_INSECABLE}${unit}`;
   }
 }
 

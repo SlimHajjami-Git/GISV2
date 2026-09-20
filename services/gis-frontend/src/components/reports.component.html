@@ -26,7 +26,7 @@
   </div>
 </ng-template>
 
-  <div class="reports-page">
+  <div class="reports-page" [class.rp-embarque]="embedded">
     <div class="reports-layout">
       <!-- SIDEBAR GAUCHE -->
       <aside class="reports-sidebar">
@@ -1451,16 +1451,22 @@
                     <thead>
                       <tr>
                         <th>Mois</th>
-                        <th class="num">Carburant</th>
-                        <th class="num">Entretiens</th>
-                        <th class="num">Réparations</th>
+                        <!-- Le code devise (TND, DZD) est porté par l'INTITULÉ, pas par chaque
+                             cellule : même motif que le rapport mensuel de flotte
+                             (mfMontant / mfDeviseEntete). Répété six fois par ligne, il poussait
+                             « Total » et « Var. / mois préc. » hors du cadre — et ce cadre est en
+                             overflow-x: hidden, donc la colonne disparaissait sans un signe.
+                             En euro rien ne change : « € » tient dans la cellule. -->
+                        <th class="num">Carburant{{ mfDeviseEntete() }}</th>
+                        <th class="num">Entretiens{{ mfDeviseEntete() }}</th>
+                        <th class="num">Réparations{{ mfDeviseEntete() }}</th>
                         <!-- Intitulés courts sur une ligne : « Autres dépenses » et « Variation vs mois
                              précédent » faisaient déborder le tableau de 50 px en 1536 px (recette du 11/09). -->
-                        <th class="num" title="Autres dépenses">Autres</th>
+                        <th class="num" title="Autres dépenses">Autres{{ mfDeviseEntete() }}</th>
                         @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
-                          <th class="num" [title]="infoBulleAvoirs">Avoirs</th>
+                          <th class="num" [title]="infoBulleAvoirs">Avoirs{{ mfDeviseEntete() }}</th>
                         }
-                        <th class="num">Total</th>
+                        <th class="num">Total{{ mfDeviseEntete() }}</th>
                         <th class="num" title="Variation par rapport au mois précédent">Var. / mois préc.</th>
                       </tr>
                     </thead>
@@ -1472,29 +1478,29 @@
                                « en cours » pour les deux, donc rien pour un mois
                                tronqué par la date de début (recette du 13/09/2026). -->
                           <td class="vehicle-cell"><strong>{{ m.monthName }}</strong><span class="month-badge" *ngIf="m.isPartial" [title]="partialMonthTitle(m)">{{ partialMonthBadge(m) }}</span></td>
-                          <td class="num">{{ formatCurrency(m.fuelCost) }}</td>
-                          <td class="num">{{ formatCurrency(m.maintenanceCost) }}</td>
-                          <td class="num">{{ formatCurrency(m.repairCost) }}</td>
-                          <td class="num">{{ formatCurrency(m.otherCost) }}</td>
+                          <td class="num">{{ mfMontant(m.fuelCost) }}</td>
+                          <td class="num">{{ mfMontant(m.maintenanceCost) }}</td>
+                          <td class="num">{{ mfMontant(m.repairCost) }}</td>
+                          <td class="num">{{ mfMontant(m.otherCost) }}</td>
                           @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
-                            <td class="num">{{ formatCurrency(m.creditAmount || 0) }}</td>
+                            <td class="num">{{ mfMontant(m.creditAmount || 0) }}</td>
                           }
-                          <td class="num total-cell">{{ formatCurrency(m.totalCost) }}</td>
-                          <td class="num deviation" [ngClass]="deviationClass(m.variationPct)">{{ formatSignedPct(m.variationPct) }}</td>
+                          <td class="num total-cell">{{ mfMontant(m.totalCost) }}</td>
+                          <td class="num deviation" [ngClass]="deviationClass(m.variationPct)">{{ ecartCellule(m.variationPct) }}</td>
                         </tr>
                       }
                     </tbody>
                     <tfoot>
                       <tr class="dept-total-row">
                         <td><strong>TOTAL</strong></td>
-                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalFuelCost) }}</strong></td>
-                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalMaintenanceCost) }}</strong></td>
-                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalRepairCost) }}</strong></td>
-                        <td class="num"><strong>{{ formatCurrency(costEvolution.totalOtherCost) }}</strong></td>
+                        <td class="num"><strong>{{ mfMontant(costEvolution.totalFuelCost) }}</strong></td>
+                        <td class="num"><strong>{{ mfMontant(costEvolution.totalMaintenanceCost) }}</strong></td>
+                        <td class="num"><strong>{{ mfMontant(costEvolution.totalRepairCost) }}</strong></td>
+                        <td class="num"><strong>{{ mfMontant(costEvolution.totalOtherCost) }}</strong></td>
                         @if (aDesAvoirs(costEvolution.totalCreditAmount)) {
-                          <td class="num"><strong>{{ formatCurrency(costEvolution.totalCreditAmount || 0) }}</strong></td>
+                          <td class="num"><strong>{{ mfMontant(costEvolution.totalCreditAmount || 0) }}</strong></td>
                         }
-                        <td class="num total-cell"><strong>{{ formatCurrency(costEvolution.totalCost) }}</strong></td>
+                        <td class="num total-cell"><strong>{{ mfMontant(costEvolution.totalCost) }}</strong></td>
                         <td class="num">—</td>
                       </tr>
                     </tfoot>
@@ -2241,7 +2247,7 @@
                     <span class="page-info">{{ currentPage }} sur {{ totalPages }}</span>
                     <button class="page-btn" [disabled]="currentPage === totalPages" (click)="goToPage(currentPage + 1)">›</button>
                     <button class="page-btn" [disabled]="currentPage === totalPages" (click)="goToPage(totalPages)">»</button>
-                    <span class="items-info">Éléments {{ startItem }} à {{ endItem }} sur {{ tableData.length }}</span>
+                    <span class="items-info">Éléments {{ startItem }} à {{ endItem }} sur {{ itemCount }}</span>
                     <select class="page-size-select" [(ngModel)]="pageSize" (change)="onPageSizeChange()">
                       <option [value]="10">10</option>
                       <option [value]="25">25</option>
@@ -2276,19 +2282,34 @@
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('speedValue')">Vitesse <span class="sort-icon">{{ getSortIcon('speedValue') }}</span></th>
                       } @else if (selectedTemplate?.type === 'mileage') {
-                        <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
+                        <!-- Sans véhicule choisi, une ligne = un VÉHICULE, pas un jour :
+                             « Date » et « Odomètre » ne sont pas alimentés dans ce cas
+                             (processMileageReportAllVehicles n'en produit aucun) et
+                             restaient deux colonnes vides qui volaient leur largeur aux
+                             autres. Même remède que la colonne Immatriculation. -->
+                        @if (!selectedVehicleId) {
+                          <th class="sortable" (click)="sortBy('vehicleName')">Véhicule <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
+                        } @else {
+                          <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
+                        }
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
                         <th class="sortable" (click)="sortBy('tripCount')">Trajets <span class="sort-icon">{{ getSortIcon('tripCount') }}</span></th>
                         <th class="sortable" (click)="sortBy('drivingTimeSeconds')">Temps de conduite <span class="sort-icon">{{ getSortIcon('drivingTimeSeconds') }}</span></th>
                         <th class="sortable" (click)="sortBy('maxSpeedValue')">Vitesse max <span class="sort-icon">{{ getSortIcon('maxSpeedValue') }}</span></th>
-                        <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
+                        @if (selectedVehicleId) {
+                          <th class="sortable" (click)="sortBy('odometerValue')">Odomètre <span class="sort-icon">{{ getSortIcon('odometerValue') }}</span></th>
+                        }
                       } @else if (selectedTemplate?.type === 'mileage-period') {
                         <th class="sortable" (click)="sortBy('period')">{{ !selectedVehicleId ? 'Matricule' : 'Période' }} <span class="sort-icon">{{ getSortIcon('period') }}</span></th>
-                        @if (selectedMileagePeriodType === 'day') {
+                        <!-- « Jour », « Moy. jour » et « Jours actifs » décrivent une
+                             PÉRIODE. Sans véhicule choisi la ligne décrit un véhicule
+                             (processMileagePeriodAllVehicles) et ces trois colonnes
+                             sortaient vides. -->
+                        @if (selectedMileagePeriodType === 'day' && selectedVehicleId) {
                           <th class="sortable" (click)="sortBy('dayOfWeek')">Jour <span class="sort-icon">{{ getSortIcon('dayOfWeek') }}</span></th>
                         }
                         <th class="sortable" (click)="sortBy('distanceValue')">Distance <span class="sort-icon">{{ getSortIcon('distanceValue') }}</span></th>
-                        @if (selectedMileagePeriodType === 'month') {
+                        @if (selectedMileagePeriodType === 'month' && selectedVehicleId) {
                           <th class="sortable" (click)="sortBy('avgDaily')">Moy. jour <span class="sort-icon">{{ getSortIcon('avgDaily') }}</span></th>
                           <th class="sortable" (click)="sortBy('activeDays')">Jours actifs <span class="sort-icon">{{ getSortIcon('activeDays') }}</span></th>
                         }
@@ -2342,17 +2363,17 @@
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
                         <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
                         <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
-                        <th class="sortable" (click)="sortBy('laborCost')">Main d'oeuvre <span class="sort-icon">{{ getSortIcon('laborCost') }}</span></th>
-                        <th class="sortable" (click)="sortBy('partsCost')">Pièces <span class="sort-icon">{{ getSortIcon('partsCost') }}</span></th>
-                        <th class="sortable" (click)="sortBy('totalCost')">Total <span class="sort-icon">{{ getSortIcon('totalCost') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('laborCost')">Main d'oeuvre <span class="sort-icon">{{ getSortIcon('laborCost') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('partsCost')">Pièces <span class="sort-icon">{{ getSortIcon('partsCost') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('totalCost')">Total <span class="sort-icon">{{ getSortIcon('totalCost') }}</span></th>
                       } @else if (selectedTemplate?.type === 'maintenance') {
                         <th class="sortable" (click)="sortBy('vehicleName')">Immatriculation <span class="sort-icon">{{ getSortIcon('vehicleName') }}</span></th>
                         <th class="sortable" (click)="sortBy('date')">Date <span class="sort-icon">{{ getSortIcon('date') }}</span></th>
                         <th class="sortable" (click)="sortBy('type')">Type <span class="sort-icon">{{ getSortIcon('type') }}</span></th>
                         <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
                         <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
-                        <th class="sortable" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
-                        <th class="sortable" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
                       } @else {
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
                         <th class="sortable" (click)="sortBy('value')">Valeur <span class="sort-icon">{{ getSortIcon('value') }}</span></th>
@@ -2396,19 +2417,25 @@
                           <td class="distance-cell">{{ row.distance }}</td>
                           <td class="speed-cell">{{ row.speed }}</td>
                         } @else if (selectedTemplate?.type === 'mileage') {
-                          <td class="date-cell">{{ row.date }}</td>
+                          @if (!selectedVehicleId) {
+                            <td class="vehicle-cell">{{ row.plate && row.plate !== '-' ? row.plate : row.vehicleName }}</td>
+                          } @else {
+                            <td class="date-cell">{{ row.date }}</td>
+                          }
                           <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
                           <td class="trips-cell">{{ row.tripCount }}</td>
                           <td class="duration-cell">{{ row.drivingTime }}</td>
                           <td class="speed-cell">{{ row.maxSpeed }}</td>
-                          <td class="odometer-cell">{{ row.odometer }}</td>
+                          @if (selectedVehicleId) {
+                            <td class="odometer-cell">{{ row.odometer }}</td>
+                          }
                         } @else if (selectedTemplate?.type === 'mileage-period') {
                           <td class="period-cell">{{ row.period }}</td>
-                          @if (selectedMileagePeriodType === 'day') {
+                          @if (selectedMileagePeriodType === 'day' && selectedVehicleId) {
                             <td class="day-cell">{{ row.dayOfWeek }}</td>
                           }
                           <td class="distance-cell" [class.high-mileage]="row.distanceValue > 100">{{ row.distance }}</td>
-                          @if (selectedMileagePeriodType === 'month') {
+                          @if (selectedMileagePeriodType === 'month' && selectedVehicleId) {
                             <td class="avg-cell">{{ row.avgDaily }}</td>
                             <td class="active-days-cell">{{ row.activeDays }}</td>
                           }
@@ -2483,17 +2510,17 @@
                           <td class="time-cell">{{ row.date }}</td>
                           <td class="description-cell">{{ row.description }}</td>
                           <td class="supplier-cell">{{ row.supplierName }}</td>
-                          <td class="amount-cell">{{ row.laborCostFormatted }}</td>
-                          <td class="amount-cell">{{ row.partsCostFormatted }}</td>
-                          <td class="amount-cell total-cost">{{ row.totalCostFormatted }}</td>
+                          <td class="amount-cell num">{{ row.laborCostFormatted }}</td>
+                          <td class="amount-cell num">{{ row.partsCostFormatted }}</td>
+                          <td class="amount-cell num total-cost">{{ row.totalCostFormatted }}</td>
                         } @else if (selectedTemplate?.type === 'maintenance') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>
                           <td class="type-cell">{{ row.type }}</td>
                           <td class="description-cell">{{ row.description }}</td>
                           <td class="supplier-cell">{{ row.supplierName }}</td>
-                          <td class="amount-cell">{{ row.costFormatted }}</td>
-                          <td class="mileage-cell">{{ row.mileage }}</td>
+                          <td class="amount-cell num">{{ row.costFormatted }}</td>
+                          <td class="mileage-cell num">{{ row.mileage }}</td>
                         } @else {
                           <td class="time-cell">{{ row.time || row.date }}</td>
                           <td class="value-cell">{{ row.level || row.speed || row.distance }}</td>
@@ -2504,6 +2531,28 @@
                       }
                     }
                   </tbody>
+                  <!-- Ligne de total ÉPINGLÉE au bas du cadre (même mécanisme que
+                       « Évolution des coûts »). Elle porte le total de TOUT le
+                       rapport, pas de la page affichée : c'est le chiffre que le
+                       gestionnaire cherche, et il reste lisible en défilant. -->
+                  @if (selectedTemplate?.type === 'costs' && itemCount > 0) {
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td colspan="4">TOTAL — {{ itemCount }} ligne(s)</td>
+                        <td class="num">{{ montantCellule(totauxCouts().laborCost) }}</td>
+                        <td class="num">{{ montantCellule(totauxCouts().partsCost) }}</td>
+                        <td class="num total-cost">{{ montantCellule(totauxCouts().totalCost) }}</td>
+                      </tr>
+                    </tfoot>
+                  } @else if (selectedTemplate?.type === 'maintenance' && itemCount > 0) {
+                    <tfoot>
+                      <tr class="dept-total-row">
+                        <td colspan="5">TOTAL — {{ itemCount }} ligne(s)</td>
+                        <td class="num total-cost">{{ montantCellule(totalEntretiens()) }}</td>
+                        <td class="num">—</td>
+                      </tr>
+                    </tfoot>
+                  }
                 </table>
                 @if (paginatedData.length === 0) {
                   <div class="table-empty-state">

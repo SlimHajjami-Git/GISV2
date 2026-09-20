@@ -848,24 +848,58 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return `${y}-${m}-${d}`;
   }
 
-  /** Chart container min-width capped to avoid exceeding browser canvas limits.
-   *  Calypso 7 — pour le rapport Carburant l utilisateur veut voir tout le
-   *  graphe d un coup, sans defiler horizontalement. La courbe etant lisse
-   *  (line chart sur evolution dans le temps) elle reste lisible meme tassee.
-   *  On force donc 'auto' pour ce template pour que le canvas se cale a la
-   *  largeur du conteneur. Pour les autres rapports (souvent des bar charts
-   *  avec beaucoup de categories) le comportement actuel reste le bon. */
-  getChartMinWidth(): string {
-    if (this.selectedTemplate?.type === 'fuel') return 'auto';
-    if (this.chartData.length <= 20) return 'auto';
-    return Math.min(this.chartData.length * 40, 5000) + 'px';
+  // ──────────────────────── Largeur des graphes ────────────────────────
+  //
+  // Recette de Karim du 19/09/2026 : la largeur minimale du graphe était calée
+  // sur un NOMBRE DE POINTS (« plus de vingt »), pas sur la place réelle. Deux
+  // symptômes opposés en découlaient, avec DEUX seuils indépendants :
+  //  - « Kilométrage », « Kilométrage par période », « Infractions de vitesse »
+  //    (24 barres horaires) : les boutons de défilement s'affichaient alors que
+  //    le graphe tenait largement dans le cadre ;
+  //  - une flotte nombreuse : le graphe débordait sans que la largeur exigée
+  //    ait le moindre rapport avec celle offerte.
+  // UNE seule condition, fondée sur la largeur disponible, règle les deux.
+
+  /** Pas minimal d'un point pour qu'une barre et son étiquette restent lisibles. */
+  private static readonly PAS_POINT_GRAPHE = 40;
+  /** Plafond de sécurité : au-delà, le canvas dépasse les limites du navigateur. */
+  private static readonly LARGEUR_MAX_GRAPHE = 5000;
+
+  /**
+   * Largeur réellement offerte au graphe : la fenêtre, moins la barre latérale
+   * des filtres (260 px) et les gouttières du cadre (24 px). Vérifié au banc :
+   * à 1 536 px, le conteneur du graphe mesure 1 252 px.
+   * Déduite de la FENÊTRE et non lue sur le DOM : une lecture de layout dans
+   * une liaison de gabarit peut changer de valeur entre les deux passes de
+   * vérification d'Angular (NG0100), et le banc doit pouvoir la rejouer.
+   */
+  largeurDisponibleGraphe(): number {
+    const fenetre = (typeof window !== 'undefined' && window.innerWidth) ? window.innerWidth : 1536;
+    return Math.max(320, fenetre - 260 - 24);
   }
 
-  /** True quand le rapport courant doit afficher les boutons de scroll
-   *  horizontal autour du graphe. Faux pour Carburant (fit-to-width). */
-  showChartScrollButtons(): boolean {
+  /** Largeur qu'exige le graphe pour rester lisible, tous ses points comptés. */
+  largeurExigeeGraphe(): number {
+    return this.chartData.length * ReportsComponent.PAS_POINT_GRAPHE;
+  }
+
+  /** Le graphe ne tient PAS dans la place disponible : seule raison de lui
+   *  imposer une largeur et de proposer des boutons de défilement.
+   *  Carburant reste hors jeu : sa courbe est lisse et l'utilisateur veut la
+   *  voir d'un coup, même tassée (Calypso 7). */
+  grapheDeborde(): boolean {
     if (this.selectedTemplate?.type === 'fuel') return false;
-    return this.chartData.length > 20;
+    return this.largeurExigeeGraphe() > this.largeurDisponibleGraphe();
+  }
+
+  getChartMinWidth(): string {
+    if (!this.grapheDeborde()) return 'auto';
+    return Math.min(this.largeurExigeeGraphe(), ReportsComponent.LARGEUR_MAX_GRAPHE) + 'px';
+  }
+
+  /** Les boutons suivent EXACTEMENT le débordement : plus de seuil séparé. */
+  showChartScrollButtons(): boolean {
+    return this.grapheDeborde();
   }
 
   selectTemplate(template: any) {
@@ -989,12 +1023,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return Math.ceil(this.tableData.length / this.pageSize) || 1;
   }
 
+  /**
+   * Nombre d'ÉLÉMENTS du rapport : les lignes-titres de jour (« 📅 18/09/2026 »)
+   * sont des séparateurs, pas des données. Karim, recette du 19/09/2026 : sur
+   * 30 jours et 200 trajets l'écran annonçait 230 éléments. L'export filtre
+   * déjà ces pseudo-lignes (buildGenericExport) : l'écran s'aligne dessus.
+   */
+  get itemCount(): number {
+    return this.tableData.filter((r: any) => r && r.isDayHeader !== true).length;
+  }
+
+  /** Éléments (hors lignes-titres) situés AVANT la page courante. */
+  private itemsBeforeCurrentPage(): number {
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.tableData.slice(0, start).filter((r: any) => r && r.isDayHeader !== true).length;
+  }
+
   get startItem(): number {
-    return (this.currentPage - 1) * this.pageSize + 1;
+    // Une page qui ne contiendrait que des lignes-titres n'a pas de premier
+    // élément : on n'affiche pas « 1 » à tort.
+    const dejaVus = this.itemsBeforeCurrentPage();
+    return this.itemCount === 0 ? 0 : Math.min(dejaVus + 1, this.itemCount);
   }
 
   get endItem(): number {
-    return Math.min(this.currentPage * this.pageSize, this.tableData.length);
+    const start = (this.currentPage - 1) * this.pageSize;
+    return this.tableData
+      .slice(0, start + this.pageSize)
+      .filter((r: any) => r && r.isDayHeader !== true).length;
   }
 
   get paginatedData(): any[] {
@@ -5937,10 +5993,35 @@ export class ReportsComponent implements OnInit, OnDestroy {
       vehicleName,
       dateRange,
       statistics: this.statisticsData,
-      columns,
+      columns: this.colonnesAlimentees(columns, data, formatters),
       data,
       formatters
     };
+  }
+
+  /**
+   * Retire de l'export les colonnes qu'AUCUNE ligne n'alimente — celles-là même
+   * que l'écran vient d'arrêter de rendre (« Date » et « Odomètre » du
+   * Kilométrage de flotte, « Jour » / « Moy. jour » / « Jours actifs » du
+   * Kilométrage par période sans véhicule choisi). Sans cela le PDF et le
+   * classeur gardaient une colonne vide que l'écran n'a plus.
+   * Une colonne SERVIE PAR UN FORMATEUR est conservée : sa valeur ne vient pas
+   * d'un champ homonyme de la ligne (« _tripNumber », « _address »).
+   */
+  private colonnesAlimentees(
+    columns: any[],
+    data: any[],
+    formatters: Record<string, (value: any, row: any) => string>
+  ): any[] {
+    if (!data.length) return columns;
+    const alimentee = (cle: string) =>
+      data.some((r: any) => {
+        const v = r?.[cle];
+        return v !== null && v !== undefined && v !== '';
+      });
+    const gardees = columns.filter(c => !!formatters?.[c.dataKey] || alimentee(c.dataKey));
+    // Garde-fou : on ne rend jamais un export sans colonne.
+    return gardees.length ? gardees : columns;
   }
 
   /** Coûts mensuels / carburant mensuel : mêmes colonnes que le tableau à l'écran. */
@@ -7667,11 +7748,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
   executeCostsReport(vehicleId?: number, startDate?: Date, endDate?: Date) {
     this.loading = true;
     
-    const options: any = {};
+    // Sans pageSize, le serveur applique son défaut de 50 lignes : le rapport
+    // se taisait sur tout ce qui dépassait, sans le dire (20/09/2026, même
+    // défaut que l'écran Réparations qui s'arrêtait à 100). La borne est haute
+    // et volontairement visible : au-delà, le récapitulatif le signale.
+    const options: any = { page: 1, pageSize: 2000 };
     if (vehicleId) options.vehicleId = vehicleId;
     if (startDate) options.fromDate = this.toLocalDate(startDate);
     if (endDate) options.toDate = this.toLocalDate(endDate);
-    
+
     this.apiService.getRepairs(options).subscribe({
       next: (result) => {
         this.ngZone.run(() => {
@@ -8202,6 +8287,34 @@ export class ReportsComponent implements OnInit, OnDestroy {
   /** Écart à la moyenne d'une cellule (« +90,4 % »), insécable. */
   ecartCellule(value: number | null | undefined): string {
     return this.insecable(this.formatSignedPct(value));
+  }
+
+  /**
+   * Totaux du rapport « Coûts » : ceux de TOUT le rapport, pas de la page
+   * affichée. Karim, 19/09/2026 : un rapport de coûts sans total obligeait à
+   * additionner les lignes à la main. La ligne est épinglée au bas du cadre,
+   * elle reste donc lisible pendant qu'on défile.
+   */
+  totauxCouts(): { laborCost: number; partsCost: number; totalCost: number } {
+    return this.lignesDeDonnees().reduce(
+      (acc, r: any) => ({
+        laborCost: acc.laborCost + (Number(r.laborCost) || 0),
+        partsCost: acc.partsCost + (Number(r.partsCost) || 0),
+        totalCost: acc.totalCost + (Number(r.totalCost) || 0),
+      }),
+      { laborCost: 0, partsCost: 0, totalCost: 0 }
+    );
+  }
+
+  /** Total du rapport « Entretiens ». Les échéances PLANIFIÉES portent un coût
+   *  à 0 (rien n'a encore été dépensé) : elles n'ajoutent donc rien au total. */
+  totalEntretiens(): number {
+    return this.lignesDeDonnees().reduce((somme, r: any) => somme + (Number(r.cost) || 0), 0);
+  }
+
+  /** Les vraies lignes du tableau, sans les lignes-titres de jour. */
+  private lignesDeDonnees(): any[] {
+    return this.tableData.filter((r: any) => r && r.isDayHeader !== true);
   }
 
   /**
@@ -9467,7 +9580,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const n1 = (v: any) => Math.round((Number(v) || 0) * 10) / 10;
     const n2 = (v: any) => Math.round((Number(v) || 0) * 100) / 100;
     const pourPdf = (format || 'pdf').toLowerCase() === 'pdf';
-    const mt = (v: any) => pourPdf ? this.formatCurrency(Number(v) || 0) : n2(v);
+    // mfMontant et non formatCurrency : les intitulés portent déjà le code
+    // devise, comme à l'écran depuis le 20/09/2026. Avec formatCurrency le PDF
+    // écrivait « Carburant TND » en titre ET « 18 420,55 TND » dans chaque
+    // cellule — l'export disait autre chose que l'écran du même rapport.
+    // mfMontant ne retire le code que lorsque la devise n'a pas de symbole :
+    // l'euro reste « 18 420,55 € ».
+    const mt = (v: any) => pourPdf ? this.mfMontant(Number(v) || 0) : n2(v);
     const pct = (v: number | null) => v == null
       ? (pourPdf ? '—' : '')
       : pourPdf
@@ -9480,14 +9599,19 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Colonne des crédits seulement s'il y en a sur la période : elle prendrait
     // 2,4 de largeur sur les 159,5 mm déjà mesurés, pour n'afficher que des 0.
     const avoirs = this.aDesAvoirs(r.totalCreditAmount);
+    // Le code devise n'est répété dans l'intitulé que lorsque la cellule ne le
+    // porte pas : mfMontant le retire du PDF quand la devise n'a pas de symbole
+    // (TND, DZD) et le garde sinon (€). Le tableur, lui, reçoit des nombres nus,
+    // son intitulé doit donc toujours dire l'unité.
+    const dev = pourPdf ? this.mfDeviseEntete() : ` ${cur}`;
     const columns = [
       { header: 'Mois', dataKey: 'monthName', weight: 3.2 },
-      { header: `Carburant ${cur}`, dataKey: 'fuelCost', weight: 2.2 },
-      { header: `Entretiens ${cur}`, dataKey: 'maintenanceCost', weight: 2.2 },
-      { header: `Réparations ${cur}`, dataKey: 'repairCost', weight: 2.4 },
-      { header: `Autres ${cur}`, dataKey: 'otherCost', weight: 1.8 },
-      ...(avoirs ? [{ header: `${this.libelleAvoirs} ${cur}`, dataKey: 'creditAmount', weight: 2.4 }] : []),
-      { header: `Total ${cur}`, dataKey: 'totalCost', weight: 2 },
+      { header: `Carburant${dev}`, dataKey: 'fuelCost', weight: 2.2 },
+      { header: `Entretiens${dev}`, dataKey: 'maintenanceCost', weight: 2.2 },
+      { header: `Réparations${dev}`, dataKey: 'repairCost', weight: 2.4 },
+      { header: `Autres${dev}`, dataKey: 'otherCost', weight: 1.8 },
+      ...(avoirs ? [{ header: `${this.libelleAvoirs}${dev}`, dataKey: 'creditAmount', weight: 2.4 }] : []),
+      { header: `Total${dev}`, dataKey: 'totalCost', weight: 2 },
       { header: 'Variation / mois préc.', dataKey: 'variationPct', weight: 3.3 }
     ];
     const data: any[] = (r.months || []).map(m => ({

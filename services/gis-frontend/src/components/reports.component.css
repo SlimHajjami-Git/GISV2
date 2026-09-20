@@ -667,8 +667,38 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow-x: hidden;
+  /* « auto » et non « hidden » : trois branches remplissent cet espace SANS
+     cadre de tableau — le rapport IA, « Carburant réel vs GPS » et l'analyse de
+     consommation empilent graphes et cartes sur une page longue. Bornées et en
+     « hidden », leur bas devenait INATTEIGNABLE. Le tableau générique, lui, ne
+     déclenche jamais cet ascenseur : .table-section prend exactement la place
+     qui reste (flex: 1 + min-height: 0). */
+  overflow-y: auto;
+  /* Le cadre du tableau ne peut défiler que si un ancêtre a une hauteur
+     DÉFINIE : .reports-page n'a qu'un min-height, si bien que toute la chaîne
+     flex retombait sur la hauteur du CONTENU. Résultat mesuré : l'en-tête
+     collant tenait jusqu'à seize lignes et lâchait à la dix-septième, alors que
+     la pagination par défaut en affiche cinquante — on perdait l'en-tête, la
+     barre de pagination et les boutons d'export.
+     La borne est posée ICI et non sur .reports-page : les cinq branches
+     .monthly-cost-report-workspace (dont « Coût d'exploitation réel », validé
+     le 19/09/2026) n'ont pas de défileur interne, les borner rendrait leur bas
+     INATTEIGNABLE. .workspace-content n'habille que les rapports à tableau.
+     « flex: 1 1 auto » et non « flex: 1 » : ce dernier vaut « flex-basis: 0 »,
+     qui l'emporte sur la hauteur et laissait la chaîne repartir du contenu —
+     mesuré au banc, la page faisait encore 1 860 px de haut. */
+  flex: 1 1 auto;
+  height: calc(100vh - 42px);
 }
+
+/* Le rapport IA est une page longue (indicateurs, graphes, cartes, questions)
+   sans tableau bordé : rien ne doit l'empêcher de défiler dans le cadre. */
+.workspace-content.ai-fleet-workspace { min-height: 0; }
+
+/* Rapports intégrés dans une page hôte (admin) : aucune barre d'application
+   au-dessus, la hauteur de fenêtre ne veut plus rien dire. */
+.reports-page.rp-embarque .workspace-content { height: auto; }
 
 /* Chart Section */
 .chart-section {
@@ -970,6 +1000,66 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   overflow: auto;
   min-height: 200px;
   height: 100%;
+}
+
+/* LE CADRE DU TABLEAU — même motif que .evolution-recap-wrapper,
+   .mf-recap-wrapper et .oc-table-wrapper : cadre borné, défilement vertical
+   INTERNE, en-tête et ligne de total épinglés.
+   Sélecteur d'ENFANT DIRECT de .table-section, et non « .table-wrapper » nu :
+   le gabarit en compte quatorze, dont deux déjà réglées par les rapports
+   validés (mf-recap-wrapper, evolution-recap-wrapper). Une règle globale
+   entrerait en conflit avec elles. Ne restent ici que le tableau générique
+   (douze rapports) et le détail de l'estimation carburant.
+   Aucun plafond en dur : le cadre prend la place qui RESTE sous le graphe et
+   la barre d'outils — c'est le défaut qu'on vient de corriger sur « Coût
+   d'exploitation réel », où 420 px écrits en dur ne tenaient que pour la
+   flotte de recette. */
+.table-section > .table-wrapper {
+  flex: 1 1 auto;
+  height: auto;
+  /* Plancher volontairement bas : sur un portable court, mieux vaut un cadre
+     serré qu'un cadre qui repousse la pagination hors de l'écran. */
+  min-height: 120px;
+  overflow-y: auto;
+  /* « auto » et non « hidden » : à 1536 px aucune colonne ne déborde, mais sur
+     un écran de tablette mieux vaut un ascenseur qu'une colonne rognée. */
+  overflow-x: auto;
+}
+
+/* Ascenseur fin : sa largeur s'ôte de celle offerte aux colonnes.
+   (Pas de « scrollbar-width », Chrome ignorerait ces règles.) */
+.table-section > .table-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+.table-section > .table-wrapper::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+/* L'en-tête est déjà collant (.data-table th) ; il lui manquait un plan de
+   superposition au-dessus des pastilles et des badges des lignes. */
+.table-section > .table-wrapper .data-table thead th { z-index: 3; }
+
+/* Ligne de total épinglée au BAS du cadre, quand le tableau en porte une —
+   même mécanisme que .evolution-recap-wrapper. */
+.table-section > .table-wrapper .data-table tfoot .dept-total-row td {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  background: #eef2f7;
+  color: #0f172a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 2px 0 #cbd5e1;
+  border-top: 0;
+  border-bottom: 0;
+  white-space: nowrap;
+}
+
+/* MONTANTS — classe DÉDIÉE. .data-table td sert les douze rapports : y poser
+   un text-align ou un max-width régresserait Carburant, Journalier,
+   Kilométrage, Trajets, Arrêts, Vitesse, Infractions et Comportement, dont les
+   colonnes sont du texte. */
+.data-table th.num { text-align: right; }
+.data-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* Ensure table has proper dimensions */
@@ -2466,6 +2556,17 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: #334155;
+  /* AUCUN white-space: nowrap ici — relecture du 20/09/2026. Il avait été posé
+     au nom de la règle 3 (« une valeur tient sur UNE ligne ») : c'était une
+     erreur. Ce sélecteur sert SEPT tableaux, dont le récapitulatif d'« Évolution
+     des coûts », dont le cadre (.evolution-recap-wrapper) est en
+     overflow-x: hidden : ce qui dépasse y est COUPÉ, sans ascenseur et sans
+     aucun signe. Mesuré à 1 536 px, les colonnes « Total » et
+     « Var. / mois préc. » sortaient du champ en dinar.
+     La règle 3 est déjà tenue sans lui : l'espace FINE INSÉCABLE de
+     formatCurrency empêche à elle seule « 2 615,55 » et « TND » de se séparer,
+     et la devise sans symbole passe désormais dans l'INTITULÉ de colonne
+     (mfMontant / mfDeviseEntete) — il ne reste rien à couper dans la cellule. */
 }
 
 
@@ -2501,6 +2602,8 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 
 .monthly-cost-table tfoot .dept-total-row td.num {
   text-align: right;
+  /* Pas de nowrap non plus : même cause, même conséquence que dans le corps —
+     et la ligne TOTAL est justement la plus large du tableau. */
 }
 
 .table-wrapper {
@@ -2663,16 +2766,25 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
    (intitulés raccourcis, voir le HTML), et un ascenseur VERTICAL au-delà de
    12 mois (période personnalisée longue) pour que la page reste compacte.
    Douze mois et le TOTAL tiennent sans défiler (448 px) : un ascenseur pour
-   18 px n'aidait personne. En-têtes et ligne TOTAL restent épinglés. */
-.evolution-workspace .evolution-recap-wrapper { max-height: 460px; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+   18 px n'aidait personne. En-têtes et ligne TOTAL restent épinglés.
+   overflow-x AUTO et non hidden (20/09/2026) : « hidden » coupait « Total » et
+   « Var. / mois préc. » SANS RIEN DIRE dès que la colonne des avoirs
+   s'ajoutait ou qu'un total passait à sept chiffres. Même arbitrage que
+   .oc-table-wrapper : mieux vaut un ascenseur qu'une colonne rognée en
+   silence. */
+.evolution-workspace .evolution-recap-wrapper { max-height: 460px; min-height: 0; overflow-x: auto; overflow-y: auto; }
 .evolution-workspace .evolution-recap-wrapper::-webkit-scrollbar { width: 6px; }
 .evolution-workspace .evolution-recap-wrapper thead th { position: sticky; top: 0; z-index: 2; }
 .evolution-workspace .evolution-recap-wrapper tfoot .dept-total-row td { position: sticky; bottom: 0; z-index: 2; box-shadow: inset 0 2px 0 #cbd5e1; border-top: 0; }
-/* Sous 1536 px la colonne rétrécit encore : les intitulés passent à la ligne
-   plutôt que de déborder. */
-@media (max-width: 1535px) {
-  .evolution-workspace .evolution-recap-wrapper thead th { white-space: normal; }
-}
+/* Les intitulés de CE tableau passent à la ligne, à toute largeur. C'était
+   déjà le cas sous 1536 px ; la borne tombe parce que l'intitulé porte
+   désormais le code devise (« CARBURANT TND »), et que .monthly-cost-table
+   thead th est en nowrap : tenus sur une seule ligne, six intitulés réclamaient
+   à eux seuls 622 px des 786 offerts, et « Total » comme « Var. / mois préc. »
+   sortaient d'un cadre en overflow-x: hidden — donc COUPÉES, sans aucun signe.
+   Mesuré à 1 536 px : avec cette règle, le récapitulatif tient exactement dans
+   son cadre en euro comme en dinar, avec ou sans colonne d'avoirs. */
+.evolution-workspace .evolution-recap-wrapper thead th { white-space: normal; }
 @media (max-width: 1100px) {
   .donut-split { flex-direction: column; align-items: stretch; }
   .donut-split-canvas { align-self: center; }
