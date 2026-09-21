@@ -66,6 +66,31 @@ export interface UnreadCountChange {
   count: number;
 }
 
+/**
+ * Événements Tournées émis sur le groupe société (ToursController,
+ * DriverAppController, TourMonitoringService). Le payload varie selon
+ * l'événement ; tous portent tourId. Ex. TourOpened { tourId, openedAt },
+ * TourTrackingSourceChanged { tourId, source, since, deviceAvailable, phoneAvailable }.
+ */
+export type TourEventName =
+  | 'TourStatusChanged'
+  | 'TourWaypointCompleted'
+  | 'TourWaypointOverdue'
+  | 'TourDeviation'
+  | 'TourOpened'
+  | 'TourTrackingSourceChanged';
+
+export const TOUR_EVENT_NAMES: TourEventName[] = [
+  'TourStatusChanged', 'TourWaypointCompleted', 'TourWaypointOverdue',
+  'TourDeviation', 'TourOpened', 'TourTrackingSourceChanged'
+];
+
+export interface TourEvent {
+  name: TourEventName;
+  tourId: number;
+  payload: any;
+}
+
 export type ConnectionState = 'Disconnected' | 'Connecting' | 'Connected' | 'Reconnecting' | 'Error';
 
 @Injectable({
@@ -86,6 +111,8 @@ export class SignalRService implements OnDestroy {
   public unreadCount$ = new BehaviorSubject<number>(0);
   /** Suspension/réactivation de l'abonnement de la société par le sys_admin. */
   public subscriptionChanged$ = new Subject<{ status: string }>();
+  /** Événements Tournées (statut, étape, ouverture par le chauffeur, source de suivi). */
+  public tourEvent$ = new Subject<TourEvent>();
   public connectionState$ = this.connectionState.asObservable();
 
   constructor(private ngZone: NgZone) {}
@@ -102,6 +129,7 @@ export class SignalRService implements OnDestroy {
     this.notification$.complete();
     this.unreadCount$.complete();
     this.subscriptionChanged$.complete();
+    this.tourEvent$.complete();
     this.connectionState.complete();
   }
 
@@ -232,6 +260,14 @@ export class SignalRService implements OnDestroy {
     this.hubConnection.on('SubscriptionChanged', (data: { status: string }) => {
       this.ngZone.run(() => this.subscriptionChanged$.next(data));
     });
+
+    for (const name of TOUR_EVENT_NAMES) {
+      this.hubConnection.on(name, (payload: any) => {
+        const tourId = Number(payload?.tourId);
+        if (!tourId) return;
+        this.ngZone.run(() => this.tourEvent$.next({ name, tourId, payload }));
+      });
+    }
   }
 
   private async resubscribeToVehicles(): Promise<void> {

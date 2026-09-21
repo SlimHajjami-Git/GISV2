@@ -1081,6 +1081,16 @@ export class ApiService {
     return this.http.get<any>(`${this.API_URL}/tours/${id}/tracking`, { headers: this.getHeaders() });
   }
 
+  /**
+   * Envoie (ou renvoie) la tournée sur le téléphone de son chauffeur.
+   * Réponse : { sentAt, push: 'delivered_to_fcm'|'no_device'|'firebase_off'|'failed'|'quiet_hours', resent }.
+   * 400 { code: 'DRIVER_NO_APP_ACCOUNT', message } si le chauffeur n'a pas de compte application actif.
+   */
+  sendTourToDriver(id: number): Observable<{ sentAt: string; push: string; resent: boolean }> {
+    return this.http.post<{ sentAt: string; push: string; resent: boolean }>(
+      `${this.API_URL}/tours/${id}/send`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== REPORTS ====================
 
   getReports(limit = 50): Observable<any[]> {

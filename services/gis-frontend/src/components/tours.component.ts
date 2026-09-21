@@ -1,17 +1,24 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
-import { Router } from '@angular/router';
-import { CommonModule } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
+import { CommonModule, Location } from '@angular/common';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { FormsModule } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { ApiService } from '../services/api.service';
 import { PdfExportService } from '../services/pdf-export.service';
+import { ToastService } from '../services/toast.service';
+import { SignalRService, TourEvent } from '../services/signalr.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
 import { debounceTime, switchMap, catchError } from 'rxjs/operators';
 import { driverAfterVehicleChange, driverOptionLabel, DriverOption, selectableDrivers } from './tours-driver.helpers';
+import {
+  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, phoneBatteryLabel,
+  sendButtonState, SendButtonState, sendErrorMessage, sendStatusLabel, sendToast, tourSendStatus,
+  trackingBadge, TrackingBadge, waypointSourceLabel, withAppBadge
+} from './tours-tracking.helpers';
 
 declare let L: any;
 
@@ -94,6 +101,7 @@ declare let L: any;
               <th>Trajet</th>
               <th>Vehicule</th>
               <th>Chauffeur</th>
+              <th>Envoi</th>
               <th>Depart</th>
               <th>Distance</th>
               <th>Duree</th>
@@ -117,6 +125,10 @@ declare let L: any;
               </td>
               <td><span class="cell-sub">{{t.vehicleName}}</span></td>
               <td><span class="cell-sub">{{t.driverName || '-'}}</span></td>
+              <td>
+                <!-- Envoi au chauffeur : non envoyée / envoyée / ouverte sur le téléphone / partie -->
+                <span class="send-pill" [class]="'send-pill sp-'+sendStatus(t)" [title]="sendStatusTitle(t)">{{sendStatusLabel(t)}}</span>
+              </td>
               <td><span class="cell-sub">{{formatDateShort(t.scheduledStartTime)}}</span></td>
               <td><strong class="cell-km">{{t.estimatedDistanceKm | appDistance:0}}</strong></td>
               <td><span class="cell-dur">{{formatDuration(t.estimatedDurationMinutes)}}</span></td>
@@ -174,6 +186,9 @@ declare let L: any;
                   <option [ngValue]="null">Aucun chauffeur</option>
                   <option *ngFor="let d of driverOptions()" [ngValue]="d.id">{{driverLabel(d)}}</option>
                 </select>
+                <!-- Le chauffeur choisi a-t-il l'application ? Décide si la tournée peut lui être envoyée. -->
+                <span class="drv-app-hint drv-app-yes" *ngIf="tourForm.driverId && selectedFormDriverHasApp()">&#128241; Ce chauffeur a l'application</span>
+                <span class="drv-app-hint drv-app-no" *ngIf="tourForm.driverId && !selectedFormDriverHasApp()">Pas de compte application &mdash; cr&eacute;ez-le dans Utilisateurs</span>
               </div>
             </div>
             <div class="field-row">
@@ -331,6 +346,12 @@ declare let L: any;
             <div class="mini-spin" *ngIf="saving"></div>
             {{saving ? 'Enregistrement...' : (editingTour ? 'Modifier' : 'Creer la tournee')}}
           </button>
+          <!-- Création seulement, et seulement si le chauffeur choisi a un compte application : crée puis envoie. -->
+          <button class="btn-save green btn-save-send" *ngIf="!editingTour && selectedFormDriverHasApp()" (click)="saveTour(true)"
+                  [disabled]="saving || !tourForm.name || !tourForm.vehicleId" title="Cr&eacute;er la tourn&eacute;e et l'envoyer sur le t&eacute;l&eacute;phone du chauffeur">
+            <div class="mini-spin" *ngIf="saving"></div>
+            &#128241; Enregistrer et envoyer
+          </button>
         </div>
       </div>
 
@@ -352,27 +373,28 @@ declare let L: any;
         </div>
 
         <div class="cv-left-scroll">
-          <!-- Live tracking bar -->
-          <div class="tracking-bar" *ngIf="selectedTour.status === 'in_progress' && trackingData">
+          <!-- Bandeau de suivi : boîtier du véhicule d'abord, téléphone du chauffeur en relais -->
+          <div class="tracking-bar" *ngIf="selectedTour.status === 'in_progress'" [class.track-offline]="badge.kind === 'lost' || badge.kind === 'none'" [attr.data-kind]="badge.kind">
             <div class="track-header">
-              <span class="track-live-dot"></span>
-              <strong>Suivi en direct</strong>
-              <span class="track-speed" *ngIf="trackingData.vehicle">{{trackingData.vehicle.speedKph | appSpeed:0}}</span>
+              <span class="track-pill" [class]="'track-pill tp-' + badge.kind">
+                <span class="track-live-dot" *ngIf="badge.kind === 'device' || badge.kind === 'phone'"></span>
+                <span *ngIf="badge.kind === 'phone'">&#128241;</span>
+                {{badge.label}}
+              </span>
+              <span class="track-age" *ngIf="badge.ageLabel">derni&egrave;re position {{badge.ageLabel}}</span>
+              <span class="track-speed" *ngIf="liveSpeedKph() != null">{{liveSpeedKph() | appSpeed:0}}</span>
             </div>
-            <div class="track-progress">
-              <div class="track-progress-bar" [style.width.%]="trackingData.progress?.percentComplete || 0"></div>
-            </div>
-            <div class="track-info">
-              <span>{{trackingData.progress?.completedWaypoints}}/{{trackingData.progress?.totalWaypoints}} points</span>
-              <span *ngIf="trackingData.progress?.nextWaypointName">Prochain: <strong>{{trackingData.progress.nextWaypointName}}</strong></span>
-              <span *ngIf="trackingData.progress?.distanceToNextMeters">{{trackingData.progress.distanceToNextMeters >= 1000 ? ((trackingData.progress.distanceToNextMeters / 1000 | number:'1.1-1') + ' km') : (trackingData.progress.distanceToNextMeters + ' m')}}</span>
-            </div>
-          </div>
-          <div class="tracking-bar track-offline" *ngIf="selectedTour.status === 'in_progress' && !trackingData?.vehicle">
-            <div class="track-header">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
-              <span>Position GPS indisponible</span>
-            </div>
+            <ng-container *ngIf="trackingData">
+              <div class="track-progress">
+                <div class="track-progress-bar" [style.width.%]="trackingData.progress?.percentComplete || 0"></div>
+              </div>
+              <div class="track-info">
+                <span>{{trackingData.progress?.completedWaypoints}}/{{trackingData.progress?.totalWaypoints}} points</span>
+                <span *ngIf="trackingData.progress?.nextWaypointName">Prochain: <strong>{{trackingData.progress.nextWaypointName}}</strong></span>
+                <span *ngIf="trackingData.progress?.distanceToNextMeters">{{trackingData.progress.distanceToNextMeters >= 1000 ? ((trackingData.progress.distanceToNextMeters / 1000 | number:'1.1-1') + ' km') : (trackingData.progress.distanceToNextMeters + ' m')}}</span>
+                <span class="track-battery" *ngIf="phoneBattery() as bat" title="Batterie du t&eacute;l&eacute;phone du chauffeur">&#128241; {{bat}}</span>
+              </div>
+            </ng-container>
           </div>
 
           <!-- Info section -->
@@ -381,6 +403,9 @@ declare let L: any;
             <div class="info-grid">
               <div class="info-item"><span class="info-lbl">Vehicule</span><span class="info-val">{{selectedTour.vehicleName}}</span></div>
               <div class="info-item"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName || (selectedTour.driverId ? 'Fiche chauffeur introuvable' : 'Aucun')}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.sentAt"><span class="info-lbl">Envoy&eacute;e au chauffeur</span><span class="info-val">{{formatDayAt(selectedTour.sentAt)}}</span></div>
+              <div class="info-item" *ngIf="selectedTour.openedAt"><span class="info-lbl">Ouverte sur le t&eacute;l&eacute;phone</span><span class="info-val">{{formatDayAt(selectedTour.openedAt, selectedTour.sentAt)}}</span></div>
+              <div class="info-item" *ngIf="departureSignaledAt() as dep"><span class="info-lbl">D&eacute;part signal&eacute; par le chauffeur</span><span class="info-val">{{formatDayAt(dep, selectedTour.sentAt)}}</span></div>
               <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.actualDepartureTime || selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualDepartureTime || selectedTour.actualStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.waitBeforeDepartureMinutes >= 1"><span class="info-lbl">Attente avant depart</span><span class="info-val c-orange">{{selectedTour.waitBeforeDepartureMinutes}} min</span></div>
@@ -484,8 +509,12 @@ declare let L: any;
                   <div class="dt-sub" *ngIf="wp.address && wp.name">{{wp.address}}</div>
                   <div class="dt-sub" *ngIf="wp.actualArrivalTime">
                     Arrivee: {{formatTime(wp.actualArrivalTime)}}
+                    <span class="dt-src" *ngIf="waypointSource(wp) as src" [class.dt-src-unconfirmed]="wp.unconfirmed">&middot; {{src}}</span>
                     <span *ngIf="wp.arrivalDelay" [class.c-red]="wp.arrivalDelay>0" [class.c-green]="wp.arrivalDelay<0">({{wp.arrivalDelay>0?'+':''}}{{wp.arrivalDelay}} min)</span>
                   </div>
+                  <!-- Le chauffeur a déclaré l'arrivée loin de l'étape : à vérifier -->
+                  <div class="dt-sub dt-warn" *ngIf="declarationWarning(wp) as warn">&#9888; {{warn}}</div>
+                  <div class="dt-sub" *ngIf="wp.driverDepartedAt">Repart: {{formatTime(wp.driverDepartedAt)}} <span class="dt-src">&middot; chauffeur</span></div>
                   <div class="dt-sub dt-pause" *ngIf="wp.plannedPauseMinutes > 0">Pause: {{wp.plannedPauseMinutes}} min</div>
                 </div>
               </div>
@@ -516,6 +545,11 @@ declare let L: any;
             &#128196; Rapport
           </button>
           <button class="btn-cancel" (click)="closeDetail()">Retour</button>
+          <!-- Envoi au chauffeur : verrouillé (motif en infobulle) sans chauffeur ou sans compte application actif -->
+          <button class="btn-outline-sm btn-send" *ngIf="sendState().visible" (click)="sendSelectedTour()"
+                  [disabled]="sending || !sendState().enabled" [title]="sendState().tooltip || (selectedTour.sentAt ? 'Renvoyer la tournée sur le téléphone du chauffeur' : 'Envoyer la tournée sur le téléphone du chauffeur')">
+            &#128241; {{sending ? 'Envoi...' : sendState().label}}
+          </button>
           <button class="btn-outline-sm" *ngIf="selectedTour.status==='planned'" (click)="editTour()">Modifier</button>
           <button class="btn-danger-sm" *ngIf="selectedTour.status==='planned'||selectedTour.status==='in_progress'" (click)="cancelSelectedTour()">Annuler</button>
           <button class="btn-save" *ngIf="selectedTour.status==='planned'" (click)="startSelectedTour()">Demarrer</button>
@@ -621,6 +655,12 @@ declare let L: any;
     .cell-sub { font-size: 12px; color: #64748b; }
     .cell-km { font-size: 13px; color: #0f172a; }
     .cell-dur { font-size: 12px; color: #3b82f6; font-weight: 600; }
+    /* Pastille « Envoi » de la liste */
+    .send-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .sp-not_sent { background: #f1f5f9; color: #94a3b8; font-weight: 500; }
+    .sp-sent { background: #fef3c7; color: #92400e; }
+    .sp-opened { background: #dbeafe; color: #1e40af; }
+    .sp-departed { background: #dcfce7; color: #166534; }
     .action-group { display: flex; gap: 2px; justify-content: flex-end; }
     .row-action { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 4px; border-radius: 4px; display: flex; align-items: center; }
     .row-action:hover { background: #f1f5f9; color: #475569; }
@@ -677,6 +717,9 @@ declare let L: any;
     .field input, .field select { padding: 8px 11px; border: 1px solid #e2e8f0; border-radius: 7px; font-size: 13px; color: #0f172a; background: #fff; }
     .field input:focus, .field select:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px rgba(59,130,246,.12); }
     .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .drv-app-hint { font-size: 10px; font-weight: 500; margin-top: 2px; }
+    .drv-app-yes { color: #15803d; }
+    .drv-app-no { color: #b45309; }
 
     .recurrence-config { padding: 10px 0 4px; }
     .rc-label { font-size: 11px; font-weight: 600; color: #64748b; margin-bottom: 6px; display: block; }
@@ -793,6 +836,9 @@ declare let L: any;
     .dt-time { font-size: 10px; color: #94a3b8; }
     .dt-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
     .dt-pause { color: #f59e0b; }
+    .dt-src { color: #94a3b8; }
+    .dt-src-unconfirmed { color: #b45309; font-weight: 600; }
+    .dt-warn { color: #b45309; background: #fffbeb; border: 1px solid #fde68a; border-radius: 5px; padding: 2px 6px; display: inline-block; }
 
     .pause-cards { display: flex; flex-direction: column; gap: 4px; }
     .p-card { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 7px; font-size: 12px; color: #78350f; }
@@ -803,14 +849,26 @@ declare let L: any;
     :host ::ng-deep .vlive-dot { width: 16px; height: 16px; background: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 8px rgba(37,99,235,.5); position: relative; }
     :host ::ng-deep .vlive-pulse { position: absolute; inset: -6px; border-radius: 50%; border: 2px solid #3b82f6; animation: vpulse 2s infinite; }
     @keyframes vpulse { 0% { transform: scale(.8); opacity: 1; } 100% { transform: scale(2); opacity: 0; } }
+    /* Téléphone du chauffeur (relais quand le boîtier est muet) */
+    :host ::ng-deep .phone-live-icon { background: none !important; border: none !important; }
+    :host ::ng-deep .plive-dot { width: 22px; height: 22px; border-radius: 6px; background: #7c3aed; border: 2px solid white; box-shadow: 0 0 8px rgba(124,58,237,.5); display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
 
     /* ════ TRACKING BAR ════ */
     .tracking-bar { padding: 12px 18px; background: linear-gradient(135deg, #eff6ff, #f0fdf4); border-bottom: 1px solid #dbeafe; }
-    .track-offline { background: #f8fafc; border-bottom: 1px solid #f1f5f9; }
-    .track-offline .track-header { color: #94a3b8; gap: 6px; }
-    .track-header { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #1e293b; margin-bottom: 8px; }
+    .tracking-bar[data-kind="phone"] { background: linear-gradient(135deg, #f5f3ff, #eff6ff); border-bottom-color: #ddd6fe; }
+    .track-offline { background: #fff7ed; border-bottom: 1px solid #fed7aa; }
+    .track-offline[data-kind="none"] { background: #f8fafc; border-bottom: 1px solid #f1f5f9; }
+    .track-header { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #1e293b; margin-bottom: 8px; flex-wrap: wrap; }
     .track-header strong { font-weight: 700; }
+    .track-pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+    .tp-device { background: #dcfce7; color: #166534; }
+    .tp-phone { background: #ede9fe; color: #5b21b6; }
+    .tp-lost { background: #ffedd5; color: #9a3412; }
+    .tp-none { background: #f1f5f9; color: #64748b; }
+    .track-age { font-size: 10px; color: #64748b; }
+    .track-battery { color: #5b21b6; font-weight: 600; }
     .track-live-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; animation: pulse 2s infinite; }
+    .tp-phone .track-live-dot { background: #7c3aed; }
     .track-speed { margin-left: auto; font-size: 14px; font-weight: 800; color: #2563eb; }
     .track-progress { height: 4px; background: #e2e8f0; border-radius: 2px; overflow: hidden; margin-bottom: 6px; }
     .track-progress-bar { height: 100%; background: linear-gradient(90deg, #3b82f6, #22c55e); border-radius: 2px; transition: width .5s ease; }
@@ -857,6 +915,14 @@ export class ToursComponent implements OnInit, OnDestroy {
   trackingData: any = null;
   private trackingInterval: any = null;
   private vehicleMarker: any = null;
+  /** Téléphone du chauffeur sur la carte du détail (icône distincte du véhicule). */
+  private phoneMarker: any = null;
+  /** Envoi au chauffeur en cours (verrouille le bouton contre le double clic). */
+  sending = false;
+  private tourEventSub?: Subscription;
+  private routeSub?: Subscription;
+  /** Vrai quand la page a été ouverte sur /tournees/:id : au retour, l'adresse redevient /tournees. */
+  private detailFromUrl = false;
 
   tourForm = this.getEmptyForm();
 
@@ -879,7 +945,11 @@ export class ToursComponent implements OnInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private zone: NgZone,
     private router: Router,
-    private pdfExport: PdfExportService
+    private route: ActivatedRoute,
+    private location: Location,
+    private pdfExport: PdfExportService,
+    private toast: ToastService,
+    private signalR: SignalRService
   ) {}
 
   /// Ouvre le lecteur de trajet (playback) borné à la fenêtre de la tournée :
@@ -1318,10 +1388,25 @@ export class ToursComponent implements OnInit, OnDestroy {
       this.searchResults = results || [];
       this.cdr.detectChanges();
     });
+
+    // /tournees/:id (actionUrl des notifications) : le détail s'ouvre directement.
+    this.routeSub = this.route.paramMap.subscribe(params => {
+      const id = Number(params.get('id'));
+      if (id > 0) {
+        this.detailFromUrl = true;
+        this.openDetailById(id);
+      }
+    });
+
+    // Temps réel : la connexion est ouverte par le layout ; ici on ne fait
+    // qu'écouter les événements Tournées pour rafraîchir sans attendre le sondage.
+    this.tourEventSub = this.signalR.tourEvent$.subscribe(ev => this.onTourEvent(ev));
   }
 
   ngOnDestroy() {
     if (this.searchSub) this.searchSub.unsubscribe();
+    this.routeSub?.unsubscribe();
+    this.tourEventSub?.unsubscribe();
     this.stopTracking();
     this.clearTourReplay();
     this.destroyMaps();
@@ -1336,6 +1421,7 @@ export class ToursComponent implements OnInit, OnDestroy {
     if (this.trackingInterval) { clearInterval(this.trackingInterval); this.trackingInterval = null; }
     this.trackingData = null;
     this.vehicleMarker = null;
+    this.phoneMarker = null;
   }
 
   loadData() {
@@ -1359,8 +1445,9 @@ export class ToursComponent implements OnInit, OnDestroy {
     });
   }
 
-  loadTours() {
-    this.loading = true;
+  /** @param silent rafraîchissement en arrière-plan (événement temps réel) : pas de spinner. */
+  loadTours(silent = false) {
+    if (!silent) this.loading = true;
     const filters: any = {};
     if (this.filterStatus) filters.status = this.filterStatus;
     if (this.filterVehicleId) filters.vehicleId = this.filterVehicleId;
@@ -1395,15 +1482,32 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   openDetail(tour: any) {
-    this.apiService.getTour(tour.id).subscribe({
+    this.openDetailById(tour.id);
+  }
+
+  /** Base de l'adresse : /tours ou /tournees selon la route empruntée. */
+  private routeBase(): string {
+    return (this.router.url || '').split('?')[0].startsWith('/tours') ? '/tours' : '/tournees';
+  }
+
+  openDetailById(id: number) {
+    this.apiService.getTour(id).subscribe({
       next: (detail) => {
+        this.stopTracking();
         this.selectedTour = detail;
         this.currentView = 'detail';
+        // Adresse partageable, sans navigation (le composant resterait le même).
+        this.location.replaceState(`${this.routeBase()}/${id}`);
         this.cdr.detectChanges();
         setTimeout(() => this.initDetailMap(), 200);
         if (detail.status === 'in_progress') {
           this.startTracking(detail.id);
         }
+      },
+      error: () => {
+        this.toast.error('Tournée introuvable', "Cette tournée n'existe plus ou n'est pas dans votre périmètre.", 8000);
+        if (this.detailFromUrl) this.location.replaceState(this.routeBase());
+        this.cdr.detectChanges();
       }
     });
   }
@@ -1414,6 +1518,73 @@ export class ToursComponent implements OnInit, OnDestroy {
     this.currentView = 'list';
     this.selectedTour = null;
     this.destroyMaps();
+    this.location.replaceState(this.routeBase());
+    this.detailFromUrl = false;
+  }
+
+  /**
+   * Recharge le détail ouvert (événement temps réel) sans refaire la carte :
+   * les étapes ne bougent pas, seuls leurs états, l'envoi et le statut changent.
+   */
+  private refreshSelectedTour() {
+    const id = this.selectedTour?.id;
+    if (!id || this.currentView !== 'detail') return;
+    this.apiService.getTour(id).subscribe({
+      next: (detail) => {
+        if (this.currentView !== 'detail' || this.selectedTour?.id !== id) return;
+        const wasTracking = !!this.trackingInterval;
+        this.selectedTour = detail;
+        if (detail.status === 'in_progress' && !wasTracking) this.startTracking(id);
+        else if (detail.status !== 'in_progress' && wasTracking) this.stopTracking();
+        this.cdr.detectChanges();
+      },
+      error: () => {}
+    });
+  }
+
+  /** Met à jour une ligne de la liste (et le détail s'il est ouvert) sans recharger. */
+  private patchTour(id: number, patch: Record<string, any>) {
+    const row = this.tours.find(t => t.id === id);
+    if (row) Object.assign(row, patch);
+    if (this.selectedTour?.id === id) Object.assign(this.selectedTour, patch);
+  }
+
+  // ═══════ TEMPS RÉEL (SignalR, groupe société) ═══════
+
+  onTourEvent(ev: TourEvent) {
+    const open = this.currentView === 'detail' && this.selectedTour?.id === ev.tourId;
+    switch (ev.name) {
+      case 'TourOpened':
+        this.patchTour(ev.tourId, { openedAt: ev.payload?.openedAt || new Date().toISOString() });
+        break;
+      case 'TourTrackingSourceChanged':
+        if (open) {
+          this.trackingData = {
+            ...(this.trackingData || {}),
+            source: ev.payload?.source,
+            sourceSince: ev.payload?.since,
+            deviceAvailable: ev.payload?.deviceAvailable,
+            phoneAvailable: ev.payload?.phoneAvailable
+          };
+          this.fetchTracking(ev.tourId);
+        }
+        break;
+      case 'TourStatusChanged':
+        // Statut porté par la ligne : la liste et les compteurs suivent, le détail aussi.
+        if (this.currentView === 'list') this.loadTours(true);
+        this.loadStats();
+        if (open) this.refreshSelectedTour();
+        break;
+      case 'TourWaypointCompleted':
+      case 'TourWaypointOverdue':
+      case 'TourDeviation':
+        if (open) {
+          this.refreshSelectedTour();
+          if (this.trackingInterval) this.fetchTracking(ev.tourId);
+        }
+        break;
+    }
+    this.cdr.detectChanges();
   }
 
   startTracking(tourId: number) {
@@ -1425,12 +1596,59 @@ export class ToursComponent implements OnInit, OnDestroy {
   fetchTracking(tourId: number) {
     this.apiService.getTourTracking(tourId).subscribe({
       next: (data) => {
+        if (this.selectedTour?.id !== tourId) return;
         this.trackingData = data;
         this.updateVehicleMarker(data);
+        this.updatePhoneMarker(data);
         this.cdr.detectChanges();
       },
       error: () => {}
     });
+  }
+
+  /** Pastille du bandeau de suivi (source, interruption, âge de la dernière position). */
+  get badge(): TrackingBadge {
+    return trackingBadge(this.trackingData);
+  }
+
+  /** Vitesse de la source qui suit : téléphone quand il relaie, sinon boîtier. */
+  liveSpeedKph(): number | null {
+    const t = this.trackingData;
+    if (!t) return null;
+    const src = t.source === 'phone' ? t.phone : t.vehicle;
+    const v = src?.speedKph;
+    return v == null ? null : Number(v);
+  }
+
+  phoneBattery(): string | null {
+    return phoneBatteryLabel(this.trackingData?.phone?.batteryLevel);
+  }
+
+  /** Marqueur du téléphone du chauffeur, en plus du véhicule ; retiré s'il n'y a plus de point. */
+  updatePhoneMarker(data: any) {
+    if (!this.detailMap) return;
+    const phone = data?.phone;
+    if (!phone || phone.latitude == null || phone.longitude == null) {
+      if (this.phoneMarker) { this.detailMap.removeLayer(this.phoneMarker); this.phoneMarker = null; }
+      return;
+    }
+    const acc = phone.accuracyM != null ? ` &middot; &plusmn;${Math.round(phone.accuracyM)} m` : '';
+    const bat = phoneBatteryLabel(phone.batteryLevel);
+    const popup = `<b>T&eacute;l&eacute;phone du chauffeur</b><br>${Math.round(phone.speedKph || 0)} km/h${acc}`
+      + (bat ? `<br>Batterie ${bat}` : '') + (phone.isMocked ? '<br><i>Position simul&eacute;e ?</i>' : '');
+    if (this.phoneMarker) {
+      this.phoneMarker.setLatLng([phone.latitude, phone.longitude]);
+    } else {
+      const icon = L.divIcon({
+        className: 'phone-live-icon',
+        html: '<div class="plive-dot">&#128241;</div>',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13]
+      });
+      this.phoneMarker = L.marker([phone.latitude, phone.longitude], { icon, zIndexOffset: 900 })
+        .addTo(this.detailMap).bindPopup(popup);
+    }
+    this.phoneMarker.setPopupContent(popup);
   }
 
   updateVehicleMarker(data: any) {
@@ -1493,8 +1711,16 @@ export class ToursComponent implements OnInit, OnDestroy {
     return selectableDrivers(this.drivers, this.tourForm.driverId);
   }
 
+  /** Nom + rattachement au véhicule, et badge « application » si la fiche a un compte actif. */
   driverLabel(d: DriverOption): string {
-    return driverOptionLabel(d, this.tourForm.vehicleId);
+    return withAppBadge(driverOptionLabel(d, this.tourForm.vehicleId), d as any);
+  }
+
+  /** Le chauffeur choisi dans le formulaire a-t-il un compte application actif ? */
+  selectedFormDriverHasApp(): boolean {
+    const id = this.tourForm.driverId;
+    if (id == null) return false;
+    return driverHasAppAccount(this.drivers.find((d: any) => Number(d.id) === Number(id)));
   }
 
   onRecurrenceChange(val: string) {
@@ -1607,7 +1833,8 @@ export class ToursComponent implements OnInit, OnDestroy {
 
   // ═══════ SAVE ═══════
 
-  saveTour() {
+  /** @param andSend création seulement : envoie la tournée au chauffeur juste après l'avoir créée. */
+  saveTour(andSend = false) {
     if (!this.tourForm.name || !this.tourForm.vehicleId || this.tourForm.waypoints.length < 2) return;
     this.saving = true;
     let recurrence = this.tourForm.recurrence || 'none';
@@ -1634,7 +1861,14 @@ export class ToursComponent implements OnInit, OnDestroy {
       ? this.apiService.updateTour(this.editingTour.id, payload)
       : this.apiService.createTour(payload);
     obs.subscribe({
-      next: () => { this.saving = false; this.closeCreate(); this.loadTours(); this.loadStats(); this.cdr.detectChanges(); },
+      next: (saved) => {
+        this.saving = false;
+        this.closeCreate();
+        this.loadTours();
+        this.loadStats();
+        this.cdr.detectChanges();
+        if (andSend && !this.editingTour && saved?.id) this.sendTour(saved.id);
+      },
       // Le serveur refuse désormais un véhicule, un chauffeur ou une zone hors
       // société ou hors portée : afficher son motif au lieu d'un échec muet.
       error: (err) => {
@@ -1677,6 +1911,46 @@ export class ToursComponent implements OnInit, OnDestroy {
     this.currentView = 'create';
     this.cdr.detectChanges();
     setTimeout(() => this.initTourMap(), 200);
+  }
+
+  // ═══════ ENVOI AU CHAUFFEUR ═══════
+
+  sendState(): SendButtonState {
+    return sendButtonState(this.selectedTour, this.drivers);
+  }
+
+  sendSelectedTour() {
+    const t = this.selectedTour;
+    if (!t || this.sending) return;
+    const state = this.sendState();
+    if (!state.enabled) {
+      if (state.tooltip) this.toast.warning('Envoi impossible', state.tooltip, 8000);
+      return;
+    }
+    this.sendTour(t.id);
+  }
+
+  /** POST /tours/{id}/send, puis toast selon l'issue du push (téléphone joint ou non). */
+  private sendTour(id: number) {
+    this.sending = true;
+    this.cdr.detectChanges();
+    this.apiService.sendTourToDriver(id).subscribe({
+      next: (res) => {
+        this.sending = false;
+        this.patchTour(id, { sentAt: res?.sentAt || new Date().toISOString() });
+        // « Enregistrer et envoyer » : la liste a été rechargée AVANT que l'envoi
+        // n'aboutisse, la ligne neuve n'y porte pas encore sentAt (voire n'y est pas).
+        if (this.currentView === 'list') this.loadTours(true);
+        const toast = sendToast({ push: res?.push, resent: !!res?.resent });
+        this.toast[toast.type](toast.title, toast.message, 8000);
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.sending = false;
+        this.toast.error('Tournée non envoyée', sendErrorMessage(err), 10000);
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   // ═══════ ACTIONS ═══════
@@ -1764,6 +2038,9 @@ export class ToursComponent implements OnInit, OnDestroy {
   initDetailMap() {
     this.clearTourReplay();
     if (this.detailMap) { this.detailMap.remove(); this.detailMap = null; }
+    // Les marqueurs vivaient sur l'ancienne carte : ils seront recréés sur la nouvelle.
+    this.vehicleMarker = null;
+    this.phoneMarker = null;
     if (!this.detailMapEl?.nativeElement || !this.selectedTour) return;
     try {
       this.detailMap = L.map(this.detailMapEl.nativeElement).setView([34.5, 9.5], 6);
@@ -1793,6 +2070,13 @@ export class ToursComponent implements OnInit, OnDestroy {
         } else if (bounds.length === 1) {
           this.detailMap.setView(bounds[0], 13);
         }
+      }
+      // Le premier point de suivi arrive souvent avant la carte (construite 200 ms
+      // après l'ouverture) : sans ceci, véhicule et téléphone n'apparaissaient
+      // qu'au sondage suivant, 10 s plus tard.
+      if (this.trackingData) {
+        this.updateVehicleMarker(this.trackingData);
+        this.updatePhoneMarker(this.trackingData);
       }
     } catch (e) { console.error('Detail map error', e); }
   }
@@ -1837,6 +2121,45 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   // ═══════ HELPERS ═══════
+
+  /** Source qui a validé l'étape : boîtier, téléphone, zone, chauffeur (non confirmée), gestionnaire. */
+  waypointSource(wp: any): string {
+    return waypointSourceLabel(wp);
+  }
+  declarationWarning(wp: any): string | null {
+    return declarationDistanceWarning(wp);
+  }
+  /** « Je pars » du chauffeur (origine validée par lui), sinon null. */
+  departureSignaledAt(): string | null {
+    return driverDepartureSignaledAt(this.selectedTour);
+  }
+  sendStatus(t: any): string {
+    return tourSendStatus(t);
+  }
+  sendStatusLabel(t: any): string {
+    return sendStatusLabel(tourSendStatus(t));
+  }
+  sendStatusTitle(t: any): string {
+    switch (tourSendStatus(t)) {
+      case 'sent': return `Envoyée ${this.formatDayAt(t.sentAt)}, pas encore ouverte sur le téléphone`;
+      case 'opened': return `Ouverte sur le téléphone ${this.formatDayAt(t.openedAt)}`;
+      case 'departed': return `Partie ${this.formatDayAt(t.actualStartTime)}`;
+      default: return t.driverId ? 'Pas encore envoyée au chauffeur' : 'Aucun chauffeur';
+    }
+  }
+  /** « le 21 sept. à 10:32 », ou « à 10:32 » si même jour que la date de référence. */
+  formatDayAt(d: string, sameDayAs?: string | null): string {
+    if (!d) return '-';
+    const dt = new Date(d);
+    const time = dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    if (sameDayAs) {
+      const ref = new Date(sameDayAs);
+      if (ref.getFullYear() === dt.getFullYear() && ref.getMonth() === dt.getMonth() && ref.getDate() === dt.getDate()) {
+        return `à ${time}`;
+      }
+    }
+    return `le ${dt.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} à ${time}`;
+  }
 
   getStatusLabel(s: string): string {
     return ({ planned: 'Planifiee', in_progress: 'En cours', completed: 'Terminee', cancelled: 'Annulee' } as any)[s] || s;

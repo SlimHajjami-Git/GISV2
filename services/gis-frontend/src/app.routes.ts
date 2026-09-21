@@ -256,9 +256,12 @@ export const routes: Routes = [
   // Emprunts véhicules (location companies only)
   { path: 'emprunts', component: VehicleLoansComponent, canActivate: [AuthGuard, FeatureGuard, LocationCompanyGuard], data: { feature: 'fleet_management' } },
 
-  // Tours module
+  // Tours module. /tournees/:id ouvre directement le détail : c'est l'actionUrl
+  // des notifications (envoi, départ, arrivée, suivi interrompu).
   { path: 'tours', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
+  { path: 'tours/:id', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
   { path: 'tournees', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
+  { path: 'tournees/:id', component: ToursComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'tours' } },
   
   // Repairs module (part of maintenance)
   { path: 'repairs', component: RepairsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'maintenance' } },
