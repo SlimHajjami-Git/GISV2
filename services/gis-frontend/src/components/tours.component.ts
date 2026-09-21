@@ -15,9 +15,9 @@ import { forkJoin, Subject, of, Subscription } from 'rxjs';
 import { debounceTime, switchMap, catchError, filter, takeUntil } from 'rxjs/operators';
 import { driverAfterVehicleChange, driverOptionLabel, DriverOption, selectableDrivers } from './tours-driver.helpers';
 import {
-  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, openedSinceLastSend, phoneBatteryLabel,
-  phoneMarkerState, sendButtonState, SendButtonState, sendErrorMessage, sendStatusLabel, sendToast, tourIdFromUrl,
-  tourSendStatus, trackingBadge, TrackingBadge, waypointSourceLabel, withAppBadge
+  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, DRIVER_BUSY_CODE, openedSinceLastSend,
+  phoneBatteryLabel, phoneMarkerState, sendButtonState, SendButtonState, sendErrorMessage, sendStatusLabel, sendToast,
+  startErrorMessage, tourIdFromUrl, tourSendStatus, trackingBadge, TrackingBadge, waypointSourceLabel, withAppBadge
 } from './tours-tracking.helpers';
 
 declare let L: any;
@@ -2046,7 +2046,15 @@ export class ToursComponent implements OnInit, OnDestroy {
   startSelectedTour() {
     if (!this.selectedTour) return;
     this.apiService.startTour(this.selectedTour.id).subscribe({
-      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); }
+      next: () => { this.closeDetail(); this.loadTours(); this.loadStats(); },
+      // Refus (409 DRIVER_BUSY : le chauffeur est déjà en tournée, 400 statut…) : rien
+      // ne se passait à l'écran. On dit pourquoi, sans toucher à la tournée affichée —
+      // elle n'a pas démarré, le détail reste ouvert et son statut reste « planifiée ».
+      error: (err) => {
+        const titre = err?.error?.code === DRIVER_BUSY_CODE ? 'Chauffeur déjà en tournée' : 'Tournée non démarrée';
+        this.toast.error(titre, startErrorMessage(err), 10000);
+        this.cdr.detectChanges();
+      }
     });
   }
 

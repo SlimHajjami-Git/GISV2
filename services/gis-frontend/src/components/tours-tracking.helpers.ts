@@ -101,6 +101,28 @@ export function sendErrorMessage(err: any): string {
   return body?.message || "La tournée n'a pas pu être envoyée.";
 }
 
+/** Code du refus « le chauffeur de cette tournée envoyée est déjà en tournée » (409). */
+export const DRIVER_BUSY_CODE = 'DRIVER_BUSY';
+
+/**
+ * Message d'un refus de « Démarrer » (POST /api/tours/{id}/start). Le serveur répond
+ * 409 { code: 'DRIVER_BUSY', otherTourId, otherTourName, message } quand le chauffeur
+ * est déjà en tournée : l'écran ne disait rien (aucun gestionnaire d'erreur), le
+ * gestionnaire recliquait sans comprendre. Son message dit laquelle et quoi faire ;
+ * à défaut, on le reconstruit avec otherTourName (null si l'autre tournée est hors du
+ * périmètre du gestionnaire).
+ */
+export function startErrorMessage(err: any): string {
+  const body = err?.error;
+  const message = typeof body?.message === 'string' ? body.message.trim() : '';
+  if (body?.code === DRIVER_BUSY_CODE) {
+    if (message) return message;
+    const autre = body?.otherTourName ? ` (« ${body.otherTourName} »)` : '';
+    return `Le chauffeur est déjà en tournée${autre}. Il démarrera celle-ci par « Je pars » depuis son application, ou terminez d'abord l'autre tournée.`;
+  }
+  return message || "La tournée n'a pas pu être démarrée.";
+}
+
 // ─────────────────────────── Étapes : source d'arrivée ───────────────────────────
 
 export interface WaypointArrivalInfo {

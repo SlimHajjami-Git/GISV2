@@ -153,6 +153,36 @@ describe('ToursComponent — envoi de la tournée au chauffeur', () => {
     expect((toast as any)[type]).toHaveBeenCalledWith('Tournée renvoyée', message, expect.any(Number));
   });
 
+  // « Démarrer » n'avait aucun gestionnaire d'erreur : sur un 409 DRIVER_BUSY (chauffeur
+  // déjà en tournée), rien ne s'affichait et le gestionnaire recliquait sans comprendre.
+  it('« Demarrer » refusé 409 DRIVER_BUSY : toast avec le message du serveur, tournée inchangée', async () => {
+    await preparer();
+    jest.spyOn(api, 'getTour').mockReturnValue(of(tourDetail({ sentAt: '2026-09-21T09:30:00Z' })) as any);
+    const motif = "Le chauffeur est déjà en tournée (« Livraison Gabès »). Il démarrera celle-ci par « Je pars » depuis son application, ou terminez d'abord l'autre tournée.";
+    const start = jest.spyOn(api, 'startTour').mockReturnValue(
+      throwError(() => ({ status: 409, error: { code: 'DRIVER_BUSY', otherTourId: 8, otherTourName: 'Livraison Gabès', message: motif } })) as any
+    );
+    fixture.detectChanges();
+    component.openDetail({ id: 5 });
+    fixture.detectChanges();
+    const getTours = api.getTours as jest.Mock;
+    const appelsAvant = getTours.mock.calls.length;
+
+    const bouton: HTMLButtonElement = Array.from(fixture.nativeElement.querySelectorAll('button.btn-save') as NodeListOf<HTMLButtonElement>)
+      .find(b => b.textContent!.includes('Demarrer'))!;
+    bouton.click();
+    fixture.detectChanges();
+
+    expect(start).toHaveBeenCalledWith(5);
+    expect(toast.error).toHaveBeenCalledWith('Chauffeur déjà en tournée', motif, expect.any(Number));
+    // La tournée n'a pas démarré : détail toujours ouvert, statut local intact, pas de rechargement.
+    expect(component.currentView).toBe('detail');
+    expect(component.selectedTour.id).toBe(5);
+    expect(component.selectedTour.status).toBe('planned');
+    expect(component.tours[0].status).toBe('planned');
+    expect(getTours.mock.calls.length).toBe(appelsAvant);
+  });
+
   it('refus DRIVER_NO_APP_ACCOUNT du serveur : le message du serveur est affiché', async () => {
     await preparer();
     jest.spyOn(api, 'getTour').mockReturnValue(of(tourDetail()) as any);

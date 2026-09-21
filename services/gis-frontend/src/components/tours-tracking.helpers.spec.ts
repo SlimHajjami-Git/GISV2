@@ -1,7 +1,8 @@
 import {
-  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, NO_APP_ACCOUNT_TOOLTIP, NO_DRIVER_TOOLTIP,
-  openedSinceLastSend, phoneBatteryLabel, phoneMarkerState, positionAgeLabel, sendButtonState, sendErrorMessage,
-  sendStatusLabel, sendToast, shortDuration, tourIdFromUrl, tourSendStatus, trackingBadge, waypointSourceLabel, withAppBadge
+  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, DRIVER_BUSY_CODE, NO_APP_ACCOUNT_TOOLTIP,
+  NO_DRIVER_TOOLTIP, openedSinceLastSend, phoneBatteryLabel, phoneMarkerState, positionAgeLabel, sendButtonState,
+  sendErrorMessage, sendStatusLabel, sendToast, shortDuration, startErrorMessage, tourIdFromUrl, tourSendStatus,
+  trackingBadge, waypointSourceLabel, withAppBadge
 } from './tours-tracking.helpers';
 
 /**
@@ -94,6 +95,29 @@ describe('tours-tracking.helpers', () => {
     it('autre refus : le message du serveur, sinon un repli en français', () => {
       expect(sendErrorMessage({ error: { message: "Choisissez d'abord un chauffeur" } })).toBe("Choisissez d'abord un chauffeur");
       expect(sendErrorMessage({ status: 500 })).toBe("La tournée n'a pas pu être envoyée.");
+    });
+  });
+
+  describe('startErrorMessage — refus de « Démarrer »', () => {
+    it('409 DRIVER_BUSY : le message du serveur tel quel', () => {
+      const message = "Le chauffeur est déjà en tournée (« Livraison Gabès »). Il démarrera celle-ci par « Je pars » depuis son application, ou terminez d'abord l'autre tournée.";
+      expect(startErrorMessage({ status: 409, error: { code: 'DRIVER_BUSY', otherTourId: 8, otherTourName: 'Livraison Gabès', message } }))
+        .toBe(message);
+    });
+
+    it('409 DRIVER_BUSY sans message : reconstruit avec le nom de l’autre tournée, s’il est visible', () => {
+      expect(startErrorMessage({ status: 409, error: { code: 'DRIVER_BUSY', otherTourId: 8, otherTourName: 'Livraison Gabès' } }))
+        .toContain('Le chauffeur est déjà en tournée (« Livraison Gabès »).');
+      // Autre tournée hors du périmètre du gestionnaire : ni id ni nom.
+      expect(startErrorMessage({ status: 409, error: { code: 'DRIVER_BUSY', otherTourId: null, otherTourName: null } }))
+        .toMatch(/^Le chauffeur est déjà en tournée\. /);
+    });
+
+    it('autre refus : le message du serveur, sinon un repli en français', () => {
+      expect(startErrorMessage({ status: 400, error: { message: "La tournée doit être en statut 'planifiée' pour démarrer" } }))
+        .toBe("La tournée doit être en statut 'planifiée' pour démarrer");
+      expect(startErrorMessage({ status: 500 })).toBe("La tournée n'a pas pu être démarrée.");
+      expect(DRIVER_BUSY_CODE).toBe('DRIVER_BUSY');
     });
   });
 

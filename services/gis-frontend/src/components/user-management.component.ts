@@ -9,6 +9,9 @@ import { ToastService } from '../services/toast.service';
 import { PermissionService, ModuleKey } from '../services/permission.service';
 import { AuthService } from '../services/auth.service';
 import { AlertEmailsComponent } from './alert-emails.component';
+import {
+  AUTO_DRIVER_LINK_LABEL, DriverRecord, driverLinkErrorMessage, driverRecordLabel, driverRecordLinkedTo, linkableDriverRecords
+} from './driver-account-link.helpers';
 
 interface Role {
   id: number;
@@ -363,14 +366,29 @@ interface VehicleOption {
                       <span class="perm-label">🚚 Chauffeur (application mobile)</span>
                       <span class="perm-desc">Ce compte se connecte uniquement à l'application mobile Calypso pour
                         recevoir ses tournées. Il n'a aucun accès au site, ne compte pas dans le quota
-                        d'utilisateurs, et une fiche Chauffeur lui est reliée (celle d'où vous venez depuis
-                        l'écran Chauffeurs, sinon celle qui porte le même e-mail, sinon une fiche neuve).</span>
+                        d'utilisateurs, et une fiche Chauffeur lui est reliée (celle choisie ci-dessous,
+                        sinon celle qui porte le même e-mail, sinon une fiche neuve).</span>
                       <span class="perm-desc driver-app-version">📱 Il se connecte avec l'application Calypso
                         <strong>version 1.2 ou plus récente</strong>, avec l'e-mail et le mot de passe de ce compte.</span>
                     </span>
                   </label>
                   <div class="driver-note" *ngIf="userForm.isDriverAccount">
                     Un chauffeur n'a aucun droit de gestion : il ne voit que ses tournées dans l'application.
+                  </div>
+                  <!-- Fiche à relier : sans ce choix, une fiche sans e-mail était ratée et une
+                       seconde fiche naissait, sans véhicule ni tournées. Seules les fiches libres
+                       (et celle déjà reliée à CE compte) sont proposées : le serveur refuse les autres. -->
+                  <div class="driver-link" *ngIf="userForm.isDriverAccount">
+                    <label class="driver-link-label" for="driver-link-select">Fiche chauffeur à relier</label>
+                    <select id="driver-link-select" class="driver-link-select" [(ngModel)]="linkedDriverId"
+                            (ngModelChange)="driverLinkError = ''">
+                      <option [ngValue]="null">{{ autoDriverLinkLabel }}</option>
+                      <option *ngFor="let d of linkableDrivers" [ngValue]="d.id">{{ driverOptionLabel(d) }}</option>
+                    </select>
+                    <span class="driver-link-hint" *ngIf="driverRecordsLoading">Chargement des fiches chauffeurs…</span>
+                    <span class="driver-link-hint" *ngIf="!driverRecordsLoading && linkableDrivers.length === 0">
+                      Aucune fiche chauffeur libre dans la société : une fiche sera retrouvée par e-mail ou créée.</span>
+                    <div class="driver-link-error" *ngIf="driverLinkError" role="alert">{{ driverLinkError }}</div>
                   </div>
                 </div>
               </div>
@@ -1729,6 +1747,11 @@ interface VehicleOption {
     .perm-check.perm-driver { border-color:#a7f3d0; background:#f0fdf4; }
     .perm-check.perm-driver:hover { border-color:#34d399; background:#ecfdf5; }
     .driver-note { margin-top:10px; padding:10px 12px; border-radius:8px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; font-size:12px; line-height:1.5; }
+    .driver-link { margin-top:12px; display:flex; flex-direction:column; gap:6px; }
+    .driver-link-label { font-size:13px; font-weight:600; color:#334155; }
+    .driver-link-select { width:100%; max-width:100%; padding:9px 12px; border:1px solid #cbd5e1; border-radius:8px; font-size:14px; background:#fff; }
+    .driver-link-hint { font-size:12px; color:#64748b; }
+    .driver-link-error { padding:9px 12px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; font-size:13px; line-height:1.4; }
     .perm-actions { display:flex; gap:12px; margin-top:12px; }
     .btn-text { background:none; border:none; color:#6366f1; font-size:12px; font-weight:500; cursor:pointer; padding:4px 8px; border-radius:4px; }
     .btn-text:hover { background:#f0f0ff; }
@@ -1958,12 +1981,25 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   private pendingDriverPrefill: { driverId: number | null; firstName: string; lastName: string; email: string; phone: string } | null = null;
 
   /**
-   * Fiche d'où vient « Créer son compte » : envoyée à la création (driverId) pour que le
-   * compte soit relié à CETTE fiche. Retrouvée par e-mail, elle manquait dès que la fiche
-   * n'en avait pas ou que l'admin le corrigeait ici — une seconde fiche était créée.
-   * Remise à null à chaque ouverture du formulaire.
+   * Fiche chauffeur à relier (sélecteur « Fiche chauffeur à relier »), envoyée en
+   * driverId au POST comme au PUT pour que le compte soit relié à CETTE fiche. Retrouvée
+   * par e-mail, elle manquait dès que la fiche n'en avait pas ou que l'admin le corrigeait
+   * ici — une seconde fiche était créée. null = « créer ou retrouver par e-mail ».
+   * Remise à null à chaque ouverture du formulaire ; préremplie par « Créer son compte »
+   * (écran Chauffeurs) ou, en modification, par la fiche déjà reliée au compte.
    */
-  private prefillDriverId: number | null = null;
+  linkedDriverId: number | null = null;
+
+  /** Fiches chauffeurs de la société (GET /api/drivers : userId, accountStatus). */
+  private driverRecords: DriverRecord[] = [];
+  /** Fiches proposées dans le sélecteur : libres, plus celle déjà reliée à ce compte. */
+  linkableDrivers: DriverRecord[] = [];
+  driverRecordsLoading = false;
+  /** Refus du serveur portant sur la fiche (404/409), affiché sous le sélecteur. */
+  driverLinkError = '';
+  readonly autoDriverLinkLabel = AUTO_DRIVER_LINK_LABEL;
+  /** Ignore la réponse d'un chargement devenu obsolète (formulaire rouvert entre-temps). */
+  private driverRecordsRequest = 0;
 
   // Role Modal
   showRoleModal = false;
@@ -2121,7 +2157,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     if (!prefill || this.showUserModal) return;
     this.pendingDriverPrefill = null;
     this.openUserModal();
-    this.prefillDriverId = prefill.driverId;
+    // Avant onDriverAccountToggle : le chargement des fiches qu'il lance ne présélectionne
+    // qu'en modification, il n'écrase donc pas la fiche d'où l'on vient.
+    this.linkedDriverId = prefill.driverId;
     this.userForm.firstName = prefill.firstName;
     this.userForm.lastName = prefill.lastName;
     this.userForm.email = prefill.email;
@@ -2273,7 +2311,12 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   openUserModal(user?: User) {
     this.loadAvailableVehicles();
-    this.prefillDriverId = null;
+    this.linkedDriverId = null;
+    this.driverLinkError = '';
+    // Un chargement des fiches encore en vol concerne le formulaire précédent : sa réponse
+    // présélectionnerait la fiche d'un AUTRE compte dans celui-ci (409 à l'enregistrement).
+    this.driverRecordsRequest++;
+    this.driverRecordsLoading = false;
     if (user) {
       this.editingUser = user;
       const nameParts = user.name.split(' ');
@@ -2389,6 +2432,47 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     }
     this.userModalStep = 1;
     this.showUserModal = true;
+    // Liste d'une ouverture précédente : recalculée pour CE compte (sa fiche reliée
+    // y figure, pas celle d'un autre) le temps que le rechargement arrive.
+    this.linkableDrivers = linkableDriverRecords(this.driverRecords, this.editingUser?.id ?? null);
+    // Compte chauffeur existant : sa fiche reliée doit être présélectionnée.
+    if (this.userForm.isDriverAccount) this.loadDriverRecords();
+  }
+
+  /**
+   * Fiches chauffeurs de la société, rechargées à chaque besoin : une fiche reliée
+   * entre-temps (autre admin, autre onglet) ne doit plus être proposée. En modification,
+   * la fiche déjà reliée à ce compte est présélectionnée — sinon « automatique » partait
+   * et l'écran ne disait pas quelle fiche le compte porte.
+   */
+  private loadDriverRecords() {
+    const request = ++this.driverRecordsRequest;
+    const accountId = this.editingUser?.id ?? null;
+    this.driverRecordsLoading = true;
+    this.apiService.getDrivers().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (list) => {
+        if (request !== this.driverRecordsRequest) return;
+        this.driverRecords = Array.isArray(list) ? list : [];
+        this.linkableDrivers = linkableDriverRecords(this.driverRecords, accountId);
+        if (accountId != null && this.linkedDriverId == null) {
+          this.linkedDriverId = driverRecordLinkedTo(this.driverRecords, accountId);
+        }
+        this.driverRecordsLoading = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        if (request !== this.driverRecordsRequest) return;
+        // Sans la liste, seul « automatique » reste proposé (ou la fiche du lien
+        // « Créer son compte », conservée) : le serveur garde toutes ses règles.
+        console.error('Error loading drivers:', err);
+        this.driverRecordsLoading = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  driverOptionLabel(d: DriverRecord): string {
+    return driverRecordLabel(d, this.editingUser?.id ?? null);
   }
 
   closeUserModal() {
@@ -2408,10 +2492,13 @@ export class UserManagementComponent implements OnInit, OnDestroy {
    * aussi ici pour que l'écran ne raconte pas autre chose que ce qui sera enregistré.
    */
   onDriverAccountToggle() {
+    this.driverLinkError = '';
     if (!this.userForm.isDriverAccount) return;
     this.userForm.isCompanyAdmin = false;
     this.userForm.assignedVehicleIds = [];
     this.userModalStep = 1;
+    // Le sélecteur « Fiche chauffeur à relier » apparaît : ses fiches sont chargées.
+    this.loadDriverRecords();
   }
 
   hasNextUserStep(): boolean {
@@ -2584,6 +2671,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     const isDriverAccount = this.userForm.isDriverAccount === true;
     const isCompanyAdmin = isDriverAccount ? false : this.userForm.isCompanyAdmin;
     const assignedVehicleIds = isDriverAccount ? [] : this.userForm.assignedVehicleIds;
+    // Fiche choisie dans « Fiche chauffeur à relier », seulement pour un compte chauffeur :
+    // décocher la case (même après « Créer son compte ») donne un compte ordinaire, sans
+    // lien avec la fiche. null = le serveur retrouve la fiche par e-mail ou en crée une.
+    const driverId = isDriverAccount ? this.linkedDriverId : null;
+    this.driverLinkError = '';
 
     if (this.editingUser) {
       this.apiService.updateUser(this.editingUser.id, {
@@ -2595,6 +2687,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         status: this.userForm.status,
         isCompanyAdmin,
         isDriverAccount,
+        driverId,
         assignedVehicleIds,
         ...permissionPayload
       }).subscribe({
@@ -2606,6 +2699,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         error: (err) => {
           console.error('Error updating user:', err);
           this.toast.error('Erreur', err.error?.message || 'Erreur lors de la modification');
+          this.onDriverLinkRefused(err, isDriverAccount);
         }
       });
     } else {
@@ -2618,9 +2712,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         roleId: this.userForm.roleId,
         isCompanyAdmin,
         isDriverAccount,
-        // Seulement pour un compte chauffeur : décocher la case après « Créer son compte »
-        // crée un compte ordinaire, sans lien avec la fiche.
-        driverId: isDriverAccount ? this.prefillDriverId : null,
+        driverId,
         assignedVehicleIds,
         ...permissionPayload
       }).subscribe({
@@ -2632,9 +2724,26 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         error: (err) => {
           console.error('Error creating user:', err);
           this.toast.error('Erreur', err.error?.message || 'Erreur lors de la création');
+          this.onDriverLinkRefused(err, isDriverAccount);
         }
       });
     }
+  }
+
+  /**
+   * Refus portant sur la fiche à relier (404 introuvable, 409 déjà reliée) : le message
+   * du serveur reste affiché sous le sélecteur — le formulaire reste ouvert, l'admin doit
+   * choisir une autre fiche — et la liste est rechargée, car une fiche « déjà reliée à un
+   * autre compte » l'a été depuis l'ouverture du formulaire. Écran zoneless : rien ne se
+   * redessine après un retour HTTP sans detectChanges.
+   */
+  private onDriverLinkRefused(err: any, isDriverAccount: boolean) {
+    const message = isDriverAccount ? driverLinkErrorMessage(err) : null;
+    if (message) {
+      this.driverLinkError = message;
+      this.loadDriverRecords();
+    }
+    this.cdr.detectChanges();
   }
 
   deleteUser(user: User) {

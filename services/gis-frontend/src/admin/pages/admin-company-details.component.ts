@@ -8,6 +8,7 @@ import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { CompanyResetResult } from '../services/admin.service';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
 import { parseScanQuotaInput } from './scan-quota.helpers';
+import { driverAccountsPreviewText, driverAccountsResultText, keptUsersText } from './company-reset.helpers';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
@@ -774,7 +775,9 @@ type CompanyRole = Role & { userCount?: number };
                 <strong>Supprimé :</strong> véhicules et tout ce qui s'y rattache (dépenses, échéances d'acquisition,
                 carburant, entretien, réparations, documents, accidents, trajets), conducteurs, fournisseurs,
                 géofences, notifications, journal d'audit, fichiers joints.<br>
-                <strong>Conservé :</strong> la société et son abonnement, ses utilisateurs et leurs rôles,
+                <!-- « ses utilisateurs » mentait : les comptes chauffeurs perdent leur fiche et
+                     sont désactivés (relecture du 21/09/2026, R7c). Le fragment suit l'aperçu. -->
+                <strong>Conservé :</strong> la société et son abonnement, <span class="reset-kept-users">{{ resetKeptUsersText }}</span>,
                 ses boîtiers GPS et leurs positions brutes.
               </p>
 
@@ -788,6 +791,7 @@ type CompanyRole = Role & { userCount?: number };
                   </div>
                   <p class="reset-kept" *ngIf="resetPreview.kept?.length">Tables conservées : {{ resetPreview.kept.join(', ') }}</p>
                 <p class="reset-empty" *ngIf="resetPreview.totalRows === 0">Cette société ne contient aucune donnée à supprimer.</p>
+                <p class="reset-driver-accounts" *ngIf="resetDriverAccountsPreviewText" role="alert">{{ resetDriverAccountsPreviewText }}</p>
                 <table class="reset-table" *ngIf="resetPreview.totalRows > 0">
                   <tbody>
                     <tr *ngFor="let d of resetPreview.deleted"><td>{{ d.table }}</td><td class="num">{{ d.rows }}</td></tr>
@@ -803,6 +807,7 @@ type CompanyRole = Role & { userCount?: number };
 
             <div class="reset-result" *ngIf="resetDone && resetPreview">
               <p class="reset-success">Terminé : {{ resetPreview.totalRows }} lignes supprimées dans {{ resetPreview.deleted.length }} tables<span *ngIf="resetPreview.filesDeleted">, {{ resetPreview.filesDeleted }} fichier(s) supprimé(s)</span> ({{ resetPreview.durationMs }} ms).</p>
+              <p class="reset-driver-accounts" *ngIf="resetDriverAccountsResultText">{{ resetDriverAccountsResultText }}</p>
               <table class="reset-table">
                 <tbody>
                   <tr *ngFor="let d of resetPreview.deleted"><td>{{ d.table }}</td><td class="num">{{ d.rows }}</td></tr>
@@ -1219,6 +1224,7 @@ type CompanyRole = Role & { userCount?: number };
     .reset-confirm code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; }
     .reset-confirm input { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 14px; }
     .reset-success { margin: 0; font-size: 14px; color: #047857; font-weight: 600; }
+    .reset-driver-accounts { margin: 0; font-size: 13px; line-height: 1.5; color: #9a3412; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 12px; }
     .btn-danger {
       display: inline-flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: 10px; border: none;
       background: #be123c; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
@@ -2756,6 +2762,22 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   resetError = '';
   resetConfirmName = '';
   resetPreview: CompanyResetResult | null = null;
+
+  /** « Conservé : … ses utilisateurs » — sauf les comptes chauffeurs désactivés. */
+  get resetKeptUsersText(): string {
+    // Avant l'aperçu comme après : resetPreview porte l'aperçu (dryRun) jusqu'à l'exécution.
+    return keptUsersText(this.resetPreview);
+  }
+
+  /** Aperçu : comptes chauffeurs qui seront désactivés (vide si aucun). */
+  get resetDriverAccountsPreviewText(): string {
+    return this.resetDone ? '' : driverAccountsPreviewText(this.resetPreview);
+  }
+
+  /** Résultat : comptes chauffeurs désactivés (vide si aucun). */
+  get resetDriverAccountsResultText(): string {
+    return this.resetDone ? driverAccountsResultText(this.resetPreview) : '';
+  }
 
   openResetModal() {
     this.showResetModal = true;

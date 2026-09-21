@@ -433,6 +433,11 @@ export interface CompanyResetResult {
   kept: string[];
   durationMs: number;
   dryRun: boolean;
+  /**
+   * Comptes chauffeurs qui seront désactivés (aperçu) ou qui l'ont été (exécution) :
+   * leurs fiches partent avec les données. Absent d'un serveur antérieur au 21/09/2026.
+   */
+  driverAccountsClosed?: number;
 }
 
 @Injectable({
