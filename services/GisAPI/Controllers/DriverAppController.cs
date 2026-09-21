@@ -407,40 +407,59 @@ public class DriverAppController : ControllerBase
         // toujours à lui, en cours et dans sa fenêtre (R11c) : prendre d'office la plus
         // récemment partie laissait un « Démarrer » du gestionnaire sur la tournée suivante
         // détourner la trace de la tournée en cours et faire basculer le suivi du téléphone.
-        // À défaut (application plus ancienne, tournée close entre-temps), la plus récente.
+        // Si elle est à lui mais TERMINÉE : ses derniers points (voir plus bas). À défaut
+        // (application plus ancienne, tournée annulée ou d'un autre), la plus récente.
         var now = DateTime.UtcNow;
         var plancher = now - DriverTourRules.MaxTrackingDuration;
         var enCours = MesTournees(p)
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
             .Where(t => t.Status == "in_progress" && (t.ActualStartTime ?? t.ScheduledStartTime) >= plancher);
         Tour? tour = null;
+        Tour? terminee = null;
         if (request.ActiveTourId is int suivie)
+        {
             tour = await enCours.FirstOrDefaultAsync(t => t.Id == suivie, ct);
-        tour ??= await enCours
-            .OrderByDescending(t => t.ActualStartTime ?? t.ScheduledStartTime)
-            .FirstOrDefaultAsync(ct);
-        if (tour == null)
+            // Tournée suivie, à lui, déjà « completed » (relecture du 21/09/2026) : l'app vide
+            // sa file juste avant « Je suis arrivé » à destination et tente un dernier envoi à
+            // l'arrêt du suivi ; le moniteur peut aussi l'avoir close pendant que le téléphone
+            // était hors ligne. Ces points étaient refusés — ou, si une autre tournée était en
+            // cours, rattachés à celle-ci. Ils restent sur la leur, jusqu'à la fin + 2 min.
+            if (tour == null)
+                terminee = await MesTournees(p).AsNoTracking()
+                    .FirstOrDefaultAsync(t => t.Id == suivie && t.Status == "completed", ct);
+        }
+        if (terminee == null)
+            tour ??= await enCours
+                .OrderByDescending(t => t.ActualStartTime ?? t.ScheduledStartTime)
+                .FirstOrDefaultAsync(ct);
+        var cible = tour ?? terminee;
+        if (cible == null)
             return Ok(new { tracking = false, mode = TrackingSourceSelector.PhoneMode(false), activeTourId = (int?)null, accepted = 0 });
 
-        var start = tour.ActualStartTime ?? tour.ScheduledStartTime;
+        var start = cible.ActualStartTime ?? cible.ScheduledStartTime;
 
         // Horloge du téléphone : corrigée du décalage mesuré sur « sentAt », seulement
         // s'il est net (> 30 s) — un petit écart est du réseau, pas une horloge fausse.
         var skew = DriverTourRules.ClockSkew(request.SentAt, now);
 
-        var acceptes = 0;
+        var candidats = new List<DriverAppPosition>();
+        var heuresDuLot = new HashSet<DateTime>();
         foreach (var pt in (request.Points ?? new List<PhonePoint>()).Take(DriverTourRules.MaxPositionsPerBatch))
         {
             var recordedAt = DateTime.SpecifyKind(pt.RecordedAt, DateTimeKind.Utc) + skew;
-            if (!DriverTourRules.IsPositionInWindow(recordedAt, start, now)) continue;
+            var dansLaFenetre = terminee == null
+                ? DriverTourRules.IsPositionInWindow(recordedAt, start, now)
+                : DriverTourRules.IsPositionInClosedTourWindow(recordedAt, start, terminee.ActualEndTime, now);
+            if (!dansLaFenetre) continue;
             if (pt.Latitude is < -90 or > 90 || pt.Longitude is < -180 or > 180) continue;
+            if (!heuresDuLot.Add(recordedAt)) continue;   // même instant deux fois dans le lot
 
-            _context.DriverAppPositions.Add(new DriverAppPosition
+            candidats.Add(new DriverAppPosition
             {
-                CompanyId = tour.CompanyId,
+                CompanyId = cible.CompanyId,
                 UserId = p.UserId,
                 DriverId = p.Driver.Id,
-                TourId = tour.Id,
+                TourId = cible.Id,
                 RecordedAt = recordedAt,
                 ReceivedAt = now,
                 Latitude = pt.Latitude,
@@ -451,13 +470,40 @@ public class DriverAppController : ControllerBase
                 IsMocked = pt.IsMocked,
                 BatteryLevel = request.BatteryLevel
             });
-            acceptes++;
         }
-        if (acceptes > 0) await _context.SaveChangesAsync(ct);
+
+        // Idempotence (relecture du 21/09/2026) : un lot dont la RÉPONSE s'est perdue est
+        // renvoyé tel quel par l'application — ses points étaient enregistrés deux fois. Un
+        // instant déjà reçu de ce compte est écarté ; l'index unique (user_id, recorded_at)
+        // de la migration 051 le garantit en base. Une seule requête, bornée par le premier
+        // et le dernier instant du lot (200 points au plus). Sans filtre de société : l'index
+        // ne connaît que le compte, la vérification non plus.
+        var acceptes = 0;
+        if (candidats.Count > 0)
+        {
+            var premier = candidats.Min(c => c.RecordedAt);
+            var dernier = candidats.Max(c => c.RecordedAt);
+            var dejaRecus = (await _context.DriverAppPositions.IgnoreQueryFilters().AsNoTracking()
+                    .Where(x => x.UserId == p.UserId && x.RecordedAt >= premier && x.RecordedAt <= dernier)
+                    .Select(x => x.RecordedAt)
+                    .ToListAsync(ct))
+                .ToHashSet();
+            foreach (var point in candidats.Where(c => !dejaRecus.Contains(c.RecordedAt)))
+            {
+                _context.DriverAppPositions.Add(point);
+                acceptes++;
+            }
+            if (acceptes > 0) await _context.SaveChangesAsync(ct);
+        }
+
+        // Tournée terminée : le téléphone arrête le suivi ; activeTourId la nomme pour qu'il
+        // continue de vider sa file (il ne s'arrête d'envoyer que sur activeTourId null).
+        if (terminee != null)
+            return Ok(new { tracking = false, mode = TrackingSourceSelector.PhoneMode(false), activeTourId = terminee.Id, accepted = acceptes });
 
         // Le suivi s'arrête de lui-même au plus tard 12 h après le départ.
         var encore = now - start <= DriverTourRules.MaxTrackingDuration;
-        return Ok(new { tracking = encore, mode = await PhoneModeAsync(tour, ct), activeTourId = tour.Id, accepted = acceptes });
+        return Ok(new { tracking = encore, mode = await PhoneModeAsync(tour!, ct), activeTourId = tour!.Id, accepted = acceptes });
     }
 
     // ────────────────── Aides ──────────────────
@@ -645,6 +691,8 @@ public class PhonePositionsRequest
     public DateTime? SentAt { get; set; }
     public short? BatteryLevel { get; set; }
     /// <summary>Tournée que le téléphone suit (son état de suivi) : retenue si elle est au
-    /// chauffeur, en cours et dans sa fenêtre de 12 h, sinon la plus récente en cours.</summary>
+    /// chauffeur, en cours et dans sa fenêtre de 12 h ; au chauffeur et terminée, elle
+    /// reçoit encore les points mesurés jusqu'à sa fin + 2 min (réponse tracking:false) ;
+    /// sinon la plus récente en cours.</summary>
     public int? ActiveTourId { get; set; }
 }

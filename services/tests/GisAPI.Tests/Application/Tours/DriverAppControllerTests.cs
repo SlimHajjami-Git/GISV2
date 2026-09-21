@@ -689,4 +689,144 @@ public class DriverAppControllerTests
         tour.ActualDistanceKm.Should().BeApproximately(11.12m, 0.1m);
         tour.ActualFuelLiters.Should().BeApproximately(0.89m, 0.02m, "8 L/100 km, comme la clôture automatique");
     }
+
+    // ── Points après la clôture, lots renvoyés (relecture du 21/09/2026) ────────
+
+    /// <summary>La tournée 10, partie à <see cref="Depart"/> et terminée à <paramref name="fin"/>.</summary>
+    private static async Task<TestGisDbContext> TourneeTermineeAsync(DateTime fin)
+    {
+        var ctx = await ParcAsync(statut: "in_progress");
+        var tour = await ctx.Tours.SingleAsync(t => t.Id == 10);
+        tour.Status = "completed";
+        tour.ActualEndTime = fin;
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        return ctx;
+    }
+
+    private static PhonePositionsRequest Lot(DateTime sentAt, int? suivie, params PhonePoint[] points) => new()
+    {
+        SentAt = sentAt, ActiveTourId = suivie, Points = points.ToList()
+    };
+
+    private static PhonePoint Point(DateTime recordedAt) =>
+        new() { RecordedAt = recordedAt, Latitude = DestLat, Longitude = DestLon, AccuracyM = 10 };
+
+    [Fact]
+    public async Task Les_derniers_points_d_une_tournee_terminee_sont_gardes_jusqu_a_sa_fin_plus_2_min()
+    {
+        // L'app vide sa file juste avant « Je suis arrivé » à destination, puis envoie un
+        // dernier lot à l'arrêt du suivi : la tournée est déjà « completed ». Ces points
+        // étaient tous refusés (accepted 0, activeTourId null) — la fin de la trace manquait.
+        var now = DateTime.UtcNow;
+        var fin = now.AddMinutes(-10);
+        using var ctx = await TourneeTermineeAsync(fin);
+        var (c, _) = Controleur(ctx, Chauffeur);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 10,
+            Point(fin.AddSeconds(-30)),
+            Point(fin.AddSeconds(90)),
+            Point(fin.AddMinutes(3)),             // plus de 2 min après la fin : refusé
+            Point(Depart.AddMinutes(-10)))));     // avant le départ − 5 min : refusé, comme en cours de tournée
+
+        r.GetProperty("tracking").GetBoolean().Should().BeFalse("la tournée est finie : le téléphone arrête le suivi");
+        r.GetProperty("activeTourId").GetInt32().Should().Be(10, "nommée, pour que le téléphone finisse de vider sa file");
+        r.GetProperty("accepted").GetInt32().Should().Be(2);
+        ctx.ChangeTracker.Clear();
+        var points = await ctx.DriverAppPositions.AsNoTracking().ToListAsync();
+        points.Should().HaveCount(2).And.OnlyContain(pt => pt.TourId == 10 && pt.UserId == Chauffeur && pt.DriverId == Fiche);
+    }
+
+    [Fact]
+    public async Task Les_derniers_points_d_une_tournee_terminee_ne_partent_pas_sur_une_autre_en_cours()
+    {
+        // Même cas, mais une autre tournée du chauffeur est en cours (démarrée par le
+        // gestionnaire) : la retombée sur « la plus récente en cours » y rattachait la fin
+        // de la trace de la tournée terminée.
+        var now = DateTime.UtcNow;
+        using var ctx = await TourneeTermineeAsync(now.AddMinutes(-1));
+        ctx.Tours.Add(TourneeSuivante());
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 10, Point(now.AddMinutes(-2)))));
+
+        r.GetProperty("activeTourId").GetInt32().Should().Be(10);
+        r.GetProperty("tracking").GetBoolean().Should().BeFalse();
+        ctx.ChangeTracker.Clear();
+        (await ctx.DriverAppPositions.AsNoTracking().SingleAsync()).TourId.Should().Be(10);
+    }
+
+    [Fact]
+    public async Task La_tournee_terminee_d_un_autre_chauffeur_ne_recoit_aucun_point()
+    {
+        using var ctx = await ParcAsync();   // sa tournée 10 est planifiée : rien en cours pour lui
+        var autre = await ctx.Tours.SingleAsync(t => t.Id == 11);
+        (autre.Status, autre.ActualStartTime, autre.ActualEndTime) = ("completed", Depart, DateTime.UtcNow.AddMinutes(-1));
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 11, Point(now.AddMinutes(-2)))));
+
+        r.GetProperty("tracking").GetBoolean().Should().BeFalse();
+        r.GetProperty("activeTourId").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        r.GetProperty("accepted").GetInt32().Should().Be(0);
+        (await ctx.DriverAppPositions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Un_lot_renvoye_apres_une_reponse_perdue_n_est_pas_enregistre_deux_fois()
+    {
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+        var (t1, t2, t3) = (now.AddSeconds(-60), now.AddSeconds(-40), now.AddSeconds(-20));
+
+        // Premier envoi : le même instant deux fois dans le lot.
+        Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 10, Point(t1), Point(t2), Point(t2))))
+            .GetProperty("accepted").GetInt32().Should().Be(2, "un instant n'est compté qu'une fois");
+        ctx.ChangeTracker.Clear();
+
+        // La réponse s'est perdue : l'application renvoie le lot tel quel.
+        Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 10, Point(t1), Point(t2), Point(t2))))
+            .GetProperty("accepted").GetInt32().Should().Be(0, "rien de nouveau");
+        ctx.ChangeTracker.Clear();
+
+        // Lot suivant, à cheval sur le précédent : seul le point nouveau compte.
+        Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(now, 10, Point(t2), Point(t3))))
+            .GetProperty("accepted").GetInt32().Should().Be(1);
+        ctx.ChangeTracker.Clear();
+
+        (await ctx.DriverAppPositions.AsNoTracking().Select(x => x.RecordedAt).ToListAsync())
+            .Should().BeEquivalentTo(new[] { t1, t2, t3 });
+    }
+
+    [Fact]
+    public async Task Le_meme_instant_chez_deux_chauffeurs_fait_deux_points()
+    {
+        // L'unicité est PAR COMPTE (index user_id, recorded_at) : deux téléphones peuvent
+        // mesurer au même instant.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var autre = await ctx.Tours.SingleAsync(t => t.Id == 11);
+        (autre.Status, autre.ActualStartTime) = ("in_progress", Depart);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var now = DateTime.UtcNow;
+        var instant = now.AddSeconds(-30);
+
+        var (c1, _) = Controleur(ctx, Chauffeur);
+        Corps<System.Text.Json.JsonElement>(await c1.Positions(Lot(now, 10, Point(instant))))
+            .GetProperty("accepted").GetInt32().Should().Be(1);
+        ctx.ChangeTracker.Clear();
+        var (c2, _) = Controleur(ctx, AutreChauffeur);
+        Corps<System.Text.Json.JsonElement>(await c2.Positions(Lot(now, 11, Point(instant))))
+            .GetProperty("accepted").GetInt32().Should().Be(1);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.DriverAppPositions.AsNoTracking().Select(x => x.UserId).ToListAsync())
+            .Should().BeEquivalentTo(new[] { Chauffeur, AutreChauffeur });
+    }
 }

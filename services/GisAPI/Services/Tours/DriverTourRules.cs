@@ -107,9 +107,14 @@ public static class DriverTourRules
 
     /// <summary>
     /// Borne basse de l'heure d'un « Je pars » qui DÉMARRE une tournée planifiée : le plus
-    /// ancien de son envoi (SentAt) et de sa première ouverture sur le téléphone (OpenedAt,
-    /// plus ancienne que SentAt après un renvoi) — le chauffeur ne peut pas avoir touché
-    /// « Je pars » avant d'avoir reçu la tournée.
+    /// ancien de son envoi (SentAt) et de son ouverture sur le téléphone (OpenedAt) — le
+    /// chauffeur ne peut pas avoir touché « Je pars » avant d'avoir reçu la tournée.
+    ///
+    /// Depuis que le renvoi remet OpenedAt à null (ToursController.SendToDriver, relecture
+    /// du 21/09/2026 — sans cela l'écran ne voyait jamais la réouverture), OpenedAt n'est
+    /// plus antérieur au dernier envoi : après un renvoi, la borne est ce renvoi. Limite
+    /// connue : un « Je pars » touché hors ligne plus de 5 min AVANT un renvoi, et rejoué
+    /// après, est daté de sa réception.
     ///
     /// Relecture du 21/09/2026 (Wc18) : la borne était l'heure PRÉVUE. Un départ anticipé
     /// hors ligne (07:40 pour 08:00) rejoué à 08:30 était daté de 08:30 : estimations
@@ -146,6 +151,25 @@ public static class DriverTourRules
         recordedAt >= tourStart - DeclaredTimeMinLead
         && recordedAt <= now + DeclaredTimeMaxAhead
         && recordedAt <= tourStart + MaxTrackingDuration;
+
+    /// <summary>Points d'une tournée CLÔTURÉE encore acceptés : mesurés au plus autant après sa fin.</summary>
+    public static readonly TimeSpan PositionsAcceptedAfterEnd = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Une position du téléphone est-elle encore acceptée pour une tournée CLÔTURÉE que le
+    /// téléphone suivait ? Même fenêtre que pendant la tournée, bornée en plus à la fin
+    /// réelle + 2 min ; sans fin connue, aucune.
+    ///
+    /// Pourquoi (relecture du 21/09/2026) : l'application vide sa file juste avant « Je suis
+    /// arrivé » à destination, puis tente un dernier envoi à l'arrêt du suivi. Les points
+    /// mesurés entre ce vidage et la réponse — et ceux d'une tournée clôturée par le
+    /// moniteur pendant que le téléphone était hors ligne — étaient refusés : la fin de la
+    /// trace manquait, précisément à destination.
+    /// </summary>
+    public static bool IsPositionInClosedTourWindow(DateTime recordedAt, DateTime tourStart, DateTime? tourEnd, DateTime now) =>
+        tourEnd.HasValue
+        && IsPositionInWindow(recordedAt, tourStart, now)
+        && recordedAt <= tourEnd.Value + PositionsAcceptedAfterEnd;
 
     /// <summary>Distance (m) entre une position connue et une étape, null sans position.</summary>
     public static int? DistanceToStop(double? lat, double? lon, TourWaypoint wp) =>

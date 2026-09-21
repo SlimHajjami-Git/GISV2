@@ -1,8 +1,10 @@
 namespace GisAPI.Domain.Entities;
 
 /// <summary>
-/// Position envoyée par le téléphone du chauffeur PENDANT une tournée en cours
-/// (migration 051). Table séparée de <see cref="GpsPosition"/> : les positions du
+/// Position envoyée par le téléphone du chauffeur PENDANT une tournée en cours, ou
+/// mesurée au plus 2 min après sa clôture (dernier lot de l'application), migration 051.
+/// Un seul point par compte et par instant (index unique user_id, recorded_at : un lot
+/// renvoyé après une réponse perdue n'est pas doublé). Table séparée de <see cref="GpsPosition"/> : les positions du
 /// véhicule alimentent le kilométrage, les trajets, les alertes et les rapports —
 /// celles du téléphone ne servent qu'au suivi de la tournée (relais quand le boîtier
 /// se tait, seule source pour un véhicule sans boîtier).

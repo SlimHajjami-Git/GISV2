@@ -4,10 +4,12 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Controllers;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
+using GisAPI.Hubs;
 using GisAPI.Services;
 using GisAPI.Tests.Common;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -105,9 +107,65 @@ public class EnvoiAuChauffeurTests
             It.Is<string>(s => s.StartsWith("Nouvelle tournée")), It.IsAny<string>(), "high", "tour", 10, "/tournees/10",
             It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()), Times.Once);
 
-        // Renvoi : même chemin, titre « mise à jour », resent = true.
+        // Le chauffeur l'ouvre sur son téléphone (POST /api/driver-app/tours/10/opened).
+        var ouverte = await ctx.Tours.SingleAsync(t => t.Id == 10);
+        ouverte.OpenedAt = DateTime.UtcNow;
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        // Renvoi : même chemin, titre « mise à jour », resent = true — et la tournée repasse
+        // « pas encore ouverte » : /opened n'écrit que sur OpenedAt null (relecture du 21/09/2026).
         var re = System.Text.Json.JsonSerializer.Serialize(((OkObjectResult)await c.SendToDriver(10)).Value);
         re.Should().Contain("\"resent\":true");
+        notifs.Verify(n => n.CreateAndSendWithPushAsync(CompanyId, CompteChauffeur, "tour_assigned",
+            It.Is<string>(s => s.StartsWith("Tournée mise à jour")), It.IsAny<string>(), "high", "tour", 10, "/tournees/10",
+            It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()), Times.Once);
+        ctx.ChangeTracker.Clear();
+        (await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10)).OpenedAt.Should().BeNull("la version renvoyée n'a pas encore été ouverte");
+    }
+
+    [Fact]
+    public async Task Apres_un_renvoi_la_reouverture_sur_le_telephone_est_de_nouveau_signalee()
+    {
+        // Relecture du 21/09/2026 : l'écran repasse « Envoyée » au renvoi et attend TourOpened ;
+        // /opened, qui n'écrit et ne diffuse que si OpenedAt est null, ne le réémettait jamais.
+        using var ctx = await ParcAsync();
+        var (gestion, _) = Controleur(ctx);
+        var (telephone, diffusion) = ApplicationDuChauffeur(ctx);
+
+        await gestion.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+        (await telephone.Opened(10)).Should().BeOfType<NoContentResult>();
+        ctx.ChangeTracker.Clear();
+        await gestion.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+        (await telephone.Opened(10)).Should().BeOfType<NoContentResult>();
+
+        diffusion.Verify(p => p.SendCoreAsync("TourOpened", It.IsAny<object?[]>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2), "une ouverture par envoi");
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10);
+        tour.OpenedAt.Should().NotBeNull().And.BeOnOrAfter(tour.SentAt!.Value, "ouverture de la version renvoyée");
+    }
+
+    /// <summary>L'application du chauffeur (compte <see cref="CompteChauffeur"/>), et ce qu'elle diffuse aux écrans de la société.</summary>
+    private static (DriverAppController Controller, Mock<IClientProxy> Diffusion) ApplicationDuChauffeur(TestGisDbContext ctx)
+    {
+        var tenant = new Mock<ICurrentTenantService>();
+        tenant.Setup(x => x.CompanyId).Returns(CompanyId);
+        tenant.Setup(x => x.UserId).Returns(CompteChauffeur);
+        tenant.Setup(x => x.UserRoles).Returns(new[] { "user" });
+        tenant.Setup(x => x.IsAuthenticated).Returns(true);
+        tenant.Setup(x => x.IsDriverAccount).Returns(true);
+        var diffusion = new Mock<IClientProxy>();
+        var clients = new Mock<IHubClients>();
+        clients.Setup(h => h.Group(It.IsAny<string>())).Returns(diffusion.Object);
+        var hub = new Mock<IHubContext<GpsHub>>();
+        hub.Setup(h => h.Clients).Returns(clients.Object);
+
+        var controller = new DriverAppController(ctx, tenant.Object, new Mock<IRedisCacheService>().Object,
+            new Mock<INotificationService>().Object, hub.Object, NullLogger<DriverAppController>.Instance);
+        return (controller, diffusion);
     }
 
     [Fact]

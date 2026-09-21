@@ -25,10 +25,17 @@
 --     la déclaration, mesurée par le boîtier ou le téléphone — un « arrivé » déclaré à
 --     3 km de l'étape s'affiche comme tel au gestionnaire.
 --   • driver_app_positions : les positions envoyées par le téléphone du chauffeur PENDANT
---     une tournée en cours, et rien d'autre. Table SÉPARÉE de gps_positions : y écrire
---     fausserait le kilométrage (source unique), les trajets, les alertes de vitesse et
---     les rapports, qui sont ceux du VÉHICULE. Conservation : à décider avec Slim avant la
---     mise en production (90 jours proposés) ; aucune purge automatique n'est créée ici.
+--     une tournée en cours (et jusqu'à 2 min après sa clôture : le dernier lot de l'app
+--     part après « Je suis arrivé »), et rien d'autre. Table SÉPARÉE de gps_positions : y
+--     écrire fausserait le kilométrage (source unique), les trajets, les alertes de vitesse
+--     et les rapports, qui sont ceux du VÉHICULE. Conservation : à décider avec Slim avant
+--     la mise en production (90 jours proposés) ; aucune purge automatique n'est créée ici.
+--     Index UNIQUE (user_id, recorded_at) : un lot dont la réponse s'est perdue est
+--     renvoyé tel quel par l'application ; l'API écarte les instants déjà reçus et l'index
+--     le garantit en base (un compte ne mesure pas deux positions au même instant). Il
+--     remplace l'index non unique ix_driver_app_positions_user_recorded des premières
+--     versions de ce script, qui n'est plus créé : l'unique sert aussi à lire le dernier
+--     point d'un chauffeur (parcours arrière de l'index).
 --
 -- Casse : tours et tour_waypoints sont en PascalCase entre guillemets (convention EF de
 -- ces deux tables), driver_app_positions en snake_case comme les tables écrites à la main.
@@ -114,9 +121,11 @@ CREATE TABLE IF NOT EXISTS driver_app_positions (
 -- Lecture par le moniteur : la tranche « depuis le dernier id vu » d'une tournée.
 CREATE INDEX IF NOT EXISTS ix_driver_app_positions_tour_id
     ON driver_app_positions (tour_id, id);
--- Dernier point d'un chauffeur (source de suivi, écran).
-CREATE INDEX IF NOT EXISTS ix_driver_app_positions_user_recorded
-    ON driver_app_positions (user_id, recorded_at DESC);
+-- Un instant par compte : idempotence des lots renvoyés (voir l'en-tête), et dernier
+-- point d'un chauffeur (source de suivi, écran). Table neuve et vide partout : aucune
+-- ligne en double ne peut empêcher sa création.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_driver_app_positions_user_recorded
+    ON driver_app_positions (user_id, recorded_at);
 
 COMMENT ON TABLE driver_app_positions IS
-    'Positions du téléphone du chauffeur pendant une tournée en cours (jamais mélangées à gps_positions) ; durée de conservation à décider (90 j proposés)';
+    'Positions du téléphone du chauffeur pendant une tournée en cours et jusqu''à 2 min après sa clôture (jamais mélangées à gps_positions) ; un instant par compte (index unique user_id, recorded_at) ; durée de conservation à décider (90 j proposés)';

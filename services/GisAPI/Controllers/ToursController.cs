@@ -767,6 +767,12 @@ public class ToursController : ControllerBase
         var renvoi = tour.SentAt.HasValue;
         tour.SentAt = now;
         tour.SentByUserId = _tenant.UserId;
+        // Un renvoi repart de « Envoyée, pas encore ouverte » (relecture du 21/09/2026) :
+        // /api/driver-app/tours/{id}/opened n'écrit et ne diffuse TourOpened que si OpenedAt
+        // est null, et le téléphone ne l'appelle que dans ce cas. Sans cette remise à zéro,
+        // l'ouverture de la tournée MISE À JOUR n'était jamais signalée : l'écran, qui repasse
+        // « Envoyée » au renvoi, y restait. (Premier envoi : OpenedAt est déjà null.)
+        tour.OpenedAt = null;
         await _context.SaveChangesAsync(ct);
 
         var etapes = tour.Waypoints.Count;

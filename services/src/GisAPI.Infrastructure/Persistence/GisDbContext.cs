@@ -270,6 +270,10 @@ public class GisDbContext : DbContext, IGisDbContext
             b.Property(p => p.IsMocked).HasColumnName("is_mocked");
             b.Property(p => p.BatteryLevel).HasColumnName("battery_level");
             b.HasIndex(p => new { p.TourId, p.Id }).HasDatabaseName("ix_driver_app_positions_tour_id");
+            // Un instant par compte (migration 051) : un lot renvoyé après une réponse perdue
+            // n'est pas enregistré deux fois. DriverAppController.Positions écarte ces points
+            // avant l'insertion ; l'index le garantit en base.
+            b.HasIndex(p => new { p.UserId, p.RecordedAt }).IsUnique().HasDatabaseName("ux_driver_app_positions_user_recorded");
             b.HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         });
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
