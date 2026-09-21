@@ -1,5 +1,5 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, ChangeDetectorRef, NgZone } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, NavigationEnd, NavigationSkipped, Router } from '@angular/router';
 import { CommonModule, Location } from '@angular/common';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -12,12 +12,12 @@ import { SignalRService, TourEvent } from '../services/signalr.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
-import { debounceTime, switchMap, catchError } from 'rxjs/operators';
+import { debounceTime, switchMap, catchError, filter, takeUntil } from 'rxjs/operators';
 import { driverAfterVehicleChange, driverOptionLabel, DriverOption, selectableDrivers } from './tours-driver.helpers';
 import {
-  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, phoneBatteryLabel,
-  sendButtonState, SendButtonState, sendErrorMessage, sendStatusLabel, sendToast, tourSendStatus,
-  trackingBadge, TrackingBadge, waypointSourceLabel, withAppBadge
+  declarationDistanceWarning, driverDepartureSignaledAt, driverHasAppAccount, openedSinceLastSend, phoneBatteryLabel,
+  phoneMarkerState, sendButtonState, SendButtonState, sendErrorMessage, sendStatusLabel, sendToast, tourIdFromUrl,
+  tourSendStatus, trackingBadge, TrackingBadge, waypointSourceLabel, withAppBadge
 } from './tours-tracking.helpers';
 
 declare let L: any;
@@ -404,7 +404,8 @@ declare let L: any;
               <div class="info-item"><span class="info-lbl">Vehicule</span><span class="info-val">{{selectedTour.vehicleName}}</span></div>
               <div class="info-item"><span class="info-lbl">Chauffeur</span><span class="info-val">{{selectedTour.driverName || (selectedTour.driverId ? 'Fiche chauffeur introuvable' : 'Aucun')}}</span></div>
               <div class="info-item" *ngIf="selectedTour.sentAt"><span class="info-lbl">Envoy&eacute;e au chauffeur</span><span class="info-val">{{formatDayAt(selectedTour.sentAt)}}</span></div>
-              <div class="info-item" *ngIf="selectedTour.openedAt"><span class="info-lbl">Ouverte sur le t&eacute;l&eacute;phone</span><span class="info-val">{{formatDayAt(selectedTour.openedAt, selectedTour.sentAt)}}</span></div>
+              <!-- Ouverture antérieure au dernier envoi = ancienne version : ne pas la montrer comme vue -->
+              <div class="info-item" *ngIf="openedSinceLastSend(selectedTour) as opened"><span class="info-lbl">Ouverte sur le t&eacute;l&eacute;phone</span><span class="info-val">{{formatDayAt(opened, selectedTour.sentAt)}}</span></div>
               <div class="info-item" *ngIf="departureSignaledAt() as dep"><span class="info-lbl">D&eacute;part signal&eacute; par le chauffeur</span><span class="info-val">{{formatDayAt(dep, selectedTour.sentAt)}}</span></div>
               <div class="info-item"><span class="info-lbl">Depart prevu</span><span class="info-val">{{formatDate(selectedTour.scheduledStartTime)}}</span></div>
               <div class="info-item" *ngIf="selectedTour.actualDepartureTime || selectedTour.actualStartTime"><span class="info-lbl">Depart reel</span><span class="info-val">{{formatDate(selectedTour.actualDepartureTime || selectedTour.actualStartTime)}}</span></div>
@@ -852,6 +853,8 @@ declare let L: any;
     /* Téléphone du chauffeur (relais quand le boîtier est muet) */
     :host ::ng-deep .phone-live-icon { background: none !important; border: none !important; }
     :host ::ng-deep .plive-dot { width: 22px; height: 22px; border-radius: 6px; background: #7c3aed; border: 2px solid white; box-shadow: 0 0 8px rgba(124,58,237,.5); display: flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1; }
+    /* Téléphone qui ne suit PAS la tournée (boîtier aux commandes, ou point périmé) : grisé, jamais pris pour du direct */
+    :host ::ng-deep .plive-dot.plive-stale { background: #94a3b8; box-shadow: none; opacity: .7; }
 
     /* ════ TRACKING BAR ════ */
     .tracking-bar { padding: 12px 18px; background: linear-gradient(135deg, #eff6ff, #f0fdf4); border-bottom: 1px solid #dbeafe; }
@@ -921,8 +924,21 @@ export class ToursComponent implements OnInit, OnDestroy {
   sending = false;
   private tourEventSub?: Subscription;
   private routeSub?: Subscription;
+  private navSub?: Subscription;
+  /** Chargement du détail en cours : un nouveau détail demandé annule le précédent. */
+  private detailSub?: Subscription;
+  /** Id du détail en cours de chargement (évite de le demander deux fois : paramMap + NavigationEnd). */
+  private detailLoadingId: number | null = null;
   /** Vrai quand la page a été ouverte sur /tournees/:id : au retour, l'adresse redevient /tournees. */
   private detailFromUrl = false;
+  /**
+   * Composant détruit : une réponse HTTP arrivée après la navigation vers une
+   * autre page ne doit plus réécrire SON adresse ni relancer le sondage /tracking.
+   */
+  private destroyed = false;
+  private readonly destroy$ = new Subject<void>();
+  /** Dernier état (en direct / grisé) de l'icône du téléphone, pour ne la refaire qu'au changement. */
+  private phoneMarkerLive: boolean | null = null;
 
   tourForm = this.getEmptyForm();
 
@@ -1390,22 +1406,56 @@ export class ToursComponent implements OnInit, OnDestroy {
     });
 
     // /tournees/:id (actionUrl des notifications) : le détail s'ouvre directement.
-    this.routeSub = this.route.paramMap.subscribe(params => {
-      const id = Number(params.get('id'));
-      if (id > 0) {
-        this.detailFromUrl = true;
-        this.openDetailById(id);
-      }
-    });
+    this.routeSub = this.route.paramMap.subscribe(params => this.syncWithUrl(Number(params.get('id')) || 0));
+    // paramMap ne suffit pas : ouvrir ou fermer un détail change l'adresse par
+    // replaceState, à l'insu du routeur. Revenir sur /tournees/5 (même route, même
+    // id) réutilise alors le composant SANS nouvelle émission de paramMap : après
+    // « Retour », ou avec la tournée 9 ouverte depuis la liste, un clic sur une
+    // notification de la tournée 5 ne faisait rien — ou laissait la 9 affichée,
+    // Annuler et Démarrer agissant sur elle. On se recale donc sur chaque
+    // navigation aboutie, ou ignorée parce qu'identique à l'état du routeur.
+    this.navSub = this.router.events.pipe(
+      filter((e): e is NavigationEnd | NavigationSkipped => e instanceof NavigationEnd || e instanceof NavigationSkipped)
+    ).subscribe(e => this.syncWithUrl(tourIdFromUrl(e instanceof NavigationEnd ? e.urlAfterRedirects : e.url)));
 
     // Temps réel : la connexion est ouverte par le layout ; ici on ne fait
     // qu'écouter les événements Tournées pour rafraîchir sans attendre le sondage.
     this.tourEventSub = this.signalR.tourEvent$.subscribe(ev => this.onTourEvent(ev));
   }
 
+  /**
+   * Aligne la vue sur l'adresse demandée : /tournees/:id → le détail de cette
+   * tournée (sauf s'il est déjà affiché ou en cours de chargement) ; /tournees →
+   * la liste, si un détail était ouvert (lien « Tournées » du menu depuis un détail).
+   * null = une autre page : rien à faire.
+   */
+  private syncWithUrl(id: number | null) {
+    if (this.destroyed || id == null) return;
+    if (id > 0) {
+      if (this.detailLoadingId === id) return;
+      if (this.currentView === 'detail' && this.selectedTour?.id === id) return;
+      this.detailFromUrl = true;
+      this.openDetailById(id);
+      return;
+    }
+    if (this.detailLoadingId != null) {
+      this.detailSub?.unsubscribe();
+      this.detailLoadingId = null;
+    }
+    if (this.currentView === 'detail') {
+      this.closeDetail();
+      this.cdr.detectChanges();
+    }
+  }
+
   ngOnDestroy() {
+    this.destroyed = true;
+    this.destroy$.next();
+    this.destroy$.complete();
+    this.detailSub?.unsubscribe();
     if (this.searchSub) this.searchSub.unsubscribe();
     this.routeSub?.unsubscribe();
+    this.navSub?.unsubscribe();
     this.tourEventSub?.unsubscribe();
     this.stopTracking();
     this.clearTourReplay();
@@ -1422,6 +1472,7 @@ export class ToursComponent implements OnInit, OnDestroy {
     this.trackingData = null;
     this.vehicleMarker = null;
     this.phoneMarker = null;
+    this.phoneMarkerLive = null;
   }
 
   loadData() {
@@ -1479,6 +1530,10 @@ export class ToursComponent implements OnInit, OnDestroy {
   closeCreate() {
     this.currentView = 'list';
     this.destroyMaps();
+    // « Modifier » depuis un détail laissait l'adresse sur /tournees/5 alors que la
+    // liste s'affiche (un F5 rouvrait le détail) : l'adresse suit la vue.
+    this.location.replaceState(this.routeBase());
+    this.detailFromUrl = false;
   }
 
   openDetail(tour: any) {
@@ -1491,20 +1546,31 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   openDetailById(id: number) {
-    this.apiService.getTour(id).subscribe({
+    if (this.destroyed) return;
+    // Un seul détail en vol : ligne 9 cliquée puis notification de la 5 avant la
+    // réponse → la réponse tardive de la 9 ne doit pas remplacer la 5.
+    this.detailSub?.unsubscribe();
+    this.detailLoadingId = id;
+    this.detailSub = this.apiService.getTour(id).pipe(takeUntil(this.destroy$)).subscribe({
       next: (detail) => {
+        this.detailLoadingId = null;
+        // Réponse lente arrivée après un clic vers une autre page : ne pas réécrire
+        // l'adresse de CETTE page, ni lancer un sondage que plus rien n'arrêterait.
+        if (this.destroyed) return;
         this.stopTracking();
         this.selectedTour = detail;
         this.currentView = 'detail';
         // Adresse partageable, sans navigation (le composant resterait le même).
         this.location.replaceState(`${this.routeBase()}/${id}`);
         this.cdr.detectChanges();
-        setTimeout(() => this.initDetailMap(), 200);
+        setTimeout(() => { if (!this.destroyed) this.initDetailMap(); }, 200);
         if (detail.status === 'in_progress') {
           this.startTracking(detail.id);
         }
       },
       error: () => {
+        this.detailLoadingId = null;
+        if (this.destroyed) return;
         this.toast.error('Tournée introuvable', "Cette tournée n'existe plus ou n'est pas dans votre périmètre.", 8000);
         if (this.detailFromUrl) this.location.replaceState(this.routeBase());
         this.cdr.detectChanges();
@@ -1529,9 +1595,9 @@ export class ToursComponent implements OnInit, OnDestroy {
   private refreshSelectedTour() {
     const id = this.selectedTour?.id;
     if (!id || this.currentView !== 'detail') return;
-    this.apiService.getTour(id).subscribe({
+    this.apiService.getTour(id).pipe(takeUntil(this.destroy$)).subscribe({
       next: (detail) => {
-        if (this.currentView !== 'detail' || this.selectedTour?.id !== id) return;
+        if (this.destroyed || this.currentView !== 'detail' || this.selectedTour?.id !== id) return;
         const wasTracking = !!this.trackingInterval;
         this.selectedTour = detail;
         if (detail.status === 'in_progress' && !wasTracking) this.startTracking(id);
@@ -1571,7 +1637,11 @@ export class ToursComponent implements OnInit, OnDestroy {
         break;
       case 'TourStatusChanged':
         // Statut porté par la ligne : la liste et les compteurs suivent, le détail aussi.
-        if (this.currentView === 'list') this.loadTours(true);
+        // Liste rechargée même quand un détail est ouvert : au « Retour », la ligne
+        // montrait encore « Planifiée / Ouverte » alors que le compteur disait « en
+        // cours » (le message ne porte pas actualStartTime, d'où un rechargement
+        // plutôt qu'une retouche de la ligne).
+        this.loadTours(true);
         this.loadStats();
         if (open) this.refreshSelectedTour();
         break;
@@ -1588,15 +1658,18 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
 
   startTracking(tourId: number) {
+    // Après ngOnDestroy, un setInterval ne serait plus jamais arrêté : /tracking
+    // sondé toutes les 10 s jusqu'à la fermeture de l'onglet.
+    if (this.destroyed) return;
     this.stopTracking();
     this.fetchTracking(tourId);
     this.trackingInterval = setInterval(() => this.fetchTracking(tourId), 10000);
   }
 
   fetchTracking(tourId: number) {
-    this.apiService.getTourTracking(tourId).subscribe({
+    this.apiService.getTourTracking(tourId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
-        if (this.selectedTour?.id !== tourId) return;
+        if (this.destroyed || this.selectedTour?.id !== tourId) return;
         this.trackingData = data;
         this.updateVehicleMarker(data);
         this.updatePhoneMarker(data);
@@ -1620,34 +1693,46 @@ export class ToursComponent implements OnInit, OnDestroy {
     return v == null ? null : Number(v);
   }
 
+  /** Batterie du téléphone, masquée avec son marqueur (point périmé pendant que le boîtier suit). */
   phoneBattery(): string | null {
+    if (!phoneMarkerState(this.trackingData).visible) return null;
     return phoneBatteryLabel(this.trackingData?.phone?.batteryLevel);
   }
 
-  /** Marqueur du téléphone du chauffeur, en plus du véhicule ; retiré s'il n'y a plus de point. */
+  /**
+   * Marqueur du téléphone du chauffeur, en plus du véhicule : plein quand le
+   * téléphone suit la tournée, grisé et daté sinon, retiré quand il n'y a plus de
+   * point ou que le boîtier suit et que le point a plus de 3 min (phoneMarkerState).
+   */
   updatePhoneMarker(data: any) {
     if (!this.detailMap) return;
+    const state = phoneMarkerState(data);
     const phone = data?.phone;
-    if (!phone || phone.latitude == null || phone.longitude == null) {
+    if (!state.visible) {
       if (this.phoneMarker) { this.detailMap.removeLayer(this.phoneMarker); this.phoneMarker = null; }
+      this.phoneMarkerLive = null;
       return;
     }
     const acc = phone.accuracyM != null ? ` &middot; &plusmn;${Math.round(phone.accuracyM)} m` : '';
     const bat = phoneBatteryLabel(phone.batteryLevel);
     const popup = `<b>T&eacute;l&eacute;phone du chauffeur</b><br>${Math.round(phone.speedKph || 0)} km/h${acc}`
+      + (state.ageLabel ? `<br>Position ${state.ageLabel}` : '')
+      + (state.note ? `<br><i>${state.note}</i>` : '')
       + (bat ? `<br>Batterie ${bat}` : '') + (phone.isMocked ? '<br><i>Position simul&eacute;e ?</i>' : '');
+    const icon = () => L.divIcon({
+      className: 'phone-live-icon',
+      html: `<div class="plive-dot${state.live ? '' : ' plive-stale'}">&#128241;</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
+    });
     if (this.phoneMarker) {
       this.phoneMarker.setLatLng([phone.latitude, phone.longitude]);
+      if (this.phoneMarkerLive !== state.live) this.phoneMarker.setIcon(icon());
     } else {
-      const icon = L.divIcon({
-        className: 'phone-live-icon',
-        html: '<div class="plive-dot">&#128241;</div>',
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
-      });
-      this.phoneMarker = L.marker([phone.latitude, phone.longitude], { icon, zIndexOffset: 900 })
+      this.phoneMarker = L.marker([phone.latitude, phone.longitude], { icon: icon(), zIndexOffset: 900 })
         .addTo(this.detailMap).bindPopup(popup);
     }
+    this.phoneMarkerLive = state.live;
     this.phoneMarker.setPopupContent(popup);
   }
 
@@ -1937,7 +2022,10 @@ export class ToursComponent implements OnInit, OnDestroy {
     this.apiService.sendTourToDriver(id).subscribe({
       next: (res) => {
         this.sending = false;
-        this.patchTour(id, { sentAt: res?.sentAt || new Date().toISOString() });
+        // Renvoi : l'ouverture précédente concerne l'ancienne version, la pastille
+        // repasse « Envoyée » jusqu'à une ouverture postérieure (TourOpened) — que le
+        // serveur n'émet que s'il a remis OpenedAt à zéro à l'envoi.
+        this.patchTour(id, { sentAt: res?.sentAt || new Date().toISOString(), openedAt: null });
         // « Enregistrer et envoyer » : la liste a été rechargée AVANT que l'envoi
         // n'aboutisse, la ligne neuve n'y porte pas encore sentAt (voire n'y est pas).
         if (this.currentView === 'list') this.loadTours(true);
@@ -1989,7 +2077,7 @@ export class ToursComponent implements OnInit, OnDestroy {
   quickEdit(tour: any) {
     // La ligne de liste ne porte ni les étapes, ni leurs zones et marges :
     // editTour() plantait sur waypoints.map. On repart du détail complet.
-    this.apiService.getTour(tour.id).subscribe({
+    this.apiService.getTour(tour.id).pipe(takeUntil(this.destroy$)).subscribe({
       next: (detail) => { this.selectedTour = detail; this.editTour(); },
       error: () => alert("La tournée n'a pas pu être chargée.")
     });
@@ -2135,6 +2223,10 @@ export class ToursComponent implements OnInit, OnDestroy {
   }
   sendStatus(t: any): string {
     return tourSendStatus(t);
+  }
+  /** Ouverture sur le téléphone postérieure au dernier envoi, sinon null. */
+  openedSinceLastSend(t: any): string | null {
+    return openedSinceLastSend(t);
   }
   sendStatusLabel(t: any): string {
     return sendStatusLabel(tourSendStatus(t));

@@ -6,7 +6,8 @@
  * - POST /api/tours/{id}/send → { sentAt, push, resent } ;
  *   400 { code: 'DRIVER_NO_APP_ACCOUNT' } si le chauffeur n'a pas de compte actif.
  * - GET /api/tours/{id}/tracking → source ('device'|'phone'|'none'), sourceSince,
- *   positionAgeSeconds, phone { … batteryLevel } | null.
+ *   deviceAvailable, phoneAvailable, positionAgeSeconds,
+ *   phone { …, recordedAt, batteryLevel (entier 0-100) } | null — dernier point, sans borne d'âge.
  * - Chaque étape porte arrivalSource ('device'|'phone'|'geofence'|'driver'|'manager'),
  *   driverDeclarationDistanceM et unconfirmed (validée par le chauffeur seul).
  */
@@ -167,17 +168,29 @@ export function positionAgeLabel(ageSeconds: number | null | undefined): string 
  * Pastille du bandeau : la source qui suit (boîtier / téléphone), ou depuis
  * combien de temps le suivi est interrompu — d'après sourceSince quand le
  * moniteur l'a fixé, sinon d'après l'âge de la dernière position.
+ *
+ * « Suivi en attente » plutôt qu'« interrompu » quand aucune source n'est
+ * retenue mais qu'une source émet (deviceAvailable / phoneAvailable), ou que
+ * la bascule date de moins d'une minute : au « Je pars », le serveur force la
+ * source à 'none' (DriverAppController) jusqu'au cycle suivant du moniteur
+ * (30 s). Le gestionnaire qui ouvrait le détail depuis la notification
+ * « Départ » voyait alors un bandeau orange « interrompu depuis 0 min »,
+ * boîtier vivant.
  */
 export function trackingBadge(t: TrackingSnapshot | null | undefined, nowMs: number = Date.now()): TrackingBadge {
   if (!t) return { kind: 'none', label: 'Suivi en attente', ageLabel: null };
   const ageLabel = positionAgeLabel(t.positionAgeSeconds);
   if (t.source === 'device') return { kind: 'device', label: 'Suivi par boîtier', ageLabel };
   if (t.source === 'phone') return { kind: 'phone', label: 'Suivi par téléphone', ageLabel };
+  if (t.deviceAvailable || t.phoneAvailable) return { kind: 'none', label: 'Suivi en attente', ageLabel };
 
   let lostSeconds: number | null = null;
   if (t.sourceSince) {
     const since = new Date(t.sourceSince).getTime();
-    if (!isNaN(since)) lostSeconds = Math.max(0, (nowMs - since) / 1000);
+    if (!isNaN(since)) {
+      lostSeconds = Math.max(0, (nowMs - since) / 1000);
+      if (lostSeconds < TRACKING_SWITCH_GRACE_SECONDS) return { kind: 'none', label: 'Suivi en attente', ageLabel };
+    }
   }
   if (lostSeconds == null && t.positionAgeSeconds != null) lostSeconds = t.positionAgeSeconds;
   if (lostSeconds == null) return { kind: 'none', label: 'Aucune position reçue', ageLabel };
@@ -186,11 +199,81 @@ export function trackingBadge(t: TrackingSnapshot | null | undefined, nowMs: num
   return { kind: 'lost', label: `Suivi interrompu depuis ${since}`, ageLabel };
 }
 
-/** Niveau de batterie du téléphone (0-100) → « 63 % », null si absent. */
+/**
+ * Délai de grâce après une bascule de source à 'none' : deux cycles du moniteur
+ * (TourMonitoringService, 30 s), le temps qu'il retienne la source qui émet.
+ */
+export const TRACKING_SWITCH_GRACE_SECONDS = 60;
+
+/**
+ * Niveau de batterie du téléphone → « 63 % », null si absent.
+ *
+ * Le contrat est un ENTIER 0-100 de bout en bout : le mobile envoie
+ * Math.round(batteryLevel × 100), le serveur le stocke en short
+ * (DriverAppPosition.BatteryLevel). L'ancienne branche « ≤ 1 = fraction »
+ * affichait « 100 % » pour un téléphone à 1 %, au moment exact où il allait
+ * s'éteindre et le relais de suivi tomber.
+ */
 export function phoneBatteryLabel(level: number | null | undefined): string | null {
   if (level == null || isNaN(Number(level))) return null;
-  const pct = Number(level) <= 1 ? Math.round(Number(level) * 100) : Math.round(Number(level));
+  const pct = Math.round(Number(level));
   return `${Math.min(100, Math.max(0, pct))} %`;
+}
+
+// ─────────────────────────── Carte : marqueur du téléphone ───────────────────────────
+
+/** Au-delà, le serveur ne tient plus le téléphone pour vivant (TrackingSourceSelector.PhoneAlive). */
+export const PHONE_ALIVE_SECONDS = 180;
+
+export interface PhoneTrackingSnapshot {
+  source?: string | null;
+  phoneAvailable?: boolean | null;
+  phone?: { latitude?: number | null; longitude?: number | null; recordedAt?: string | null } | null;
+}
+
+export interface PhoneMarkerState {
+  /** Faux : pas de marqueur (aucun point, ou point périmé pendant que le boîtier suit). */
+  visible: boolean;
+  /** Vrai seulement quand le téléphone est LA source qui suit : marqueur plein, sinon grisé. */
+  live: boolean;
+  /** « il y a 4 min », d'après phone.recordedAt ; null si inconnu. */
+  ageLabel: string | null;
+  /** Précision affichée dans l'infobulle quand le marqueur n'est pas en direct. */
+  note: string | null;
+}
+
+/**
+ * Comment montrer le téléphone du chauffeur sur la carte du détail.
+ *
+ * GET /tracking renvoie le DERNIER point du téléphone pour la tournée, sans borne
+ * d'âge : en mode « eco » (boîtier vivant) le téléphone n'en garde qu'un toutes les
+ * 2 min, et un téléphone éteint laisse un point figé pour toujours. Affiché plein et
+ * sans âge, ce point passait pour une position en direct — 2 à 3 km derrière le
+ * camion à 80 km/h, ou immobile depuis des heures : le gestionnaire croyait le
+ * chauffeur séparé de son véhicule. Donc : plein seulement quand le téléphone suit
+ * la tournée, grisé et daté sinon, retiré quand le boîtier suit et que le point a
+ * plus de 3 min.
+ */
+export function phoneMarkerState(t: PhoneTrackingSnapshot | null | undefined, nowMs: number = Date.now()): PhoneMarkerState {
+  const phone = t?.phone;
+  if (!phone || phone.latitude == null || phone.longitude == null) {
+    return { visible: false, live: false, ageLabel: null, note: null };
+  }
+  const at = phone.recordedAt ? new Date(phone.recordedAt).getTime() : NaN;
+  const ageSeconds = isNaN(at) ? null : Math.max(0, (nowMs - at) / 1000);
+  const ageLabel = positionAgeLabel(ageSeconds);
+
+  // phoneAvailable est recalculé à chaque appel, la source par le moniteur toutes
+  // les 30 s : un téléphone muet depuis plus de 3 min n'est plus « en direct ».
+  if (t!.source === 'phone' && t!.phoneAvailable !== false) {
+    return { visible: true, live: true, ageLabel, note: null };
+  }
+  if (t!.source === 'device') {
+    const fresh = ageSeconds != null && ageSeconds <= PHONE_ALIVE_SECONDS;
+    return { visible: fresh, live: false, ageLabel, note: 'Le boîtier suit la tournée' };
+  }
+  // Aucune source : la dernière position connue du téléphone reste utile, datée.
+  return { visible: true, live: false, ageLabel, note: 'Position non actualisée' };
 }
 
 // ─────────────────────────── Liste : état d'envoi ───────────────────────────
@@ -202,8 +285,28 @@ export function tourSendStatus(
 ): TourSendStatus {
   if (!t?.sentAt) return 'not_sent';
   if (t.actualStartTime) return 'departed';
-  if (t.openedAt) return 'opened';
+  if (openedSinceLastSend(t)) return 'opened';
   return 'sent';
+}
+
+/**
+ * Heure d'ouverture sur le téléphone si elle SUIT le dernier envoi, sinon null.
+ *
+ * Un renvoi (« Tournée mise à jour ») ne remet pas OpenedAt à zéro côté serveur,
+ * et /opened n'écrit OpenedAt que s'il est vide : une tournée ouverte à 08:05 puis
+ * renvoyée à 10:45 restait « Ouverte » — le gestionnaire ne pouvait pas savoir si
+ * la mise à jour avait été vue. Une ouverture antérieure à l'envoi concerne
+ * l'ancienne version. Les deux heures viennent de l'horloge du serveur.
+ */
+export function openedSinceLastSend(
+  t: { sentAt?: string | null; openedAt?: string | null } | null | undefined
+): string | null {
+  if (!t?.openedAt) return null;
+  if (!t.sentAt) return t.openedAt;
+  const opened = new Date(t.openedAt).getTime();
+  const sent = new Date(t.sentAt).getTime();
+  if (isNaN(opened) || isNaN(sent)) return t.openedAt;
+  return opened >= sent ? t.openedAt : null;
 }
 
 export function sendStatusLabel(s: TourSendStatus): string {
@@ -213,15 +316,33 @@ export function sendStatusLabel(s: TourSendStatus): string {
 // ─────────────────────────── Détail : départ signalé par le chauffeur ───────────────────────────
 
 /**
- * Heure du « Je pars » du chauffeur : actualStartTime quand c'est lui qui a
- * validé l'origine (arrivalSource = driver) ; null si le départ vient du
- * boîtier, du gestionnaire ou n'a pas eu lieu.
+ * Heure du « Je pars » du chauffeur (DriverDepartedAt de l'origine) ; null si le
+ * départ vient du boîtier ou du gestionnaire, ou n'a pas eu lieu.
+ *
+ * Seul DriverAppController écrit DriverDepartedAt (DriverTourRules.DeclareDeparture).
+ * On ne se fie plus à arrivalSource = driver : dès le cycle suivant (30 s), le
+ * moniteur CONFIRME l'origine déclarée par le boîtier ou le téléphone
+ * (ConfirmDeclaredArrival remplace ArrivalSource), et la ligne « Départ signalé
+ * par le chauffeur » disparaissait du détail alors que le chauffeur l'avait bien
+ * signalé.
  */
 export function driverDepartureSignaledAt(
-  t: { actualStartTime?: string | null; waypoints?: { type?: string | null; arrivalSource?: string | null; driverDepartedAt?: string | null }[] | null } | null | undefined
+  t: { waypoints?: { type?: string | null; driverDepartedAt?: string | null }[] | null } | null | undefined
 ): string | null {
-  if (!t?.actualStartTime || !t.waypoints?.length) return null;
+  if (!t?.waypoints?.length) return null;
   const origin = t.waypoints.find(w => w.type === 'origin') ?? t.waypoints[0];
-  if (origin?.arrivalSource !== 'driver') return null;
-  return origin.driverDepartedAt || t.actualStartTime;
+  return origin?.driverDepartedAt ?? null;
+}
+
+// ─────────────────────────── Adresse /tournees/:id ───────────────────────────
+
+/**
+ * Id de tournée d'une adresse /tournees/:id ou /tours/:id ; 0 pour la liste
+ * (/tournees, /tours) ; null pour toute autre page.
+ */
+export function tourIdFromUrl(url: string | null | undefined): number | null {
+  const path = (url || '').split(/[?#]/)[0];
+  const m = /^\/(?:tournees|tours)(?:\/(\d+))?\/?$/.exec(path);
+  if (!m) return null;
+  return m[1] ? Number(m[1]) : 0;
 }
