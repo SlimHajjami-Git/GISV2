@@ -1,9 +1,12 @@
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common;
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Services;
 
 namespace GisAPI.Controllers;
@@ -13,20 +16,169 @@ namespace GisAPI.Controllers;
 [Authorize]
 public class ToursController : ControllerBase
 {
-    private readonly GisDbContext _context;
+    // IGisDbContext (et non le GisDbContext concret) : même abstraction que la
+    // couche Application, et c'est ce qui rend ce contrôleur instanciable dans
+    // les tests (ToursLot0Tests). Constat du 18/09/2026 : sur le contexte
+    // concret, aucune de ses règles d'accès ne pouvait être vérifiée.
+    private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
     private readonly IValhallaService _valhallaService;
     private readonly IRedisCacheService _redisCache;
     private readonly ILogger<ToursController> _logger;
 
-    public ToursController(GisDbContext context, IValhallaService valhallaService, IRedisCacheService redisCache, ILogger<ToursController> logger)
+    private const string VehicleRefusedMessage = "Véhicule introuvable ou non affecté à votre compte";
+
+    public ToursController(IGisDbContext context, ICurrentTenantService tenant, IValhallaService valhallaService,
+        IRedisCacheService redisCache, ILogger<ToursController> logger)
     {
         _context = context;
+        _tenant = tenant;
         _valhallaService = valhallaService;
         _redisCache = redisCache;
         _logger = logger;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    // ────────────────── PORTÉE ET VALIDATIONS ──────────────────
+
+    private List<int>? _vehicleScope;
+    private bool _vehicleScopeLoaded;
+
+    /// <summary>Véhicules visibles par l'appelant (null = tout le parc), lus
+    /// une fois par requête.</summary>
+    private async Task<List<int>?> VehicleScopeAsync(CancellationToken ct)
+    {
+        if (!_vehicleScopeLoaded)
+        {
+            _vehicleScope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+            _vehicleScopeLoaded = true;
+        }
+        return _vehicleScope;
+    }
+
+    /// <summary>
+    /// Tournées visibles par l'appelant : celles de sa société et, pour un
+    /// utilisateur non administrateur, des seuls véhicules qui lui sont
+    /// affectés (VehicleScope). Constat du 18/09/2026 : /api/tours ne filtrait
+    /// que par société — un employé restreint ayant le droit Tournées listait,
+    /// ouvrait, modifiait et suivait en direct les tournées de tout le parc.
+    /// Toutes les routes passent par ici : une tournée hors portée répond 404
+    /// comme une tournée inexistante, pour ne pas révéler son existence.
+    /// </summary>
+    private async Task<IQueryable<Tour>> ScopedToursAsync(CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        var scope = await VehicleScopeAsync(ct);
+
+        var query = _context.Tours.Where(t => t.CompanyId == companyId);
+        if (scope is not null)
+            query = query.Where(t => scope.Contains(t.VehicleId));
+        return query;
+    }
+
+    /// <summary>
+    /// Véhicule affectable à une tournée : de la société de l'appelant ET dans
+    /// sa portée. Constat du 18/09/2026 : la modification acceptait n'importe
+    /// quel identifiant, alors que le moniteur tourne hors filtre société et
+    /// notifie « Point atteint » à la société de la tournée — pointer une
+    /// tournée sur le véhicule d'une autre société donnait sa position.
+    /// </summary>
+    private async Task<Vehicle?> FindAssignableVehicleAsync(int vehicleId, CancellationToken ct)
+    {
+        var scope = await VehicleScopeAsync(ct);
+        if (scope is not null && !scope.Contains(vehicleId)) return null;
+
+        var companyId = GetCompanyId();
+        return await _context.Vehicles.FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId, ct);
+    }
+
+    /// <summary>
+    /// Chauffeur affectable : une fiche active de la société de l'appelant.
+    /// Jusqu'au 18/09/2026 l'identifiant était enregistré sans contrôle, y
+    /// compris celui d'un chauffeur d'une autre société. Ne s'applique qu'à un
+    /// chauffeur qu'on AFFECTE (création, changement) — cf. UpdateTour.
+    /// Retourne le message d'erreur, ou null.
+    /// </summary>
+    private async Task<string?> ValidateDriverAsync(int driverId, CancellationToken ct)
+    {
+        var companyId = GetCompanyId();
+        var driver = await _context.Drivers.AsNoTracking()
+            .Where(d => d.Id == driverId && d.CompanyId == companyId)
+            .Select(d => new { d.Status })
+            .FirstOrDefaultAsync(ct);
+
+        if (driver == null) return "Chauffeur introuvable";
+        if (!string.Equals(driver.Status, "active", StringComparison.OrdinalIgnoreCase))
+            return "Ce chauffeur n'est pas actif";
+        return null;
+    }
+
+    /// <summary>
+    /// Les zones liées aux étapes doivent appartenir à la société : le moniteur
+    /// lit les entrées de zone hors filtre société, une zone étrangère ferait
+    /// fuiter les passages d'autres véhicules. Retourne le message d'erreur, ou null.
+    /// </summary>
+    private async Task<string?> ValidateGeofencesAsync(IEnumerable<TourWaypointRequest> waypoints, CancellationToken ct)
+    {
+        var ids = waypoints
+            .Select(w => NormalizeGeofenceId(w.GeofenceId))
+            .Where(id => id.HasValue)
+            .Select(id => id!.Value)
+            .Distinct()
+            .ToList();
+        if (ids.Count == 0) return null;
+
+        var companyId = GetCompanyId();
+        var found = await _context.Geofences.AsNoTracking()
+            .CountAsync(g => g.CompanyId == companyId && ids.Contains(g.Id), ct);
+        return found == ids.Count ? null : "Zone géofence introuvable";
+    }
+
+    private static int? NormalizeGeofenceId(int? id) => id is > 0 ? id : null;
+
+    private static decimal FuelRatePer100Km(Vehicle? vehicle) => vehicle?.FuelType == "essence" ? 7.0m : 9.0m;
+
+    private static List<TourPlanning.StopInput> ToStops(IEnumerable<TourWaypointRequest> waypoints) =>
+        waypoints.Select(w => new TourPlanning.StopInput(w.Latitude, w.Longitude, w.PlannedPauseMinutes)).ToList();
+
+    /// <summary>
+    /// Étape à enregistrer, avec les mêmes règles à la création et à la
+    /// modification. Constat du 18/09/2026 : la modification recréait les
+    /// étapes sans heure prévue, sans zone et avec la marge par défaut — une
+    /// tournée modifiée perdait tout contrôle de délai.
+    /// </summary>
+    private static TourWaypoint BuildWaypoint(int tourId, int index, int count, TourWaypointRequest wp,
+        TourPlanning.StopEstimate estimate) => new()
+    {
+        TourId = tourId,
+        SequenceOrder = index,
+        Name = wp.Name,
+        Address = wp.Address,
+        Latitude = wp.Latitude,
+        Longitude = wp.Longitude,
+        Type = index == 0 ? "origin" : (index == count - 1 ? "destination" : "waypoint"),
+        GeofenceId = NormalizeGeofenceId(wp.GeofenceId),
+        EstimatedLegMinutes = estimate.LegMinutes,
+        DeadlineMarginMinutes = wp.DeadlineMarginMinutes > 0 ? wp.DeadlineMarginMinutes : TourPlanning.DefaultDeadlineMarginMinutes,
+        EstimatedArrivalTime = estimate.EstimatedArrivalTime,
+        PlannedPauseMinutes = wp.PlannedPauseMinutes,
+        WaypointStatus = "pending"
+    };
+
+    private async Task<ValhallaRouteResult?> TryRouteAsync(IEnumerable<TourWaypointRequest> waypoints)
+    {
+        try
+        {
+            var points = waypoints.Select(w => new ValhallaPoint { Lat = w.Latitude, Lon = w.Longitude }).ToList();
+            return await _valhallaService.GetRouteFromWaypointsAsync(points);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Valhalla route estimation failed for tour");
+            return null;
+        }
+    }
 
     // ────────────────── LIST ──────────────────
 
@@ -38,12 +190,11 @@ public class ToursController : ControllerBase
         [FromQuery] DateTime? from = null,
         [FromQuery] DateTime? to = null,
         [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 20)
+        [FromQuery] int pageSize = 20,
+        CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var query = _context.Tours
+        var query = (await ScopedToursAsync(ct))
             .AsNoTracking()
-            .Where(t => t.CompanyId == companyId)
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
@@ -60,13 +211,13 @@ public class ToursController : ControllerBase
         if (to.HasValue)
             query = query.Where(t => t.ScheduledStartTime <= DateTime.SpecifyKind(to.Value.Date.AddDays(1), DateTimeKind.Utc));
 
-        var totalCount = await query.CountAsync();
+        var totalCount = await query.CountAsync(ct);
         var tours = await query
             .OrderByDescending(t => t.ScheduledStartTime)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .Select(t => MapToDto(t))
-            .ToListAsync();
+            .ToListAsync(ct);
 
         return Ok(new { items = tours, totalCount, page, pageSize });
     }
@@ -74,16 +225,15 @@ public class ToursController : ControllerBase
     // ────────────────── GET BY ID ──────────────────
 
     [HttpGet("{id}")]
-    public async Task<ActionResult> GetTour(int id)
+    public async Task<ActionResult> GetTour(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
-            .Where(t => t.Id == id && t.CompanyId == companyId)
+        var tour = await (await ScopedToursAsync(ct))
+            .Where(t => t.Id == id)
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Pauses.OrderBy(p => p.StartTime))
-            .FirstOrDefaultAsync();
+            .FirstOrDefaultAsync(ct);
 
         if (tour == null) return NotFound();
 
@@ -126,51 +276,40 @@ public class ToursController : ControllerBase
     // ────────────────── CREATE ──────────────────
 
     [HttpPost]
-    public async Task<ActionResult> CreateTour([FromBody] CreateTourRequest request)
+    public async Task<ActionResult> CreateTour([FromBody] CreateTourRequest request, CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
 
         if (request.Waypoints == null || request.Waypoints.Count < 2)
             return BadRequest(new { message = "Au moins 2 points (origine + destination) sont requis" });
 
-        var vehicle = await _context.Vehicles.FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId);
-        if (vehicle == null) return BadRequest(new { message = "Véhicule introuvable" });
+        var vehicle = await FindAssignableVehicleAsync(request.VehicleId, ct);
+        if (vehicle == null) return BadRequest(new { message = VehicleRefusedMessage });
+
+        if (request.DriverId.HasValue)
+        {
+            var driverError = await ValidateDriverAsync(request.DriverId.Value, ct);
+            if (driverError != null) return BadRequest(new { message = driverError });
+        }
+
+        var geofenceError = await ValidateGeofencesAsync(request.Waypoints, ct);
+        if (geofenceError != null) return BadRequest(new { message = geofenceError });
 
         // Calculate route estimation via Valhalla
-        var valhallaPoints = request.Waypoints.Select(w => new ValhallaPoint
-        {
-            Lat = w.Latitude,
-            Lon = w.Longitude
-        }).ToList();
-
         decimal estimatedDistanceKm = 0;
         int estimatedDurationMinutes = 0;
         string? routePolyline = null;
-        List<double[]>? decodedRoute = null;
-        List<double> legTimesSeconds = new();
-        List<double> legDistancesKm = new();
 
-        try
+        var routeResult = await TryRouteAsync(request.Waypoints);
+        if (routeResult != null)
         {
-            var routeResult = await _valhallaService.GetRouteFromWaypointsAsync(valhallaPoints);
-            if (routeResult != null)
-            {
-                estimatedDistanceKm = (decimal)routeResult.TotalDistanceKm;
-                estimatedDurationMinutes = (int)Math.Ceiling(routeResult.TotalTimeSeconds / 60.0);
-                routePolyline = routeResult.EncodedPolyline;
-                decodedRoute = routeResult.DecodedPolyline;
-                legTimesSeconds = routeResult.LegTimesSeconds;
-                legDistancesKm = routeResult.LegDistancesKm;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Valhalla route estimation failed for tour");
+            estimatedDistanceKm = (decimal)routeResult.TotalDistanceKm;
+            estimatedDurationMinutes = (int)Math.Ceiling(routeResult.TotalTimeSeconds / 60.0);
+            routePolyline = routeResult.EncodedPolyline;
         }
 
         // Estimate fuel based on vehicle type (avg 8L/100km for trucks, 6L/100km for cars)
-        var fuelRate = vehicle.FuelType == "essence" ? 7.0m : 9.0m;
-        var estimatedFuel = estimatedDistanceKm * fuelRate / 100m;
+        var estimatedFuel = estimatedDistanceKm * FuelRatePer100Km(vehicle) / 100m;
 
         // Calculate total planned pause time
         int totalPauseMinutes = request.Waypoints.Sum(w => w.PlannedPauseMinutes);
@@ -199,55 +338,23 @@ public class ToursController : ControllerBase
         };
 
         _context.Tours.Add(tour);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
-        // Add waypoints with per-leg estimated arrival times from Valhalla
-        var cumulativeSeconds = 0.0;
-        var cumulativePauseMinutes = 0;
+        // Heures d'arrivée prévues par étape : tronçons de l'itinéraire + pauses,
+        // durée de repli si le routage est indisponible (règle commune à la
+        // création et à la modification, cf. TourPlanning).
+        var estimates = TourPlanning.EstimateFromRoute(
+            scheduledStart, ToStops(request.Waypoints), routeResult?.LegTimesSeconds, routeResult?.TotalTimeSeconds ?? 0);
         for (int i = 0; i < request.Waypoints.Count; i++)
-        {
-            var wp = request.Waypoints[i];
-            var waypointType = i == 0 ? "origin" : (i == request.Waypoints.Count - 1 ? "destination" : "waypoint");
-
-            // Per-leg time from Valhalla (leg[i-1] = time from waypoint[i-1] to waypoint[i])
-            int legMinutes = 0;
-            if (i > 0 && i - 1 < legTimesSeconds.Count)
-            {
-                legMinutes = (int)Math.Ceiling(legTimesSeconds[i - 1] / 60.0);
-                cumulativeSeconds += legTimesSeconds[i - 1];
-                cumulativePauseMinutes += request.Waypoints[i - 1].PlannedPauseMinutes;
-            }
-
-            DateTime? estimatedArrival = i == 0
-                ? scheduledStart
-                : scheduledStart.AddSeconds(cumulativeSeconds).AddMinutes(cumulativePauseMinutes);
-
-            var waypoint = new TourWaypoint
-            {
-                TourId = tour.Id,
-                SequenceOrder = i,
-                Name = wp.Name,
-                Address = wp.Address,
-                Latitude = wp.Latitude,
-                Longitude = wp.Longitude,
-                Type = waypointType,
-                GeofenceId = wp.GeofenceId,
-                EstimatedLegMinutes = legMinutes,
-                DeadlineMarginMinutes = wp.DeadlineMarginMinutes > 0 ? wp.DeadlineMarginMinutes : 60,
-                EstimatedArrivalTime = estimatedArrival,
-                PlannedPauseMinutes = wp.PlannedPauseMinutes,
-                WaypointStatus = "pending"
-            };
-            _context.TourWaypoints.Add(waypoint);
-        }
-        await _context.SaveChangesAsync();
+            _context.TourWaypoints.Add(BuildWaypoint(tour.Id, i, request.Waypoints.Count, request.Waypoints[i], estimates[i]));
+        await _context.SaveChangesAsync(ct);
 
         // Reload with includes
         var created = await _context.Tours
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
-            .FirstAsync(t => t.Id == tour.Id);
+            .FirstAsync(t => t.Id == tour.Id, ct);
 
         return CreatedAtAction(nameof(GetTour), new { id = tour.Id }, MapToDetailDto(created));
     }
@@ -255,80 +362,106 @@ public class ToursController : ControllerBase
     // ────────────────── UPDATE ──────────────────
 
     [HttpPut("{id}")]
-    public async Task<ActionResult> UpdateTour(int id, [FromBody] UpdateTourRequest request)
+    public async Task<ActionResult> UpdateTour(int id, [FromBody] UpdateTourRequest request, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
+        var tour = await (await ScopedToursAsync(ct))
             .Include(t => t.Waypoints)
-            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (tour == null) return NotFound();
         if (tour.Status != "planned")
             return BadRequest(new { message = "Seules les tournées planifiées peuvent être modifiées" });
 
+        // Tout est validé AVANT de toucher à l'entité.
+        Vehicle? requestedVehicle = null;
+        if (request.VehicleId.HasValue)
+        {
+            requestedVehicle = await FindAssignableVehicleAsync(request.VehicleId.Value, ct);
+            if (requestedVehicle == null) return BadRequest(new { message = VehicleRefusedMessage });
+        }
+
+        // Seul un CHANGEMENT de chauffeur est validé. L'écran renvoie toujours le
+        // chauffeur déjà porté : devenu inactif, ou dont la fiche a été supprimée
+        // (DeleteDriverCommand supprime la ligne et tours."DriverId" n'a pas de
+        // clé étrangère), il ne doit pas bloquer la modification du reste de la
+        // tournée (relecture du 18/09/2026).
+        if (request.DriverIdSpecified && request.DriverId.HasValue && request.DriverId != tour.DriverId)
+        {
+            var driverError = await ValidateDriverAsync(request.DriverId.Value, ct);
+            if (driverError != null) return BadRequest(new { message = driverError });
+        }
+
+        var rebuildWaypoints = request.Waypoints != null && request.Waypoints.Count >= 2;
+        if (rebuildWaypoints)
+        {
+            var geofenceError = await ValidateGeofencesAsync(request.Waypoints!, ct);
+            if (geofenceError != null) return BadRequest(new { message = geofenceError });
+        }
+
+        var previousStart = tour.ScheduledStartTime;
+
         if (request.Name != null) tour.Name = request.Name;
         if (request.Description != null) tour.Description = request.Description;
-        if (request.VehicleId.HasValue) tour.VehicleId = request.VehicleId.Value;
-        if (request.DriverId.HasValue) tour.DriverId = request.DriverId.Value;
+        if (requestedVehicle != null) tour.VehicleId = requestedVehicle.Id;
+        // Propriété présente = choix explicite, null compris (« Aucun chauffeur ») :
+        // jusqu'au 18/09/2026 un chauffeur affecté ne pouvait plus être retiré.
+        if (request.DriverIdSpecified) tour.DriverId = request.DriverId;
         if (request.Notes != null) tour.Notes = request.Notes;
 
         if (request.ScheduledStartTime.HasValue)
             tour.ScheduledStartTime = DateTime.SpecifyKind(request.ScheduledStartTime.Value, DateTimeKind.Utc);
 
-        // If waypoints changed, recalculate route
-        if (request.Waypoints != null && request.Waypoints.Count >= 2)
+        if (rebuildWaypoints)
         {
-            // Remove old waypoints
-            _context.TourWaypoints.RemoveRange(tour.Waypoints);
+            var requested = request.Waypoints!;
+            var previous = tour.Waypoints.OrderBy(w => w.SequenceOrder).ToList();
 
-            // Recalculate route
-            var valhallaPoints = request.Waypoints.Select(w => new ValhallaPoint { Lat = w.Latitude, Lon = w.Longitude }).ToList();
-            try
+            var routeResult = await TryRouteAsync(requested);
+            if (routeResult != null)
             {
-                var routeResult = await _valhallaService.GetRouteFromWaypointsAsync(valhallaPoints);
-                if (routeResult != null)
-                {
-                    tour.EstimatedDistanceKm = (decimal)routeResult.TotalDistanceKm;
-                    tour.EstimatedDurationMinutes = (int)Math.Ceiling(routeResult.TotalTimeSeconds / 60.0);
-                    tour.EstimatedRoutePolyline = routeResult.EncodedPolyline;
+                tour.EstimatedDistanceKm = (decimal)routeResult.TotalDistanceKm;
+                tour.EstimatedDurationMinutes = (int)Math.Ceiling(routeResult.TotalTimeSeconds / 60.0);
+                tour.EstimatedRoutePolyline = routeResult.EncodedPolyline;
 
-                    var vehicle = await _context.Vehicles.FindAsync(tour.VehicleId);
-                    var fuelRate = vehicle?.FuelType == "essence" ? 7.0m : 9.0m;
-                    tour.EstimatedFuelLiters = tour.EstimatedDistanceKm * fuelRate / 100m;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Valhalla route recalculation failed");
+                var vehicle = requestedVehicle
+                    ?? await _context.Vehicles.FirstOrDefaultAsync(v => v.Id == tour.VehicleId, ct);
+                tour.EstimatedFuelLiters = tour.EstimatedDistanceKm * FuelRatePer100Km(vehicle) / 100m;
             }
 
-            int totalPause = request.Waypoints.Sum(w => w.PlannedPauseMinutes);
+            // Routage indisponible : on repart des tronçons inchangés au lieu de
+            // tout effacer, les nouveaux prennent la durée de repli
+            // (TourPlanning.EstimateFromPrevious).
+            var stops = ToStops(requested);
+            var estimates = routeResult != null
+                ? TourPlanning.EstimateFromRoute(tour.ScheduledStartTime, stops, routeResult.LegTimesSeconds, routeResult.TotalTimeSeconds)
+                : TourPlanning.EstimateFromPrevious(tour.ScheduledStartTime, stops, previous);
+
+            _context.TourWaypoints.RemoveRange(previous);
+
+            int totalPause = requested.Sum(w => w.PlannedPauseMinutes);
             tour.TotalPauseMinutes = totalPause;
             tour.ScheduledEndTime = tour.ScheduledStartTime.AddMinutes(tour.EstimatedDurationMinutes + totalPause);
 
-            for (int i = 0; i < request.Waypoints.Count; i++)
-            {
-                var wp = request.Waypoints[i];
-                _context.TourWaypoints.Add(new TourWaypoint
-                {
-                    TourId = tour.Id,
-                    SequenceOrder = i,
-                    Name = wp.Name,
-                    Address = wp.Address,
-                    Latitude = wp.Latitude,
-                    Longitude = wp.Longitude,
-                    Type = i == 0 ? "origin" : (i == request.Waypoints.Count - 1 ? "destination" : "waypoint"),
-                    PlannedPauseMinutes = wp.PlannedPauseMinutes
-                });
-            }
+            for (int i = 0; i < requested.Count; i++)
+                _context.TourWaypoints.Add(BuildWaypoint(tour.Id, i, requested.Count, requested[i], estimates[i]));
+        }
+        else if (tour.ScheduledStartTime != previousStart)
+        {
+            // Départ déplacé sans toucher aux étapes : les heures prévues suivent,
+            // sinon les échéances resteraient calées sur l'ancienne heure.
+            var shift = tour.ScheduledStartTime - previousStart;
+            foreach (var w in tour.Waypoints.Where(w => w.EstimatedArrivalTime.HasValue))
+                w.EstimatedArrivalTime = w.EstimatedArrivalTime!.Value + shift;
+            if (tour.ScheduledEndTime.HasValue)
+                tour.ScheduledEndTime = tour.ScheduledEndTime.Value + shift;
         }
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         var updated = await _context.Tours
             .Include(t => t.Vehicle).Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
-            .FirstAsync(t => t.Id == tour.Id);
+            .FirstAsync(t => t.Id == tour.Id, ct);
 
         return Ok(MapToDetailDto(updated));
     }
@@ -336,55 +469,52 @@ public class ToursController : ControllerBase
     // ────────────────── DELETE ──────────────────
 
     [HttpDelete("{id}")]
-    public async Task<ActionResult> DeleteTour(int id)
+    public async Task<ActionResult> DeleteTour(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+        var tour = await (await ScopedToursAsync(ct)).FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tour == null) return NotFound();
 
         _context.Tours.Remove(tour);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
         return NoContent();
     }
 
     // ────────────────── START TOUR ──────────────────
 
     [HttpPost("{id}/start")]
-    public async Task<ActionResult> StartTour(int id)
+    public async Task<ActionResult> StartTour(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
+        var tour = await (await ScopedToursAsync(ct))
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
-            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (tour == null) return NotFound();
         if (tour.Status != "planned")
             return BadRequest(new { message = "La tournée doit être en statut 'planifiée' pour démarrer" });
 
-        tour.Status = "in_progress";
-        tour.ActualStartTime = DateTime.UtcNow;
+        // Même règle que le démarrage automatique : avant le 18/09/2026 un
+        // démarrage manuel en retard gardait les échéances calées sur l'heure
+        // prévue (étapes aussitôt « temps dépassé ») et l'origine cochée restait
+        // « pending ».
+        var shift = TourPlanning.Start(tour, DateTime.UtcNow);
 
-        // Mark first waypoint as completed
-        var firstWp = tour.Waypoints.FirstOrDefault();
-        if (firstWp != null)
+        await _context.SaveChangesAsync(ct);
+        return Ok(new
         {
-            firstWp.IsCompleted = true;
-            firstWp.ActualArrivalTime = DateTime.UtcNow;
-        }
-
-        await _context.SaveChangesAsync();
-        return Ok(new { message = "Tournée démarrée", actualStartTime = tour.ActualStartTime });
+            message = "Tournée démarrée",
+            actualStartTime = tour.ActualStartTime,
+            estimatesShiftedMinutes = (int)Math.Round(shift.TotalMinutes)
+        });
     }
 
     // ────────────────── COMPLETE WAYPOINT ──────────────────
 
     [HttpPost("{id}/waypoints/{waypointId}/complete")]
-    public async Task<ActionResult> CompleteWaypoint(int id, int waypointId)
+    public async Task<ActionResult> CompleteWaypoint(int id, int waypointId, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
+        var tour = await (await ScopedToursAsync(ct))
             .Include(t => t.Waypoints)
-            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (tour == null) return NotFound();
         if (tour.Status != "in_progress")
@@ -393,9 +523,13 @@ public class ToursController : ControllerBase
         var waypoint = tour.Waypoints.FirstOrDefault(w => w.Id == waypointId);
         if (waypoint == null) return NotFound(new { message = "Point de passage introuvable" });
 
-        waypoint.IsCompleted = true;
-        waypoint.ActualArrivalTime = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        // Déjà atteinte (détection GPS, double clic) : l'heure d'arrivée
+        // enregistrée est conservée, seul l'état est remis en cohérence.
+        if (!waypoint.IsCompleted)
+            TourPlanning.MarkReached(waypoint, DateTime.UtcNow);
+        else
+            waypoint.WaypointStatus = "completed";
+        await _context.SaveChangesAsync(ct);
 
         return Ok(new { message = "Point de passage complété", actualArrivalTime = waypoint.ActualArrivalTime });
     }
@@ -403,10 +537,9 @@ public class ToursController : ControllerBase
     // ────────────────── ADD PAUSE ──────────────────
 
     [HttpPost("{id}/pauses")]
-    public async Task<ActionResult> AddPause(int id, [FromBody] AddPauseRequest request)
+    public async Task<ActionResult> AddPause(int id, [FromBody] AddPauseRequest request, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+        var tour = await (await ScopedToursAsync(ct)).FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tour == null) return NotFound();
         if (tour.Status != "in_progress")
             return BadRequest(new { message = "La tournée doit être en cours" });
@@ -421,7 +554,7 @@ public class ToursController : ControllerBase
             Notes = request.Notes
         };
         _context.TourPauses.Add(pause);
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         return Ok(new { id = pause.Id, message = "Pause démarrée" });
     }
@@ -429,13 +562,18 @@ public class ToursController : ControllerBase
     // ────────────────── END PAUSE ──────────────────
 
     [HttpPost("{id}/pauses/{pauseId}/end")]
-    public async Task<ActionResult> EndPause(int id, int pauseId)
+    public async Task<ActionResult> EndPause(int id, int pauseId, CancellationToken ct = default)
     {
         var companyId = GetCompanyId();
-        var pause = await _context.TourPauses
-            .Include(p => p.Tour)
-            .FirstOrDefaultAsync(p => p.Id == pauseId && p.TourId == id && p.Tour!.CompanyId == companyId);
+        var scope = await VehicleScopeAsync(ct);
 
+        var query = _context.TourPauses
+            .Include(p => p.Tour)
+            .Where(p => p.Id == pauseId && p.TourId == id && p.Tour!.CompanyId == companyId);
+        if (scope is not null)
+            query = query.Where(p => scope.Contains(p.Tour!.VehicleId));
+
+        var pause = await query.FirstOrDefaultAsync(ct);
         if (pause == null) return NotFound();
         if (pause.EndTime.HasValue)
             return BadRequest(new { message = "Cette pause est déjà terminée" });
@@ -447,28 +585,29 @@ public class ToursController : ControllerBase
         var tour = pause.Tour!;
         tour.TotalPauseMinutes += pause.DurationMinutes.Value;
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
         return Ok(new { message = "Pause terminée", durationMinutes = pause.DurationMinutes });
     }
 
     // ────────────────── COMPLETE TOUR ──────────────────
 
     [HttpPost("{id}/complete")]
-    public async Task<ActionResult> CompleteTour(int id, [FromBody] CompleteTourRequest? request = null)
+    public async Task<ActionResult> CompleteTour(int id, [FromBody] CompleteTourRequest? request = null, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
+        var tour = await (await ScopedToursAsync(ct))
             .Include(t => t.Vehicle)
+            .Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Pauses)
-            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (tour == null) return NotFound();
         if (tour.Status != "in_progress")
             return BadRequest(new { message = "La tournée doit être en cours pour être complétée" });
 
+        var now = DateTime.UtcNow;
         tour.Status = "completed";
-        tour.ActualEndTime = DateTime.UtcNow;
+        tour.ActualEndTime = now;
 
         // Durée de CONDUITE : depuis la première mise en mouvement observée
         // (ActualDepartureTime), sinon depuis le démarrage — cohérent avec la
@@ -485,24 +624,23 @@ public class ToursController : ControllerBase
         if (request?.ActualFuelLiters.HasValue == true)
             tour.ActualFuelLiters = request.ActualFuelLiters.Value;
 
-        // Mark last waypoint as completed
-        var lastWp = tour.Waypoints.LastOrDefault();
-        if (lastWp != null && !lastWp.IsCompleted)
-        {
-            lastWp.IsCompleted = true;
-            lastWp.ActualArrivalTime = DateTime.UtcNow;
-        }
+        // Destination atteinte, étapes jamais atteintes « skipped » (et non
+        // « completed » : rien ne prouve le passage) — règle commune avec la
+        // complétion automatique, cf. TourPlanning.CloseWaypointsOnCompletion.
+        // Avant le 18/09/2026 seule la destination était cochée, sans que son
+        // WaypointStatus suive.
+        TourPlanning.CloseWaypointsOnCompletion(tour, now);
 
         // End any open pauses
         foreach (var pause in tour.Pauses.Where(p => !p.EndTime.HasValue))
         {
-            pause.EndTime = DateTime.UtcNow;
+            pause.EndTime = now;
             pause.DurationMinutes = (int)(pause.EndTime.Value - pause.StartTime).TotalMinutes;
         }
 
         tour.TotalPauseMinutes = tour.Pauses.Sum(p => p.DurationMinutes ?? 0);
 
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
 
         return Ok(MapToDetailDto(tour));
     }
@@ -510,16 +648,15 @@ public class ToursController : ControllerBase
     // ────────────────── CANCEL TOUR ──────────────────
 
     [HttpPost("{id}/cancel")]
-    public async Task<ActionResult> CancelTour(int id)
+    public async Task<ActionResult> CancelTour(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours.FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+        var tour = await (await ScopedToursAsync(ct)).FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tour == null) return NotFound();
         if (tour.Status == "completed")
             return BadRequest(new { message = "Impossible d'annuler une tournée terminée" });
 
         tour.Status = "cancelled";
-        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync(ct);
         return Ok(new { message = "Tournée annulée" });
     }
 
@@ -568,10 +705,9 @@ public class ToursController : ControllerBase
     // ────────────────── DASHBOARD STATS ──────────────────
 
     [HttpGet("stats")]
-    public async Task<ActionResult> GetTourStats()
+    public async Task<ActionResult> GetTourStats(CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tours = await _context.Tours.Where(t => t.CompanyId == companyId).ToListAsync();
+        var tours = await (await ScopedToursAsync(ct)).AsNoTracking().ToListAsync(ct);
 
         return Ok(new
         {
@@ -591,18 +727,19 @@ public class ToursController : ControllerBase
     // ────────────────── LIVE TRACKING ──────────────────
 
     [HttpGet("{id}/tracking")]
-    public async Task<ActionResult> GetTourTracking(int id)
+    public async Task<ActionResult> GetTourTracking(int id, CancellationToken ct = default)
     {
-        var companyId = GetCompanyId();
-        var tour = await _context.Tours
+        var tour = await (await ScopedToursAsync(ct))
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
-            .FirstOrDefaultAsync(t => t.Id == id && t.CompanyId == companyId);
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
 
         if (tour == null) return NotFound();
 
+        // Véhicule transféré depuis à une autre société : sa position est à
+        // elle, plus à la société de la tournée (TourPlanning.VehicleBelongsToTourCompany).
         VehiclePositionCache? position = null;
-        if (tour.Vehicle?.GpsDevice != null)
+        if (tour.Vehicle?.GpsDevice != null && TourPlanning.VehicleBelongsToTourCompany(tour))
         {
             position = await _redisCache.GetPositionAsync(tour.Vehicle.GpsDevice.DeviceUid);
         }
@@ -697,7 +834,10 @@ public class ToursController : ControllerBase
     /// </summary>
     private async Task<object?> BuildTimelineAsync(Tour t)
     {
-        if (t.Vehicle?.GpsDeviceId == null || !t.ActualStartTime.HasValue) return null;
+        // Même garde que le suivi : la trace d'un véhicule transféré à une autre
+        // société n'est plus lue pour cette tournée.
+        if (t.Vehicle?.GpsDeviceId == null || !t.ActualStartTime.HasValue
+            || !TourPlanning.VehicleBelongsToTourCompany(t)) return null;
 
         var startTime = t.ActualStartTime.Value;
         var destination = t.Waypoints.Where(w => w.Type == "destination").OrderBy(w => w.SequenceOrder).LastOrDefault();
@@ -867,7 +1007,23 @@ public class UpdateTourRequest
     public string? Name { get; set; }
     public string? Description { get; set; }
     public int? VehicleId { get; set; }
-    public int? DriverId { get; set; }
+
+    private int? _driverId;
+    /// <summary>
+    /// Chauffeur. Propriété absente du JSON = inchangé ; présente avec null =
+    /// retirer le chauffeur. Un simple <c>int?</c> ne distingue pas les deux
+    /// cas : le sérialiseur n'appelle ce setter que si la propriété est
+    /// présente, d'où <see cref="DriverIdSpecified"/>.
+    /// </summary>
+    public int? DriverId
+    {
+        get => _driverId;
+        set { _driverId = value; DriverIdSpecified = true; }
+    }
+
+    [JsonIgnore]
+    public bool DriverIdSpecified { get; private set; }
+
     public DateTime? ScheduledStartTime { get; set; }
     public string? Notes { get; set; }
     public List<TourWaypointRequest>? Waypoints { get; set; }

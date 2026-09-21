@@ -118,7 +118,7 @@ public class TourMonitoringService : BackgroundService
         var windowEnd = now.AddMinutes(SCHEDULE_WINDOW_MINUTES);
 
         // 1. Check PLANNED tours within time window for auto-start
-        var plannedTours = await context.Tours
+        var plannedLoaded = await context.Tours
             .IgnoreQueryFilters()
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
@@ -126,6 +126,7 @@ public class TourMonitoringService : BackgroundService
                 && t.ScheduledStartTime >= windowStart
                 && t.ScheduledStartTime <= windowEnd)
             .ToListAsync(ct);
+        var plannedTours = KeepToursOfOwnVehicle(plannedLoaded);
 
         if (plannedTours.Count > 0)
         {
@@ -148,12 +149,13 @@ public class TourMonitoringService : BackgroundService
         }
 
         // 2. Check IN_PROGRESS tours for waypoint completion and auto-complete
-        var activeTours = await context.Tours
+        var activeLoaded = await context.Tours
             .IgnoreQueryFilters()
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
             .Where(t => t.Status == "in_progress")
             .ToListAsync(ct);
+        var activeTours = KeepToursOfOwnVehicle(activeLoaded);
 
         foreach (var tour in activeTours)
         {
@@ -180,6 +182,42 @@ public class TourMonitoringService : BackgroundService
         SweepStale(_lastDeviationAlertAt, activeIds);
         SweepStale(_departedAt, activeIds);
         SweepStale(_pendingDestArrival, activeIds);
+        SweepStale(_foreignVehicleReported,
+            plannedLoaded.Concat(activeLoaded).Select(t => t.Id).ToHashSet());
+    }
+
+    /// <summary>Tournées déjà signalées comme écartées (un avertissement par
+    /// tournée, pas un toutes les 30 s).</summary>
+    private static readonly ConcurrentDictionary<int, byte> _foreignVehicleReported = new();
+
+    /// <summary>
+    /// Écarte les tournées dont le véhicule n'appartient plus à la société de
+    /// la tournée (transfert par un administrateur système) : ni démarrage
+    /// automatique, ni lecture de trace, ni notification. Le contrôleur empêche
+    /// d'affecter un véhicule étranger, mais ce service lit hors filtre société
+    /// — défense en profondeur, quelle que soit l'origine des données
+    /// (relecture du 18/09/2026, cf. TourPlanning.VehicleBelongsToTourCompany).
+    /// La tournée reste visible et annulable par sa société.
+    /// </summary>
+    private List<Tour> KeepToursOfOwnVehicle(List<Tour> tours)
+    {
+        var kept = new List<Tour>(tours.Count);
+        foreach (var tour in tours)
+        {
+            if (TourPlanning.VehicleBelongsToTourCompany(tour))
+            {
+                kept.Add(tour);
+                continue;
+            }
+
+            if (_foreignVehicleReported.TryAdd(tour.Id, 0))
+            {
+                _logger.LogWarning(
+                    "Tour {TourId} (company {CompanyId}, status {Status}) not monitored: vehicle {VehicleId} belongs to company {VehicleCompanyId}",
+                    tour.Id, tour.CompanyId, tour.Status, tour.VehicleId, tour.Vehicle?.CompanyId);
+            }
+        }
+        return kept;
     }
 
     private static void SweepStale<TValue>(ConcurrentDictionary<int, TValue> dict, HashSet<int> activeIds)
@@ -216,31 +254,17 @@ public class TourMonitoringService : BackgroundService
             "Auto-starting tour {TourId} '{TourName}': scheduled={Scheduled:HH:mm} UTC, now={Now:HH:mm} UTC",
             tour.Id, tour.Name, tour.ScheduledStartTime, now);
 
-        tour.Status = "in_progress";
-        tour.ActualStartTime = now;
-
-        // Late start (tour created after its scheduled time, service restart…):
-        // the per-leg deadlines were anchored on ScheduledStartTime, so they may
-        // already be in the past → every stop would instantly turn
-        // "temps_depasse". Shift them by the start delay — the deadline measures
-        // the DRIVING time of each leg, not the lateness of the departure.
-        var startDelay = now - tour.ScheduledStartTime;
-        if (startDelay > TimeSpan.FromMinutes(2))
+        // Règle commune avec le bouton « Démarrer » (TourPlanning.Start) : statut,
+        // décalage des estimations d'un départ en retard (les échéances mesurent
+        // le temps de CONDUITE de chaque tronçon, pas le retard au départ),
+        // origine atteinte — IsCompleted ET WaypointStatus, l'origine restait
+        // « pending » avant le 18/09/2026.
+        var startDelay = TourPlanning.Start(tour, now);
+        if (startDelay > TimeSpan.Zero)
         {
-            foreach (var w in tour.Waypoints.Where(w => w.EstimatedArrivalTime.HasValue))
-                w.EstimatedArrivalTime = w.EstimatedArrivalTime!.Value.Add(startDelay);
-
             _logger.LogInformation(
                 "Tour {TourId}: started {Delay:F0} min late — estimated arrival times shifted accordingly",
                 tour.Id, startDelay.TotalMinutes);
-        }
-
-        // Mark origin waypoint as completed
-        var origin = tour.Waypoints.FirstOrDefault(w => w.Type == "origin");
-        if (origin != null)
-        {
-            origin.IsCompleted = true;
-            origin.ActualArrivalTime = now;
         }
 
         await context.SaveChangesAsync(ct);
@@ -354,11 +378,8 @@ public class TourMonitoringService : BackgroundService
                 // décaler les arrivées estimées des étapes non atteintes, sinon
                 // l'attente compte comme du retard de trajet.
                 var waitDelay = departedAt.Value - startFloor;
-                if (waitDelay > TimeSpan.FromMinutes(2))
+                if (TourPlanning.ShiftPendingEstimates(waypoints, waitDelay))
                 {
-                    foreach (var w in waypoints.Where(w => !w.IsCompleted && w.EstimatedArrivalTime.HasValue))
-                        w.EstimatedArrivalTime = w.EstimatedArrivalTime!.Value.Add(waitDelay);
-
                     _logger.LogInformation(
                         "Tour {TourId}: vehicle departed {Wait:F0} min after start — estimates shifted to measure driving time",
                         tour.Id, waitDelay.TotalMinutes);
@@ -379,8 +400,7 @@ public class TourMonitoringService : BackgroundService
             var destinationBlocked = false;
             if (wp.Type == "destination")
             {
-                var earlierStillPending = waypoints.Any(w =>
-                    w.SequenceOrder < wp.SequenceOrder && !w.IsCompleted && w.WaypointStatus == "pending");
+                var earlierStillPending = TourPlanning.HasPendingStopBefore(waypoints, wp);
                 var inGrace = now < startFloor.AddMinutes(DESTINATION_GRACE_MINUTES);
                 // The vehicle must have actually LEFT the origin: auto-start is
                 // time-based, so a round trip would otherwise complete from the
@@ -524,38 +544,37 @@ public class TourMonitoringService : BackgroundService
             }
 
             // Deadline check: EstimatedArrivalTime + DeadlineMarginMinutes exceeded?
-            if (wp.WaypointStatus == "pending" && wp.EstimatedArrivalTime.HasValue)
+            // (TourPlanning.IsOverdue — every stop gets an estimate, even when
+            // routing was down, so a missed stop always ends up resolved here.)
+            if (TourPlanning.IsOverdue(wp, now))
             {
-                var deadline = wp.EstimatedArrivalTime.Value.AddMinutes(wp.DeadlineMarginMinutes);
-                if (now > deadline)
-                {
-                    wp.WaypointStatus = "temps_depasse";
-                    changed = true;
+                var deadline = TourPlanning.DeadlineOf(wp)!.Value;
+                wp.WaypointStatus = "temps_depasse";
+                changed = true;
 
-                    _logger.LogWarning(
-                        "Tour {TourId}: waypoint '{WpName}' deadline exceeded (deadline={Deadline:HH:mm}, now={Now:HH:mm})",
-                        tour.Id, wp.Name ?? wp.Type, deadline, now);
+                _logger.LogWarning(
+                    "Tour {TourId}: waypoint '{WpName}' deadline exceeded (deadline={Deadline:HH:mm}, now={Now:HH:mm})",
+                    tour.Id, wp.Name ?? wp.Type, deadline, now);
 
-                    await hubContext.Clients.Group($"company_{tour.CompanyId}")
-                        .SendAsync("TourWaypointOverdue", new
-                        {
-                            tourId = tour.Id,
-                            waypointId = wp.Id,
-                            waypointName = wp.Name ?? wp.Type,
-                            waypointStatus = "temps_depasse",
-                            deadline,
-                            estimatedArrival = wp.EstimatedArrivalTime,
-                            marginMinutes = wp.DeadlineMarginMinutes,
-                            timestamp = now
-                        }, ct);
+                await hubContext.Clients.Group($"company_{tour.CompanyId}")
+                    .SendAsync("TourWaypointOverdue", new
+                    {
+                        tourId = tour.Id,
+                        waypointId = wp.Id,
+                        waypointName = wp.Name ?? wp.Type,
+                        waypointStatus = "temps_depasse",
+                        deadline,
+                        estimatedArrival = wp.EstimatedArrivalTime,
+                        marginMinutes = wp.DeadlineMarginMinutes,
+                        timestamp = now
+                    }, ct);
 
-                    var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
-                    await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
-                        "tour_overdue",
-                        $"Temps depasse: {wpLabel}",
-                        $"Tournee '{tour.Name}' — le vehicule n'est pas arrive a '{wpLabel}' dans le delai imparti (prevu {wp.EstimatedArrivalTime.Value:HH:mm} + {wp.DeadlineMarginMinutes}min de marge).",
-                        "high", "tour", tour.Id, $"/tournees", ct);
-                }
+                var wpLabel = wp.Name ?? wp.Address ?? GetWaypointTypeLabel(wp.Type);
+                await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
+                    "tour_overdue",
+                    $"Temps depasse: {wpLabel}",
+                    $"Tournee '{tour.Name}' — le vehicule n'est pas arrive a '{wpLabel}' dans le delai imparti (prevu {wp.EstimatedArrivalTime.Value:HH:mm} + {wp.DeadlineMarginMinutes}min de marge).",
+                    "high", "tour", tour.Id, $"/tournees", ct);
             }
         }
 
@@ -582,6 +601,11 @@ public class TourMonitoringService : BackgroundService
     {
         tour.Status = "completed";
         tour.ActualEndTime = DateTime.UtcNow;
+
+        // Même état final des étapes que la clôture manuelle (la destination
+        // vient d'être atteinte ; remet aussi en cohérence les étapes cochées
+        // restées « pending » avant le 18/09/2026).
+        TourPlanning.CloseWaypointsOnCompletion(tour, tour.ActualEndTime.Value);
 
         // Durée réelle de CONDUITE : depuis la première mise en mouvement
         // (ActualDepartureTime) si elle a été observée, sinon depuis le
