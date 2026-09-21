@@ -24,6 +24,11 @@ public record ResetCompanyDataCommand(int CompanyId, string ConfirmName, string?
 
 public record ResetTableCount(string Table, int Rows);
 
+/// <param name="DriverAccountsClosed">
+/// Comptes chauffeurs désactivés (exécution) ou qui le seront (aperçu) : leurs fiches partent
+/// avec la remise à zéro, ils ne se connectent plus. Les utilisateurs sont « conservés », mais
+/// ceux-là perdent l'accès — l'écran doit le dire (relecture du 21/09/2026, R7c).
+/// </param>
 public record ResetCompanyDataResult(
     int CompanyId,
     string CompanyName,
@@ -32,7 +37,8 @@ public record ResetCompanyDataResult(
     int FilesDeleted,
     IReadOnlyList<string> Kept,
     long DurationMs,
-    bool DryRun);
+    bool DryRun,
+    int DriverAccountsClosed);
 
 public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCommand, ResetCompanyDataResult>
 {
@@ -82,6 +88,7 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
         var deleted = new List<ResetTableCount>();
         var files = new List<string>();
         var driverAccountsClosed = 0;
+        var revocationEnCours = false;
 
         await _store.BeginTransactionAsync(ct);
         try
@@ -91,6 +98,20 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
             // Témoins, lus dans la même transaction (instantané REPEATABLE READ) : ce qui doit rester
             // identique, dans la société et chez les autres.
             var before = await WitnessesAsync(cid, ct);
+
+            // Les fiches chauffeurs vont partir, les comptes chauffeurs (protégés avec users)
+            // restaient actifs avec une session de 90 jours et ne recevaient plus que des 403.
+            // Même règle que la suppression d'une fiche (DeleteDriverCommand) : accès fermé,
+            // rien de supprimé en plus ; les témoins ci-dessous le vérifient.
+            // AVANT les DELETE, pas après (relecture du 21/09/2026, R8c) : en REPEATABLE READ,
+            // ces UPDATE échouent (40001) si un compte a été modifié depuis l'instantané — un
+            // chauffeur qui se connecte, ou dont l'application enregistre son jeton. Placés
+            // après des minutes de DELETE, ils faisaient échouer toute la remise à zéro ;
+            // ici, la fenêtre tombe à quelques millisecondes. Rien n'est validé avant le
+            // COMMIT : l'ordre ne change pas l'atomicité.
+            revocationEnCours = true;
+            driverAccountsClosed = await _store.RevokeDriverAccountsAsync(cid, ct);
+            revocationEnCours = false;
 
             foreach (var step in plan.Steps)
             {
@@ -103,12 +124,6 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
                 var rows = await _store.ExecuteAsync($"DELETE FROM {Q(step.Table)} WHERE {step.Where}", cid, ct);
                 if (rows > 0) deleted.Add(new ResetTableCount(step.Table, rows));
             }
-
-            // Les fiches chauffeurs viennent de partir, les comptes chauffeurs (protégés avec
-            // users) restaient actifs avec une session de 90 jours et ne recevaient plus que
-            // des 403. Même règle que la suppression d'une fiche (DeleteDriverCommand) : accès
-            // fermé, rien de supprimé en plus ; les témoins ci-dessous le vérifient.
-            driverAccountsClosed = await _store.RevokeDriverAccountsAsync(cid, ct);
 
             var after = await WitnessesAsync(cid, ct);
             if (after != before)
@@ -123,6 +138,16 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
         {
             await _store.RollbackAsync(ct);
             throw;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException && IsSerializationFailure(ex))
+        {
+            // 40001 : une ligne lue par l'instantané a été modifiée et validée entre-temps par
+            // une autre transaction. Rien n'est cassé, il suffit de relancer — le dire en
+            // clair plutôt que le texte brut de PostgreSQL.
+            await _store.RollbackAsync(ct);
+            throw new DomainException(revocationEnCours
+                ? "Un compte de la société a été modifié pendant la remise à zéro, relancez-la. Rien n'a été modifié."
+                : "Des données de la société ont été modifiées pendant la remise à zéro, relancez-la. Rien n'a été modifié.");
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -154,7 +179,16 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
         _logger.LogWarning("Company {CompanyId} ({Name}) reset by user {UserId}: {Rows} rows in {Tables} tables, {Files} files, {DriverAccounts} driver accounts closed, {Ms} ms",
             cid, societe.Name, _tenant.UserId, total, deleted.Count, filesDeleted, driverAccountsClosed, duration);
 
-        return new ResetCompanyDataResult(cid, societe.Name, deleted, total, filesDeleted, plan.Protected, duration, DryRun: false);
+        return new ResetCompanyDataResult(cid, societe.Name, deleted, total, filesDeleted, plan.Protected, duration,
+            DryRun: false, DriverAccountsClosed: driverAccountsClosed);
+    }
+
+    /// <summary>Échec de sérialisation PostgreSQL (SQLSTATE 40001), où qu'il soit dans la chaîne d'exceptions.</summary>
+    private static bool IsSerializationFailure(Exception ex)
+    {
+        for (var e = ex; e != null; e = e.InnerException)
+            if (e is System.Data.Common.DbException { SqlState: "40001" }) return true;
+        return false;
     }
 
     /// <summary>L'aperçu : comptages seulement, dans l'ordre du plan, plus les fichiers référencés.</summary>
@@ -175,9 +209,13 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
             }
         }
 
+        // Les comptes chauffeurs actifs qui seront désactivés (R7c) : l'écran promettait
+        // « Conservé : ses utilisateurs » sans dire que ceux-là perdraient l'accès.
+        var driverAccounts = await _store.CountDriverAccountsToCloseAsync(cid, ct);
+
         return new ResetCompanyDataResult(cid, name, counts, counts.Sum(c => c.Rows),
             files.Distinct(StringComparer.OrdinalIgnoreCase).Count(), plan.Protected,
-            (long)(DateTime.UtcNow - started).TotalMilliseconds, DryRun: true);
+            (long)(DateTime.UtcNow - started).TotalMilliseconds, DryRun: true, DriverAccountsClosed: driverAccounts);
     }
 
     private async Task CheckGuardsAsync(ResetPlan plan, int cid, CancellationToken ct)

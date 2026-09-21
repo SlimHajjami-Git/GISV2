@@ -28,6 +28,8 @@ public class ToursController : ControllerBase
     private readonly ILogger<ToursController> _logger;
 
     private const string VehicleRefusedMessage = "Véhicule introuvable ou non affecté à votre compte";
+    /// <summary>Démarrage manuel refusé : le chauffeur de cette tournée envoyée est déjà en tournée.</summary>
+    public const string DriverBusyCode = "DRIVER_BUSY";
 
     public ToursController(IGisDbContext context, ICurrentTenantService tenant, IValhallaService valhallaService,
         IRedisCacheService redisCache, INotificationService notifications, ILogger<ToursController> logger)
@@ -525,6 +527,37 @@ public class ToursController : ControllerBase
         if (tour == null) return NotFound();
         if (tour.Status != "planned")
             return BadRequest(new { message = "La tournée doit être en statut 'planifiée' pour démarrer" });
+
+        // Tournée ENVOYÉE à un chauffeur déjà en route sur une autre (relecture du 21/09/2026,
+        // R11c) : la démarrer d'ici en ferait sa tournée en cours la plus récente, et son
+        // téléphone y basculait — la trace de la tournée qu'il fait vraiment partait sur
+        // celle-ci, et son suivi s'arrêtait. C'est à lui de dire « Je pars » quand il la
+        // commence ; ou au gestionnaire de clôturer d'abord l'autre.
+        if (tour.SentAt != null && tour.DriverId is int ficheId)
+        {
+            var plancher = DateTime.UtcNow - Services.Tours.DriverTourRules.MaxTrackingDuration;
+            var autre = await _context.Tours.AsNoTracking()
+                .Where(t => t.CompanyId == tour.CompanyId && t.DriverId == ficheId && t.Id != tour.Id
+                            && t.Status == "in_progress" && (t.ActualStartTime ?? t.ScheduledStartTime) >= plancher)
+                .OrderByDescending(t => t.ActualStartTime ?? t.ScheduledStartTime)
+                .Select(t => new { t.Id, t.Name, t.VehicleId })
+                .FirstOrDefaultAsync(ct);
+            if (autre != null)
+            {
+                // Le refus vaut pour tous ; le nom et l'id de l'autre tournée ne sont donnés
+                // qu'à qui voit son véhicule (même cloisonnement que ScopedToursAsync).
+                var scope = await VehicleScopeAsync(ct);
+                var visible = scope is null || scope.Contains(autre.VehicleId);
+                return Conflict(new
+                {
+                    code = DriverBusyCode,
+                    otherTourId = visible ? autre.Id : (int?)null,
+                    otherTourName = visible ? autre.Name : null,
+                    message = (visible ? $"Le chauffeur est déjà en tournée (« {autre.Name} »)." : "Le chauffeur est déjà en tournée.")
+                              + " Il démarrera celle-ci par « Je pars » depuis son application, ou terminez d'abord l'autre tournée."
+                });
+            }
+        }
 
         // Même règle que le démarrage automatique : avant le 18/09/2026 un
         // démarrage manuel en retard gardait les échéances calées sur l'heure

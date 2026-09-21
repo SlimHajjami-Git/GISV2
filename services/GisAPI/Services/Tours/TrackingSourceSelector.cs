@@ -46,6 +46,42 @@ public static class TrackingSourceSelector
     /// </summary>
     public sealed record Choice(string Source, int RecoveryCount, bool DeviceAlive, bool PhoneAlive);
 
+    /// <summary>
+    /// Pas d'écriture de l'ingest pour un boîtier à l'arrêt contact coupé : une trame stockée
+    /// toutes les 30 min (gps-ingest-rust, transport.rs, STOPPED_MIN_INTERVAL_SECS) ; les
+    /// autres ne font que rafraîchir gps_devices.last_communication.
+    /// </summary>
+    public static readonly TimeSpan DeviceStoppedStoreInterval = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// État du boîtier d'après sa dernière trame STOCKÉE (heure, contact) et sa dernière
+    /// communication (gps_devices.last_communication, heure du serveur).
+    ///
+    /// Relecture du 21/09/2026 (R2c) : l'état ne venait que de la dernière trame stockée.
+    /// Or l'ingest écrème un boîtier à l'arrêt contact coupé : un battement arrivé moins de
+    /// 30 min après la dernière trame stockée n'est pas écrit, seule last_communication
+    /// avance. Un battement horodaté 1 s trop tôt portait l'écart entre trames stockées à
+    /// 60 min, au-delà des 35 min « vivant » : « Suivi interrompu » en pleine livraison
+    /// (HERTZ), alors que le boîtier parlait.
+    ///
+    /// Une communication plus récente que la dernière trame stockée n'est donc tenue pour
+    /// une trame écrémée — vivante, contact coupé — que si cette trame est contact COUPÉ
+    /// et que rien n'a été stocké depuis contact mis (<paramref name="ignitionOnSince"/>) :
+    /// l'ingest ne retient jamais un changement de contact ni une trame contact mis. Dans
+    /// tous les autres cas (boîtier qui roule sans position valide, battements sans GPS),
+    /// last_communication ne prouve pas que le véhicule est suivi : elle est ignorée, et le
+    /// téléphone peut prendre le relais.
+    /// </summary>
+    public static DeviceState DeviceStateOf(DateTime? lastFrameAt, bool lastFrameIgnitionOn,
+        DateTime? lastCommunication, bool ignitionOnSince)
+    {
+        if (!lastFrameAt.HasValue) return new DeviceState(null, false);
+        var at = lastFrameAt.Value;
+        if (!lastFrameIgnitionOn && !ignitionOnSince && lastCommunication is DateTime comm && comm > at)
+            at = comm;
+        return new DeviceState(at, lastFrameIgnitionOn);
+    }
+
     public static bool IsDeviceAlive(DateTime now, DeviceState device) =>
         device.LastAt.HasValue
         && now - device.LastAt.Value <= (device.IgnitionOn ? DeviceAliveIgnitionOn : DeviceAliveIgnitionOff);

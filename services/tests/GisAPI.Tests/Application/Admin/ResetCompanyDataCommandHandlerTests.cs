@@ -54,11 +54,26 @@ public class ResetCompanyDataCommandHandlerTests
         }
 
         public int DriverAccounts { get; set; }
+        /// <summary>Nombre de DELETE déjà exécutés quand la révocation des comptes a eu lieu.</summary>
+        public int? DeletesBeforeRevocation { get; private set; }
+        public Exception? ThrowOnRevoke;
         public Task<int> RevokeDriverAccountsAsync(int companyId, CancellationToken ct)
         {
+            DeletesBeforeRevocation = Executed.Count;
+            if (ThrowOnRevoke is not null) throw ThrowOnRevoke;
             Events.Add($"REVOKE_DRIVERS:{companyId}");
             return Task.FromResult(DriverAccounts);
         }
+
+        public int DriverAccountsToClose { get; set; }
+        public Task<int> CountDriverAccountsToCloseAsync(int companyId, CancellationToken ct) => Task.FromResult(DriverAccountsToClose);
+    }
+
+    /// <summary>Ce que Npgsql lève sur un échec de sérialisation (PostgresException est un DbException).</summary>
+    private sealed class SerializationFailure : System.Data.Common.DbException
+    {
+        public SerializationFailure() : base("40001: could not serialize access due to concurrent update") { }
+        public override string SqlState => "40001";
     }
 
     /// <summary>Témoins stables (2 utilisateurs, 2 rôles, la société) ; un garde-fou (« AND NOT ») vaut 0.</summary>
@@ -213,7 +228,8 @@ public class ResetCompanyDataCommandHandlerTests
         var act = () => handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
 
         await act.Should().ThrowAsync<DomainException>().WithMessage("*rien n'a été modifié*23503*");
-        store.Events.Should().Equal("BEGIN", "ROLLBACK");
+        // La fermeture des comptes chauffeurs passe AVANT les DELETE (R8c) : annulée avec eux.
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "ROLLBACK");
         ctx.AuditLogs.Should().BeEmpty();
     }
 
@@ -256,11 +272,70 @@ public class ResetCompanyDataCommandHandlerTests
         var (handler, store, ctx) = Build();
         store.DriverAccounts = 3;
 
-        await handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
+        var result = await handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
 
         store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "COMMIT");
         store.Executed.Should().NotContain(sql => sql.Contains("\"users\""), "aucun compte n'est supprimé");
         ctx.AuditLogs.Single().Description.Should().Contain("3 compte(s) chauffeur désactivé(s)");
+        result.DriverAccountsClosed.Should().Be(3, "l'écran de fin le dit aussi, pas seulement le journal d'audit (R7c)");
+    }
+
+    [Fact]
+    public async Task L_apercu_annonce_les_comptes_chauffeurs_qui_seront_desactives()
+    {
+        // R7c : la modale promettait « Conservé : ses utilisateurs », sans dire que les comptes
+        // chauffeurs perdraient l'accès ; ni l'aperçu ni le résultat n'en portaient le nombre.
+        var (handler, store, _) = Build();
+        store.DriverAccountsToClose = 2;
+
+        var preview = await handler.Handle(new ResetCompanyDataCommand(14, "", null, DryRun: true), CancellationToken.None);
+
+        preview.DriverAccountsClosed.Should().Be(2);
+        store.Events.Should().BeEmpty("l'aperçu ne ferme rien");
+    }
+
+    [Fact]
+    public async Task Les_comptes_chauffeurs_sont_fermes_avant_le_premier_delete()
+    {
+        // R8c : en REPEATABLE READ, les UPDATE des comptes échouent (40001) si un compte a été
+        // modifié depuis l'instantané ; lancés après des minutes de DELETE, ils faisaient
+        // échouer toute la remise à zéro dès qu'un chauffeur ouvrait l'application.
+        var (handler, store, _) = Build();
+        store.RowsPerTable["vehicles"] = 4;
+
+        await handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
+
+        store.DeletesBeforeRevocation.Should().Be(0);
+        store.Executed.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Un_compte_modifie_pendant_la_remise_a_zero_donne_un_message_clair_et_annule_tout()
+    {
+        var (handler, store, ctx) = Build();
+        store.ThrowOnRevoke = new InvalidOperationException("Échec de la commande", new SerializationFailure());
+
+        var act = () => handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DomainException>())
+            .Which.Message.Should().StartWith("Un compte de la société a été modifié pendant la remise à zéro, relancez-la")
+            .And.NotContain("could not serialize", "pas le texte brut de PostgreSQL");
+        store.Events.Should().Equal("BEGIN", "ROLLBACK");
+        store.Executed.Should().BeEmpty("aucun DELETE lancé");
+        ctx.AuditLogs.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Une_donnee_modifiee_pendant_les_suppressions_donne_aussi_un_message_clair()
+    {
+        var (handler, store, _) = Build();
+        store.ThrowOnExecute = new SerializationFailure();
+
+        var act = () => handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DomainException>())
+            .Which.Message.Should().Contain("relancez-la").And.NotContain("could not serialize");
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "ROLLBACK");
     }
 
     [Fact]
@@ -274,18 +349,25 @@ public class ResetCompanyDataCommandHandlerTests
             u.AccountType = type;
             return u;
         }
+        var dejaInactif = Compte(4, 14, UserAccountTypes.Driver);   // fiche supprimée auparavant
+        dejaInactif.Status = "inactive";
         ctx.Users.AddRange(
             Compte(1, 14, UserAccountTypes.Driver),
             Compte(2, 14, UserAccountTypes.Staff),
-            Compte(3, 10, UserAccountTypes.Driver));
+            Compte(3, 10, UserAccountTypes.Driver),
+            dejaInactif);
         var now = DateTime.UtcNow;
-        foreach (var id in new[] { 1, 2, 3 })
+        foreach (var id in new[] { 1, 2, 3, 4 })
         {
             ctx.RefreshTokens.Add(new RefreshToken { UserId = id, Token = $"rt{id}", ExpiresAt = now.AddDays(80), CreatedAt = now });
             ctx.UserDeviceTokens.Add(new UserDeviceToken { UserId = id, Token = $"fcm{id}", IsActive = true });
         }
         await ctx.SaveChangesAsync();
         ctx.ChangeTracker.Clear();
+
+        // L'aperçu compte exactement ce que la fermeture désactivera (R7c).
+        var annonces = await ctx.Database.SqlQueryRaw<long>(
+            GisAPI.Infrastructure.Persistence.CompanyDataStore.DriverAccountsToCloseCountStatement(ctx.Model), 14).SingleAsync();
 
         var comptes = 0;
         foreach (var sql in GisAPI.Infrastructure.Persistence.CompanyDataStore.DriverRevocationStatements(ctx.Model))
@@ -294,14 +376,16 @@ public class ResetCompanyDataCommandHandlerTests
             comptes = await ctx.Database.ExecuteSqlRawAsync(sql, 14);
         }
 
-        comptes.Should().Be(1);
+        comptes.Should().Be(1, "le compte déjà inactif n'est ni touché ni compté (R7c)");
+        annonces.Should().Be(1);
         var users = await ctx.Users.AsNoTracking().OrderBy(u => u.Id).ToListAsync();
-        users.Select(u => u.Status).Should().Equal("inactive", "active", "active");
-        users.Should().HaveCount(3, "rien n'est supprimé");
+        users.Select(u => u.Status).Should().Equal("inactive", "active", "active", "inactive");
+        users.Should().HaveCount(4, "rien n'est supprimé");
         var sessions = await ctx.RefreshTokens.AsNoTracking().OrderBy(t => t.UserId).ToListAsync();
-        sessions.Select(t => t.RevokedAt.HasValue).Should().Equal(true, false, false);
+        sessions.Select(t => t.RevokedAt.HasValue).Should().Equal(new[] { true, false, false, true },
+            "les sessions d'un compte chauffeur déjà inactif sont révoquées aussi");
         var jetons = await ctx.UserDeviceTokens.AsNoTracking().OrderBy(t => t.UserId).ToListAsync();
-        jetons.Select(t => t.IsActive).Should().Equal(false, true, true);
+        jetons.Select(t => t.IsActive).Should().Equal(false, true, true, false);
     }
 
     [Fact]
@@ -318,7 +402,9 @@ public class ResetCompanyDataCommandHandlerTests
         sql.Should().Equal(
             "UPDATE \"refresh_tokens\" SET \"RevokedAt\" = CURRENT_TIMESTAMP WHERE \"RevokedAt\" IS NULL AND \"UserId\" IN (SELECT \"id\" FROM \"users\" WHERE \"company_id\" = {0} AND \"account_type\" = 'driver')",
             "UPDATE \"user_device_tokens\" SET \"is_active\" = FALSE WHERE \"is_active\" = TRUE AND \"user_id\" IN (SELECT \"id\" FROM \"users\" WHERE \"company_id\" = {0} AND \"account_type\" = 'driver')",
-            "UPDATE \"users\" SET \"status\" = 'inactive', \"updated_at\" = CURRENT_TIMESTAMP WHERE \"company_id\" = {0} AND \"account_type\" = 'driver'");
+            "UPDATE \"users\" SET \"status\" = 'inactive', \"updated_at\" = CURRENT_TIMESTAMP WHERE \"company_id\" = {0} AND \"account_type\" = 'driver' AND \"status\" <> 'inactive'");
+        GisAPI.Infrastructure.Persistence.CompanyDataStore.DriverAccountsToCloseCountStatement(ctx.Model).Should().Be(
+            "SELECT count(*) AS \"Value\" FROM \"users\" WHERE \"company_id\" = {0} AND \"account_type\" = 'driver' AND \"status\" <> 'inactive'");
     }
 
     [Fact]

@@ -122,16 +122,23 @@ public class PermissionMiddlewareDriverTests
         outcome.ReachedController.Should().BeFalse();
     }
 
-    [Fact]
-    public async Task Un_jeton_emis_avant_le_passage_en_chauffeur_est_refuse_sur_les_routes_controlees()
+    [Theory]
+    [InlineData("GET", "/api/tours")]
+    [InlineData("GET", "/api/vehicles/with-positions")]   // polling du site toutes les 30 s
+    [InlineData("GET", "/api/drivers")]
+    public async Task Un_jeton_emis_avant_le_passage_en_chauffeur_recoit_401_pour_que_le_site_deconnecte(string method, string path)
     {
         // Pas de claim « acct » (jeton antérieur), mais la ligne users dit « driver ».
+        // R4c : un 403 laissait la session du site ouverte jusqu'à l'expiration du jeton —
+        // le site et l'application 1.2 ne rafraîchissent (refusé : session révoquée à la
+        // conversion) puis ne déconnectent que sur un 401.
         await using var ctx = await SeedAsync();
 
-        var outcome = await SendAsync(ctx, "GET", "/api/tours", ChauffeurId, claimChauffeur: false);
+        var outcome = await SendAsync(ctx, method, path, ChauffeurId, claimChauffeur: false);
 
-        outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
-        outcome.Body.Should().Contain(PermissionMiddleware.DriverAppOnlyCode);
+        outcome.StatusCode.Should().Be(StatusCodes.Status401Unauthorized, $"{method} {path}");
+        outcome.ReachedController.Should().BeFalse();
+        outcome.Body.Should().Contain(PermissionMiddleware.AccountTypeChangedCode);
     }
 
     [Theory]
@@ -157,9 +164,10 @@ public class PermissionMiddlewareDriverTests
 
         var outcome = await SendAsync(ctx, "GET", "/api/driver-app/tours", ChauffeurId, claimChauffeur: false);
 
-        outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        // 401 comme pour un jeton « chauffeur » désactivé : le client se déconnecte.
+        outcome.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
         outcome.ReachedController.Should().BeFalse();
-        outcome.Body.Should().Contain(PermissionMiddleware.DriverAppOnlyCode);
+        outcome.Body.Should().Contain(PermissionMiddleware.DriverAccountInactiveCode);
     }
 
     [Fact]

@@ -355,6 +355,123 @@ public class ComptesChauffeursTests
         fiche.Status.Should().Be("inactive", "un compte inactif ne rend pas la fiche active");
     }
 
+    // ── R5c : « Relier à un compte existant » — la fiche désignée, pas une seconde ──
+
+    private static UpdateUserCommand VersChauffeur(int id, string email, int driverId, string statut = "active") =>
+        new(id, "Ali", "Ben Salah", email, "+21699999999", RoleEmploye, statut, IsDriverAccount: true, DriverId: driverId);
+
+    [Fact]
+    public async Task Convertir_un_compte_existant_relie_la_fiche_designee_meme_sans_email()
+    {
+        // La fiche d'Ali n'a pas d'e-mail (véhicule, permis, tournées) ; Ali a déjà un compte
+        // salarié. « Créer son compte » est refusé (e-mail pris) ; convertir le compte existant
+        // ne retrouvait la fiche que par e-mail et en créait une seconde.
+        using var ctx = await ParcAsync();
+        ctx.Users.Add(TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "ali@societe.tn"));
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, FirstName = "Ali", LastName = "Ben Salah", AssignedVehicleId = 5, PermitNumber = "P-77" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(VersChauffeur(50, "ali@societe.tn", driverId: 30), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.CountAsync()).Should().Be(1, "pas de seconde fiche");
+        var fiche = await ctx.Drivers.AsNoTracking().SingleAsync();
+        (fiche.Id, fiche.UserId, fiche.AssignedVehicleId, fiche.PermitNumber).Should().Be((30, 50, 5, "P-77"));
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 50)).AccountType.Should().Be(UserAccountTypes.Driver);
+    }
+
+    [Fact]
+    public async Task Convertir_vers_une_fiche_deja_reliee_a_un_autre_compte_est_refuse_sans_rien_modifier()
+    {
+        using var ctx = await ParcAsync();
+        var salarie = TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "ali@societe.tn");
+        salarie.RoleId = RoleEmploye;
+        salarie.CanTours = true;
+        ctx.Users.Add(salarie);
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, UserId = 99, FirstName = "Ali", LastName = "Ben Salah" });
+        ctx.RefreshTokens.Add(new RefreshToken { Id = 1, UserId = 50, Token = "rt-site", ExpiresAt = DateTime.UtcNow.AddDays(6), CreatedAt = DateTime.UtcNow });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Modification(ctx).Handle(VersChauffeur(50, "ali@societe.tn", driverId: 30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>().WithMessage("*déjà reliée à un autre compte*");
+        ctx.ChangeTracker.Clear();
+        var compte = await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 50);
+        (compte.AccountType, compte.CanTours).Should().Be((UserAccountTypes.Staff, true), "vérifié AVANT toute modification");
+        (await ctx.RefreshTokens.AsNoTracking().SingleAsync()).RevokedAt.Should().BeNull("sa session n'est pas révoquée");
+        (await ctx.Drivers.AsNoTracking().SingleAsync()).UserId.Should().Be(99);
+        (await ctx.Roles.CountAsync()).Should().Be(2, "aucun rôle créé en chemin");
+    }
+
+    [Fact]
+    public async Task Convertir_vers_la_fiche_d_une_autre_societe_est_refuse()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Users.Add(TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "ali@societe.tn"));
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = 99, FirstName = "Ali", LastName = "Ailleurs" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Modification(ctx).Handle(VersChauffeur(50, "ali@societe.tn", driverId: 30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 50)).AccountType.Should().Be(UserAccountTypes.Staff);
+        (await ctx.Drivers.AsNoTracking().SingleAsync()).UserId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Un_chauffeur_deja_relie_ne_peut_pas_etre_bascule_sur_une_autre_fiche()
+    {
+        using var ctx = await ParcAsync();
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        ctx.Users.Add(chauffeur);
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, UserId = 51, FirstName = "Ali", LastName = "B" });
+        ctx.Drivers.Add(new Driver { Id = 32, CompanyId = CompanyId, FirstName = "Autre", LastName = "Fiche" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Modification(ctx).Handle(VersChauffeur(51, "c@test.com", driverId: 32), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>().WithMessage("*déjà relié à une autre fiche*");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.AsNoTracking().SingleAsync(d => d.Id == 32)).UserId.Should().BeNull();
+    }
+
+    // ── R6c : aucune fiche neuve pour un compte chauffeur inactif ───────────────
+
+    [Fact]
+    public async Task Enregistrer_un_chauffeur_inactif_sans_fiche_ne_recree_pas_de_fiche_puis_la_reactivation_la_cree()
+    {
+        // Fiche supprimée (compte passé inactif par DeleteDriver) ; l'admin corrige le nom du
+        // compte sans le réactiver : une fiche « Actif » réapparaissait dans les sélecteurs.
+        using var ctx = await ParcAsync();
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        chauffeur.Status = "inactive";
+        ctx.Users.Add(chauffeur);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(
+            new UpdateUserCommand(51, "Ali", "Corrigé", "c@test.com", null, RoleEmploye, "inactive", IsDriverAccount: true),
+            CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.CountAsync()).Should().Be(0, "un compte qui ne se connecte plus n'a pas de fiche à reprendre");
+
+        await Modification(ctx).Handle(
+            new UpdateUserCommand(51, "Ali", "Corrigé", "c@test.com", null, RoleEmploye, "active", IsDriverAccount: true),
+            CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var fiche = await ctx.Drivers.AsNoTracking().SingleAsync();
+        (fiche.UserId, fiche.LastName, fiche.Status).Should().Be((51, "Corrigé", "active"), "créée à la réactivation");
+    }
+
     // ── Garde-fous du passage en chauffeur (mêmes règles que DeleteUser) ────────
 
     private static UpdateUserCommandHandler ModificationPar(TestGisDbContext ctx, int auteurId) =>

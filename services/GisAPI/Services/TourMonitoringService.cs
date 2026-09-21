@@ -83,9 +83,10 @@ public class TourMonitoringService : BackgroundService
     /// la durée de la coupure se lit sur tours."TrackingSourceSince" (persisté) et l'anti-
     /// doublon qui fait foi est la notification en base (cf. UpdateTrackingSourceAsync).</summary>
     private static readonly ConcurrentDictionary<int, byte> _lostAlerted = new();
-    /// <summary>Tournées « non démarrée » déjà signalées. Simple cache devant l'anti-doublon
-    /// en base (cf. CheckNotStarted), qui seul survit à un redémarrage.</summary>
-    private static readonly ConcurrentDictionary<int, byte> _notStartedAlerted = new();
+    /// <summary>Tournées « non démarrée » déjà signalées, avec l'envoi (tours."SentAt") que
+    /// l'alerte couvre. Simple cache devant l'anti-doublon en base (cf. CheckNotStarted), qui
+    /// seul survit à un redémarrage.</summary>
+    private static readonly ConcurrentDictionary<int, DateTime?> _notStartedAlerted = new();
 
     public TourMonitoringService(
         ILogger<TourMonitoringService> logger,
@@ -240,14 +241,13 @@ public class TourMonitoringService : BackgroundService
     {
         var now = DateTime.UtcNow;
         if (!DriverTourRules.IsNotStartedAlertDue(tour, now)) return;
-        if (_notStartedAlerted.ContainsKey(tour.Id)) return;
+        // Déjà signalée POUR CET ENVOI (relecture du 21/09/2026, R9c) : le cache ne retenait
+        // que l'id, si bien qu'après un renvoi le nouveau retard n'était signalé que si
+        // l'API avait redémarré entre-temps. Un SentAt différent refait le contrôle en base.
+        if (_notStartedAlerted.TryGetValue(tour.Id, out var envoiCouvert) && envoiCouvert == tour.SentAt) return;
 
-        if (await TourAlertAlreadySentAsync(context, tour, "tour_not_started", tour.SentAt, ct))
-        {
-            _notStartedAlerted.TryAdd(tour.Id, 0);
-            return;
-        }
-        if (!_notStartedAlerted.TryAdd(tour.Id, 0)) return;
+        _notStartedAlerted[tour.Id] = tour.SentAt;
+        if (await TourAlertAlreadySentAsync(context, tour, "tour_not_started", tour.SentAt, ct)) return;
 
         _logger.LogWarning("Tour {TourId} '{TourName}': envoyée au chauffeur, non démarrée {Minutes:F0} min après l'heure prévue",
             tour.Id, tour.Name, (now - tour.ScheduledStartTime).TotalMinutes);
@@ -764,6 +764,13 @@ public class TourMonitoringService : BackgroundService
     /// trame toutes les 30 min) passait « sans source » au bout de 15 min et déclenchait
     /// « Suivi interrompu » à chaque livraison, alors que TrackingSourceSelector le tient
     /// pour vivant jusqu'à 35 min.
+    ///
+    /// Relecture suivante (R2c) : l'ingest n'écrit qu'une trame toutes les 30 min d'un
+    /// boîtier arrêté contact coupé ; les autres ne rafraîchissent que
+    /// gps_devices.last_communication (déjà chargée avec la tournée). La dernière activité
+    /// est donc le max des deux, selon TrackingSourceSelector.DeviceStateOf, et la trame
+    /// est cherchée sur 35 + 30 min : la dernière trame stockée d'un boîtier dont le dernier
+    /// battement a 35 min peut en avoir 65.
     /// </summary>
     private static async Task<TrackingSourceSelector.DeviceState> LastDeviceFrameAsync(
         IGisDbContext context, Tour tour, DateTime now, CancellationToken ct)
@@ -771,7 +778,7 @@ public class TourMonitoringService : BackgroundService
         var deviceId = tour.Vehicle?.GpsDeviceId;
         if (deviceId == null) return new TrackingSourceSelector.DeviceState(null, false);
 
-        var floor = now - TrackingSourceSelector.DeviceAliveIgnitionOff;
+        var floor = now - TrackingSourceSelector.DeviceAliveIgnitionOff - TrackingSourceSelector.DeviceStoppedStoreInterval;
         var ceiling = now.AddMinutes(5);   // horloge de boîtier dans le futur : même garde que GetTraceSlice
         var last = await context.GpsPositions
             .IgnoreQueryFilters()
@@ -783,10 +790,27 @@ public class TourMonitoringService : BackgroundService
             .OrderByDescending(p => p.RecordedAt)
             .Select(p => new { p.RecordedAt, p.IgnitionOn })
             .FirstOrDefaultAsync(ct);
+        if (last == null) return new TrackingSourceSelector.DeviceState(null, false);
 
-        return last == null
-            ? new TrackingSourceSelector.DeviceState(null, false)
-            : new TrackingSourceSelector.DeviceState(last.RecordedAt, last.IgnitionOn == true);
+        // Dernière communication plus récente qu'une trame contact coupé : trame écrémée à
+        // l'arrêt… sauf si une trame contact MIS a été stockée depuis, même sans position
+        // valide (le véhicule est reparti, son GPS ne suit plus). Une recherche par index,
+        // seulement dans ce cas.
+        var lastComm = tour.Vehicle?.GpsDevice?.LastCommunication;
+        var ignitionOnSince = false;
+        if (last.IgnitionOn != true && lastComm is DateTime comm && comm > last.RecordedAt)
+        {
+            var since = last.RecordedAt;
+            ignitionOnSince = await context.GpsPositions
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(p => p.DeviceId == deviceId.Value
+                    && p.RecordedAt > since
+                    && p.RecordedAt <= ceiling
+                    && p.IgnitionOn == true, ct);
+        }
+
+        return TrackingSourceSelector.DeviceStateOf(last.RecordedAt, last.IgnitionOn == true, lastComm, ignitionOnSince);
     }
 
     /// <summary>
@@ -868,6 +892,12 @@ public class TourMonitoringService : BackgroundService
 
         var since = tour.TrackingSourceSince!.Value;
         if (now - since < TrackingSourceSelector.LostAlertAfter || _lostAlerted.ContainsKey(tour.Id)) return changed;
+
+        // Tournée partie il y a plus de 12 h (R2c) : une tournée classique oubliée « en
+        // cours » relançait l'alerte à chaque nouvelle coupure, nuit après nuit. Même borne
+        // que le suivi par téléphone (DriverTourRules.MaxTrackingDuration) ; la source reste
+        // tenue à jour pour l'écran.
+        if (now - (tour.ActualStartTime ?? tour.ScheduledStartTime) > DriverTourRules.MaxTrackingDuration) return changed;
 
         // Cette coupure a déjà été signalée (notification créée depuis son début) :
         // c'était avant un redémarrage de l'API, on n'y revient pas.

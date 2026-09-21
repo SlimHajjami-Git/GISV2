@@ -50,6 +50,78 @@ public static class DriverTourRules
     public static readonly TimeSpan DeclaredConfirmationBefore = TimeSpan.FromMinutes(15);
     /// <summary>…et au plus autant APRÈS (trame ou point téléphone arrivé en retard).</summary>
     public static readonly TimeSpan DeclaredConfirmationAfter = TimeSpan.FromMinutes(30);
+    /// <summary>Écart entre l'heure d'envoi lue sur le téléphone et la réception en deçà
+    /// duquel on ne corrige rien : c'est le temps du réseau, pas une horloge fausse.</summary>
+    public static readonly TimeSpan ClockSkewIgnoredBelow = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Décalage de l'horloge du téléphone, mesuré sur l'heure d'envoi qu'il joint à sa
+    /// requête (« sentAt ») : maintenant − sentAt, à AJOUTER à toute heure lue sur ce
+    /// téléphone. Zéro sans sentAt, ou si l'écart est trop petit pour être autre chose que
+    /// le réseau. Même règle pour les positions et pour les déclarations.
+    /// </summary>
+    public static TimeSpan ClockSkew(DateTime? sentAt, DateTime now)
+    {
+        if (!sentAt.HasValue) return TimeSpan.Zero;
+        var mesure = now - DateTime.SpecifyKind(sentAt.Value, DateTimeKind.Utc);
+        return mesure.Duration() > ClockSkewIgnoredBelow ? mesure : TimeSpan.Zero;
+    }
+
+    /// <summary>
+    /// Heure d'une déclaration telle que le serveur la lit.
+    /// <paramref name="DeclaredAt"/> : l'heure retenue (bornée par <see cref="BoundDeclaredTime"/>) ;
+    /// <paramref name="GestureAt"/> : l'heure du geste corrigée de l'horloge du téléphone, où
+    /// chercher la trame du boîtier ; <paramref name="Replayed"/> : la déclaration sort de la
+    /// file hors ligne.
+    /// </summary>
+    public readonly record struct DeclarationTime(DateTime DeclaredAt, DateTime GestureAt, bool Replayed);
+
+    /// <summary>
+    /// Lit l'heure d'une déclaration du chauffeur (relecture du 21/09/2026, R10c).
+    ///
+    /// L'application 1.2 joint à CHAQUE envoi, rejeu compris, l'heure de son horloge au
+    /// moment de l'envoi (<paramref name="sentAt"/>). Deux lectures de la MÊME horloge :
+    /// - « rejouée » se décide sur sentAt − clientTime (> 2 min) : indépendant du décalage
+    ///   de l'horloge et du bornage. On le décidait sur maintenant − heure retenue : une
+    ///   horloge en retard de 4 min faisait passer un geste en direct pour un rejeu (le
+    ///   boîtier était alors lu 4 min trop tôt, à 2,5 km de l'étape), et un rejeu dont
+    ///   l'heure était bornée à « maintenant » passait pour un geste en direct (le boîtier
+    ///   était lu à sa position actuelle, 15 km plus loin) ;
+    /// - l'heure du geste est corrigée du décalage mesuré (maintenant − sentAt), comme les
+    ///   positions, AVANT le bornage.
+    /// Sans sentAt (application plus ancienne) : la règle d'avant, sur l'heure bornée.
+    /// </summary>
+    public static DeclarationTime ReadDeclarationTime(DateTime? clientTime, DateTime? sentAt, DateTime now, DateTime reference)
+    {
+        if (!sentAt.HasValue || !clientTime.HasValue)
+        {
+            var bornee = BoundDeclaredTime(clientTime, now, reference);
+            return new DeclarationTime(bornee, bornee, IsReplayedDeclaration(bornee, now));
+        }
+
+        var client = DateTime.SpecifyKind(clientTime.Value, DateTimeKind.Utc);
+        var envoi = DateTime.SpecifyKind(sentAt.Value, DateTimeKind.Utc);
+        var geste = client + ClockSkew(sentAt, now);
+        return new DeclarationTime(BoundDeclaredTime(geste, now, reference), geste, envoi - client > DeclarationReplayedAfter);
+    }
+
+    /// <summary>
+    /// Borne basse de l'heure d'un « Je pars » qui DÉMARRE une tournée planifiée : le plus
+    /// ancien de son envoi (SentAt) et de sa première ouverture sur le téléphone (OpenedAt,
+    /// plus ancienne que SentAt après un renvoi) — le chauffeur ne peut pas avoir touché
+    /// « Je pars » avant d'avoir reçu la tournée.
+    ///
+    /// Relecture du 21/09/2026 (Wc18) : la borne était l'heure PRÉVUE. Un départ anticipé
+    /// hors ligne (07:40 pour 08:00) rejoué à 08:30 était daté de 08:30 : estimations
+    /// décalées comme pour un retard, points du téléphone d'avant 08:25 rejetés, arrivées
+    /// en file redatées à leur tour.
+    /// </summary>
+    public static DateTime DepartureReference(Tour tour)
+    {
+        DateTime? reference = tour.SentAt;
+        if (tour.OpenedAt is DateTime ouverte && (reference == null || ouverte < reference)) reference = ouverte;
+        return reference ?? tour.ScheduledStartTime;
+    }
 
     /// <summary>
     /// Heure retenue pour une déclaration : celle du téléphone si elle est plausible

@@ -65,5 +65,8 @@ public record UpdateUserCommand(
     bool? AlertEntretien = null,
     // Admin status is EXPLICIT: true => promote to company_admin, false => demote, null => unchanged
     bool? IsCompanyAdmin = null,
-    bool? IsDriverAccount = null
+    bool? IsDriverAccount = null,
+    // Fiche chauffeur à relier au compte quand IsDriverAccount = true (« Relier à un compte
+    // existant » depuis l'écran Chauffeurs) ; ignorée sinon. null = recherche habituelle.
+    int? DriverId = null
 ) : ICommand;

@@ -200,12 +200,20 @@ public class DriverAppController : ControllerBase
 
             // Décision D6 : « En cours » veut dire « parti ». Même règle que le bouton
             // Démarrer du gestionnaire (décalage des estimations d'un départ en retard).
-            var declaredAt = DriverTourRules.BoundDeclaredTime(request?.ClientTime, now, tour.ScheduledStartTime);
+            // Borne basse = l'envoi de la tournée, pas l'heure prévue : un départ anticipé
+            // hors ligne garde son heure au rejeu (DriverTourRules.DepartureReference).
+            var declaredAt = DriverTourRules.ReadDeclarationTime(request?.ClientTime, request?.SentAt, now,
+                DriverTourRules.DepartureReference(tour)).DeclaredAt;
             TourPlanning.Start(tour, declaredAt);
             wp.ArrivalSource = DriverTourRules.SourceDriver;
             DriverTourRules.DeclareDeparture(wp, declaredAt);
             tour.TrackingSource = TrackingSourceSelector.None;
-            tour.TrackingSourceSince = declaredAt;
+            // Début d'une éventuelle coupure de suivi = l'heure où le SERVEUR apprend le
+            // départ, pas l'heure déclarée (relecture du 21/09/2026, R1c). Le moniteur compte
+            // la coupure depuis cette valeur : un « Je pars » rejoué 30 min après le geste
+            // déclenchait aussitôt « Suivi interrompu depuis 30 min », alors que les points
+            // du téléphone, envoyés par lots derrière la déclaration, arrivaient.
+            tour.TrackingSourceSince = now;
             await _context.SaveChangesAsync(ct);
 
             await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourStatusChanged", new
@@ -220,7 +228,8 @@ public class DriverAppController : ControllerBase
         }
         else if (tour.Status == "in_progress")
         {
-            var declaredAt = DriverTourRules.BoundDeclaredTime(request?.ClientTime, now, tour.ActualStartTime ?? tour.ScheduledStartTime);
+            var declaredAt = DriverTourRules.ReadDeclarationTime(request?.ClientTime, request?.SentAt, now,
+                tour.ActualStartTime ?? tour.ScheduledStartTime).DeclaredAt;
             DriverTourRules.DeclareDeparture(wp, declaredAt);
             await _context.SaveChangesAsync(ct);
         }
@@ -259,17 +268,21 @@ public class DriverAppController : ControllerBase
                 : "Cette tournée n'est plus en cours." });
 
         var now = DateTime.UtcNow;
-        var declaredAt = DriverTourRules.BoundDeclaredTime(request?.ClientTime, now, tour.ActualStartTime ?? tour.ScheduledStartTime);
+        var heure = DriverTourRules.ReadDeclarationTime(request?.ClientTime, request?.SentAt, now,
+            tour.ActualStartTime ?? tour.ScheduledStartTime);
+        var declaredAt = heure.DeclaredAt;
 
         // Où est-il vraiment ? Boîtier (position fraîche) et téléphone (position jointe à
         // la déclaration, précision acceptable). La déclaration n'est refusée que si les
         // DEUX disent « loin » ; sinon elle passe, avec sa distance pour le gestionnaire.
-        // Déclaration REJOUÉE par la file hors ligne : le boîtier est lu à l'heure déclarée,
+        // Déclaration REJOUÉE par la file hors ligne : le boîtier est lu à l'heure du geste,
         // pas maintenant — le camion est peut-être déjà 15 km plus loin (relecture du
         // 21/09/2026, F18). Sans trame à ± 3 min, seul le téléphone, capturé au moment du
-        // geste, témoigne ; la même règle vaut pour le refus TOO_FAR.
-        var boitier = DriverTourRules.IsReplayedDeclaration(declaredAt, now)
-            ? await PositionBoitierAuMomentAsync(tour, declaredAt, ct)
+        // geste, témoigne ; la même règle vaut pour le refus TOO_FAR. L'heure du geste est
+        // celle du téléphone corrigée de son horloge, même quand l'heure retenue a été
+        // bornée à « maintenant » (R10c) : c'est là qu'était le camion.
+        var boitier = heure.Replayed
+            ? await PositionBoitierAuMomentAsync(tour, heure.GestureAt, ct)
             : await PositionBoitierAsync(tour, now);
         int? distBoitier = boitier != null ? DriverTourRules.DistanceToStop(boitier.Latitude, boitier.Longitude, wp) : null;
         var telephoneFiable = request?.Latitude != null && request.Longitude != null
@@ -386,15 +399,24 @@ public class DriverAppController : ControllerBase
         if (p == null) return SansFiche();
 
         // Tournée en cours dont la fenêtre de suivi contient maintenant (départ il y a moins
-        // de 12 h), la plus récemment partie. Relecture du 21/09/2026 (F17) : on prenait la
-        // plus ANCIENNE en cours ; une tournée de la veille jamais clôturée captait alors
-        // tous les points, hors de sa fenêtre (acceptés : 0), et répondait tracking:false —
-        // le téléphone arrêtait le suivi de la tournée du jour.
+        // de 12 h). Relecture du 21/09/2026 (F17) : on prenait la plus ANCIENNE en cours ;
+        // une tournée de la veille jamais clôturée captait alors tous les points, hors de sa
+        // fenêtre (acceptés : 0), et répondait tracking:false — le téléphone arrêtait le
+        // suivi de la tournée du jour.
+        // D'abord celle que le téléphone SUIT (activeTourId, qu'il connaît) si elle est
+        // toujours à lui, en cours et dans sa fenêtre (R11c) : prendre d'office la plus
+        // récemment partie laissait un « Démarrer » du gestionnaire sur la tournée suivante
+        // détourner la trace de la tournée en cours et faire basculer le suivi du téléphone.
+        // À défaut (application plus ancienne, tournée close entre-temps), la plus récente.
         var now = DateTime.UtcNow;
         var plancher = now - DriverTourRules.MaxTrackingDuration;
-        var tour = await MesTournees(p)
+        var enCours = MesTournees(p)
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
-            .Where(t => t.Status == "in_progress" && (t.ActualStartTime ?? t.ScheduledStartTime) >= plancher)
+            .Where(t => t.Status == "in_progress" && (t.ActualStartTime ?? t.ScheduledStartTime) >= plancher);
+        Tour? tour = null;
+        if (request.ActiveTourId is int suivie)
+            tour = await enCours.FirstOrDefaultAsync(t => t.Id == suivie, ct);
+        tour ??= await enCours
             .OrderByDescending(t => t.ActualStartTime ?? t.ScheduledStartTime)
             .FirstOrDefaultAsync(ct);
         if (tour == null)
@@ -404,12 +426,7 @@ public class DriverAppController : ControllerBase
 
         // Horloge du téléphone : corrigée du décalage mesuré sur « sentAt », seulement
         // s'il est net (> 30 s) — un petit écart est du réseau, pas une horloge fausse.
-        var skew = TimeSpan.Zero;
-        if (request.SentAt.HasValue)
-        {
-            var mesure = now - DateTime.SpecifyKind(request.SentAt.Value, DateTimeKind.Utc);
-            if (Math.Abs(mesure.TotalSeconds) > 30) skew = mesure;
-        }
+        var skew = DriverTourRules.ClockSkew(request.SentAt, now);
 
         var acceptes = 0;
         foreach (var pt in (request.Points ?? new List<PhonePoint>()).Take(DriverTourRules.MaxPositionsPerBatch))
@@ -597,7 +614,12 @@ public class DriverAppController : ControllerBase
 /// <summary>Déclaration du chauffeur : heure du téléphone et position au moment du geste (facultatives).</summary>
 public class DriverEventRequest
 {
+    /// <summary>Heure du geste, lue sur l'horloge du téléphone.</summary>
     public DateTime? ClientTime { get; set; }
+    /// <summary>Heure de l'ENVOI de cette requête, lue sur la même horloge, reposée à chaque
+    /// envoi (rejeu de la file hors ligne compris) : corrige l'horloge et dit si la
+    /// déclaration est rejouée (DriverTourRules.ReadDeclarationTime). Absente avant 1.2.x.</summary>
+    public DateTime? SentAt { get; set; }
     public double? Latitude { get; set; }
     public double? Longitude { get; set; }
     public double? AccuracyM { get; set; }
@@ -622,4 +644,7 @@ public class PhonePositionsRequest
     /// <summary>Heure du téléphone à l'envoi : sert à corriger son horloge.</summary>
     public DateTime? SentAt { get; set; }
     public short? BatteryLevel { get; set; }
+    /// <summary>Tournée que le téléphone suit (son état de suivi) : retenue si elle est au
+    /// chauffeur, en cours et dans sa fenêtre de 12 h, sinon la plus récente en cours.</summary>
+    public int? ActiveTourId { get; set; }
 }

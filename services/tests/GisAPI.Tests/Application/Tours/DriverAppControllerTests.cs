@@ -509,6 +509,164 @@ public class DriverAppControllerTests
             It.IsAny<CancellationToken>()), Times.Never, "l'étape n'a pas changé d'état");
     }
 
+    // ── Relecture contradictoire des correctifs (21/09/2026) ─────────────────────
+
+    [Fact]
+    public async Task Un_je_pars_rejoue_ne_date_pas_le_debut_d_une_coupure_de_suivi_de_l_heure_declaree()
+    {
+        // R1c : « Je pars » touché il y a 30 min sans réseau, rejoué maintenant. La coupure de
+        // suivi était datée de l'heure déclarée : le moniteur criait aussitôt « Suivi
+        // interrompu depuis 30 min », pendant que les points du téléphone arrivaient.
+        using var ctx = await ParcAsync();
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+        var geste = now.AddMinutes(-30);
+
+        await c.Depart(10, 101, new DriverEventRequest { ClientTime = geste, SentAt = now });
+
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10);
+        tour.ActualStartTime.Should().BeCloseTo(geste, TimeSpan.FromSeconds(1), "le départ garde l'heure du geste");
+        tour.TrackingSource.Should().Be(TrackingSourceSelector.None);
+        tour.TrackingSourceSince.Should().BeCloseTo(now, TimeSpan.FromSeconds(5), "heure de réception par le serveur");
+    }
+
+    [Fact]
+    public async Task Un_depart_anticipe_rejoue_garde_son_heure_et_le_premier_troncon()
+    {
+        // Wc18 : prévue à H, envoyée à H − 1 h ; « Je pars » à H − 30 min sans réseau, rejoué
+        // maintenant. Borné par l'heure PRÉVUE, le départ était daté du rejeu : points du
+        // premier tronçon rejetés, arrivées en file redatées.
+        using var ctx = await ParcAsync();
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+        var geste = Depart.AddMinutes(-30);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Depart(10, 101, new DriverEventRequest { ClientTime = geste, SentAt = now }));
+        r.GetProperty("tourStatus").GetString().Should().Be("in_progress");
+
+        // Arrivée à l'étape, en file elle aussi, 20 min après le départ.
+        await c.Arrive(10, 102, new DriverEventRequest { ClientTime = geste.AddMinutes(20), SentAt = now });
+        var positions = Corps<System.Text.Json.JsonElement>(await c.Positions(new PhonePositionsRequest
+        {
+            SentAt = now,
+            Points = new List<PhonePoint> { new() { RecordedAt = geste.AddMinutes(5), Latitude = 36.7, Longitude = 10.3, AccuracyM = 10 } }
+        }));
+
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().Include(t => t.Waypoints).SingleAsync(t => t.Id == 10);
+        tour.ActualStartTime.Should().BeCloseTo(geste, TimeSpan.FromSeconds(1));
+        tour.Waypoints.Single(w => w.Id == 101).DriverDepartedAt.Should().BeCloseTo(geste, TimeSpan.FromSeconds(1));
+        tour.Waypoints.Single(w => w.Id == 102).DriverArrivedAt.Should().BeCloseTo(geste.AddMinutes(20), TimeSpan.FromSeconds(1),
+            "l'arrivée en file n'est pas redatée du rejeu");
+        tour.Waypoints.Single(w => w.Id == 103).EstimatedArrivalTime.Should().Be(Depart.AddMinutes(120),
+            "un départ en avance ne décale pas les estimations comme un retard");
+        positions.GetProperty("accepted").GetInt32().Should().Be(1, "les points du premier tronçon sont gardés");
+    }
+
+    [Fact]
+    public async Task Une_horloge_en_retard_en_direct_ne_fait_pas_un_faux_rejeu()
+    {
+        // R10c : téléphone en retard de 4 min, chauffeur EN LIGNE à 20 m de l'étape. Sans
+        // sentAt, le serveur tenait la déclaration pour rejouée et lisait la trame d'il y a
+        // 4 min, quand le camion était encore à 2,5 km : faux avertissement aux gestionnaires.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var now = DateTime.UtcNow;
+        var retard = TimeSpan.FromMinutes(-4);
+        ctx.GpsPositions.Add(new GpsPosition { DeviceId = 900, RecordedAt = now + retard, Latitude = StopLat + 0.0225, Longitude = StopLon, IsValid = true });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var surPlace = new VehiclePositionCache { Latitude = StopLat + 0.0002, Longitude = StopLon, RecordedAt = now.AddSeconds(-10), IgnitionOn = true };
+        var (c, _) = Controleur(ctx, Chauffeur, surPlace);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Arrive(10, 102, new DriverEventRequest
+        {
+            ClientTime = now + retard - TimeSpan.FromSeconds(1), SentAt = now + retard
+        }));
+
+        r.GetProperty("warning").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        ctx.ChangeTracker.Clear();
+        var wp = await ctx.TourWaypoints.AsNoTracking().SingleAsync(w => w.Id == 102);
+        wp.DriverDeclarationDistanceM.Should().BeLessThan(100, "position actuelle du boîtier : la déclaration est en direct");
+        wp.DriverArrivedAt.Should().BeCloseTo(now, TimeSpan.FromSeconds(5), "heure du geste corrigée de l'horloge");
+    }
+
+    [Fact]
+    public async Task Un_rejeu_borne_a_maintenant_lit_quand_meme_la_trame_a_l_heure_du_geste()
+    {
+        // R10c : l'heure retenue est bornée à « maintenant » (geste antérieur à la borne),
+        // mais le camion était ailleurs au moment du geste : la trame est cherchée là.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var now = DateTime.UtcNow;
+        var geste = Depart.AddMinutes(-10);
+        ctx.GpsPositions.Add(new GpsPosition { DeviceId = 900, RecordedAt = geste.AddMinutes(1), Latitude = StopLat + 0.0002, Longitude = StopLon, IsValid = true });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var loin = new VehiclePositionCache { Latitude = StopLat + 0.135, Longitude = StopLon, RecordedAt = now.AddSeconds(-10), IgnitionOn = true };
+        var (c, _) = Controleur(ctx, Chauffeur, loin);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Arrive(10, 102, new DriverEventRequest { ClientTime = geste, SentAt = now }));
+
+        r.GetProperty("warning").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null);
+        ctx.ChangeTracker.Clear();
+        (await ctx.TourWaypoints.AsNoTracking().SingleAsync(w => w.Id == 102)).DriverDeclarationDistanceM.Should().BeLessThan(100);
+    }
+
+    private static Tour TourneeSuivante(int id = 13) => new()
+    {
+        Id = id, CompanyId = CompanyId, Name = "Après-midi", VehicleId = Vehicule, DriverId = Fiche, Status = "in_progress",
+        ScheduledStartTime = DateTime.UtcNow.AddMinutes(-10), ActualStartTime = DateTime.UtcNow.AddMinutes(-10),
+        SentAt = DateTime.UtcNow.AddHours(-3)
+    };
+
+    [Fact]
+    public async Task Le_telephone_garde_la_tournee_qu_il_suit_quand_une_autre_demarre_apres()
+    {
+        // R11c : le gestionnaire démarre la tournée suivante ; la plus récente captait la trace
+        // de celle que le chauffeur fait encore, et son téléphone y basculait.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        ctx.Tours.Add(TourneeSuivante());
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+        PhonePositionsRequest Lot(int? suivie) => new()
+        {
+            SentAt = now, ActiveTourId = suivie,
+            Points = new List<PhonePoint> { new() { RecordedAt = now.AddSeconds(-20), Latitude = 36.5, Longitude = 10.4, AccuracyM = 10 } }
+        };
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(10)));
+        r.GetProperty("activeTourId").GetInt32().Should().Be(10);
+        ctx.ChangeTracker.Clear();
+        (await ctx.DriverAppPositions.AsNoTracking().SingleAsync()).TourId.Should().Be(10);
+
+        // Application plus ancienne (sans activeTourId) : la plus récemment partie, comme avant.
+        Corps<System.Text.Json.JsonElement>(await c.Positions(Lot(null))).GetProperty("activeTourId").GetInt32().Should().Be(13);
+    }
+
+    [Theory]
+    [InlineData(12)]   // la sienne, mais partie il y a plus de 12 h
+    [InlineData(11)]   // celle d'un autre chauffeur
+    [InlineData(999)]  // inconnue
+    public async Task Une_tournee_suivie_hors_perimetre_retombe_sur_la_plus_recente_en_cours(int suivie)
+    {
+        using var ctx = await ParcAsync(statut: "in_progress");
+        ctx.Tours.Add(TourneeDeLaVeille());
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(new PhonePositionsRequest
+        {
+            SentAt = DateTime.UtcNow, ActiveTourId = suivie,
+            Points = new List<PhonePoint> { new() { RecordedAt = DateTime.UtcNow.AddSeconds(-20), Latitude = 36.5, Longitude = 10.4, AccuracyM = 10 } }
+        }));
+
+        r.GetProperty("activeTourId").GetInt32().Should().Be(10);
+        r.GetProperty("tracking").GetBoolean().Should().BeTrue();
+    }
+
     [Fact]
     public async Task La_cloture_par_le_chauffeur_calcule_la_distance_reelle_comme_le_moniteur()
     {

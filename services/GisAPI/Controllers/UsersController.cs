@@ -170,7 +170,8 @@ public class UsersController : ControllerBase
             AlertVisiteTechnique: request.AlertVisiteTechnique,
             AlertEntretien: request.AlertEntretien,
             IsCompanyAdmin: request.IsCompanyAdmin,
-            IsDriverAccount: request.IsDriverAccount
+            IsDriverAccount: request.IsDriverAccount,
+            DriverId: request.DriverId
         );
 
         await _mediator.Send(command);

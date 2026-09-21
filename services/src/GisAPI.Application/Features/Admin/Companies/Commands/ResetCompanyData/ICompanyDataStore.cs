@@ -26,7 +26,14 @@ public interface ICompanyDataStore
     /// <summary>
     /// Ferme l'accès des comptes chauffeurs de la société, comme DriverAccountRules.RevokeAccessAsync :
     /// statut inactif, sessions révoquées, jetons de notification éteints. Aucune suppression.
-    /// Dans la transaction en cours ; renvoie le nombre de comptes chauffeurs concernés.
+    /// Dans la transaction en cours ; renvoie le nombre de comptes DÉSACTIVÉS par cet appel
+    /// (ceux qui l'étaient déjà ne sont ni touchés ni comptés).
     /// </summary>
     Task<int> RevokeDriverAccountsAsync(int companyId, CancellationToken ct);
+
+    /// <summary>
+    /// Nombre de comptes chauffeurs que <see cref="RevokeDriverAccountsAsync"/> désactiverait
+    /// (même prédicat) : ce que l'aperçu annonce.
+    /// </summary>
+    Task<int> CountDriverAccountsToCloseAsync(int companyId, CancellationToken ct);
 }

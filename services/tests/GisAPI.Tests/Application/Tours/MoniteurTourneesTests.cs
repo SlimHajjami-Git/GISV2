@@ -153,6 +153,42 @@ public class MoniteurTourneesTests
     }
 
     [Fact]
+    public async Task Apres_un_renvoi_le_nouveau_retard_est_signale_sans_attendre_un_redemarrage()
+    {
+        // R9c : le cache ne retenait que l'id de la tournée. Renvoyée (SentAt reposé) avec un
+        // départ décalé, toujours pas partie : l'alerte ne repartait qu'après un déploiement.
+        var b = await BancAsync();
+        var now = DateTime.UtcNow;
+        b.Ctx.Tours.Add(Tournee(29, "planned", now.AddMinutes(-20), Fiche, envoyeeLe: now.AddHours(-1)));
+        await b.Ctx.SaveChangesAsync();
+        b.Ctx.ChangeTracker.Clear();
+
+        await b.CycleAsync();
+        b.Verifier(Admin, "tour_not_started", Times.Once());
+
+        // Le gestionnaire appelle le chauffeur, décale le départ et clique « Renvoyer ».
+        // Chronologie réelle : première alerte il y a 10 min, renvoi il y a 1 min.
+        var premiere = await b.Ctx.Notifications.SingleAsync(n => n.Type == "tour_not_started");
+        premiere.CreatedAt = DateTime.UtcNow.AddMinutes(-10);
+        var tour = await b.Ctx.Tours.SingleAsync(t => t.Id == 29);
+        tour.ScheduledStartTime = now.AddMinutes(-16);
+        tour.SentAt = DateTime.UtcNow.AddMinutes(-1);
+        await b.Ctx.SaveChangesAsync();
+        b.Ctx.ChangeTracker.Clear();
+
+        await b.CycleAsync();
+        b.Verifier(Admin, "tour_not_started", Times.Exactly(2));
+
+        // Et pas une troisième pour ce même envoi, redémarrage ou non.
+        b.Ctx.ChangeTracker.Clear();
+        await b.CycleAsync();
+        TourMonitoringService.ForgetInMemoryState();
+        b.Ctx.ChangeTracker.Clear();
+        await b.CycleAsync();
+        b.Verifier(Admin, "tour_not_started", Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task L_expediteur_desactive_ne_recoit_plus_les_alertes_de_la_tournee()
     {
         // F9 : tours."SentByUserId" était ajouté à l'audience sans contrôle.
@@ -186,6 +222,77 @@ public class MoniteurTourneesTests
 
         (await b.TourneeAsync(22)).TrackingSource.Should().Be(TrackingSourceSelector.Device);
         b.Verifier(Admin, "tour_tracking_lost", Times.Never());
+    }
+
+    private static async Task DerniereCommunicationAsync(Banc b, DateTime? quand)
+    {
+        var boitier = await b.Ctx.GpsDevices.SingleAsync(d => d.Id == Boitier);
+        boitier.LastCommunication = quand;
+        await b.Ctx.SaveChangesAsync();
+        b.Ctx.ChangeTracker.Clear();
+    }
+
+    [Fact]
+    public async Task Un_battement_ecreme_a_l_arret_garde_le_boitier_vivant_au_dela_de_35_min_de_trame_stockee()
+    {
+        // R2c : l'ingest n'écrit qu'une trame toutes les 30 min d'un boîtier arrêté contact
+        // coupé ; le battement de 10:29:59 (1 s trop tôt) n'est pas stocké, seule
+        // last_communication avance. Dernière trame stockée il y a 50 min : « sans source »,
+        // puis « Suivi interrompu » en pleine livraison, alors que le boîtier parlait.
+        var b = await BancAsync();
+        var now = DateTime.UtcNow;
+        var tour = Tournee(30, "in_progress", now.AddHours(-2));
+        tour.TrackingSource = TrackingSourceSelector.None;
+        tour.TrackingSourceSince = now.AddMinutes(-15);
+        b.Ctx.Tours.Add(tour);
+        b.Ctx.GpsPositions.Add(Trame(now.AddMinutes(-50), StopLat, StopLon, vitesse: 0, contact: false));
+        await b.Ctx.SaveChangesAsync();
+        await DerniereCommunicationAsync(b, now.AddMinutes(-20));
+
+        await b.CycleAsync();
+
+        (await b.TourneeAsync(30)).TrackingSource.Should().Be(TrackingSourceSelector.Device);
+        b.Verifier(Admin, "tour_tracking_lost", Times.Never());
+    }
+
+    [Fact]
+    public async Task Une_communication_recente_ne_ranime_pas_un_boitier_reparti_sans_position_valide()
+    {
+        // Contrôle inverse : une trame contact MIS (sans position valide) a été stockée depuis
+        // la dernière trame contact coupé — le véhicule roule, son GPS ne suit plus. Ses
+        // communications ne prouvent pas que la tournée est suivie.
+        var b = await BancAsync();
+        var now = DateTime.UtcNow;
+        b.Ctx.Tours.Add(Tournee(31, "in_progress", now.AddHours(-2)));
+        b.Ctx.GpsPositions.Add(Trame(now.AddMinutes(-40), StopLat, StopLon, vitesse: 0, contact: false));
+        b.Ctx.GpsPositions.Add(new GpsPosition { DeviceId = Boitier, RecordedAt = now.AddMinutes(-20), Latitude = 0, Longitude = 0,
+            IgnitionOn = true, IsValid = false });
+        await b.Ctx.SaveChangesAsync();
+        await DerniereCommunicationAsync(b, now.AddMinutes(-1));
+
+        await b.CycleAsync();
+
+        (await b.TourneeAsync(31)).TrackingSource.Should().Be(TrackingSourceSelector.None);
+    }
+
+    [Fact]
+    public async Task Une_tournee_partie_il_y_a_plus_de_12_h_ne_declenche_plus_suivi_interrompu()
+    {
+        // R2c : une tournée classique oubliée « en cours » relançait l'alerte à chaque
+        // nouvelle coupure, nuit après nuit.
+        var b = await BancAsync();
+        var now = DateTime.UtcNow;
+        var tour = Tournee(32, "in_progress", now.AddHours(-13));
+        tour.TrackingSource = TrackingSourceSelector.None;
+        tour.TrackingSourceSince = now.AddMinutes(-15);
+        b.Ctx.Tours.Add(tour);
+        await b.Ctx.SaveChangesAsync();
+        b.Ctx.ChangeTracker.Clear();
+
+        await b.CycleAsync();
+
+        b.Verifier(Admin, "tour_tracking_lost", Times.Never());
+        (await b.TourneeAsync(32)).TrackingSource.Should().Be(TrackingSourceSelector.None, "la source reste tenue à jour");
     }
 
     [Fact]

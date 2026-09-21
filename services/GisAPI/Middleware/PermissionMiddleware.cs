@@ -445,6 +445,15 @@ public class PermissionMiddleware
     public const string DriverAppOnlyCode = "DRIVER_APP_ONLY";
     public const string DriverAppOnlyMessage =
         "Ce compte est réservé à l'application mobile Calypso, pour ses tournées.";
+    public const string DriverAccountInactiveCode = "DRIVER_ACCOUNT_INACTIVE";
+    /// <summary>
+    /// Jeton émis AVANT le passage du compte en chauffeur : 401 (et non 403) pour que le
+    /// client tente un rafraîchissement — refusé, la conversion a révoqué la session — puis
+    /// déconnecte.
+    /// </summary>
+    public const string AccountTypeChangedCode = "ACCOUNT_TYPE_CHANGED";
+    public const string AccountTypeChangedMessage =
+        "Ce compte est devenu un compte chauffeur : reconnectez-vous depuis l'application mobile Calypso.";
 
     /// <summary>
     /// Les SEULS chemins qu'un compte chauffeur peut appeler : ses tournées
@@ -506,7 +515,7 @@ public class PermissionMiddleware
             if (compte == null || compte.Status != "active" || compte.AccountType != UserAccountTypes.Driver)
             {
                 context.Response.StatusCode = 401;
-                await context.Response.WriteAsJsonAsync(new { message = "Compte désactivé", code = "DRIVER_ACCOUNT_INACTIVE" });
+                await context.Response.WriteAsJsonAsync(new { message = "Compte désactivé", code = DriverAccountInactiveCode });
                 return;
             }
 
@@ -588,19 +597,28 @@ public class PermissionMiddleware
         // la garde du haut ne l'a pas vu, la ligne en base tranche — dans les DEUX sens.
         // Ses propres routes lui sont ouvertes tout de suite (un salarié déjà connecté à
         // l'application, converti puis destinataire d'une tournée, recevait 403 sur SA
-        // tournée jusqu'à l'expiration du jeton) ; tout le reste lui est fermé. Les routes
-        // exemptées plus haut restent ouvertes à ce jeton jusqu'à son expiration, comme pour
-        // un compte supprimé ; la conversion révoque sa session pour qu'il n'en obtienne pas
-        // d'autre, et le hub GPS relit la base à la connexion.
+        // tournée jusqu'à l'expiration du jeton) ; tout le reste lui est fermé.
+        // Fermé par un 401 ACCOUNT_TYPE_CHANGED, pas un 403 (relecture du 21/09/2026, R4c) :
+        // le site et l'application 1.2 ne réagissent qu'au 401 — rafraîchissement, refusé
+        // puisque la conversion a révoqué la session, puis déconnexion, ce qui coupe aussi
+        // la connexion SignalR. Le 403 laissait la session du site ouverte jusqu'à
+        // l'expiration du jeton (24 h), routes exemptées et hub déjà connecté compris.
+        // (Le 403 DRIVER_APP_ONLY reste la réponse à un jeton « acct=driver », garde du haut.)
         if (currentUser.IsDriverAccount)
         {
-            if (IsDriverAppRoute(path) && currentUser.Status == "active")
+            if (IsDriverAppRoute(path))
             {
-                await _next(context);
+                if (currentUser.Status == "active")
+                {
+                    await _next(context);
+                    return;
+                }
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { message = "Compte désactivé", code = DriverAccountInactiveCode });
                 return;
             }
-            context.Response.StatusCode = 403;
-            await context.Response.WriteAsJsonAsync(new { message = DriverAppOnlyMessage, code = DriverAppOnlyCode });
+            context.Response.StatusCode = 401;
+            await context.Response.WriteAsJsonAsync(new { message = AccountTypeChangedMessage, code = AccountTypeChangedCode });
             return;
         }
 

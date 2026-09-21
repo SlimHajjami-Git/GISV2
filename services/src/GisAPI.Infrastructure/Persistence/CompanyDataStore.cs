@@ -100,12 +100,21 @@ public class CompanyDataStore : ICompanyDataStore
         return accounts;   // le dernier ordre est celui des comptes
     }
 
+    public async Task<int> CountDriverAccountsToCloseAsync(int companyId, CancellationToken ct)
+        => (int)await _context.Database.SqlQueryRaw<long>(DriverAccountsToCloseCountStatement(_context.Model), companyId).SingleAsync(ct);
+
     /// <summary>
     /// Les trois ordres de <see cref="RevokeDriverAccountsAsync"/> ({0} = société), le compte en
     /// DERNIER pour que son nombre de lignes soit rendu. Noms de tables et de colonnes lus dans le
     /// modèle EF plutôt qu'écrits à la main : la casse de ces trois tables est incohérente
     /// (refresh_tokens en PascalCase, users et user_device_tokens en snake_case), et le modèle est
     /// ce qui s'exécute déjà en production pour la même révocation (DriverAccountRules).
+    ///
+    /// Sessions et jetons : tous les comptes chauffeurs de la société (un compte déjà inactif
+    /// peut en garder). Comptes : seulement ceux qui ne sont pas DÉJÀ inactifs (relecture du
+    /// 21/09/2026, R7c) — le nombre de lignes rendu est celui des comptes désactivés par la
+    /// remise à zéro, que l'écran et la trace d'audit affichent ; il comptait aussi les
+    /// comptes déjà désactivés.
     /// </summary>
     public static IReadOnlyList<string> DriverRevocationStatements(Microsoft.EntityFrameworkCore.Metadata.IModel model)
     {
@@ -113,17 +122,28 @@ public class CompanyDataStore : ICompanyDataStore
         var (sessions, s) = Map<GisAPI.Domain.Entities.RefreshToken>(model);
         var (devices, d) = Map<GisAPI.Domain.Entities.UserDeviceToken>(model);
 
-        var driver = GisAPI.Domain.Entities.UserAccountTypes.Driver;
-        var driversOfCompany = $"{u("CompanyId")} = {{0}} AND {u("AccountType")} = '{driver}'";
-        var driverIds = $"SELECT {u("Id")} FROM {users} WHERE {driversOfCompany}";
+        var driverIds = $"SELECT {u("Id")} FROM {users} WHERE {DriversOfCompany(u)}";
 
         return new[]
         {
             $"UPDATE {sessions} SET {s("RevokedAt")} = CURRENT_TIMESTAMP WHERE {s("RevokedAt")} IS NULL AND {s("UserId")} IN ({driverIds})",
             $"UPDATE {devices} SET {d("IsActive")} = FALSE WHERE {d("IsActive")} = TRUE AND {d("UserId")} IN ({driverIds})",
-            $"UPDATE {users} SET {u("Status")} = 'inactive', {u("UpdatedAt")} = CURRENT_TIMESTAMP WHERE {driversOfCompany}",
+            $"UPDATE {users} SET {u("Status")} = 'inactive', {u("UpdatedAt")} = CURRENT_TIMESTAMP WHERE {DriverAccountsToClose(u)}",
         };
     }
+
+    /// <summary>Le comptage de l'aperçu : exactement les comptes que le dernier ordre ci-dessus désactive.</summary>
+    public static string DriverAccountsToCloseCountStatement(Microsoft.EntityFrameworkCore.Metadata.IModel model)
+    {
+        var (users, u) = Map<GisAPI.Domain.Entities.User>(model);
+        return $"SELECT count(*) AS \"Value\" FROM {users} WHERE {DriverAccountsToClose(u)}";
+    }
+
+    private static string DriversOfCompany(Func<string, string> u) =>
+        $"{u("CompanyId")} = {{0}} AND {u("AccountType")} = '{GisAPI.Domain.Entities.UserAccountTypes.Driver}'";
+
+    private static string DriverAccountsToClose(Func<string, string> u) =>
+        $"{DriversOfCompany(u)} AND {u("Status")} <> 'inactive'";
 
     private static (string Table, Func<string, string> Column) Map<T>(Microsoft.EntityFrameworkCore.Metadata.IModel model)
     {

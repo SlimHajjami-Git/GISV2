@@ -92,14 +92,32 @@ public static class DriverAccountRules
     }
 
     /// <summary>
+    /// Contrôle, AVANT toute modification, que la fiche <paramref name="driverId"/> peut être
+    /// reliée au compte existant <paramref name="userId"/> : mêmes règles que
+    /// <see cref="FindLinkableDriverAsync"/>, et le compte ne porte pas déjà une AUTRE fiche.
+    /// Sans ce contrôle préalable, le refus tombait dans LinkOrCreateDriverAsync, après que
+    /// la modification eut déjà enregistré un rôle.
+    /// </summary>
+    public static async Task EnsureDriverLinkableToAccountAsync(
+        IGisDbContext context, int companyId, int driverId, int userId, CancellationToken ct)
+    {
+        await FindLinkableDriverAsync(context, companyId, driverId, userId, ct);
+        var autreFiche = await context.Drivers
+            .AnyAsync(d => d.CompanyId == companyId && d.UserId == userId && d.Id != driverId, ct);
+        if (autreFiche)
+            throw new ConflictException("Ce compte est déjà relié à une autre fiche chauffeur.");
+    }
+
+    /// <summary>
     /// Relie le compte à sa fiche chauffeur. Ordre de recherche : la fiche déjà reliée à ce
     /// compte ; sinon la fiche désignée par <paramref name="driverId"/> (« Créer son compte »
-    /// depuis l'écran Chauffeurs) ; sinon la fiche de la société qui porte le même e-mail et
-    /// n'a pas encore de compte ; sinon une fiche neuve avec l'identité du compte.
+    /// depuis l'écran Chauffeurs, ou « Relier à un compte existant ») ; sinon la fiche de la
+    /// société qui porte le même e-mail et n'a pas encore de compte ; sinon une fiche neuve
+    /// avec l'identité du compte — seulement pour un compte ACTIF (rend alors null sinon).
     /// Le compte doit déjà être enregistré (Id connu). Idempotent : une fiche déjà reliée
     /// à ce compte est simplement mise à jour (nom, téléphone).
     /// </summary>
-    public static async Task<Driver> LinkOrCreateDriverAsync(IGisDbContext context, User user, int? driverId, CancellationToken ct)
+    public static async Task<Driver?> LinkOrCreateDriverAsync(IGisDbContext context, User user, int? driverId, CancellationToken ct)
     {
         var existing = await context.Drivers
             .FirstOrDefaultAsync(d => d.CompanyId == user.CompanyId && d.UserId == user.Id, ct);
@@ -140,6 +158,13 @@ public static class DriverAccountRules
                 existing.Status = "active";
             return existing;
         }
+
+        // Compte chauffeur INACTIF sans fiche (fiche supprimée, remise à zéro de la société) :
+        // rien n'est créé (relecture du 21/09/2026, R6c). Enregistrer ce compte pour corriger
+        // un nom recréait une fiche « Actif » — la fiche supprimée réapparaissait dans l'écran
+        // Chauffeurs et les sélecteurs de tournée, pour un compte qui ne se connecte plus. La
+        // fiche est créée, ou retrouvée, à la réactivation du compte : même appel.
+        if (user.Status != "active") return null;
 
         var driver = new Driver
         {

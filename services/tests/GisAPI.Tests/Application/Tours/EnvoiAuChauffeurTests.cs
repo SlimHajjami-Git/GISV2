@@ -246,4 +246,60 @@ public class EnvoiAuChauffeurTests
         ctx.ChangeTracker.Clear();
         (await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10)).SentAt.Should().NotBeNull("la tournée est envoyée : l'app la lira à l'ouverture");
     }
+
+    // ── R11c : démarrage manuel d'une tournée envoyée à un chauffeur déjà en tournée ──
+
+    /// <summary>La tournée 10 est envoyée ; le même chauffeur est sur la tournée 12, partie il y a <paramref name="partieIlYaHeures"/> h.</summary>
+    private static async Task<TestGisDbContext> ChauffeurEnTourneeAsync(double partieIlYaHeures, bool tourneeEnvoyee = true)
+    {
+        var ctx = await ParcAsync();
+        var now = DateTime.UtcNow;
+        var tour = await ctx.Tours.SingleAsync(t => t.Id == 10);
+        tour.SentAt = tourneeEnvoyee ? now.AddHours(-2) : null;
+        ctx.Tours.Add(new Tour
+        {
+            Id = 12, CompanyId = CompanyId, Name = "Tournée du matin", VehicleId = 5, DriverId = Fiche, Status = "in_progress",
+            ScheduledStartTime = now.AddHours(-partieIlYaHeures), ActualStartTime = now.AddHours(-partieIlYaHeures),
+            SentAt = now.AddHours(-partieIlYaHeures - 1)
+        });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        return ctx;
+    }
+
+    [Fact]
+    public async Task Demarrer_une_tournee_envoyee_a_un_chauffeur_deja_en_tournee_est_refuse_avec_le_nom_de_l_autre()
+    {
+        // Démarrée d'ici, elle devenait la tournée en cours la plus récente du chauffeur : son
+        // téléphone y basculait et la trace de la tournée qu'il fait vraiment partait dessus.
+        using var ctx = await ChauffeurEnTourneeAsync(partieIlYaHeures: 3);
+        var (c, _) = Controleur(ctx);
+
+        var r = await c.StartTour(10);
+
+        var corps = System.Text.Json.JsonSerializer.SerializeToElement(r.Should().BeOfType<ConflictObjectResult>().Subject.Value);
+        corps.GetProperty("code").GetString().Should().Be(ToursController.DriverBusyCode);
+        corps.GetProperty("otherTourName").GetString().Should().Be("Tournée du matin");
+        corps.GetProperty("message").GetString().Should().Contain("Tournée du matin");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10)).Status.Should().Be("planned");
+    }
+
+    [Fact]
+    public async Task Une_autre_tournee_partie_il_y_a_plus_de_12_h_ne_bloque_pas_le_demarrage()
+    {
+        using var ctx = await ChauffeurEnTourneeAsync(partieIlYaHeures: 13);
+        var (c, _) = Controleur(ctx);
+
+        (await c.StartTour(10)).Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task Une_tournee_jamais_envoyee_se_demarre_comme_avant()
+    {
+        using var ctx = await ChauffeurEnTourneeAsync(partieIlYaHeures: 3, tourneeEnvoyee: false);
+        var (c, _) = Controleur(ctx);
+
+        (await c.StartTour(10)).Should().BeOfType<OkObjectResult>("le téléphone ne suit pas une tournée non envoyée");
+    }
 }

@@ -42,9 +42,18 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         var redevientOrdinaire = request.IsDriverAccount == false && etaitChauffeur;
         var isCompanyAdmin = devientChauffeur ? false : request.IsCompanyAdmin;
 
+        // Fiche désignée par l'écran Chauffeurs (« Relier à un compte existant », relecture du
+        // 21/09/2026, R5c) : convertir un compte existant ne retrouvait la fiche que par
+        // e-mail — une fiche sans e-mail (champ facultatif) était ratée et une seconde « Ali
+        // Ben Salah » naissait, sans véhicule ni tournées, pendant que la fiche d'origine
+        // restait sans compte (DRIVER_NO_APP_ACCOUNT à l'envoi).
+        var ficheDesignee = devientChauffeur ? request.DriverId : null;
+
         // Contrôles AVANT toute modification (la création d'un rôle plus bas enregistre déjà).
         if (devientChauffeur && !etaitChauffeur)
             await EnsureCanBecomeDriverAsync(user, companyId, currentUserId, ct);
+        if (ficheDesignee is int ficheId)
+            await DriverAccountRules.EnsureDriverLinkableToAccountAsync(_context, companyId, ficheId, user.Id, ct);
         if (redevientOrdinaire)
             await DriverAccountRules.EnsureStaffSeatAvailableAsync(_context, companyId, user.Id, ct);
 
@@ -142,8 +151,10 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         if (devientChauffeur)
         {
             // Après les cases ci-dessus : ce que le formulaire a coché ne compte pas.
+            // Après le statut aussi : un compte laissé inactif ne reçoit pas de fiche neuve
+            // (R6c), elle viendra à sa réactivation.
             DriverAccountRules.Apply(user);
-            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, null, ct);
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ficheDesignee, ct);
             // Aucune affectation de véhicule à un chauffeur (audience des alertes).
             var affectations = await _context.UserVehicles.Where(uv => uv.UserId == user.Id).ToListAsync(ct);
             _context.UserVehicles.RemoveRange(affectations);

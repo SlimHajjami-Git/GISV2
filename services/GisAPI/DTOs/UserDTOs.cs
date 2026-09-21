@@ -123,7 +123,10 @@ public record UpdateUserRequest(
     bool? AlertEntretien = null,
     bool? IsCompanyAdmin = null,
     // true = devient (ou reste) chauffeur, false = redevient compte ordinaire, null = inchangé.
-    bool? IsDriverAccount = null
+    bool? IsDriverAccount = null,
+    // Avec IsDriverAccount = true : id de la fiche chauffeur à relier à CE compte (écran
+    // Chauffeurs, e-mail déjà pris : « Relier à un compte existant »). Ignoré sinon.
+    int? DriverId = null
 );
 
 public record UserSettingsDto(

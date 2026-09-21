@@ -110,6 +110,106 @@ public class SuiviDeuxSourcesTests
         DriverTourRules.BoundDeclaredTime(null, Now, reference).Should().Be(Now);
     }
 
+    // ── Heure d'une déclaration : sentAt (relecture du 21/09/2026, R10c / Wc18) ──
+
+    [Fact]
+    public void Une_horloge_en_retard_en_direct_n_est_pas_un_faux_rejeu()
+    {
+        // Téléphone en retard de 4 min, geste envoyé aussitôt : avant, l'heure retenue
+        // (maintenant − 4 min) suffisait à le déclarer « rejoué ».
+        var reference = Now.AddHours(-1);
+        var retard = TimeSpan.FromMinutes(-4);
+
+        var lu = DriverTourRules.ReadDeclarationTime(Now + retard - TimeSpan.FromSeconds(1), Now + retard, Now, reference);
+
+        lu.Replayed.Should().BeFalse("sentAt − clientTime = 1 s");
+        lu.GestureAt.Should().Be(Now.AddSeconds(-1), "heure du geste corrigée du décalage");
+        lu.DeclaredAt.Should().Be(Now.AddSeconds(-1));
+    }
+
+    [Fact]
+    public void Un_rejeu_se_reconnait_sur_la_meme_horloge_quel_que_soit_son_decalage()
+    {
+        // Horloge en retard de 10 min ; geste 25 min avant l'envoi (file hors ligne).
+        var reference = Now.AddHours(-2);
+        var retard = TimeSpan.FromMinutes(-10);
+
+        var lu = DriverTourRules.ReadDeclarationTime(Now + retard - TimeSpan.FromMinutes(25), Now + retard, Now, reference);
+
+        lu.Replayed.Should().BeTrue();
+        lu.GestureAt.Should().Be(Now.AddMinutes(-25));
+        lu.DeclaredAt.Should().Be(Now.AddMinutes(-25));
+    }
+
+    [Fact]
+    public void Un_rejeu_borne_a_maintenant_reste_un_rejeu_et_garde_l_heure_du_geste()
+    {
+        // Geste antérieur à la référence − 5 min : l'heure retenue est « maintenant », mais la
+        // trame du boîtier doit être lue à l'heure du geste.
+        var reference = Now.AddMinutes(-30);
+
+        var lu = DriverTourRules.ReadDeclarationTime(Now.AddMinutes(-50), Now, Now, reference);
+
+        lu.DeclaredAt.Should().Be(Now);
+        lu.Replayed.Should().BeTrue();
+        lu.GestureAt.Should().Be(Now.AddMinutes(-50));
+    }
+
+    [Fact]
+    public void Sans_sentAt_la_regle_d_avant_s_applique()
+    {
+        var reference = Now.AddHours(-1);
+        var lu = DriverTourRules.ReadDeclarationTime(Now.AddMinutes(-25), null, Now, reference);
+        (lu.DeclaredAt, lu.GestureAt, lu.Replayed).Should().Be((Now.AddMinutes(-25), Now.AddMinutes(-25), true));
+    }
+
+    [Fact]
+    public void Le_depart_d_une_tournee_planifiee_se_borne_a_son_envoi_et_non_a_l_heure_prevue()
+    {
+        // Wc18 : prévue à 08:00, envoyée à 06:00, « Je pars » à 07:40 hors ligne, rejoué à 08:30.
+        var prevue = Now.AddMinutes(-30);
+        var tour = new Tour { ScheduledStartTime = prevue, SentAt = Now.AddMinutes(-150) };
+        var reference = DriverTourRules.DepartureReference(tour);
+
+        DriverTourRules.ReadDeclarationTime(Now.AddMinutes(-50), Now, Now, reference).DeclaredAt
+            .Should().Be(Now.AddMinutes(-50), "départ anticipé rejoué : l'heure du geste est gardée");
+
+        // Renvoyée après une première ouverture : la plus ancienne des deux fait foi.
+        var renvoyee = new Tour { ScheduledStartTime = prevue, SentAt = Now.AddMinutes(-40), OpenedAt = Now.AddMinutes(-120) };
+        DriverTourRules.DepartureReference(renvoyee).Should().Be(Now.AddMinutes(-120));
+    }
+
+    [Theory]
+    [InlineData(-4 * 60, -4 * 60)]   // 4 min de retard : corrigé
+    [InlineData(-20, 0)]             // 20 s : le réseau, pas une horloge fausse
+    [InlineData(null, 0)]
+    public void Le_decalage_d_horloge_se_mesure_sur_sentAt(int? decalageS, int attenduS)
+    {
+        DateTime? sentAt = decalageS.HasValue ? Now.AddSeconds(decalageS.Value) : null;
+        DriverTourRules.ClockSkew(sentAt, Now).Should().Be(TimeSpan.FromSeconds(-attenduS));
+    }
+
+    // ── État du boîtier : trames écrémées à l'arrêt (R2c) ───────────────────────
+
+    [Fact]
+    public void Une_communication_plus_recente_qu_une_trame_contact_coupe_prolonge_le_boitier()
+    {
+        var etat = TrackingSourceSelector.DeviceStateOf(Now.AddMinutes(-50), false, Now.AddMinutes(-20), ignitionOnSince: false);
+        etat.Should().Be(new TrackingSourceSelector.DeviceState(Now.AddMinutes(-20), false));
+        TrackingSourceSelector.IsDeviceAlive(Now, etat).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Une_communication_ne_prolonge_ni_une_trame_contact_mis_ni_un_vehicule_reparti()
+    {
+        TrackingSourceSelector.DeviceStateOf(Now.AddMinutes(-5), true, Now.AddMinutes(-1), ignitionOnSince: false)
+            .LastAt.Should().Be(Now.AddMinutes(-5), "contact mis : l'ingest n'écrème pas, une trame manquante est une vraie perte");
+        TrackingSourceSelector.DeviceStateOf(Now.AddMinutes(-50), false, Now.AddMinutes(-1), ignitionOnSince: true)
+            .LastAt.Should().Be(Now.AddMinutes(-50), "reparti depuis, sans position valide");
+        TrackingSourceSelector.DeviceStateOf(null, false, Now.AddMinutes(-1), ignitionOnSince: false)
+            .LastAt.Should().BeNull("aucune trame stockée : rien ne dit où est le véhicule");
+    }
+
     [Fact]
     public void Une_position_hors_de_la_fenetre_de_la_tournee_est_ignoree()
     {
