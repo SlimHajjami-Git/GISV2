@@ -164,7 +164,7 @@ public class NotificationService : INotificationService
                 var result = await _fcmService.SendToUserAsync(
                     userId, title, message, fcmData,
                     estChauffeur ? null : unreadCount,
-                    FcmChannels.ForType(type));
+                    FcmChannels.ForRecipient(estChauffeur));
                 push = !result.Initialized ? "firebase_off"
                     : result.TokenCount == 0 ? "no_device"
                     : result.SuccessCount > 0 ? "delivered_to_fcm"

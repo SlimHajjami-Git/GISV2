@@ -22,9 +22,13 @@ public static class FcmChannels
     public const string Immobilization = "immobilization";
     public const string Tours = "tours";
 
-    /// <summary>Canal d'après le type de notification : les « tour_* » vont sur le canal des tournées.</summary>
-    public static string ForType(string type) =>
-        type.StartsWith("tour_", StringComparison.Ordinal) ? Tours : Immobilization;
+    /// <summary>
+    /// Canal selon le DESTINATAIRE, pas le type : seul un compte chauffeur (application ≥ 1.2.0,
+    /// qui crée le canal « tours ») le reçoit ; un gestionnaire sur l'application 1.1.1 ne
+    /// connaît que « immobilization » — Android jette en silence un push adressé à un canal
+    /// inexistant, ses alertes de tournée auraient disparu jusqu'à sa mise à jour.
+    /// </summary>
+    public static string ForRecipient(bool isDriverAccount) => isDriverAccount ? Tours : Immobilization;
 }
 
 public class FcmService : IFcmService
