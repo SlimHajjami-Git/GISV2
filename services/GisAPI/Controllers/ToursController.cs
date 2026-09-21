@@ -24,17 +24,19 @@ public class ToursController : ControllerBase
     private readonly ICurrentTenantService _tenant;
     private readonly IValhallaService _valhallaService;
     private readonly IRedisCacheService _redisCache;
+    private readonly INotificationService _notifications;
     private readonly ILogger<ToursController> _logger;
 
     private const string VehicleRefusedMessage = "Véhicule introuvable ou non affecté à votre compte";
 
     public ToursController(IGisDbContext context, ICurrentTenantService tenant, IValhallaService valhallaService,
-        IRedisCacheService redisCache, ILogger<ToursController> logger)
+        IRedisCacheService redisCache, INotificationService notifications, ILogger<ToursController> logger)
     {
         _context = context;
         _tenant = tenant;
         _valhallaService = valhallaService;
         _redisCache = redisCache;
+        _notifications = notifications;
         _logger = logger;
     }
 
@@ -405,7 +407,15 @@ public class ToursController : ControllerBase
         if (requestedVehicle != null) tour.VehicleId = requestedVehicle.Id;
         // Propriété présente = choix explicite, null compris (« Aucun chauffeur ») :
         // jusqu'au 18/09/2026 un chauffeur affecté ne pouvait plus être retiré.
-        if (request.DriverIdSpecified) tour.DriverId = request.DriverId;
+        if (request.DriverIdSpecified && request.DriverId != tour.DriverId)
+        {
+            // Autre chauffeur : la tournée n'est plus « envoyée » — l'ancien ne doit plus
+            // la voir sur son téléphone, le nouveau ne l'a pas encore reçue.
+            tour.DriverId = request.DriverId;
+            tour.SentAt = null;
+            tour.SentByUserId = null;
+            tour.OpenedAt = null;
+        }
         if (request.Notes != null) tour.Notes = request.Notes;
 
         if (request.ScheduledStartTime.HasValue)
@@ -657,7 +667,101 @@ public class ToursController : ControllerBase
 
         tour.Status = "cancelled";
         await _context.SaveChangesAsync(ct);
+
+        // Le chauffeur qui l'avait reçue sur son téléphone doit le savoir tout de suite.
+        await PrevenirChauffeurAsync(tour, "tour_cancelled",
+            $"Tournée annulée : {tour.Name}",
+            "Cette tournée a été annulée par votre gestionnaire.", ct);
+
         return Ok(new { message = "Tournée annulée" });
+    }
+
+    // ────────────────── ENVOI AU CHAUFFEUR ──────────────────
+
+    /// <summary>
+    /// Envoie (ou renvoie) la tournée sur le téléphone de son chauffeur : notification
+    /// push au compte relié à sa fiche (migration 050/051). La tournée doit être
+    /// planifiée ou en cours, avoir un chauffeur, et ce chauffeur un compte actif.
+    /// Rend l'issue du push, pour que l'écran dise si le téléphone a été joint.
+    /// </summary>
+    [HttpPost("{id}/send")]
+    public async Task<ActionResult> SendToDriver(int id, CancellationToken ct = default)
+    {
+        var tour = await (await ScopedToursAsync(ct))
+            .Include(t => t.Driver)
+            .Include(t => t.Vehicle)
+            .Include(t => t.Waypoints)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (tour == null) return NotFound();
+        if (tour.Status is not ("planned" or "in_progress"))
+            return BadRequest(new { message = "Seule une tournée planifiée ou en cours peut être envoyée au chauffeur" });
+        if (tour.Driver == null)
+            return BadRequest(new { message = "Choisissez d'abord un chauffeur" });
+
+        var compte = await CompteChauffeurAsync(tour.Driver, ct);
+        if (compte == null)
+            return BadRequest(new
+            {
+                code = "DRIVER_NO_APP_ACCOUNT",
+                message = "Ce chauffeur n'a pas de compte application actif. Créez-le dans Utilisateurs (case « Chauffeur »)."
+            });
+
+        var now = DateTime.UtcNow;
+        var renvoi = tour.SentAt.HasValue;
+        tour.SentAt = now;
+        tour.SentByUserId = _tenant.UserId;
+        await _context.SaveChangesAsync(ct);
+
+        var etapes = tour.Waypoints.Count;
+        var (_, push) = await _notifications.CreateAndSendWithPushAsync(
+            tour.CompanyId, compte.Id, "tour_assigned",
+            (renvoi ? "Tournée mise à jour : " : "Nouvelle tournée : ") + tour.Name,
+            $"Départ {HeureLocale(tour.ScheduledStartTime)} · {etapes} étape{(etapes > 1 ? "s" : "")}"
+            + (tour.Vehicle != null ? $" · {tour.Vehicle.Plate ?? tour.Vehicle.Name}" : ""),
+            "high", "tour", tour.Id, $"/tournees/{tour.Id}",
+            new Dictionary<string, object> { ["tourId"] = tour.Id }, ct);
+
+        _logger.LogInformation("Tournée {TourId} envoyée au chauffeur {DriverId} (compte {UserId}) : push {Push}",
+            tour.Id, tour.Driver.Id, compte.Id, push);
+
+        return Ok(new { sentAt = tour.SentAt, push, resent = renvoi });
+    }
+
+    /// <summary>Compte application ACTIF relié à la fiche chauffeur, sinon null.</summary>
+    private async Task<User?> CompteChauffeurAsync(Driver driver, CancellationToken ct)
+    {
+        if (driver.UserId is not int userId) return null;
+        return await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == driver.CompanyId
+                                      && u.Status == "active" && u.AccountType == UserAccountTypes.Driver, ct);
+    }
+
+    /// <summary>Notification au chauffeur d'une tournée déjà envoyée (rien si elle ne l'était pas).</summary>
+    private async Task PrevenirChauffeurAsync(Tour tour, string type, string titre, string message, CancellationToken ct)
+    {
+        if (!tour.SentAt.HasValue) return;
+        try
+        {
+            var driver = tour.Driver ?? (tour.DriverId is int did
+                ? await _context.Drivers.AsNoTracking().FirstOrDefaultAsync(d => d.Id == did, ct)
+                : null);
+            if (driver == null) return;
+            var compte = await CompteChauffeurAsync(driver, ct);
+            if (compte == null) return;
+            await _notifications.CreateAndSendAsync(tour.CompanyId, compte.Id, type, titre, message,
+                "high", "tour", tour.Id, $"/tournees/{tour.Id}",
+                new Dictionary<string, object> { ["tourId"] = tour.Id }, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Tournée {TourId} : notification {Type} au chauffeur non envoyée", tour.Id, type);
+        }
+    }
+
+    private static string HeureLocale(DateTime utc)
+    {
+        var tz = GisAPI.Application.Common.QuietHoursPolicy.ResolveTimeZone(null);
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz).ToString("HH:mm");
     }
 
     // ────────────────── ESTIMATE ROUTE ──────────────────
@@ -758,10 +862,33 @@ public class ToursController : ControllerBase
 
         var completedCount = tour.Waypoints.Count(w => w.IsCompleted);
 
+        // Téléphone du chauffeur (migration 051) : dernier point reçu pour cette tournée.
+        var phone = await _context.DriverAppPositions.AsNoTracking()
+            .Where(p => p.TourId == tour.Id)
+            .OrderByDescending(p => p.RecordedAt)
+            .Select(p => new { p.Latitude, p.Longitude, p.AccuracyM, p.SpeedKph, p.Heading, p.RecordedAt, p.BatteryLevel, p.IsMocked })
+            .FirstOrDefaultAsync(ct);
+        var now = DateTime.UtcNow;
+        var deviceAlive = position != null && Services.Tours.TrackingSourceSelector.IsDeviceAlive(
+            now, new Services.Tours.TrackingSourceSelector.DeviceState(position.RecordedAt, position.IgnitionOn));
+        var phoneAlive = phone != null && Services.Tours.TrackingSourceSelector.IsPhoneAlive(
+            now, new Services.Tours.TrackingSourceSelector.PhoneState(phone.RecordedAt, phone.AccuracyM, phone.IsMocked));
+        // Position à afficher : celle de la source qui suit (le moniteur la choisit), à
+        // défaut la plus fraîche ; le téléphone ne prend le pas que si le boîtier est muet.
+        var source = tour.TrackingSource ?? (deviceAlive ? "device" : phoneAlive ? "phone" : "none");
+        if (source == "phone" && phone != null && nextWaypoint != null)
+            distanceToNext = HaversineDistance(phone.Latitude, phone.Longitude, nextWaypoint.Latitude, nextWaypoint.Longitude);
+        var lastSeen = new[] { position?.RecordedAt, phone?.RecordedAt }.Where(d => d.HasValue).Select(d => d!.Value).DefaultIfEmpty().Max();
+
         return Ok(new
         {
             tourId = tour.Id,
             tourStatus = tour.Status,
+            source,
+            sourceSince = tour.TrackingSourceSince,
+            deviceAvailable = deviceAlive,
+            phoneAvailable = phoneAlive,
+            positionAgeSeconds = lastSeen == default ? (int?)null : (int)Math.Max(0, (now - lastSeen).TotalSeconds),
             vehicle = position != null ? new
             {
                 latitude = position.Latitude,
@@ -770,6 +897,17 @@ public class ToursController : ControllerBase
                 headingDeg = position.HeadingDeg,
                 ignitionOn = position.IgnitionOn,
                 recordedAt = position.RecordedAt
+            } : null,
+            phone = phone != null ? new
+            {
+                latitude = phone.Latitude,
+                longitude = phone.Longitude,
+                accuracyM = phone.AccuracyM,
+                speedKph = phone.SpeedKph,
+                headingDeg = phone.Heading,
+                recordedAt = phone.RecordedAt,
+                batteryLevel = phone.BatteryLevel,
+                isMocked = phone.IsMocked
             } : null,
             progress = new
             {
@@ -783,7 +921,8 @@ public class ToursController : ControllerBase
             waypoints = tour.Waypoints.OrderBy(w => w.SequenceOrder).Select(w => new
             {
                 w.Id, w.Name, w.Type, w.Latitude, w.Longitude,
-                w.IsCompleted, w.ActualArrivalTime
+                w.IsCompleted, w.ActualArrivalTime, w.ArrivalSource, w.DriverArrivedAt, w.DriverDeclarationDistanceM,
+                unconfirmed = Services.Tours.DriverTourRules.IsUnconfirmed(w)
             })
         });
     }
@@ -812,6 +951,9 @@ public class ToursController : ControllerBase
             ? (int?)Math.Max(0, (int)(t.ActualDepartureTime.Value - t.ActualStartTime.Value).TotalMinutes)
             : null,
         t.ActualEndTime,
+        t.SentAt,
+        t.OpenedAt,
+        t.TrackingSource,
         t.EstimatedDistanceKm,
         t.EstimatedDurationMinutes,
         t.EstimatedFuelLiters,
@@ -934,6 +1076,12 @@ public class ToursController : ControllerBase
             ? (int?)Math.Max(0, (int)(t.ActualDepartureTime.Value - t.ActualStartTime.Value).TotalMinutes)
             : null,
         t.ActualEndTime,
+        // Envoi au chauffeur et source de suivi (migration 051).
+        t.SentAt,
+        t.SentByUserId,
+        t.OpenedAt,
+        t.TrackingSource,
+        t.TrackingSourceSince,
         t.EstimatedDistanceKm,
         t.EstimatedDurationMinutes,
         t.EstimatedFuelLiters,
@@ -967,6 +1115,13 @@ public class ToursController : ControllerBase
             w.ActualPauseMinutes,
             w.IsCompleted,
             w.WaypointStatus,
+            // Déclarations du chauffeur et source de validation (migration 051).
+            w.ArrivalSource,
+            w.DriverArrivedAt,
+            w.DriverDepartedAt,
+            w.ActualDepartureTime,
+            w.DriverDeclarationDistanceM,
+            unconfirmed = Services.Tours.DriverTourRules.IsUnconfirmed(w),
             arrivalDelay = w.ActualArrivalTime.HasValue && w.EstimatedArrivalTime.HasValue
                 ? (int)(w.ActualArrivalTime.Value - w.EstimatedArrivalTime.Value).TotalMinutes : (int?)null,
             deadline = w.EstimatedArrivalTime.HasValue

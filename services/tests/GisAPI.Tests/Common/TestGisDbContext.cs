@@ -88,6 +88,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<Tour> Tours => Set<Tour>();
     public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
     public DbSet<TourPause> TourPauses => Set<TourPause>();
+    public DbSet<DriverAppPosition> DriverAppPositions => Set<DriverAppPosition>();
 
     // Trips
     public DbSet<Trip> Trips => Set<Trip>();

@@ -24,7 +24,11 @@ public class AuditTrailMiddleware
     private static readonly string[] ExcludedPrefixes =
     {
         "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
-        "/api/hubs", "/api/assistant"
+        "/api/hubs", "/api/assistant",
+        // Téléphone du chauffeur : un lot de positions toutes les 30 s et le jeton de
+        // notification ne sont pas des actions d'un utilisateur — ils noieraient
+        // l'écran « Activité » (≈ 1 200 lignes par chauffeur et par jour).
+        "/api/driver-app/positions", "/api/devicetokens"
     };
 
     private readonly RequestDelegate _next;

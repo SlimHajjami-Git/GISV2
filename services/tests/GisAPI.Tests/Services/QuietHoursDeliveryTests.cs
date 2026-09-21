@@ -70,7 +70,7 @@ public class QuietHoursDeliveryTests
         JsonSerializer.SerializeToElement(args[0]).GetProperty("Silent").GetBoolean();
 
     private static void VerifyFcm(Mock<IFcmService> fcm, Times times) =>
-        fcm.Verify(f => f.SendToUserAsync(UserId, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>()), times);
+        fcm.Verify(f => f.SendToUserAsync(UserId, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<string?>()), times);
 
     [Fact]
     public async Task Pendant_la_plage_la_notification_va_dans_la_cloche_sans_push_ni_toast()

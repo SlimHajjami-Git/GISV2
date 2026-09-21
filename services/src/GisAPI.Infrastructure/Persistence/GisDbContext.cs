@@ -141,6 +141,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<Tour> Tours => Set<Tour>();
     public DbSet<TourWaypoint> TourWaypoints => Set<TourWaypoint>();
     public DbSet<TourPause> TourPauses => Set<TourPause>();
+    public DbSet<DriverAppPosition> DriverAppPositions => Set<DriverAppPosition>();
 
     // Chat
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -247,6 +248,30 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<TourWaypoint>().Property(w => w.DeadlineMarginMinutes).HasColumnName("deadline_margin_minutes");
         modelBuilder.Entity<TourWaypoint>().Property(w => w.WaypointStatus).HasColumnName("waypoint_status");
         modelBuilder.Entity<TourPause>().ToTable("tour_pauses");
+
+        // Positions du téléphone du chauffeur (migration 051) : table écrite à la main,
+        // snake_case, jamais mélangée à gps_positions.
+        modelBuilder.Entity<DriverAppPosition>(b =>
+        {
+            b.ToTable("driver_app_positions");
+            b.HasKey(p => p.Id);
+            b.Property(p => p.Id).HasColumnName("id");
+            b.Property(p => p.CompanyId).HasColumnName("company_id");
+            b.Property(p => p.UserId).HasColumnName("user_id");
+            b.Property(p => p.DriverId).HasColumnName("driver_id");
+            b.Property(p => p.TourId).HasColumnName("tour_id");
+            b.Property(p => p.RecordedAt).HasColumnName("recorded_at");
+            b.Property(p => p.ReceivedAt).HasColumnName("received_at");
+            b.Property(p => p.Latitude).HasColumnName("latitude");
+            b.Property(p => p.Longitude).HasColumnName("longitude");
+            b.Property(p => p.AccuracyM).HasColumnName("accuracy_m");
+            b.Property(p => p.SpeedKph).HasColumnName("speed_kph");
+            b.Property(p => p.Heading).HasColumnName("heading");
+            b.Property(p => p.IsMocked).HasColumnName("is_mocked");
+            b.Property(p => p.BatteryLevel).HasColumnName("battery_level");
+            b.HasIndex(p => new { p.TourId, p.Id }).HasDatabaseName("ix_driver_app_positions_tour_id");
+            b.HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        });
         modelBuilder.Entity<ChatMessage>().ToTable("chat_messages");
         modelBuilder.Entity<AiChatMessage>().ToTable("ai_chat_messages");
         modelBuilder.Entity<AlertEmail>().ToTable("alert_emails");

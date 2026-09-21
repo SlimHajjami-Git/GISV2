@@ -8,6 +8,7 @@ using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
 using GisAPI.Infrastructure.Persistence;
+using GisAPI.Services.Tours;
 
 namespace GisAPI.Services;
 
@@ -71,7 +72,18 @@ public class TourMonitoringService : BackgroundService
     /// advancing cursor are not lost, and applied on the first unblocked cycle.
     /// Without it a vehicle that reaches the destination early and cuts ignition
     /// would leave the tour "in_progress" forever.</summary>
-    private static readonly ConcurrentDictionary<int, DateTime> _pendingDestArrival = new();
+    private static readonly ConcurrentDictionary<int, TracePoint> _pendingDestArrival = new();
+
+    // ── Tournée envoyée au chauffeur (migration 051) ──
+    /// <summary>Curseur sur driver_app_positions.id : la trace du TÉLÉPHONE, seconde source.</summary>
+    private static readonly ConcurrentDictionary<int, long> _phoneCursor = new();
+    /// <summary>Compteur d'hystérésis de TrackingSourceSelector, par tournée.</summary>
+    private static readonly ConcurrentDictionary<int, int> _recoveryCount = new();
+    /// <summary>Depuis quand aucune source ne suit la tournée (alerte après 10 min, une fois par coupure).</summary>
+    private static readonly ConcurrentDictionary<int, DateTime> _lostSince = new();
+    private static readonly ConcurrentDictionary<int, byte> _lostAlerted = new();
+    /// <summary>Tournées « non démarrée » déjà signalées (une alerte par tournée).</summary>
+    private static readonly ConcurrentDictionary<int, byte> _notStartedAlerted = new();
 
     public TourMonitoringService(
         ILogger<TourMonitoringService> logger,
@@ -139,6 +151,14 @@ public class TourMonitoringService : BackgroundService
         {
             try
             {
+                // Tournée ENVOYÉE à un chauffeur : elle démarre à son « Je pars », pas à
+                // l'heure (décision D6, « en cours » veut dire « parti ») ; passé 15 min, le
+                // gestionnaire est prévenu qu'elle n'a pas démarré.
+                if (DriverTourRules.StartsOnDriverDeparture(tour))
+                {
+                    await CheckNotStarted(tour, context, notifService, ct);
+                    continue;
+                }
                 await CheckAutoStart(tour, context, hubContext, notifService, ct);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -182,8 +202,39 @@ public class TourMonitoringService : BackgroundService
         SweepStale(_lastDeviationAlertAt, activeIds);
         SweepStale(_departedAt, activeIds);
         SweepStale(_pendingDestArrival, activeIds);
+        SweepStale(_phoneCursor, activeIds);
+        SweepStale(_recoveryCount, activeIds);
+        SweepStale(_lostSince, activeIds);
+        SweepStale(_lostAlerted, activeIds);
         SweepStale(_foreignVehicleReported,
             plannedLoaded.Concat(activeLoaded).Select(t => t.Id).ToHashSet());
+        SweepStale(_notStartedAlerted, plannedLoaded.Select(t => t.Id).ToHashSet());
+    }
+
+    /// <summary>
+    /// Tournée envoyée au chauffeur et toujours « planifiée » 15 min après l'heure
+    /// prévue : une seule alerte au gestionnaire. La tournée reste planifiée — c'est
+    /// au chauffeur (« Je pars ») ou au gestionnaire (Démarrer) de la lancer.
+    /// </summary>
+    private async Task CheckNotStarted(Tour tour, GisDbContext context, INotificationService notifService, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        if (!DriverTourRules.IsNotStartedAlertDue(tour, now)) return;
+        if (!_notStartedAlerted.TryAdd(tour.Id, 0)) return;
+
+        _logger.LogWarning("Tour {TourId} '{TourName}': envoyée au chauffeur, non démarrée {Minutes:F0} min après l'heure prévue",
+            tour.Id, tour.Name, (now - tour.ScheduledStartTime).TotalMinutes);
+        await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
+            "tour_not_started",
+            $"Tournee non demarree: {tour.Name}",
+            $"Le chauffeur n'a pas signale son depart (prevu {LocalTime(tour.ScheduledStartTime)}).",
+            "high", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
+    }
+
+    private static string LocalTime(DateTime utc)
+    {
+        var tz = QuietHoursPolicy.ResolveTimeZone(null);
+        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), tz).ToString("HH:mm");
     }
 
     /// <summary>Tournées déjà signalées comme écartées (un avertissement par
@@ -285,7 +336,7 @@ public class TourMonitoringService : BackgroundService
             "tour_started",
             $"Tournee demarree: {tour.Name}",
             $"Tournee '{tour.Name}' demarree a l'heure prevue.",
-            "normal", "tour", tour.Id, $"/tournees", ct);
+            "normal", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
 
         _logger.LogInformation("Tour {TourId} auto-started successfully", tour.Id);
     }
@@ -326,14 +377,31 @@ public class TourMonitoringService : BackgroundService
         // NB: the cursor only advances AFTER a successful SaveChanges below —
         // a transient DB failure must not permanently skip this trace slice.
         var newCursor = trace.Count > 0 ? trace[^1].Id : (long?)null;
+
+        // SECONDE trace : le téléphone du chauffeur (migration 051), même curseur par id.
+        // Les deux traces sont analysées ENSEMBLE, dans l'ordre du temps : la première qui
+        // montre l'arrivée valide l'étape, et l'étape retient laquelle (ArrivalSource).
+        var phoneSinceId = _phoneCursor.TryGetValue(tour.Id, out var pcur) ? pcur : 0L;
+        var phoneTrace = await GetPhoneTraceSlice(context, tour, phoneSinceId, traceFloor, now, ct);
+        var newPhoneCursor = phoneTrace.Count > 0 ? phoneTrace[^1].Id : (long?)null;
         // Catch-up slices can interleave live and buffered frames: walk in TIME order.
-        var timeOrdered = trace.OrderBy(p => p.RecordedAt).ToList();
+        var timeOrdered = trace.Concat(phoneTrace).OrderBy(p => p.RecordedAt).ToList();
 
         // "Current" position for deviation checks: freshest trace point, else cache/DB.
         var freshest = timeOrdered.Count > 0 ? timeOrdered[^1] : null;
+        var freshestDevice = trace.Count > 0 ? trace.OrderBy(p => p.RecordedAt).Last() : null;
+        var devicePosition = freshestDevice != null
+            ? new VehiclePositionCache { Latitude = freshestDevice.Latitude, Longitude = freshestDevice.Longitude, RecordedAt = freshestDevice.RecordedAt, IgnitionOn = true }
+            : await GetVehiclePosition(tour, context, ct);
         var position = freshest != null
             ? new VehiclePositionCache { Latitude = freshest.Latitude, Longitude = freshest.Longitude, RecordedAt = freshest.RecordedAt }
-            : await GetVehiclePosition(tour, context, ct);
+            : devicePosition;
+
+        // Source de suivi (boîtier, téléphone, aucune) : choisie à chaque cycle, écrite sur
+        // la tournée quand elle change, alerte « suivi perdu » après 10 min sans rien.
+        if (await UpdateTrackingSourceAsync(tour, context, hubContext, notifService, devicePosition,
+                phoneTrace.Count > 0 ? phoneTrace[^1] : null, now, ct))
+            changed = true;
 
         // Departure tracking: the first sample farther than DEPARTURE_RADIUS_METERS
         // from the origin. Rebuilt from the catch-up scan after a restart.
@@ -389,6 +457,22 @@ public class TourMonitoringService : BackgroundService
 
         foreach (var wp in waypoints)
         {
+            // Étape DÉCLARÉE par le chauffeur (« Je suis arrivé ») : le statut est acquis,
+            // mais l'heure qui fait foi est l'heure DÉTECTÉE — on continue de chercher
+            // l'arrivée dans les traces et on remplace l'heure déclarée dès qu'on la voit.
+            if (wp.IsCompleted && wp.ArrivalSource == DriverTourRules.SourceDriver)
+            {
+                var radiusDeclared = wp.Type == "destination" ? DESTINATION_RADIUS_METERS : WAYPOINT_RADIUS_METERS;
+                var detected = FindRadiusArrival(timeOrdered, wp.Latitude, wp.Longitude, radiusDeclared, null);
+                if (detected != null)
+                {
+                    DriverTourRules.ConfirmDeclaredArrival(wp, detected.RecordedAt, detected.Source);
+                    changed = true;
+                    _logger.LogInformation("Tour {TourId}: declared arrival at '{WpName}' confirmed by {Source} at {Time:HH:mm:ss}",
+                        tour.Id, wp.Name ?? wp.Type, detected.Source, detected.RecordedAt);
+                }
+                continue;
+            }
             if (wp.IsCompleted || wp.WaypointStatus == "completed" || wp.WaypointStatus == "skipped") continue;
 
             var radius = wp.Type == "destination" ? DESTINATION_RADIUS_METERS : WAYPOINT_RADIUS_METERS;
@@ -436,6 +520,7 @@ public class TourMonitoringService : BackgroundService
                     {
                         arrived = true;
                         wp.ActualArrivalTime = lastZoneEvent.Timestamp;
+                        wp.ArrivalSource = DriverTourRules.SourceGeofence;
                         _logger.LogInformation(
                             "Tour {TourId}: vehicle inside destination geofence since {Time:HH:mm}",
                             tour.Id, lastZoneEvent.Timestamp);
@@ -457,6 +542,7 @@ public class TourMonitoringService : BackgroundService
                     {
                         arrived = true;
                         wp.ActualArrivalTime = recentEntry.Timestamp;
+                        wp.ArrivalSource = DriverTourRules.SourceGeofence;
                         _logger.LogInformation(
                             "Tour {TourId}: vehicle entered geofence zone for waypoint '{WpName}' at {Time:HH:mm}",
                             tour.Id, wp.Name ?? wp.Type, recentEntry.Timestamp);
@@ -475,7 +561,7 @@ public class TourMonitoringService : BackgroundService
                 var minTime = wp.Type == "destination" ? departedAt : null;
                 var candidate = FindRadiusArrival(timeOrdered, wp.Latitude, wp.Longitude, radius, minTime);
 
-                if (candidate.HasValue)
+                if (candidate != null)
                 {
                     if (wp.Type == "destination" && destinationBlocked)
                     {
@@ -484,15 +570,16 @@ public class TourMonitoringService : BackgroundService
                         // it on the first unblocked cycle (otherwise a vehicle
                         // that parks and cuts ignition at the destination leaves
                         // the tour "in_progress" forever).
-                        _pendingDestArrival.TryAdd(tour.Id, candidate.Value);
+                        _pendingDestArrival.TryAdd(tour.Id, candidate);
                     }
                     else
                     {
                         arrived = true;
-                        wp.ActualArrivalTime = candidate.Value;
+                        wp.ActualArrivalTime = candidate.RecordedAt;
+                        wp.ArrivalSource = candidate.Source;
                         _logger.LogInformation(
-                            "Tour {TourId}: vehicle reached waypoint '{WpName}' ({WpType}) at {Time:HH:mm:ss}",
-                            tour.Id, wp.Name ?? wp.Type, wp.Type, candidate.Value);
+                            "Tour {TourId}: vehicle reached waypoint '{WpName}' ({WpType}) at {Time:HH:mm:ss} ({Source})",
+                            tour.Id, wp.Name ?? wp.Type, wp.Type, candidate.RecordedAt, candidate.Source);
                     }
                 }
 
@@ -501,10 +588,11 @@ public class TourMonitoringService : BackgroundService
                     && _pendingDestArrival.TryRemove(tour.Id, out var stashed))
                 {
                     arrived = true;
-                    wp.ActualArrivalTime = stashed;
+                    wp.ActualArrivalTime = stashed.RecordedAt;
+                    wp.ArrivalSource = stashed.Source;
                     _logger.LogInformation(
                         "Tour {TourId}: destination had been reached at {Time:HH:mm:ss} (while earlier stops were still pending)",
-                        tour.Id, stashed);
+                        tour.Id, stashed.RecordedAt);
                 }
             }
 
@@ -532,7 +620,7 @@ public class TourMonitoringService : BackgroundService
                     "tour_waypoint",
                     $"Point atteint: {wpLabel}",
                     $"Tournee '{tour.Name}' - le vehicule est arrive a '{wpLabel}'.",
-                    "normal", "tour", tour.Id, $"/tournees", ct);
+                    "normal", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
 
                 if (wp.Type == "destination")
                 {
@@ -574,7 +662,7 @@ public class TourMonitoringService : BackgroundService
                     "tour_overdue",
                     $"Temps depasse: {wpLabel}",
                     $"Tournee '{tour.Name}' — le vehicule n'est pas arrive a '{wpLabel}' dans le delai imparti (prevu {wp.EstimatedArrivalTime.Value:HH:mm} + {wp.DeadlineMarginMinutes}min de marge).",
-                    "high", "tour", tour.Id, $"/tournees", ct);
+                    "high", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
             }
         }
 
@@ -591,6 +679,75 @@ public class TourMonitoringService : BackgroundService
 
         if (newCursor.HasValue)
             _traceCursor[tour.Id] = newCursor.Value;
+        if (newPhoneCursor.HasValue)
+            _phoneCursor[tour.Id] = newPhoneCursor.Value;
+    }
+
+    /// <summary>
+    /// Source qui suit la tournée en ce moment (TrackingSourceSelector) : écrite sur la
+    /// tournée quand elle change, annoncée en SignalR (« Suivi par téléphone ») et, sans
+    /// aucune source pendant 10 min, une alerte « suivi perdu » au gestionnaire — une seule
+    /// par coupure. Rend vrai si la tournée a été modifiée.
+    /// </summary>
+    private async Task<bool> UpdateTrackingSourceAsync(Tour tour, GisDbContext context, IHubContext<GpsHub> hubContext,
+        INotificationService notifService, VehiclePositionCache? device, TracePoint? lastPhoneInSlice, DateTime now, CancellationToken ct)
+    {
+        // Dernier point du téléphone : celui de la tranche, sinon le dernier en base
+        // (le téléphone peut n'avoir rien envoyé depuis plusieurs cycles).
+        DateTime? phoneAt = lastPhoneInSlice?.RecordedAt;
+        double? phoneAcc = null;
+        var phoneMocked = false;
+        if (phoneAt == null)
+        {
+            var last = await context.DriverAppPositions.IgnoreQueryFilters().AsNoTracking()
+                .Where(p => p.TourId == tour.Id)
+                .OrderByDescending(p => p.RecordedAt)
+                .Select(p => new { p.RecordedAt, p.AccuracyM, p.IsMocked })
+                .FirstOrDefaultAsync(ct);
+            if (last != null) { phoneAt = last.RecordedAt; phoneAcc = last.AccuracyM; phoneMocked = last.IsMocked; }
+        }
+
+        var deviceState = new TrackingSourceSelector.DeviceState(device?.RecordedAt, device?.IgnitionOn ?? false);
+        var phoneState = new TrackingSourceSelector.PhoneState(phoneAt, phoneAcc, phoneMocked);
+        var previous = tour.TrackingSource;
+        var count = _recoveryCount.TryGetValue(tour.Id, out var c) ? c : 0;
+        var choice = TrackingSourceSelector.Choose(now, deviceState, phoneState, previous, count);
+        _recoveryCount[tour.Id] = choice.RecoveryCount;
+
+        var changed = false;
+        if (choice.Source != previous)
+        {
+            tour.TrackingSource = choice.Source;
+            tour.TrackingSourceSince = now;
+            changed = true;
+            if (choice.Source == TrackingSourceSelector.None) _lostSince.TryAdd(tour.Id, now);
+            else _lostSince.TryRemove(tour.Id, out _);
+
+            _logger.LogInformation("Tour {TourId}: tracking source {Previous} → {Source}", tour.Id, previous ?? "?", choice.Source);
+            await hubContext.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourTrackingSourceChanged", new
+            {
+                tourId = tour.Id, source = choice.Source, since = now,
+                deviceAvailable = choice.DeviceAlive, phoneAvailable = choice.PhoneAlive, timestamp = now
+            }, ct);
+        }
+
+        if (choice.Source == TrackingSourceSelector.None)
+        {
+            var since = _lostSince.GetOrAdd(tour.Id, now);
+            if (now - since >= TrackingSourceSelector.LostAlertAfter && _lostAlerted.TryAdd(tour.Id, 0))
+            {
+                await SendTourNotification(context, notifService, tour.CompanyId, tour.VehicleId,
+                    "tour_tracking_lost",
+                    $"Suivi interrompu: {tour.Name}",
+                    $"Ni le boitier ni le telephone du chauffeur n'ont donne de position depuis {(int)(now - since).TotalMinutes} min.",
+                    "high", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
+            }
+        }
+        else
+        {
+            _lostAlerted.TryRemove(tour.Id, out _);
+        }
+        return changed;
     }
 
     /// <summary>
@@ -653,7 +810,7 @@ public class TourMonitoringService : BackgroundService
             "tour_completed",
             $"Tournee terminee: {tour.Name}",
             $"La tournee '{tour.Name}' est terminee. Duree: {tour.ActualDurationMinutes} min, Distance: {tour.ActualDistanceKm} km.",
-            "normal", "tour", tour.Id, $"/tournees", ct);
+            "normal", "tour", tour.Id, $"/tournees/{tour.Id}", ct, tour.SentByUserId);
 
         _logger.LogInformation(
             "Tour {TourId} auto-completed. Duration={Duration}min, Distance={Distance}km",
@@ -755,8 +912,33 @@ public class TourMonitoringService : BackgroundService
         }
     }
 
-    /// <summary>GPS sample used for trace-based waypoint detection.</summary>
-    private sealed record TracePoint(long Id, double Latitude, double Longitude, double? SpeedKph, DateTime RecordedAt);
+    /// <summary>GPS sample used for trace-based waypoint detection. <paramref name="Source"/> :
+    /// « device » (boîtier, gps_positions) ou « phone » (téléphone du chauffeur, driver_app_positions).</summary>
+    private sealed record TracePoint(long Id, double Latitude, double Longitude, double? SpeedKph, DateTime RecordedAt, string Source = DriverTourRules.SourceDevice);
+
+    /// <summary>
+    /// Trace du TÉLÉPHONE du chauffeur pour cette tournée (migration 051) : mêmes bornes que
+    /// la trace du boîtier. Une position simulée ou imprécise (&gt; 100 m) n'est jamais une
+    /// preuve d'arrivée.
+    /// </summary>
+    private static async Task<List<TracePoint>> GetPhoneTraceSlice(
+        GisDbContext context, Tour tour, long sinceId, DateTime floor, DateTime until, CancellationToken ct)
+    {
+        var ceiling = until.AddMinutes(5);
+        return await context.DriverAppPositions
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(p => p.TourId == tour.Id
+                && p.Id > sinceId
+                && p.RecordedAt >= floor
+                && p.RecordedAt <= ceiling
+                && !p.IsMocked
+                && (p.AccuracyM == null || p.AccuracyM <= TrackingSourceSelector.PhoneMaxAccuracyM))
+            .OrderBy(p => p.Id)
+            .Take(20_000)
+            .Select(p => new TracePoint(p.Id, p.Latitude, p.Longitude, p.SpeedKph, p.RecordedAt, DriverTourRules.SourcePhone))
+            .ToListAsync(ct);
+    }
 
     /// <summary>
     /// GPS trace of the tour's vehicle: rows with Id &gt; <paramref name="sinceId"/>
@@ -782,7 +964,8 @@ public class TourMonitoringService : BackgroundService
                 && p.IsValid)
             .OrderBy(p => p.Id)
             .Take(20_000) // catch-up guard (24 h of 5 s frames ≈ 17 k)
-            .Select(p => new TracePoint(p.Id, p.Latitude, p.Longitude, p.SpeedKph, p.RecordedAt))
+            // Source explicite : un argument facultatif omis ne compile pas dans un arbre d'expression (CS0854).
+            .Select(p => new TracePoint(p.Id, p.Latitude, p.Longitude, p.SpeedKph, p.RecordedAt, DriverTourRules.SourceDevice))
             .ToListAsync(ct);
     }
 
@@ -793,10 +976,10 @@ public class TourMonitoringService : BackgroundService
     /// before <paramref name="minTime"/> are ignored (used to require an actual
     /// departure before a round-trip return can count).
     /// </summary>
-    private static DateTime? FindRadiusArrival(
+    private static TracePoint? FindRadiusArrival(
         List<TracePoint> timeOrdered, double lat, double lon, double radius, DateTime? minTime)
     {
-        DateTime? firstInside = null;
+        TracePoint? firstInside = null;
         foreach (var pt in timeOrdered)
         {
             if (minTime.HasValue && pt.RecordedAt <= minTime.Value) continue;
@@ -805,10 +988,10 @@ public class TourMonitoringService : BackgroundService
             if (!inside) { firstInside = null; continue; }   // dwell must be contiguous
 
             if (pt.SpeedKph.HasValue && pt.SpeedKph.Value <= ARRIVAL_MAX_SPEED_KPH)
-                return firstInside ?? pt.RecordedAt;
+                return firstInside ?? pt;
 
-            firstInside ??= pt.RecordedAt;
-            if ((pt.RecordedAt - firstInside.Value).TotalSeconds >= ARRIVAL_DWELL_SECONDS)
+            firstInside ??= pt;
+            if ((pt.RecordedAt - firstInside.RecordedAt).TotalSeconds >= ARRIVAL_DWELL_SECONDS)
                 return firstInside;
         }
         return null;
@@ -877,7 +1060,7 @@ public class TourMonitoringService : BackgroundService
         GisDbContext context, INotificationService notifService,
         int companyId, int vehicleId, string type, string title, string message,
         string priority, string? refType, int? refId, string? actionUrl,
-        CancellationToken ct)
+        CancellationToken ct, int? alsoUserId = null)
     {
         try
         {
@@ -885,7 +1068,10 @@ public class TourMonitoringService : BackgroundService
             // et les utilisateurs affectes a ce vehicule sont concernes. Avant,
             // la requete prenait tous les comptes de la societe — sans meme
             // filtrer sur "active" (incident Hertz du 15/09/2026).
+            // PLUS la personne qui a envoye la tournee au chauffeur (alsoUserId), qui
+            // n'est ni forcement administratrice ni affectee au vehicule.
             var userIds = await NotificationAudience.ForVehicleAsync(context, companyId, vehicleId, ct);
+            if (alsoUserId is int extra && !userIds.Contains(extra)) userIds.Add(extra);
 
             foreach (var userId in userIds)
             {

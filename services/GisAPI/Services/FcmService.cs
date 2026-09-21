@@ -11,7 +11,20 @@ public record FcmSendResult(bool Initialized, int TokenCount, int SuccessCount, 
 
 public interface IFcmService
 {
-    Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null);
+    /// <param name="channelId">Canal Android : « immobilization » par défaut (historique),
+    /// « tours » pour les tournées envoyées au chauffeur (priorité HIGH, pas MAX).</param>
+    Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null, string? channelId = null);
+}
+
+/// <summary>Canaux Android créés par l'application mobile (push-notification.service.ts).</summary>
+public static class FcmChannels
+{
+    public const string Immobilization = "immobilization";
+    public const string Tours = "tours";
+
+    /// <summary>Canal d'après le type de notification : les « tour_* » vont sur le canal des tournées.</summary>
+    public static string ForType(string type) =>
+        type.StartsWith("tour_", StringComparison.Ordinal) ? Tours : Immobilization;
 }
 
 public class FcmService : IFcmService
@@ -48,8 +61,9 @@ public class FcmService : IFcmService
         }
     }
 
-    public async Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null)
+    public async Task<FcmSendResult> SendToUserAsync(int userId, string title, string body, Dictionary<string, string>? data = null, int? badgeCount = null, string? channelId = null)
     {
+        channelId ??= FcmChannels.Immobilization;
         if (!_initialized)
         {
             _logger.LogWarning("FCM push skipped for user {UserId}: Firebase not initialized (service account missing?).", userId);
@@ -100,8 +114,10 @@ public class FcmService : IFcmService
                 Notification = new AndroidNotification
                 {
                     Sound = "default",
-                    ChannelId = "immobilization",
-                    Priority = NotificationPriority.MAX,
+                    ChannelId = channelId,
+                    // Une tournée n'est pas une immobilisation : HIGH (sonne, s'affiche),
+                    // pas MAX (tête haute qui interrompt ce que fait le chauffeur).
+                    Priority = channelId == FcmChannels.Tours ? NotificationPriority.HIGH : NotificationPriority.MAX,
                     // Même tag = la notification remplace la précédente sur l'appareil.
                     Tag = collapseKey,
                     // App-icon badge count ("cercle avec le nombre"). Launcher-dependent:

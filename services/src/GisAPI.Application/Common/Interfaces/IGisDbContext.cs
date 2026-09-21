@@ -78,6 +78,7 @@ public interface IGisDbContext
     DbSet<Tour> Tours { get; }
     DbSet<TourWaypoint> TourWaypoints { get; }
     DbSet<TourPause> TourPauses { get; }
+    DbSet<DriverAppPosition> DriverAppPositions { get; }
 
     // Trips
     DbSet<Trip> Trips { get; }

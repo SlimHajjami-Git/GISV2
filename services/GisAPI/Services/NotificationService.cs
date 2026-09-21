@@ -39,7 +39,30 @@ public class NotificationService : INotificationService
         string? actionUrl = null,
         Dictionary<string, object>? metadata = null,
         CancellationToken ct = default)
+        => (await CreateAndSendWithPushAsync(companyId, userId, type, title, message, priority, referenceType, referenceId, actionUrl, metadata, ct)).Notification;
+
+    public async Task<(Notification Notification, string Push)> CreateAndSendWithPushAsync(
+        int companyId,
+        int userId,
+        string type,
+        string title,
+        string message,
+        string priority = "normal",
+        string? referenceType = null,
+        int? referenceId = null,
+        string? actionUrl = null,
+        Dictionary<string, object>? metadata = null,
+        CancellationToken ct = default)
     {
+        // Compte chauffeur (migration 050) : il n’a pas de cloche (/api/notifications lui est
+        // refusé) — la ligne est marquée lue d’emblée, sinon le compteur non lu grossissait
+        // sans fin et l’icône de l’application affichait un badge que rien n’efface.
+        var estChauffeur = await _context.Users
+            .IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.AccountType)
+            .FirstOrDefaultAsync(ct) == UserAccountTypes.Driver;
+
         var notification = new Notification
         {
             CompanyId = companyId,
@@ -49,7 +72,7 @@ public class NotificationService : INotificationService
             Message = message,
             Priority = priority,
             Channel = "push",
-            IsRead = false,
+            IsRead = estChauffeur,
             IsSent = false,
             ReferenceType = referenceType,
             ReferenceId = referenceId,
@@ -116,6 +139,7 @@ public class NotificationService : INotificationService
         }
 
         // Push via FCM for mobile devices (works even when app is closed)
+        var push = "quiet_hours";
         if (quiet)
         {
             _logger.LogInformation(
@@ -137,10 +161,18 @@ public class NotificationService : INotificationService
                     foreach (var kv in metadata)
                         fcmData[kv.Key] = kv.Value?.ToString() ?? "";
                 }
-                await _fcmService.SendToUserAsync(userId, title, message, fcmData, unreadCount);
+                var result = await _fcmService.SendToUserAsync(
+                    userId, title, message, fcmData,
+                    estChauffeur ? null : unreadCount,
+                    FcmChannels.ForType(type));
+                push = !result.Initialized ? "firebase_off"
+                    : result.TokenCount == 0 ? "no_device"
+                    : result.SuccessCount > 0 ? "delivered_to_fcm"
+                    : "failed";
             }
             catch (Exception ex)
             {
+                push = "failed";
                 _logger.LogWarning(ex, "Failed to send FCM push to user {UserId}", userId);
             }
         }
@@ -165,7 +197,7 @@ public class NotificationService : INotificationService
             _logger.LogWarning(ex, "Failed to push unread count to user {UserId}", userId);
         }
 
-        return notification;
+        return (notification, push);
     }
 
     /// <summary>

@@ -75,6 +75,7 @@ public class ToursLot0Tests
 
         var controller = new ToursController(
             ctx, tenant, valhalla.Object, redis ?? new Mock<IRedisCacheService>().Object,
+            new Mock<GisAPI.Application.Common.Interfaces.INotificationService>().Object,
             NullLogger<ToursController>.Instance);
 
         var identity = new ClaimsIdentity(new[]

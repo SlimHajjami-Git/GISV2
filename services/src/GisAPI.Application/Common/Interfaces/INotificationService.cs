@@ -21,6 +21,25 @@ public interface INotificationService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Même chose que <see cref="CreateAndSendAsync"/>, en rendant AUSSI l'issue du push
+    /// FCM (« delivered_to_fcm », « no_device », « firebase_off », « failed », « quiet_hours »)
+    /// — l'envoi d'une tournée au chauffeur doit pouvoir dire au gestionnaire si le
+    /// téléphone a été joint.
+    /// </summary>
+    Task<(Notification Notification, string Push)> CreateAndSendWithPushAsync(
+        int companyId,
+        int userId,
+        string type,
+        string title,
+        string message,
+        string priority = "normal",
+        string? referenceType = null,
+        int? referenceId = null,
+        string? actionUrl = null,
+        Dictionary<string, object>? metadata = null,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Send a real-time notification push to a specific user (without persisting).
     /// </summary>
     Task SendToUserAsync(int userId, object notification);

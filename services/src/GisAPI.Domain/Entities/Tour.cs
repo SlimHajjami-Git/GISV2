@@ -27,6 +27,16 @@ public class Tour : TenantEntity
     public DateTime? ActualDepartureTime { get; set; }
     public DateTime? ActualEndTime { get; set; }
 
+    // ── Envoi au chauffeur et suivi (migration 051) ──
+    /// <summary>Dernier envoi au compte du chauffeur (push) ; remis à NULL si le chauffeur change.</summary>
+    public DateTime? SentAt { get; set; }
+    public int? SentByUserId { get; set; }
+    /// <summary>Première ouverture de la fiche dans l'application mobile.</summary>
+    public DateTime? OpenedAt { get; set; }
+    /// <summary>Source qui suit la tournée : device | phone | none (TrackingSourceSelector).</summary>
+    public string? TrackingSource { get; set; }
+    public DateTime? TrackingSourceSince { get; set; }
+
     // Estimated (from Valhalla route calculation)
     public decimal EstimatedDistanceKm { get; set; }
     public int EstimatedDurationMinutes { get; set; }
@@ -87,6 +97,18 @@ public class TourWaypoint : Entity
 
     // Status: pending, completed, temps_depasse, skipped
     public string WaypointStatus { get; set; } = "pending";
+
+    // ── Déclarations du chauffeur et source de validation (migration 051) ──
+    /// <summary>« Je suis arrivé » (heure du téléphone, bornée) ; à côté de l'heure détectée, jamais à sa place.</summary>
+    public DateTime? DriverArrivedAt { get; set; }
+    /// <summary>« Je repars ».</summary>
+    public DateTime? DriverDepartedAt { get; set; }
+    /// <summary>Départ de l'étape retenu (détecté, sinon déclaré).</summary>
+    public DateTime? ActualDepartureTime { get; set; }
+    /// <summary>Qui a validé l'étape : device | phone | geofence | driver | manager (DriverTourRules).</summary>
+    public string? ArrivalSource { get; set; }
+    /// <summary>Distance à l'étape (m) au moment de la déclaration, mesurée par le boîtier ou le téléphone.</summary>
+    public int? DriverDeclarationDistanceM { get; set; }
 }
 
 public class TourPause : Entity
