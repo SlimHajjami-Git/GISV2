@@ -14,6 +14,7 @@ namespace GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
 /// (véhicules et tout ce qui s'y rattache, dépenses, carburant, entretien, réparations, accidents,
 /// conducteurs, fournisseurs, géofences, trajets, notifications, journal d'audit, fichiers) en
 /// conservant la société, son abonnement, ses utilisateurs et rôles, ses boîtiers et leurs positions.
+/// Les comptes chauffeurs restent mais perdent l'accès (leurs fiches sont parties).
 /// <paramref name="ConfirmName"/> doit être le nom exact de la société (saisi par l'admin).
 /// <paramref name="UploadsRoot"/> est le dossier physique servi sous /uploads (null = ne pas toucher aux fichiers).
 /// <paramref name="DryRun"/> : l'aperçu chiffré — de simples comptages, aucune transaction, aucun verrou ;
@@ -80,6 +81,7 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
 
         var deleted = new List<ResetTableCount>();
         var files = new List<string>();
+        var driverAccountsClosed = 0;
 
         await _store.BeginTransactionAsync(ct);
         try
@@ -101,6 +103,12 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
                 var rows = await _store.ExecuteAsync($"DELETE FROM {Q(step.Table)} WHERE {step.Where}", cid, ct);
                 if (rows > 0) deleted.Add(new ResetTableCount(step.Table, rows));
             }
+
+            // Les fiches chauffeurs viennent de partir, les comptes chauffeurs (protégés avec
+            // users) restaient actifs avec une session de 90 jours et ne recevaient plus que
+            // des 403. Même règle que la suppression d'une fiche (DeleteDriverCommand) : accès
+            // fermé, rien de supprimé en plus ; les témoins ci-dessous le vérifient.
+            driverAccountsClosed = await _store.RevokeDriverAccountsAsync(cid, ct);
 
             var after = await WitnessesAsync(cid, ct);
             if (after != before)
@@ -136,14 +144,15 @@ public class ResetCompanyDataCommandHandler : IRequestHandler<ResetCompanyDataCo
             EntityType = "Societe",
             EntityId = cid,
             EntityName = societe.Name,
-            Description = $"Remise à zéro de la société {societe.Name} (#{cid}) : {total} lignes dans {deleted.Count} tables, {filesDeleted} fichiers.",
+            Description = $"Remise à zéro de la société {societe.Name} (#{cid}) : {total} lignes dans {deleted.Count} tables, {filesDeleted} fichiers, " +
+                          $"{driverAccountsClosed} compte(s) chauffeur désactivé(s).",
             NewValues = deleted.ToDictionary(d => d.Table, d => (object)d.Rows),
             Timestamp = DateTime.UtcNow,
         });
         await _context.SaveChangesAsync(ct);
 
-        _logger.LogWarning("Company {CompanyId} ({Name}) reset by user {UserId}: {Rows} rows in {Tables} tables, {Files} files, {Ms} ms",
-            cid, societe.Name, _tenant.UserId, total, deleted.Count, filesDeleted, duration);
+        _logger.LogWarning("Company {CompanyId} ({Name}) reset by user {UserId}: {Rows} rows in {Tables} tables, {Files} files, {DriverAccounts} driver accounts closed, {Ms} ms",
+            cid, societe.Name, _tenant.UserId, total, deleted.Count, filesDeleted, driverAccountsClosed, duration);
 
         return new ResetCompanyDataResult(cid, societe.Name, deleted, total, filesDeleted, plan.Protected, duration, DryRun: false);
     }

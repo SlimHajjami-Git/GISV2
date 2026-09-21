@@ -22,4 +22,11 @@ public interface ICompanyDataStore
 
     /// <summary>Valeurs texte d'une colonne pour les lignes qui vont être supprimées (chemins de fichiers).</summary>
     Task<IReadOnlyList<string>> SelectStringsAsync(string quotedTable, string quotedColumn, string where, int companyId, CancellationToken ct);
+
+    /// <summary>
+    /// Ferme l'accès des comptes chauffeurs de la société, comme DriverAccountRules.RevokeAccessAsync :
+    /// statut inactif, sessions révoquées, jetons de notification éteints. Aucune suppression.
+    /// Dans la transaction en cours ; renvoie le nombre de comptes chauffeurs concernés.
+    /// </summary>
+    Task<int> RevokeDriverAccountsAsync(int companyId, CancellationToken ct);
 }

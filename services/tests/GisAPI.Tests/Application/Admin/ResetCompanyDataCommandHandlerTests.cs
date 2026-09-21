@@ -3,6 +3,7 @@ using GisAPI.Application.Features.Admin.Companies.Commands.ResetCompanyData;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
 using GisAPI.Tests.Common;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -50,6 +51,13 @@ public class ResetCompanyDataCommandHandlerTests
         {
             var key = quotedTable.Trim('"') + "." + quotedColumn.Trim('"');
             return Task.FromResult<IReadOnlyList<string>>(Files.TryGetValue(key, out var v) ? v : new List<string>());
+        }
+
+        public int DriverAccounts { get; set; }
+        public Task<int> RevokeDriverAccountsAsync(int companyId, CancellationToken ct)
+        {
+            Events.Add($"REVOKE_DRIVERS:{companyId}");
+            return Task.FromResult(DriverAccounts);
         }
     }
 
@@ -111,7 +119,7 @@ public class ResetCompanyDataCommandHandlerTests
 
         var result = await handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
 
-        store.Events.Should().Equal("BEGIN", "COMMIT");
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "COMMIT");
         var plan = CompanyDataResetPlanner.Plan(TnCatalogFixture.Load());
         store.Executed.Should().HaveCount(plan.Steps.Count);
         store.Executed.Select(s => s.Split('"')[1]).Should().Equal(plan.Steps.Select(s => s.Table), "l'ordre du plan est respecté");
@@ -178,7 +186,8 @@ public class ResetCompanyDataCommandHandlerTests
         var act = () => handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
 
         await act.Should().ThrowAsync<DomainException>().WithMessage("*Garde-fou*utilisateurs 2→1*");
-        store.Events.Should().Equal("BEGIN", "ROLLBACK");
+        // La fermeture des comptes chauffeurs est dans la transaction : annulée avec le reste.
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "ROLLBACK");
         ctx.AuditLogs.Should().BeEmpty();
     }
 
@@ -192,7 +201,7 @@ public class ResetCompanyDataCommandHandlerTests
         var act = () => handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
 
         await act.Should().ThrowAsync<DomainException>().WithMessage("*autres sociétés 380→379*");
-        store.Events.Should().Equal("BEGIN", "ROLLBACK");
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "ROLLBACK");
     }
 
     [Fact]
@@ -235,6 +244,81 @@ public class ResetCompanyDataCommandHandlerTests
             Directory.Delete(root, recursive: true);
             File.Delete(outside);
         }
+    }
+
+    // ── Comptes chauffeurs (migration 050) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task Les_comptes_chauffeurs_de_la_societe_perdent_l_acces_dans_la_transaction_et_la_trace_le_dit()
+    {
+        // Leurs fiches partent avec la société : sans fermeture, chaque compte restait actif
+        // (session de 90 jours) et ne recevait plus que des 403 NO_DRIVER_PROFILE.
+        var (handler, store, ctx) = Build();
+        store.DriverAccounts = 3;
+
+        await handler.Handle(new ResetCompanyDataCommand(14, "Belive GPA", null), CancellationToken.None);
+
+        store.Events.Should().Equal("BEGIN", "REVOKE_DRIVERS:14", "COMMIT");
+        store.Executed.Should().NotContain(sql => sql.Contains("\"users\""), "aucun compte n'est supprimé");
+        ctx.AuditLogs.Single().Description.Should().Contain("3 compte(s) chauffeur désactivé(s)");
+    }
+
+    [Fact]
+    public async Task La_fermeture_des_comptes_chauffeurs_ne_touche_que_la_societe_et_ne_supprime_rien()
+    {
+        // Les ordres réels de CompanyDataStore, exécutés sur SQLite avec les noms du modèle.
+        using var ctx = TestDbContextFactory.Create();
+        User Compte(int id, int societe, string type)
+        {
+            var u = TestDataBuilder.CreateUser(id: id, companyId: societe, email: $"u{id}@test.com");
+            u.AccountType = type;
+            return u;
+        }
+        ctx.Users.AddRange(
+            Compte(1, 14, UserAccountTypes.Driver),
+            Compte(2, 14, UserAccountTypes.Staff),
+            Compte(3, 10, UserAccountTypes.Driver));
+        var now = DateTime.UtcNow;
+        foreach (var id in new[] { 1, 2, 3 })
+        {
+            ctx.RefreshTokens.Add(new RefreshToken { UserId = id, Token = $"rt{id}", ExpiresAt = now.AddDays(80), CreatedAt = now });
+            ctx.UserDeviceTokens.Add(new UserDeviceToken { UserId = id, Token = $"fcm{id}", IsActive = true });
+        }
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var comptes = 0;
+        foreach (var sql in GisAPI.Infrastructure.Persistence.CompanyDataStore.DriverRevocationStatements(ctx.Model))
+        {
+            sql.Should().StartWith("UPDATE ");
+            comptes = await ctx.Database.ExecuteSqlRawAsync(sql, 14);
+        }
+
+        comptes.Should().Be(1);
+        var users = await ctx.Users.AsNoTracking().OrderBy(u => u.Id).ToListAsync();
+        users.Select(u => u.Status).Should().Equal("inactive", "active", "active");
+        users.Should().HaveCount(3, "rien n'est supprimé");
+        var sessions = await ctx.RefreshTokens.AsNoTracking().OrderBy(t => t.UserId).ToListAsync();
+        sessions.Select(t => t.RevokedAt.HasValue).Should().Equal(true, false, false);
+        var jetons = await ctx.UserDeviceTokens.AsNoTracking().OrderBy(t => t.UserId).ToListAsync();
+        jetons.Select(t => t.IsActive).Should().Equal(false, true, true);
+    }
+
+    [Fact]
+    public void Les_ordres_de_production_portent_la_casse_reelle_des_trois_tables()
+    {
+        // Modèle du GisDbContext de production (aucune connexion ouverte) : refresh_tokens est en
+        // PascalCase, users et user_device_tokens en snake_case (relevé du schéma TN).
+        using var ctx = new GisAPI.Infrastructure.Persistence.GisDbContext(
+            new DbContextOptionsBuilder<GisAPI.Infrastructure.Persistence.GisDbContext>()
+                .UseNpgsql("Host=localhost;Database=modele_seulement").Options);
+
+        var sql = GisAPI.Infrastructure.Persistence.CompanyDataStore.DriverRevocationStatements(ctx.Model);
+
+        sql.Should().Equal(
+            "UPDATE \"refresh_tokens\" SET \"RevokedAt\" = CURRENT_TIMESTAMP WHERE \"RevokedAt\" IS NULL AND \"UserId\" IN (SELECT \"id\" FROM \"users\" WHERE \"company_id\" = {0} AND \"account_type\" = 'driver')",
+            "UPDATE \"user_device_tokens\" SET \"is_active\" = FALSE WHERE \"is_active\" = TRUE AND \"user_id\" IN (SELECT \"id\" FROM \"users\" WHERE \"company_id\" = {0} AND \"account_type\" = 'driver')",
+            "UPDATE \"users\" SET \"status\" = 'inactive', \"updated_at\" = CURRENT_TIMESTAMP WHERE \"company_id\" = {0} AND \"account_type\" = 'driver'");
     }
 
     [Fact]

@@ -81,7 +81,23 @@ public class NotificationService : INotificationService
         };
 
         _context.Notifications.Add(notification);
-        await _context.SaveChangesAsync(ct);
+        try
+        {
+            await _context.SaveChangesAsync(ct);
+        }
+        catch
+        {
+            // Le contexte est partagé par tout le scope (IGisDbContext = la même instance
+            // scopée) : une notification restée « Added » après un refus de la base (compte
+            // destinataire supprimé → 23503) refaisait échouer le SaveChanges SUIVANT de
+            // l'appelant — le moniteur de tournées perdait ainsi la clôture de la tournée.
+            // Seule cette ligne est abandonnée : les autres modifications en attente restent
+            // celles de l'appelant, qui décide de leur sort.
+            var entry = _context.ChangeTracker.Entries<Notification>()
+                .FirstOrDefault(e => ReferenceEquals(e.Entity, notification));
+            if (entry != null) entry.State = EntityState.Detached;
+            throw;
+        }
 
         // Heures silencieuses (recette client du 11/09/2026) : pendant la plage de
         // l'utilisateur, une notification non « critical » est quand même enregistrée et
@@ -89,7 +105,9 @@ public class NotificationService : INotificationService
         // ni toast à l'écran (Silent = true, ignoré par notification-toast.service).
         // Les accidents (« critical »), remorquages et pannes de démarrage passent toujours
         // (QuietHoursPolicy.AlwaysDeliveredTypes).
-        var quiet = await IsInQuietHoursAsync(userId, type, priority, ct);
+        // Jamais pour un compte chauffeur : il n'a pas de cloche (ligne marquée lue), le push
+        // EST sa seule livraison — une tournée envoyée à 06:30 pour 07:00 se perdait.
+        var quiet = !estChauffeur && await IsInQuietHoursAsync(userId, type, priority, ct);
 
         // Push via SignalR to user's personal group
         var payload = new

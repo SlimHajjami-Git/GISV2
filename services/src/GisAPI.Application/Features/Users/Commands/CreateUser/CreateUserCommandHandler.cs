@@ -35,25 +35,21 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             ?? throw new DomainException("Utilisateur non identifié");
 
         // Enforce MaxUsers subscription limit
-        var company = await _context.Societes
-            .Include(s => s.SubscriptionType)
-            .FirstOrDefaultAsync(s => s.Id == companyId, ct);
-
         // Les comptes chauffeurs (migration 050) ne comptent pas et ne sont pas comptés :
         // un chauffeur n'est pas un poste de gestion, et le plan-basique (3 places) en
         // aurait interdit le premier. Même exclusion dans SubscriptionsController.
-        if (company?.SubscriptionType != null && !request.IsDriverAccount)
-        {
-            var currentUsers = await _context.Users.CountAsync(
-                u => u.CompanyId == companyId && u.AccountType != UserAccountTypes.Driver, ct);
-            if (currentUsers >= company.SubscriptionType.MaxUsers)
-                throw new DomainException(
-                    $"Limite d'utilisateurs atteinte ({company.SubscriptionType.MaxUsers} max pour votre abonnement)");
-        }
+        if (!request.IsDriverAccount)
+            await DriverAccountRules.EnsureStaffSeatAvailableAsync(_context, companyId, null, ct);
 
         // Check email uniqueness
         if (await _context.Users.AnyAsync(u => u.Email == request.Email, ct))
             throw new ConflictException("Cet email est déjà utilisé");
+
+        // Fiche désignée par « Créer son compte » : vérifiée AVANT d'enregistrer le compte,
+        // un refus (fiche d'une autre société, déjà reliée) ne laisse rien derrière lui.
+        var driverId = request.IsDriverAccount ? request.DriverId : null;
+        if (driverId is int ficheId)
+            await DriverAccountRules.FindLinkableDriverAsync(_context, companyId, ficheId, null, ct);
 
         // Admin status is EXPLICIT (decoupled from permissions): only the explicit
         // IsCompanyAdmin flag promotes to the company_admin role. Granting many/all
@@ -166,7 +162,7 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         // seul ne suffit pas, c'est la fiche que les tournées désignent (tours."DriverId").
         if (request.IsDriverAccount)
         {
-            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, driverId, ct);
             await _context.SaveChangesAsync(ct);
         }
 

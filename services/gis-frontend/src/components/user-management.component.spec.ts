@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { RouterTestingModule } from '@angular/router/testing';
+import { Router, convertToParamMap } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { of } from 'rxjs';
 import { UserManagementComponent } from './user-management.component';
 import { ApiService } from '../services/api.service';
+import { AuthService } from '../services/auth.service';
 
 /**
  * Écran Utilisateurs — compte chauffeur (décision du 21/09/2026 : « le chauffeur est
@@ -169,5 +171,142 @@ describe('UserManagementComponent — compte chauffeur (application mobile)', ()
     const tuile: HTMLElement | null = fixture.nativeElement.querySelector('.stat-driver-accounts .stat-value');
     expect(tuile).not.toBeNull();
     expect(tuile!.textContent!.trim()).toBe('1');
+  });
+
+  it('la case « Chauffeur » n’est pas proposée sur son propre compte, elle l’est sur les autres', () => {
+    // Convertir son propre compte coupe l'accès au site sans retour (le serveur refuse aussi).
+    jest.spyOn(TestBed.inject(AuthService), 'getCurrentUserSync').mockReturnValue({ id: '10' } as any);
+
+    component.openUserModal(utilisateurs[0] as any);   // Amel = le compte connecté
+    fixture.detectChanges();
+    expect(component.isEditingOwnAccount).toBe(true);
+    expect(fixture.nativeElement.querySelector('.driver-account-toggle')).toBeNull();
+
+    component.closeUserModal();
+    component.openUserModal(utilisateurs[1] as any);   // un autre compte
+    fixture.detectChanges();
+    expect(component.isEditingOwnAccount).toBe(false);
+    expect(fixture.nativeElement.querySelector('.driver-account-toggle')).not.toBeNull();
+
+    component.closeUserModal();
+    component.openUserModal();                          // création
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.driver-account-toggle')).not.toBeNull();
+  });
+
+  it('sous la case « Chauffeur », une ligne dit quelle application installer (1.2 ou plus récente)', () => {
+    component.openUserModal();
+    fixture.detectChanges();
+
+    const aide: HTMLElement | null = fixture.nativeElement.querySelector('.driver-app-version');
+    expect(aide).not.toBeNull();
+    expect(aide!.textContent).toContain('version 1.2 ou plus récente');
+  });
+
+  it('un chauffeur créé sans passer par une fiche n’envoie aucun driverId', () => {
+    const creation = jest.spyOn(api, 'createUser').mockReturnValue(of({ id: 14 }) as any);
+
+    component.openUserModal();
+    remplirIdentite();
+    component.userForm.isDriverAccount = true;
+    component.onDriverAccountToggle();
+    component.saveUser();
+
+    expect(creation.mock.calls[0][0].driverId).toBeNull();
+  });
+});
+
+/**
+ * « Créer son compte » depuis l'écran Chauffeurs : l'id de la fiche voyage dans l'URL
+ * (?nouveau=chauffeur&driverId=…) et repart avec la création, pour que le compte soit
+ * relié à CETTE fiche — retrouvée par e-mail, elle manquait dès que la fiche n'en avait
+ * pas ou que l'admin le corrigeait, et une seconde fiche était créée.
+ */
+describe('UserManagementComponent — « Créer son compte » depuis une fiche chauffeur', () => {
+  let component: UserManagementComponent;
+  let fixture: any;
+  let api: ApiService;
+
+  beforeEach(async () => {
+    jest.restoreAllMocks();
+    localStorage.clear();
+    localStorage.setItem('auth_token', 'jeton-de-test');
+    (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
+
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, UserManagementComponent],
+      providers: [ApiService]
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(UserManagementComponent);
+    component = fixture.componentInstance;
+    api = TestBed.inject(ApiService);
+
+    jest.spyOn(api, 'getCurrentSubscription').mockReturnValue(of({ subscriptionType: null }) as any);
+    jest.spyOn(api, 'getRoles').mockReturnValue(of([
+      { id: 1, name: 'Administrateur', isSystem: true, isCompanyAdmin: true },
+      { id: 2, name: 'Utilisateur', isSystem: true, isCompanyAdmin: false }
+    ]) as any);
+    jest.spyOn(api, 'getUsers').mockReturnValue(of([]) as any);
+    jest.spyOn(api, 'getVehicles').mockReturnValue(of([]) as any);
+    // Le nettoyage de l'URL n'a pas d'intérêt ici.
+    jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+    // Lien de l'écran Chauffeurs, pour une fiche SANS e-mail.
+    (component as any).route = {
+      snapshot: {
+        queryParamMap: convertToParamMap({
+          nouveau: 'chauffeur', driverId: '30', prenom: 'Ali', nom: 'Ben Salah', email: '', telephone: '+21620000000'
+        })
+      }
+    };
+
+    fixture.detectChanges();
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('le formulaire s’ouvre prérempli et la création emporte l’id de la fiche', () => {
+    const creation = jest.spyOn(api, 'createUser').mockReturnValue(of({ id: 12 }) as any);
+
+    expect(component.showUserModal).toBe(true);
+    expect(component.userForm.isDriverAccount).toBe(true);
+    expect(component.userForm.firstName).toBe('Ali');
+    component.userForm.email = 'ali@transporttest.tn';   // saisi par l'admin
+    component.userForm.password = 'Secret@2026';
+
+    component.saveUser();
+
+    const charge = creation.mock.calls[0][0];
+    expect(charge.isDriverAccount).toBe(true);
+    expect(charge.driverId).toBe(30);
+  });
+
+  it('décocher « Chauffeur » crée un compte ordinaire, sans lien avec la fiche', () => {
+    const creation = jest.spyOn(api, 'createUser').mockReturnValue(of({ id: 13 }) as any);
+
+    component.userForm.email = 'ali@transporttest.tn';
+    component.userForm.password = 'Secret@2026';
+    component.userForm.isDriverAccount = false;
+    component.saveUser();
+
+    expect(creation.mock.calls[0][0].driverId).toBeNull();
+  });
+
+  it('un formulaire rouvert ensuite ne garde pas la fiche', () => {
+    const creation = jest.spyOn(api, 'createUser').mockReturnValue(of({ id: 14 }) as any);
+
+    component.closeUserModal();
+    component.openUserModal();
+    component.userForm.firstName = 'Karim';
+    component.userForm.lastName = 'Chauffeur';
+    component.userForm.email = 'karim@transporttest.tn';
+    component.userForm.password = 'Secret@2026';
+    component.userForm.isDriverAccount = true;
+    component.onDriverAccountToggle();
+    component.saveUser();
+
+    expect(creation.mock.calls[0][0].driverId).toBeNull();
   });
 });

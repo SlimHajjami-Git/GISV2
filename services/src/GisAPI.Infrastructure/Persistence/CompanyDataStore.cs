@@ -89,4 +89,50 @@ public class CompanyDataStore : ICompanyDataStore
 
     public async Task<IReadOnlyList<string>> SelectStringsAsync(string quotedTable, string quotedColumn, string where, int companyId, CancellationToken ct)
         => await _context.Database.SqlQueryRaw<string>($"SELECT {quotedColumn}::text AS \"Value\" FROM {quotedTable} WHERE ({where}) AND {quotedColumn} IS NOT NULL", companyId).ToListAsync(ct);
+
+    public async Task<int> RevokeDriverAccountsAsync(int companyId, CancellationToken ct)
+    {
+        // Ordres SQL (et non SaveChanges) : c'est ce qui s'exécute dans la transaction ouverte
+        // par BeginTransactionAsync, comme les DELETE du plan.
+        var accounts = 0;
+        foreach (var statement in DriverRevocationStatements(_context.Model))
+            accounts = await _context.Database.ExecuteSqlRawAsync(statement, new object[] { companyId }, ct);
+        return accounts;   // le dernier ordre est celui des comptes
+    }
+
+    /// <summary>
+    /// Les trois ordres de <see cref="RevokeDriverAccountsAsync"/> ({0} = société), le compte en
+    /// DERNIER pour que son nombre de lignes soit rendu. Noms de tables et de colonnes lus dans le
+    /// modèle EF plutôt qu'écrits à la main : la casse de ces trois tables est incohérente
+    /// (refresh_tokens en PascalCase, users et user_device_tokens en snake_case), et le modèle est
+    /// ce qui s'exécute déjà en production pour la même révocation (DriverAccountRules).
+    /// </summary>
+    public static IReadOnlyList<string> DriverRevocationStatements(Microsoft.EntityFrameworkCore.Metadata.IModel model)
+    {
+        var (users, u) = Map<GisAPI.Domain.Entities.User>(model);
+        var (sessions, s) = Map<GisAPI.Domain.Entities.RefreshToken>(model);
+        var (devices, d) = Map<GisAPI.Domain.Entities.UserDeviceToken>(model);
+
+        var driver = GisAPI.Domain.Entities.UserAccountTypes.Driver;
+        var driversOfCompany = $"{u("CompanyId")} = {{0}} AND {u("AccountType")} = '{driver}'";
+        var driverIds = $"SELECT {u("Id")} FROM {users} WHERE {driversOfCompany}";
+
+        return new[]
+        {
+            $"UPDATE {sessions} SET {s("RevokedAt")} = CURRENT_TIMESTAMP WHERE {s("RevokedAt")} IS NULL AND {s("UserId")} IN ({driverIds})",
+            $"UPDATE {devices} SET {d("IsActive")} = FALSE WHERE {d("IsActive")} = TRUE AND {d("UserId")} IN ({driverIds})",
+            $"UPDATE {users} SET {u("Status")} = 'inactive', {u("UpdatedAt")} = CURRENT_TIMESTAMP WHERE {driversOfCompany}",
+        };
+    }
+
+    private static (string Table, Func<string, string> Column) Map<T>(Microsoft.EntityFrameworkCore.Metadata.IModel model)
+    {
+        var entity = model.FindEntityType(typeof(T))
+            ?? throw new InvalidOperationException($"{typeof(T).Name} absent du modèle EF");
+        var table = entity.GetTableName()!;
+        var store = Microsoft.EntityFrameworkCore.Metadata.StoreObjectIdentifier.Table(table, entity.GetSchema());
+        return (CompanyDataResetPlanner.Q(table), property =>
+            CompanyDataResetPlanner.Q(entity.FindProperty(property)?.GetColumnName(store)
+                ?? throw new InvalidOperationException($"{typeof(T).Name}.{property} absent du modèle EF")));
+    }
 }

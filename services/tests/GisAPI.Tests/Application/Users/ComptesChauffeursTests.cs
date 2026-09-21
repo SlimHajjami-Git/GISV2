@@ -112,6 +112,93 @@ public class ComptesChauffeursTests
         fiche.PermitNumber.Should().Be("P-77");
     }
 
+    // « Créer son compte » depuis l'écran Chauffeurs : l'id de la fiche voyage avec le formulaire.
+    private static CreateUserCommand DepuisLaFiche(string email, int driverId, bool chauffeur = true) =>
+        new("Ali", "Ben Salah", email, "+21620000000", "Secret123!", RoleEmploye,
+            IsDriverAccount: chauffeur, DriverId: driverId);
+
+    [Fact]
+    public async Task Creer_son_compte_depuis_une_fiche_sans_email_relie_cette_fiche_et_pas_une_seconde()
+    {
+        // Driver.Email est facultatif : retrouvée par e-mail, la fiche d'origine était ratée
+        // et une seconde « Ali Ben Salah » naissait, sans véhicule, sans permis, sans tournées.
+        using var ctx = await ParcAsync();
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, FirstName = "Ali", LastName = "Ben Salah", AssignedVehicleId = 5, PermitNumber = "P-77" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var dto = await Creation(ctx).Handle(DepuisLaFiche("ali@test.com", 30), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.CountAsync()).Should().Be(1, "pas de seconde fiche");
+        var fiche = await ctx.Drivers.AsNoTracking().SingleAsync();
+        (fiche.Id, fiche.UserId, fiche.AssignedVehicleId, fiche.PermitNumber).Should().Be((30, dto.Id, 5, "P-77"));
+        fiche.Email.Should().Be("ali@test.com", "la fiche sans e-mail reçoit celui du compte");
+    }
+
+    [Fact]
+    public async Task Creer_son_compte_depuis_une_fiche_dont_l_email_a_ete_corrige_relie_quand_meme_cette_fiche()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, FirstName = "Ali", LastName = "Ben Salah", Email = "ancien@test.com" });
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, FirstName = "Autre", LastName = "Fiche", Email = "ali@test.com" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var dto = await Creation(ctx).Handle(DepuisLaFiche("ali@test.com", 30), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.AsNoTracking().SingleAsync(d => d.Id == 30)).UserId.Should().Be(dto.Id, "la fiche d'où l'on vient prime sur l'e-mail");
+        (await ctx.Drivers.AsNoTracking().SingleAsync(d => d.Id == 31)).UserId.Should().BeNull();
+        (await ctx.Drivers.AsNoTracking().SingleAsync(d => d.Id == 30)).Email.Should().Be("ancien@test.com", "un e-mail déjà renseigné n'est pas écrasé");
+    }
+
+    [Fact]
+    public async Task Creer_son_compte_depuis_une_fiche_deja_reliee_est_refuse_sans_rien_creer()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, UserId = 99, FirstName = "Ali", LastName = "Ben Salah" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Creation(ctx).Handle(DepuisLaFiche("ali@test.com", 30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>().WithMessage("*déjà reliée à un autre compte*");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AnyAsync(u => u.Email == "ali@test.com")).Should().BeFalse("aucun compte à moitié créé");
+        (await ctx.Drivers.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Creer_son_compte_depuis_la_fiche_d_une_autre_societe_est_refuse()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = 99, FirstName = "Ali", LastName = "Ailleurs" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Creation(ctx).Handle(DepuisLaFiche("ali@test.com", 30), CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AnyAsync(u => u.Email == "ali@test.com")).Should().BeFalse();
+        (await ctx.Drivers.AsNoTracking().SingleAsync()).UserId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task La_fiche_d_origine_est_ignoree_si_la_case_chauffeur_a_ete_decochee()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Drivers.Add(new Driver { Id = 30, CompanyId = CompanyId, FirstName = "Ali", LastName = "Ben Salah" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Creation(ctx).Handle(DepuisLaFiche("ali@test.com", 30, chauffeur: false), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Drivers.AsNoTracking().SingleAsync()).UserId.Should().BeNull("un compte ordinaire n'a pas de fiche");
+    }
+
     [Fact]
     public async Task Un_chauffeur_ne_compte_pas_dans_le_quota_et_n_est_pas_compte()
     {
@@ -180,6 +267,209 @@ public class ComptesChauffeursTests
         var fiche = await ctx.Drivers.AsNoTracking().SingleAsync(d => d.Id == 31);
         fiche.UserId.Should().BeNull();
         fiche.AssignedVehicleId.Should().Be(5, "la fiche et son historique restent");
+    }
+
+    [Fact]
+    public async Task Passer_en_chauffeur_coupe_rapport_journalier_heures_silencieuses_et_session_du_site()
+    {
+        using var ctx = await ParcAsync();
+        var salarie = TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "s@test.com");
+        salarie.DailyReportEmailEnabled = true;   // PDF de TOUTE la flotte chaque matin
+        salarie.QuietHoursEnabled = true;         // aurait retenu le push d'une tournée à l'aube
+        salarie.QuietHoursStart = TimeSpan.FromHours(22);
+        salarie.QuietHoursEnd = TimeSpan.FromHours(7);
+        ctx.Users.Add(salarie);
+        ctx.RefreshTokens.Add(new RefreshToken { Id = 1, UserId = 50, Token = "rt-site", ExpiresAt = DateTime.UtcNow.AddDays(6), CreatedAt = DateTime.UtcNow });
+        ctx.UserDeviceTokens.Add(new UserDeviceToken { Id = 1, UserId = 50, Token = "fcm", IsActive = true });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(Modif(50, "s@test.com", chauffeur: true), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var compte = await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 50);
+        (compte.DailyReportEmailEnabled, compte.QuietHoursEnabled).Should().Be((false, false),
+            "le chauffeur ne peut plus les régler lui-même (routes fermées)");
+        compte.Status.Should().Be("active", "la conversion n'est pas une désactivation");
+        (await ctx.RefreshTokens.AsNoTracking().SingleAsync()).RevokedAt.Should().NotBeNull(
+            "sa session du site (jeton sans claim chauffeur) ne doit pas être prolongée");
+        (await ctx.UserDeviceTokens.AsNoTracking().SingleAsync()).IsActive.Should().BeTrue(
+            "son téléphone doit recevoir ses tournées");
+    }
+
+    [Fact]
+    public async Task Modifier_un_chauffeur_deja_chauffeur_ne_revoque_pas_sa_session_mobile()
+    {
+        using var ctx = await ParcAsync();
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        ctx.Users.Add(chauffeur);
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, UserId = 51, FirstName = "Ali", LastName = "B" });
+        ctx.RefreshTokens.Add(new RefreshToken { Id = 1, UserId = 51, Token = "rt-mobile", ExpiresAt = DateTime.UtcNow.AddDays(80), CreatedAt = DateTime.UtcNow });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(Modif(51, "c@test.com", chauffeur: true), CancellationToken.None);
+
+        (await ctx.RefreshTokens.AsNoTracking().SingleAsync()).RevokedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Modifier_un_chauffeur_ne_reactive_pas_sa_fiche_inactive()
+    {
+        // L'admin passe la fiche « Inactif » puis corrige le téléphone du compte (ou le désactive) :
+        // la fiche redevenait « Actif » dans la liste et les sélecteurs de tournée.
+        using var ctx = await ParcAsync();
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        ctx.Users.Add(chauffeur);
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, UserId = 51, FirstName = "Ali", LastName = "B", Status = "inactive" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(Modif(51, "c@test.com", chauffeur: true), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var fiche = await ctx.Drivers.AsNoTracking().SingleAsync();
+        fiche.Status.Should().Be("inactive");
+        fiche.Phone.Should().Be("+21699999999", "le téléphone suit toujours le compte");
+    }
+
+    [Fact]
+    public async Task Relier_un_compte_inactif_ne_reactive_pas_la_fiche()
+    {
+        using var ctx = await ParcAsync();
+        var salarie = TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "s@test.com");
+        ctx.Users.Add(salarie);
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, FirstName = "Ali", LastName = "B", Email = "s@test.com", Status = "inactive" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await Modification(ctx).Handle(
+            new UpdateUserCommand(50, "Ali", "B", "s@test.com", null, RoleEmploye, "inactive", IsDriverAccount: true),
+            CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        var fiche = await ctx.Drivers.AsNoTracking().SingleAsync();
+        fiche.UserId.Should().Be(50);
+        fiche.Status.Should().Be("inactive", "un compte inactif ne rend pas la fiche active");
+    }
+
+    // ── Garde-fous du passage en chauffeur (mêmes règles que DeleteUser) ────────
+
+    private static UpdateUserCommandHandler ModificationPar(TestGisDbContext ctx, int auteurId) =>
+        new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId, auteurId).Object);
+
+    [Fact]
+    public async Task Un_administrateur_ne_peut_pas_passer_son_propre_compte_en_chauffeur()
+    {
+        using var ctx = await ParcAsync();
+
+        var act = async () => await Modification(ctx).Handle(Modif(AdminId, "admin@test.com", chauffeur: true), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*propre compte*");
+        ctx.ChangeTracker.Clear();
+        var admin = await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == AdminId);
+        (admin.AccountType, admin.RoleId).Should().Be((UserAccountTypes.Staff, RoleAdmin), "rien n'a changé");
+    }
+
+    [Fact]
+    public async Task Le_dernier_administrateur_actif_ne_peut_pas_etre_passe_en_chauffeur()
+    {
+        // Un gestionnaire avec le droit Utilisateurs vise l'unique administrateur.
+        using var ctx = await ParcAsync();
+        var gestionnaire = TestDataBuilder.CreateUser(id: 60, companyId: CompanyId, email: "g@test.com");
+        gestionnaire.CanUsers = true;
+        var ancienAdmin = TestDataBuilder.CreateUser(id: 61, companyId: CompanyId, email: "old@test.com");
+        ancienAdmin.RoleId = RoleAdmin;
+        ancienAdmin.Status = "inactive";   // ne se connecte plus : ne sauve pas la société
+        ctx.Users.AddRange(gestionnaire, ancienAdmin);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await ModificationPar(ctx, 60).Handle(Modif(AdminId, "admin@test.com", chauffeur: true), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*dernier administrateur*");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == AdminId)).AccountType.Should().Be(UserAccountTypes.Staff);
+        (await ctx.Drivers.CountAsync()).Should().Be(0, "aucune fiche créée");
+    }
+
+    [Fact]
+    public async Task Un_administrateur_peut_etre_passe_en_chauffeur_s_il_en_reste_un_autre()
+    {
+        using var ctx = await ParcAsync();
+        var gestionnaire = TestDataBuilder.CreateUser(id: 60, companyId: CompanyId, email: "g@test.com");
+        var autreAdmin = TestDataBuilder.CreateUser(id: 62, companyId: CompanyId, email: "a2@test.com");
+        autreAdmin.AccessLevel = "admin";
+        ctx.Users.AddRange(gestionnaire, autreAdmin);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        await ModificationPar(ctx, 60).Handle(Modif(AdminId, "admin@test.com", chauffeur: true), CancellationToken.None);
+
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == AdminId)).AccountType.Should().Be(UserAccountTypes.Driver);
+    }
+
+    [Fact]
+    public async Task Un_compte_systeme_ne_peut_pas_etre_passe_en_chauffeur()
+    {
+        using var ctx = await ParcAsync();
+        ctx.Roles.Add(new Role { Id = 3, Name = "Système", SocieteId = CompanyId, IsSystemRole = true });
+        var systeme = TestDataBuilder.CreateUser(id: 55, companyId: CompanyId, email: "sys@test.com");
+        systeme.RoleId = 3;
+        ctx.Users.Add(systeme);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Modification(ctx).Handle(Modif(55, "sys@test.com", chauffeur: true), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*système*");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 55)).AccountType.Should().Be(UserAccountTypes.Staff);
+    }
+
+    [Fact]
+    public async Task Repasser_un_chauffeur_en_salarie_rejoue_le_quota_d_utilisateurs()
+    {
+        // Plan à 2 places, pleines (admin + salarié). Créé « chauffeur » (hors quota) puis
+        // décoché : il devenait un 3e compte de gestion, à volonté.
+        using var ctx = await ParcAsync(maxUsers: 2);
+        ctx.Users.Add(TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "s@test.com"));
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        ctx.Users.Add(chauffeur);
+        ctx.Drivers.Add(new Driver { Id = 31, CompanyId = CompanyId, UserId = 51, FirstName = "Ali", LastName = "B" });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var act = async () => await Modification(ctx).Handle(Modif(51, "c@test.com", chauffeur: false), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*Limite d'utilisateurs atteinte*");
+        ctx.ChangeTracker.Clear();
+        (await ctx.Users.AsNoTracking().SingleAsync(u => u.Id == 51)).AccountType.Should().Be(UserAccountTypes.Driver);
+        (await ctx.Drivers.AsNoTracking().SingleAsync()).UserId.Should().Be(51, "le lien n'est pas coupé");
+    }
+
+    // ── Rapport journalier ─────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Le_rapport_journalier_de_la_flotte_ne_part_jamais_a_un_compte_chauffeur()
+    {
+        using var ctx = await ParcAsync();
+        var salarie = TestDataBuilder.CreateUser(id: 50, companyId: CompanyId, email: "s@test.com");
+        salarie.DailyReportEmailEnabled = true;
+        var chauffeur = TestDataBuilder.CreateUser(id: 51, companyId: CompanyId, email: "c@test.com");
+        chauffeur.AccountType = UserAccountTypes.Driver;
+        chauffeur.DailyReportEmailEnabled = true;   // posé avant la conversion
+        ctx.Users.AddRange(salarie, chauffeur);
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+
+        var destinataires = await GisAPI.Services.DailyFleetReportService.RecipientsAsync(ctx, CompanyId, CancellationToken.None);
+
+        destinataires.Select(u => u.Id).Should().Equal(50);
     }
 
     // ── Suppression de la fiche ────────────────────────────────────────────────
@@ -261,6 +551,16 @@ public class ComptesChauffeursTests
 
         await web.Should().ThrowAsync<DomainException>().WithMessage(LoginClients.DriverWebLoginRefused);
         (await ctx.AuditLogs.AsNoTracking().SingleAsync()).Action.Should().Be(LoginCommandHandler.FailedLoginAction);
+    }
+
+    [Fact]
+    public void Le_refus_dit_quelle_version_de_l_application_installer()
+    {
+        // L'application 1.1.1 ne se déclare pas « mobile » : elle affiche ce même refus. Le début
+        // de la phrase est ce que le site reconnaît (auth.service.ts, isDriverRefusal).
+        LoginClients.DriverWebLoginRefused.Should()
+            .StartWith("Ce compte est réservé à l'application mobile")
+            .And.Contain("version 1.2 ou plus récente");
     }
 
     [Fact]

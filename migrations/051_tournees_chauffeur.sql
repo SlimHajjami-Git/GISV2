@@ -10,6 +10,10 @@
 --   • tours."SentAt" / "SentByUserId" / "OpenedAt" : l'envoi (notification push au
 --     compte du chauffeur) et la première ouverture sur le téléphone ; le gestionnaire
 --     lit « Envoyée 06:50 · Ouverte 07:12 » et sait à qui il l'a envoyée.
+--     "SentByUserId" porte une clé étrangère vers users, ON DELETE SET NULL : sans elle,
+--     supprimer le compte de l'expéditeur laissait l'id pendu (UserDeletionHelper ne
+--     détache que les colonnes qu'il trouve au catalogue des clés étrangères), et la
+--     notification de tournée qui lui était destinée levait 23503 dans le moniteur.
 --   • tours."TrackingSource" / "TrackingSourceSince" : la source qui suit la tournée en ce
 --     moment (device | phone | none) et depuis quand — c'est ce que l'écran affiche
 --     (« Suivi par boîtier », « Suivi interrompu depuis 12 min »).
@@ -40,6 +44,42 @@ ALTER TABLE tours ADD COLUMN IF NOT EXISTS "SentByUserId" integer;
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "OpenedAt" timestamp without time zone;
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "TrackingSource" varchar(8);
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "TrackingSourceSince" timestamp without time zone;
+
+-- Colonne neuve, NULL partout à sa création. Même forme rejouable que tours_driver_id_fkey
+-- (050) au cas où une version antérieure de ce script aurait déjà posé la colonne sans la
+-- clé : NOT VALID, puis validée s'il n'y a aucun expéditeur disparu, sinon NOTICE chiffrée
+-- et aucune ligne modifiée.
+DO $$
+DECLARE
+    orphelines integer;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'tours_sent_by_user_id_fkey' AND conrelid = 'tours'::regclass
+    ) THEN
+        ALTER TABLE tours
+            ADD CONSTRAINT tours_sent_by_user_id_fkey
+            FOREIGN KEY ("SentByUserId") REFERENCES users(id) ON DELETE SET NULL
+            NOT VALID;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'tours_sent_by_user_id_fkey' AND conrelid = 'tours'::regclass
+          AND NOT convalidated
+    ) THEN
+        SELECT count(*) INTO orphelines
+        FROM tours t
+        WHERE t."SentByUserId" IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM users u WHERE u.id = t."SentByUserId");
+
+        IF orphelines = 0 THEN
+            ALTER TABLE tours VALIDATE CONSTRAINT tours_sent_by_user_id_fkey;
+        ELSE
+            RAISE NOTICE '051 : % tournée(s) citent un expéditeur supprimé — tours_sent_by_user_id_fkey laissée NOT VALID, aucune ligne modifiée.', orphelines;
+        END IF;
+    END IF;
+END $$;
 
 COMMENT ON COLUMN tours."SentAt" IS 'Dernier envoi au chauffeur (push) ; NULL = jamais envoyée ou chauffeur changé depuis';
 COMMENT ON COLUMN tours."TrackingSource" IS 'Source de suivi courante : device | phone | none (NULL = tournée non suivie)';

@@ -7,6 +7,7 @@ import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ToastService } from '../services/toast.service';
 import { PermissionService, ModuleKey } from '../services/permission.service';
+import { AuthService } from '../services/auth.service';
 import { AlertEmailsComponent } from './alert-emails.component';
 
 interface Role {
@@ -352,7 +353,9 @@ interface VehicleOption {
                 <!-- Compte chauffeur (décision du 21/09/2026 : « le chauffeur est un
                      utilisateur »). Le serveur fait tout le cloisonnement ; l'écran
                      reflète et propose. -->
-                <div class="form-section">
+                <!-- Jamais sur son propre compte : le passage en chauffeur coupe l'accès au
+                     site à la requête suivante, sans retour possible (le serveur refuse aussi). -->
+                <div class="form-section" *ngIf="!isEditingOwnAccount">
                   <label class="perm-check perm-driver" style="display:flex; align-items:flex-start; gap:10px;">
                     <input type="checkbox" class="driver-account-toggle" [(ngModel)]="userForm.isDriverAccount"
                            (ngModelChange)="onDriverAccountToggle()" style="margin-top:3px;">
@@ -360,8 +363,10 @@ interface VehicleOption {
                       <span class="perm-label">🚚 Chauffeur (application mobile)</span>
                       <span class="perm-desc">Ce compte se connecte uniquement à l'application mobile Calypso pour
                         recevoir ses tournées. Il n'a aucun accès au site, ne compte pas dans le quota
-                        d'utilisateurs, et une fiche Chauffeur lui est reliée (créée si elle n'existe pas,
-                        reliée si une fiche porte le même e-mail).</span>
+                        d'utilisateurs, et une fiche Chauffeur lui est reliée (celle d'où vous venez depuis
+                        l'écran Chauffeurs, sinon celle qui porte le même e-mail, sinon une fiche neuve).</span>
+                      <span class="perm-desc driver-app-version">📱 Il se connecte avec l'application Calypso
+                        <strong>version 1.2 ou plus récente</strong>, avec l'e-mail et le mot de passe de ce compte.</span>
                     </span>
                   </label>
                   <div class="driver-note" *ngIf="userForm.isDriverAccount">
@@ -1950,7 +1955,15 @@ export class UserManagementComponent implements OnInit, OnDestroy {
    * en paramètres d'URL (?nouveau=chauffeur&prenom=…). Le formulaire s'ouvre prérempli,
    * case « Chauffeur » cochée, dès que les rôles sont chargés (roleId en dépend).
    */
-  private pendingDriverPrefill: { firstName: string; lastName: string; email: string; phone: string } | null = null;
+  private pendingDriverPrefill: { driverId: number | null; firstName: string; lastName: string; email: string; phone: string } | null = null;
+
+  /**
+   * Fiche d'où vient « Créer son compte » : envoyée à la création (driverId) pour que le
+   * compte soit relié à CETTE fiche. Retrouvée par e-mail, elle manquait dès que la fiche
+   * n'en avait pas ou que l'admin le corrigeait ici — une seconde fiche était créée.
+   * Remise à null à chaque ouverture du formulaire.
+   */
+  private prefillDriverId: number | null = null;
 
   // Role Modal
   showRoleModal = false;
@@ -2049,8 +2062,19 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     private apiService: ApiService,
     private toast: ToastService,
     private cdr: ChangeDetectorRef,
-    private permissions: PermissionService
+    private permissions: PermissionService,
+    private auth: AuthService
   ) {}
+
+  /**
+   * Le formulaire modifie-t-il le compte connecté ? La case « Chauffeur » n'y est pas
+   * proposée : convertir son propre compte coupe l'accès au site à la requête suivante,
+   * sans retour possible (le serveur le refuse aussi, UpdateUserCommandHandler).
+   */
+  get isEditingOwnAccount(): boolean {
+    const me = this.auth.getCurrentUserSync()?.id;
+    return !!this.editingUser && !!me && String(this.editingUser.id) === String(me);
+  }
 
   // Offre « sans GPS » (GPA) : les fonctions liées au boîtier ne doivent pas
   // apparaître dans la grille de permissions à l'ajout d'un utilisateur
@@ -2080,7 +2104,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
   private readDriverPrefillFromRoute() {
     const qp = this.route.snapshot.queryParamMap;
     if (qp.get('nouveau') !== 'chauffeur') return;
+    const driverId = Number(qp.get('driverId'));
     this.pendingDriverPrefill = {
+      driverId: Number.isInteger(driverId) && driverId > 0 ? driverId : null,
       firstName: qp.get('prenom') || '',
       lastName: qp.get('nom') || '',
       email: qp.get('email') || '',
@@ -2095,6 +2121,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     if (!prefill || this.showUserModal) return;
     this.pendingDriverPrefill = null;
     this.openUserModal();
+    this.prefillDriverId = prefill.driverId;
     this.userForm.firstName = prefill.firstName;
     this.userForm.lastName = prefill.lastName;
     this.userForm.email = prefill.email;
@@ -2246,6 +2273,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   openUserModal(user?: User) {
     this.loadAvailableVehicles();
+    this.prefillDriverId = null;
     if (user) {
       this.editingUser = user;
       const nameParts = user.name.split(' ');
@@ -2590,6 +2618,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         roleId: this.userForm.roleId,
         isCompanyAdmin,
         isDriverAccount,
+        // Seulement pour un compte chauffeur : décocher la case après « Créer son compte »
+        // crée un compte ordinaire, sans lien avec la fiche.
+        driverId: isDriverAccount ? this.prefillDriverId : null,
         assignedVehicleIds,
         ...permissionPayload
       }).subscribe({

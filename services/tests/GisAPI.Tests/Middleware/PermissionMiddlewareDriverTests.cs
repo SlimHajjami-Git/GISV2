@@ -134,6 +134,34 @@ public class PermissionMiddlewareDriverTests
         outcome.Body.Should().Contain(PermissionMiddleware.DriverAppOnlyCode);
     }
 
+    [Theory]
+    [InlineData("GET", "/api/driver-app/me")]
+    [InlineData("GET", "/api/driver-app/tours/12")]
+    [InlineData("POST", "/api/devicetokens")]
+    public async Task Un_jeton_emis_avant_le_passage_en_chauffeur_atteint_quand_meme_ses_routes(string method, string path)
+    {
+        // Salarié déjà connecté à l'application, converti puis destinataire d'une tournée : la
+        // base fait foi dans les deux sens — ses routes s'ouvrent sans attendre un nouveau jeton.
+        await using var ctx = await SeedAsync();
+
+        var outcome = await SendAsync(ctx, method, path, ChauffeurId, claimChauffeur: false);
+
+        outcome.ReachedController.Should().BeTrue($"{method} {path}");
+        outcome.StatusCode.Should().Be(StatusCodes.Status200OK);
+    }
+
+    [Fact]
+    public async Task Un_jeton_emis_avant_le_passage_en_chauffeur_d_un_compte_desactive_reste_refuse()
+    {
+        await using var ctx = await SeedAsync(statutChauffeur: "inactive");
+
+        var outcome = await SendAsync(ctx, "GET", "/api/driver-app/tours", ChauffeurId, claimChauffeur: false);
+
+        outcome.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        outcome.ReachedController.Should().BeFalse();
+        outcome.Body.Should().Contain(PermissionMiddleware.DriverAppOnlyCode);
+    }
+
     [Fact]
     public async Task Un_salarie_n_est_pas_touche()
     {

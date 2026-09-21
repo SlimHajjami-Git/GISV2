@@ -38,8 +38,15 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         // Compte chauffeur (migration 050) : true = devient ou reste chauffeur, false =
         // redevient ordinaire, null = inchangé. Un chauffeur n'est jamais administrateur.
         var devientChauffeur = request.IsDriverAccount == true;
-        var redevientOrdinaire = request.IsDriverAccount == false && user.IsDriverAccount;
+        var etaitChauffeur = user.IsDriverAccount;
+        var redevientOrdinaire = request.IsDriverAccount == false && etaitChauffeur;
         var isCompanyAdmin = devientChauffeur ? false : request.IsCompanyAdmin;
+
+        // Contrôles AVANT toute modification (la création d'un rôle plus bas enregistre déjà).
+        if (devientChauffeur && !etaitChauffeur)
+            await EnsureCanBecomeDriverAsync(user, companyId, currentUserId, ct);
+        if (redevientOrdinaire)
+            await DriverAccountRules.EnsureStaffSeatAvailableAsync(_context, companyId, user.Id, ct);
 
         if (isCompanyAdmin == true)
         {
@@ -136,10 +143,14 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         {
             // Après les cases ci-dessus : ce que le formulaire a coché ne compte pas.
             DriverAccountRules.Apply(user);
-            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, null, ct);
             // Aucune affectation de véhicule à un chauffeur (audience des alertes).
             var affectations = await _context.UserVehicles.Where(uv => uv.UserId == user.Id).ToListAsync(ct);
             _context.UserVehicles.RemoveRange(affectations);
+            // Sa session du site (jeton sans « acct=driver ») ne doit pas être prolongée :
+            // le hub et les routes exemptées la liraient jusqu'à son expiration.
+            if (!etaitChauffeur)
+                await DriverAccountRules.RevokeSessionsAsync(_context, user.Id, ct);
         }
         else if (redevientOrdinaire)
         {
@@ -150,7 +161,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         else if (user.IsDriverAccount)
         {
             // Chauffeur qui le reste : sa fiche suit le nom et le téléphone du compte.
-            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, null, ct);
         }
 
         // Update vehicle assignments if provided
@@ -187,5 +198,37 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         }
 
         await _context.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Passage salarié → chauffeur : même protection que DeleteUserCommandHandler. Le compte
+    /// perd tout accès au site à la requête suivante et ne peut plus revenir de lui-même ;
+    /// converti, son propre compte, un compte système ou le dernier administrateur actif
+    /// laissait la société (ou la plateforme) sans personne pour annuler, sauf SQL à la main.
+    /// </summary>
+    private async Task EnsureCanBecomeDriverAsync(User user, int companyId, int currentUserId, CancellationToken ct)
+    {
+        if (user.Id == currentUserId)
+            throw new DomainException("Vous ne pouvez pas transformer votre propre compte en compte chauffeur");
+
+        var role = await _context.Roles
+            .AsNoTracking()
+            .Where(r => r.Id == user.RoleId)
+            .Select(r => new { r.IsCompanyAdmin, r.IsSystemRole })
+            .FirstOrDefaultAsync(ct);
+        if (role?.IsSystemRole == true)
+            throw new DomainException("Un compte administrateur système ne peut pas devenir un compte chauffeur");
+
+        var isCompanyAdmin = role?.IsCompanyAdmin == true || user.AccessLevel == "admin";
+        if (!isCompanyAdmin) return;
+
+        // L'administrateur restant doit pouvoir se connecter au SITE : actif, et pas chauffeur.
+        var otherAdmin = await _context.Users
+            .AsNoTracking()
+            .AnyAsync(u => u.CompanyId == companyId && u.Id != user.Id && u.Status == "active"
+                        && u.AccountType != UserAccountTypes.Driver
+                        && (u.AccessLevel == "admin" || u.Role.IsCompanyAdmin), ct);
+        if (!otherAdmin)
+            throw new DomainException("Impossible de transformer le dernier administrateur de la société en compte chauffeur");
     }
 }

@@ -1,5 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Users;
@@ -64,18 +65,57 @@ public static class DriverAccountRules
         user.AlertTaxeCirculation = false;
         user.AlertVisiteTechnique = false;
         user.AlertEntretien = false;
+        // Réglages que le chauffeur ne peut plus toucher (/api/reports et /api/users/me lui
+        // sont fermés, l'écran Utilisateurs ne les montre pas) : un salarié converti gardait
+        // le rapport journalier de TOUTE la flotte par e-mail, et ses heures silencieuses
+        // retenaient le push « Nouvelle tournée » d'un départ à l'aube.
+        user.DailyReportEmailEnabled = false;
+        user.QuietHoursEnabled = false;
     }
 
     /// <summary>
-    /// Relie le compte à sa fiche chauffeur : la fiche de la société qui porte le même
-    /// e-mail et n'a pas encore de compte, sinon une fiche neuve avec l'identité du compte.
+    /// La fiche <paramref name="driverId"/> de la société peut-elle être reliée au compte
+    /// <paramref name="userId"/> (null = compte pas encore créé) ? Refus en clair si elle
+    /// n'existe pas dans la société ou porte déjà un AUTRE compte. Appelé par CreateUser
+    /// AVANT d'enregistrer le compte : un refus ne laisse pas de compte à moitié créé.
+    /// </summary>
+    public static async Task<Driver> FindLinkableDriverAsync(
+        IGisDbContext context, int companyId, int driverId, int? userId, CancellationToken ct)
+    {
+        var fiche = await context.Drivers
+            .FirstOrDefaultAsync(d => d.Id == driverId && d.CompanyId == companyId, ct)
+            ?? throw new NotFoundException("Fiche chauffeur introuvable dans votre société.");
+        if (fiche.UserId != null && fiche.UserId != userId)
+            throw new ConflictException(
+                "Cette fiche chauffeur est déjà reliée à un autre compte : ouvrez ce compte dans Utilisateurs plutôt que d'en créer un second.");
+        return fiche;
+    }
+
+    /// <summary>
+    /// Relie le compte à sa fiche chauffeur. Ordre de recherche : la fiche déjà reliée à ce
+    /// compte ; sinon la fiche désignée par <paramref name="driverId"/> (« Créer son compte »
+    /// depuis l'écran Chauffeurs) ; sinon la fiche de la société qui porte le même e-mail et
+    /// n'a pas encore de compte ; sinon une fiche neuve avec l'identité du compte.
     /// Le compte doit déjà être enregistré (Id connu). Idempotent : une fiche déjà reliée
     /// à ce compte est simplement mise à jour (nom, téléphone).
     /// </summary>
-    public static async Task<Driver> LinkOrCreateDriverAsync(IGisDbContext context, User user, CancellationToken ct)
+    public static async Task<Driver> LinkOrCreateDriverAsync(IGisDbContext context, User user, int? driverId, CancellationToken ct)
     {
         var existing = await context.Drivers
             .FirstOrDefaultAsync(d => d.CompanyId == user.CompanyId && d.UserId == user.Id, ct);
+
+        // « Créer son compte » depuis une fiche : c'est CETTE fiche (véhicule affecté,
+        // permis, tournées déjà planifiées) que le compte doit porter. La retrouver par
+        // e-mail échouait dès que la fiche n'en avait pas (champ facultatif) ou que
+        // l'admin le corrigeait dans le formulaire : une seconde fiche était créée.
+        if (driverId is int ficheId && existing?.Id != ficheId)
+        {
+            if (existing != null)
+                throw new ConflictException(
+                    "Ce compte est déjà relié à une autre fiche chauffeur.");
+            existing = await FindLinkableDriverAsync(context, user.CompanyId, ficheId, user.Id, ct);
+        }
+
         if (existing == null)
         {
             var email = user.Email.Trim().ToLower();
@@ -87,11 +127,17 @@ public static class DriverAccountRules
 
         if (existing != null)
         {
+            // Réactivée seulement quand on la RELIE à un compte actif : une fiche que
+            // l'admin a passée « Inactif » ne redevenait « Actif » à chaque modification
+            // du compte (téléphone corrigé, compte désactivé…) sans que personne ne le demande.
+            var nouvelleLiaison = existing.UserId != user.Id;
             existing.UserId = user.Id;
             existing.FirstName = user.FirstName;
             existing.LastName = user.LastName;
             if (!string.IsNullOrWhiteSpace(user.Phone)) existing.Phone = user.Phone;
-            if (existing.Status != "active") existing.Status = "active";
+            if (string.IsNullOrWhiteSpace(existing.Email)) existing.Email = user.Email;
+            if (nouvelleLiaison && user.Status == "active" && existing.Status != "active")
+                existing.Status = "active";
             return existing;
         }
 
@@ -133,14 +179,49 @@ public static class DriverAccountRules
     {
         user.Status = "inactive";
         user.UpdatedAt = DateTime.UtcNow;
-        var now = DateTime.UtcNow;
-        var sessions = await context.RefreshTokens
-            .Where(t => t.UserId == user.Id && t.RevokedAt == null)
-            .ToListAsync(ct);
-        foreach (var s in sessions) s.RevokedAt = now;
+        await RevokeSessionsAsync(context, user.Id, ct);
         var tokens = await context.UserDeviceTokens
             .Where(t => t.UserId == user.Id && t.IsActive)
             .ToListAsync(ct);
         foreach (var t in tokens) t.IsActive = false;
+    }
+
+    /// <summary>
+    /// Révoque les sessions (jetons de rafraîchissement) du compte sans toucher à son
+    /// statut. Au passage salarié → chauffeur : sa session du site ne doit pas être
+    /// prolongée ; à la reconnexion, le site le refuse et l'application lui remet un
+    /// jeton « chauffeur ».
+    /// </summary>
+    public static async Task RevokeSessionsAsync(IGisDbContext context, int userId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var sessions = await context.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ToListAsync(ct);
+        foreach (var s in sessions) s.RevokedAt = now;
+    }
+
+    /// <summary>
+    /// Quota d'utilisateurs de l'abonnement (SubscriptionType.MaxUsers) : les comptes
+    /// chauffeurs n'y comptent pas, un compte de gestion de plus doit y trouver sa place.
+    /// Partagé par la création ET par le retour d'un chauffeur en compte ordinaire —
+    /// sans ce second appel, créer « chauffeur » puis décocher la case donnait un compte
+    /// de gestion hors quota, à volonté. <paramref name="exceptUserId"/> : le compte qui
+    /// change de type, jamais compté contre lui-même.
+    /// </summary>
+    public static async Task EnsureStaffSeatAvailableAsync(
+        IGisDbContext context, int companyId, int? exceptUserId, CancellationToken ct)
+    {
+        var company = await context.Societes
+            .Include(s => s.SubscriptionType)
+            .FirstOrDefaultAsync(s => s.Id == companyId, ct);
+        if (company?.SubscriptionType == null) return;
+
+        var currentUsers = await context.Users.CountAsync(
+            u => u.CompanyId == companyId && u.AccountType != UserAccountTypes.Driver
+                 && (exceptUserId == null || u.Id != exceptUserId), ct);
+        if (currentUsers >= company.SubscriptionType.MaxUsers)
+            throw new DomainException(
+                $"Limite d'utilisateurs atteinte ({company.SubscriptionType.MaxUsers} max pour votre abonnement)");
     }
 }

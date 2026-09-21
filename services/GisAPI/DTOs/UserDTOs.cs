@@ -64,7 +64,9 @@ public record CreateUserRequest(
     bool IsCompanyAdmin = false,
     // Compte chauffeur (migration 050) : application mobile seulement, aucune case Can*,
     // hors quota d'utilisateurs, fiche chauffeur créée ou reliée.
-    bool IsDriverAccount = false
+    bool IsDriverAccount = false,
+    // « Créer son compte » depuis l'écran Chauffeurs : id de la fiche à relier au compte.
+    int? DriverId = null
 );
 
 public record UpdateUserRequest(

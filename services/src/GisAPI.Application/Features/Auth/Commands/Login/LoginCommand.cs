@@ -17,8 +17,15 @@ public static class LoginClients
     public static bool IsMobile(string? clientType) =>
         string.Equals(clientType?.Trim(), Mobile, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Refus affiché sur le site ET dans une application trop ancienne pour se déclarer
+    /// (jusqu'à la 1.1.1, qui n'envoie ni l'en-tête ni le champ « client ») : le chauffeur
+    /// doit savoir qu'il lui faut la 1.2 ou plus récente, pas seulement « l'application ».
+    /// Même texte côté web (DRIVER_WEB_LOGIN_REFUSED, auth.service.ts), qui repère le refus
+    /// à son début : « Ce compte est réservé à l'application mobile ».
+    /// </summary>
     public const string DriverWebLoginRefused =
-        "Ce compte est réservé à l'application mobile Calypso : ouvrez l'application sur votre téléphone pour vous connecter.";
+        "Ce compte est réservé à l'application mobile Calypso, version 1.2 ou plus récente : installez-la ou mettez-la à jour sur votre téléphone pour vous connecter.";
 }
 
 /// <summary>

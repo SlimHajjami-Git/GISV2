@@ -100,6 +100,25 @@ public class DailyFleetReportService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// Destinataires du rapport journalier ET hebdomadaire d'une société : les comptes actifs
+    /// qui l'ont demandé, jamais un compte chauffeur. Le rapport couvre TOUTE la flotte ;
+    /// un salarié passé chauffeur gardait sinon son abonnement (il ne peut plus le couper,
+    /// /api/reports lui est fermé). DriverAccountRules.Apply coupe déjà le drapeau : ce
+    /// filtre est la ceinture, comme dans NotificationAudience.
+    /// </summary>
+    internal static Task<List<User>> RecipientsAsync(IGisDbContext context, int companyId, CancellationToken ct) =>
+        context.Users
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(u => u.CompanyId == companyId
+                     && u.DailyReportEmailEnabled
+                     && u.Status == "active"
+                     && u.AccountType != UserAccountTypes.Driver
+                     && u.Email != null
+                     && u.Email != "")
+            .ToListAsync(ct);
+
     private async Task SendAllAsync(IServiceScope scope, CancellationToken ct)
     {
         // Yesterday, TN. The report handler shifts the day window by the UTC+1
@@ -131,15 +150,7 @@ public class DailyFleetReportService : BackgroundService
                 if (societe.LastDailyReportSentDate.HasValue && societe.LastDailyReportSentDate.Value >= reportDateOnly)
                     continue;
 
-                var users = await context.Users
-                    .IgnoreQueryFilters()
-                    .AsNoTracking()
-                    .Where(u => u.CompanyId == societe.Id
-                             && u.DailyReportEmailEnabled
-                             && u.Status == "active"
-                             && u.Email != null
-                             && u.Email != "")
-                    .ToListAsync(ct);
+                var users = await RecipientsAsync(context, societe.Id, ct);
 
                 if (users.Count == 0)
                     continue;
@@ -235,15 +246,7 @@ public class DailyFleetReportService : BackgroundService
                 if (societe.LastWeeklyReportSentDate.HasValue && societe.LastWeeklyReportSentDate.Value >= weekTag)
                     continue;
 
-                var users = await context.Users
-                    .IgnoreQueryFilters()
-                    .AsNoTracking()
-                    .Where(u => u.CompanyId == societe.Id
-                             && u.DailyReportEmailEnabled
-                             && u.Status == "active"
-                             && u.Email != null
-                             && u.Email != "")
-                    .ToListAsync(ct);
+                var users = await RecipientsAsync(context, societe.Id, ct);
                 if (users.Count == 0)
                     continue;
 

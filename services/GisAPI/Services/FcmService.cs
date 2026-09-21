@@ -25,8 +25,11 @@ public static class FcmChannels
     /// <summary>
     /// Canal selon le DESTINATAIRE, pas le type : seul un compte chauffeur (application ≥ 1.2.0,
     /// qui crée le canal « tours ») le reçoit ; un gestionnaire sur l'application 1.1.1 ne
-    /// connaît que « immobilization » — Android jette en silence un push adressé à un canal
-    /// inexistant, ses alertes de tournée auraient disparu jusqu'à sa mise à jour.
+    /// connaît que « immobilization ». Un push adressé à un canal que l'application n'a pas
+    /// créé n'est pas perdu, mais le SDK FCM le range dans son canal de repli « Divers »
+    /// (importance par défaut) : plus de bannière en haut de l'écran, et les réglages de son
+    /// et d'écran verrouillé du canal « immobilization » ne s'appliquent plus — ses alertes
+    /// de tournée seraient devenues discrètes jusqu'à sa mise à jour.
     /// </summary>
     public static string ForRecipient(bool isDriverAccount) => isDriverAccount ? Tours : Immobilization;
 }

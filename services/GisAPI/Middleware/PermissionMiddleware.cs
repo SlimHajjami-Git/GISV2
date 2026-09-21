@@ -585,11 +585,20 @@ public class PermissionMiddleware
         }
 
         // Compte passé « chauffeur » APRÈS l'émission de son jeton (pas de claim « acct ») :
-        // la garde du haut ne l'a pas vu, la ligne en base tranche. Les routes exemptées
-        // plus haut restent ouvertes à ce jeton jusqu'à son expiration, comme pour un
-        // compte supprimé (voir le commentaire du chargement ci-dessus).
+        // la garde du haut ne l'a pas vu, la ligne en base tranche — dans les DEUX sens.
+        // Ses propres routes lui sont ouvertes tout de suite (un salarié déjà connecté à
+        // l'application, converti puis destinataire d'une tournée, recevait 403 sur SA
+        // tournée jusqu'à l'expiration du jeton) ; tout le reste lui est fermé. Les routes
+        // exemptées plus haut restent ouvertes à ce jeton jusqu'à son expiration, comme pour
+        // un compte supprimé ; la conversion révoque sa session pour qu'il n'en obtienne pas
+        // d'autre, et le hub GPS relit la base à la connexion.
         if (currentUser.IsDriverAccount)
         {
+            if (IsDriverAppRoute(path) && currentUser.Status == "active")
+            {
+                await _next(context);
+                return;
+            }
             context.Response.StatusCode = 403;
             await context.Response.WriteAsJsonAsync(new { message = DriverAppOnlyMessage, code = DriverAppOnlyCode });
             return;

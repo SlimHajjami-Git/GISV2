@@ -1,5 +1,8 @@
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
 namespace GisAPI.Hubs;
@@ -8,28 +11,32 @@ namespace GisAPI.Hubs;
 public class GpsHub : Hub
 {
     private readonly ILogger<GpsHub> _logger;
+    private readonly IGisDbContext _context;
 
-    public GpsHub(ILogger<GpsHub> logger)
+    public GpsHub(ILogger<GpsHub> logger, IGisDbContext context)
     {
         _logger = logger;
+        _context = context;
     }
 
     public override async Task OnConnectedAsync()
     {
+        var companyId = Context.User?.FindFirst("companyId")?.Value;
+        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         // Compte chauffeur (migration 050) : jamais sur le hub de la flotte — le groupe
         // company_{id} diffuse les positions de tous les véhicules, et SubscribeToVehicle
         // ne vérifie pas l'appartenance. Défense en profondeur : PermissionMiddleware refuse
-        // déjà /hubs/* et /api/hubs/* à ce type de compte.
-        if (Context.User?.FindFirst(GisAPI.Domain.Entities.JwtClaims.AccountType)?.Value
-            == GisAPI.Domain.Entities.UserAccountTypes.Driver)
+        // déjà /hubs/* et /api/hubs/* à un jeton « chauffeur ». Mais un salarié converti
+        // garde un jeton SANS ce claim jusqu'à son expiration (24 h) : la ligne en base
+        // tranche aussi, lue une fois à la connexion (pas à chaque message).
+        if (Context.User?.FindFirst(JwtClaims.AccountType)?.Value == UserAccountTypes.Driver
+            || await IsDriverAccountInDatabaseAsync(userId))
         {
             _logger.LogWarning("Hub GPS refusé à un compte chauffeur ({ConnectionId})", Context.ConnectionId);
             Context.Abort();
             return;
         }
-
-        var companyId = Context.User?.FindFirst("companyId")?.Value;
-        var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         if (!string.IsNullOrEmpty(companyId))
         {
@@ -48,6 +55,17 @@ public class GpsHub : Hub
         }
 
         await base.OnConnectedAsync();
+    }
+
+    private async Task<bool> IsDriverAccountInDatabaseAsync(string? userId)
+    {
+        if (!int.TryParse(userId, out var id)) return false;
+        var accountType = await _context.Users
+            .IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.Id == id)
+            .Select(u => u.AccountType)
+            .FirstOrDefaultAsync(Context.ConnectionAborted);
+        return accountType == UserAccountTypes.Driver;
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

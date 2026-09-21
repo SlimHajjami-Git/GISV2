@@ -95,6 +95,21 @@ describe('AuthService — compte chauffeur refusé sur le site', () => {
     expect(erreur).toBeNull();
   });
 
+  it('le refus dit quelle version de l’application installer, et le texte du serveur est reconnu', () => {
+    // Texte EXACT de LoginClients.DriverWebLoginRefused (API) : c'est ce que reçoivent le
+    // site et l'application 1.1.1, qui ne se déclare pas « mobile ».
+    const texteServeur = "Ce compte est réservé à l'application mobile Calypso, version 1.2 ou plus récente : "
+      + "installez-la ou mettez-la à jour sur votre téléphone pour vous connecter.";
+    expect(DRIVER_WEB_LOGIN_REFUSED).toBe(texteServeur);
+
+    let erreur: any = null;
+    service.login('karim@transporttest.tn', 'Secret@2026').subscribe({ error: e => { erreur = e; } });
+    httpMock.expectOne('/api/auth/login').flush({ message: texteServeur }, { status: 400, statusText: 'Bad Request' });
+
+    expect(erreur.driverAccount).toBe(true);
+    expect(erreur.error.message).toContain('version 1.2 ou plus récente');
+  });
+
   it('un compte ordinaire ouvre sa session avec accountType, relu tel quel au démarrage (F5)', () => {
     service.login('amel@transporttest.tn', 'Secret@2026').subscribe();
     httpMock.expectOne('/api/auth/login').flush({

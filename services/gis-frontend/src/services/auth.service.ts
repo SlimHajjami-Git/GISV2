@@ -81,10 +81,13 @@ export interface AuthUser {
 
 /**
  * Message affiché quand un compte chauffeur tente d'ouvrir le site. Le serveur
- * refuse déjà (400, même texte) ; le contrôle côté client est une ceinture.
+ * refuse déjà (400, même texte que LoginClients.DriverWebLoginRefused) ; le contrôle
+ * côté client est une ceinture. La version minimale est dite : l'application 1.1.1 ne
+ * se déclare pas « mobile » et reçoit le même refus. Le début de la phrase est ce que
+ * isDriverRefusal() reconnaît : ne pas le changer sans lui.
  */
 export const DRIVER_WEB_LOGIN_REFUSED =
-  "Ce compte est réservé à l'application mobile Calypso : ouvrez l'application sur votre téléphone pour vous connecter.";
+  "Ce compte est réservé à l'application mobile Calypso, version 1.2 ou plus récente : installez-la ou mettez-la à jour sur votre téléphone pour vous connecter.";
 
 export interface AuthResponse {
   token: string;

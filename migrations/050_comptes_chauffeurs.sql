@@ -19,8 +19,14 @@
 --     tours."DriverId") au compte qui se connecte. ON DELETE SET NULL : supprimer le
 --     compte laisse la fiche et son historique ; unique partiel : un compte, une fiche.
 --   • `tours."DriverId"` n'avait AUCUNE clé étrangère : ajoutée, ON DELETE SET NULL,
---     même règle. Sur TN toutes les tournées ont "DriverId" NULL : aucune ligne à
---     vérifier.
+--     même règle. Créée NOT VALID, puis validée seulement si aucune tournée ne désigne
+--     une fiche disparue : depuis le lot 0 (18/09) une tournée peut désigner une fiche,
+--     et supprimer la fiche (DELETE physique, sans clé en base) laissait "DriverId"
+--     pendu. Une validation immédiate levait alors 23503 au milieu du script, qui n'était
+--     plus rejouable tant que personne ne corrigeait les lignes à la main. NOT VALID : la
+--     contrainte vaut tout de suite pour les nouvelles écritures et ON DELETE SET NULL
+--     fonctionne ; les orphelins éventuels sont COMPTÉS (RAISE NOTICE), jamais modifiés —
+--     les vider ou les rattacher se décide avec Slim, chiffres à l'appui.
 --
 -- AUCUNE DONNÉE MODIFIÉE — tous les comptes existants sont `staff` par défaut.
 --
@@ -76,7 +82,11 @@ COMMENT ON COLUMN drivers.user_id IS
     'Compte de connexion du chauffeur (users.account_type = driver), NULL = fiche sans accès à l''application';
 
 -- tours."DriverId" : clé étrangère manquante ------------------------------------
+-- Rejouable : créée si absente (NOT VALID), validée tant qu'elle ne l'est pas et
+-- qu'aucune tournée n'est orpheline ; sinon une NOTICE chiffrée, aucune donnée touchée.
 DO $$
+DECLARE
+    orphelines integer;
 BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM pg_constraint
@@ -84,6 +94,24 @@ BEGIN
     ) THEN
         ALTER TABLE tours
             ADD CONSTRAINT tours_driver_id_fkey
-            FOREIGN KEY ("DriverId") REFERENCES drivers(id) ON DELETE SET NULL;
+            FOREIGN KEY ("DriverId") REFERENCES drivers(id) ON DELETE SET NULL
+            NOT VALID;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'tours_driver_id_fkey' AND conrelid = 'tours'::regclass
+          AND NOT convalidated
+    ) THEN
+        SELECT count(*) INTO orphelines
+        FROM tours t
+        WHERE t."DriverId" IS NOT NULL
+          AND NOT EXISTS (SELECT 1 FROM drivers d WHERE d.id = t."DriverId");
+
+        IF orphelines = 0 THEN
+            ALTER TABLE tours VALIDATE CONSTRAINT tours_driver_id_fkey;
+        ELSE
+            RAISE NOTICE '050 : % tournée(s) désignent une fiche chauffeur supprimée — tours_driver_id_fkey laissée NOT VALID, aucune ligne modifiée. Rejouer la 050 une fois ces lignes traitées.', orphelines;
+        END IF;
     END IF;
 END $$;

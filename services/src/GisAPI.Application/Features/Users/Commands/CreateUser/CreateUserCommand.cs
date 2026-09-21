@@ -63,5 +63,8 @@ public record CreateUserCommand(
     bool AlertEntretien = false,
     // Admin status is EXPLICIT (decoupled from permissions): true => company_admin role
     bool IsCompanyAdmin = false,
-    bool IsDriverAccount = false
+    bool IsDriverAccount = false,
+    // « Créer son compte » depuis l'écran Chauffeurs : la fiche que ce compte doit porter
+    // (véhicule affecté, permis, tournées). Ignoré si IsDriverAccount est faux.
+    int? DriverId = null
 ) : ICommand<UserListDto>;

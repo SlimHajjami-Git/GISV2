@@ -196,8 +196,10 @@
                       Application : {{ driver.accountStatus === 'active' ? 'active' : 'désactivée' }}
                     </span>
                   } @else {
+                    <!-- driverId : le compte créé est relié à CETTE fiche (véhicule, permis,
+                         tournées), même sans e-mail ou si l'e-mail est corrigé dans le formulaire. -->
                     <a class="app-create-link" [routerLink]="['/users']"
-                       [queryParams]="{ nouveau: 'chauffeur', prenom: driver.firstName || '', nom: driver.lastName || '', email: driver.email || '', telephone: driver.phone || '' }"
+                       [queryParams]="{ nouveau: 'chauffeur', driverId: driver.id, prenom: driver.firstName || '', nom: driver.lastName || '', email: driver.email || '', telephone: driver.phone || '' }"
                        (click)="$event.stopPropagation()"
                        title="Ouvre le formulaire Utilisateurs prérempli, case « Chauffeur (application mobile) » cochée">
                       Créer son compte

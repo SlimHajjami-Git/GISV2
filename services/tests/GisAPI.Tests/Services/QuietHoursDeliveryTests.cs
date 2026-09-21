@@ -7,6 +7,7 @@ using GisAPI.Middleware;
 using GisAPI.Services;
 using GisAPI.Tests.Common;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -38,7 +39,7 @@ public class QuietHoursDeliveryTests
             : (Wrap(local + TimeSpan.FromHours(2)), Wrap(local + TimeSpan.FromHours(4)));
     }
 
-    private static async Task<Harness> BuildAsync(bool enabled, bool windowContainsNow)
+    private static async Task<Harness> BuildAsync(bool enabled, bool windowContainsNow, string accountType = UserAccountTypes.Staff)
     {
         var ctx = TestDbContextFactory.Create();
         var (start, end) = Window(windowContainsNow);
@@ -46,7 +47,7 @@ public class QuietHoursDeliveryTests
         ctx.Users.Add(new User
         {
             Id = UserId, FirstName = "Karim", Email = "recette@example.test", PasswordHash = "x", RoleId = 20,
-            CompanyId = CompanyId, Status = "active",
+            CompanyId = CompanyId, Status = "active", AccountType = accountType,
             QuietHoursEnabled = enabled, QuietHoursStart = start, QuietHoursEnd = end,
         });
         await ctx.SaveChangesAsync();
@@ -142,6 +143,40 @@ public class QuietHoursDeliveryTests
 
         SilentFlag(h.SignalR.Single()).Should().BeTrue("ce n'est pas la priorité qui décide, mais le type");
         VerifyFcm(h.Fcm, Times.Never());
+    }
+
+    // ── Compte chauffeur (migration 050) ─────────────────────────────────────────
+
+    [Fact]
+    public async Task Un_chauffeur_recoit_sa_tournee_meme_dans_des_heures_silencieuses_heritees()
+    {
+        // Salarié converti avec une plage 22:00→07:00 : « Nouvelle tournée » (high) envoyée à
+        // 06:30 n'était pas poussée, et sans cloche (ligne marquée lue) il ne la voyait jamais.
+        var h = await BuildAsync(enabled: true, windowContainsNow: true, accountType: UserAccountTypes.Driver);
+
+        await h.Service.CreateAndSendAsync(CompanyId, UserId, "tour_assigned", "Nouvelle tournée", "Départ 07:00", priority: "high");
+
+        VerifyFcm(h.Fcm, Times.Once());
+        SilentFlag(h.SignalR.Single()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Une_notification_refusee_par_la_base_ne_bloque_pas_l_enregistrement_suivant_du_meme_contexte()
+    {
+        // Destinataire supprimé (id pendu) : l'INSERT lève une violation de clé étrangère. La
+        // notification restait « Added » dans le contexte partagé du scope, et le SaveChanges
+        // suivant de l'appelant (clôture de tournée du moniteur) échouait à son tour.
+        var h = await BuildAsync(enabled: false, windowContainsNow: false);
+        await h.Ctx.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
+
+        var envoi = async () => await h.Service.CreateAndSendAsync(CompanyId, 999, "tour_waypoint", "Étape", "Arrivé", priority: "normal");
+        await envoi.Should().ThrowAsync<DbUpdateException>();
+
+        h.Ctx.ChangeTracker.Entries<Notification>().Should().BeEmpty("la ligne refusée est abandonnée");
+        var societe = await h.Ctx.Societes.SingleAsync(s => s.Id == CompanyId);
+        societe.Name = "Belive GPA (suivi)";   // l'écriture suivante de l'appelant
+        var enregistrement = async () => await h.Ctx.SaveChangesAsync();
+        await enregistrement.Should().NotThrowAsync();
     }
 
     // ── Routes « moi-même » ouvertes sans le droit Utilisateurs ─────────────────
