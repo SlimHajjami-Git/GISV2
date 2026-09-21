@@ -24,12 +24,16 @@ export const LOCATION_CONSENT_KEY = 'driver_location_consent';
 @Injectable({ providedIn: 'root' })
 export class LocationConsentService {
   static readonly DISCLOSURE_HEADER = 'Votre position pendant la tournée';
+  // Texte examiné par Google Play : il doit décrire EXACTEMENT le comportement. Le
+  // plugin arrête le suivi quand on retire l'application des applications récentes —
+  // l'ancienne phrase « y compris lorsque l'application est fermée » était fausse.
   static readonly DISCLOSURE_MESSAGE =
-    'Calypso collecte la position de ce téléphone UNIQUEMENT pendant une tournée en cours, ' +
-    'y compris lorsque l\'application est fermée ou en arrière-plan, afin de transmettre ' +
-    'votre avancement à votre gestionnaire et de prendre le relais du boîtier GPS du véhicule. ' +
+    'Calypso collecte la position précise de ce téléphone UNIQUEMENT pendant une tournée en cours, ' +
+    'y compris en arrière-plan et écran verrouillé, afin de transmettre votre avancement à votre ' +
+    'gestionnaire et de prendre le relais du boîtier GPS du véhicule. ' +
     'Une notification « Tournée en cours » reste affichée tant que le suivi est actif. ' +
-    'Le suivi s\'arrête à l\'arrivée à destination, à la déconnexion, ou au plus tard 12 h après le départ.';
+    'Le suivi s\'arrête à l\'arrivée à destination, à la déconnexion, ou au plus tard 12 h après le départ. ' +
+    'Si vous fermez l\'application (en la retirant des applications récentes), le suivi s\'interrompt.';
 
   static readonly DISABLED_HEADER = 'Localisation du téléphone désactivée';
   static readonly DISABLED_MESSAGE =

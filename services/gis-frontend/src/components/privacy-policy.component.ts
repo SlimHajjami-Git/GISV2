@@ -69,6 +69,19 @@ import { RouterLink } from '@angular/router';
               Les données de localisation peuvent être collectées même lorsque l'application
               fonctionne en arrière-plan, selon les autorisations accordées.
             </p>
+            <p>
+              <strong>Position du téléphone du chauffeur pendant une tournée.</strong>
+              Lorsqu'un chauffeur utilise l'application Calypso avec un compte chauffeur, la
+              position précise de son téléphone (latitude, longitude, précision, vitesse, cap,
+              heure de la mesure) et le niveau de batterie sont collectés UNIQUEMENT entre le
+              moment où il déclare son départ (« Je pars ») et l'arrivée à destination, sa
+              déconnexion ou au plus tard 12 heures après le départ, y compris en arrière-plan
+              (une notification « Tournée en cours » reste alors affichée). Ces données servent
+              à suivre l'avancement de la tournée et à relayer le boîtier GPS du véhicule ; elles
+              sont transmises aux seuls gestionnaires de la société qui emploie le chauffeur et
+              conservées avec l'historique de la tournée. Le chauffeur peut refuser la
+              localisation : la tournée est alors suivie par le seul boîtier du véhicule.
+            </p>
 
             <h3>c. Données techniques</h3>
             <ul>
@@ -148,7 +161,7 @@ import { RouterLink } from '@angular/router';
             <h2>8. Autorisations de l'application</h2>
             <p>Calypso Mobile peut demander les autorisations suivantes :</p>
             <ul>
-              <li><strong>Localisation</strong> : pour le suivi des véhicules</li>
+              <li><strong>Localisation</strong> : pour le suivi des véhicules et, pour un compte chauffeur, le suivi de sa tournée en cours</li>
               <li><strong>Accès Internet</strong> : pour la synchronisation des données</li>
               <li><strong>Notifications</strong> : pour les alertes et mises à jour</li>
             </ul>
