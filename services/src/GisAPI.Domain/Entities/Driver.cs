@@ -3,13 +3,23 @@ using GisAPI.Domain.Common;
 namespace GisAPI.Domain.Entities;
 
 /// <summary>
-/// A driver is a standalone record (name, permit, contact info). Drivers do
-/// not log in, do not have credentials, and do not consume a user seat.
-/// They're just employees of the fleet that the company tracks for permit
-/// expiry, vehicle assignment, trip attribution, scoring, etc.
+/// A driver is a standalone record (name, permit, contact info) that the company
+/// tracks for permit expiry, vehicle assignment, trip attribution, scoring, etc.
+/// It does not consume a user seat.
+///
+/// Depuis le 21/09/2026 (migration 050), une fiche PEUT être reliée à un compte de
+/// connexion (<see cref="UserId"/>, users.account_type = driver) : c'est ce compte
+/// qui ouvre l'application mobile et y reçoit les tournées. Sans compte, la fiche
+/// reste ce qu'elle a toujours été.
 /// </summary>
 public class Driver : TenantEntity
 {
+    /// <summary>
+    /// Compte chauffeur relié (users.id), NULL = pas d'accès à l'application. Scalaire
+    /// seulement, pas de navigation : même raison que <see cref="AssignedVehicleId"/>.
+    /// </summary>
+    public int? UserId { get; set; }
+
     // Identity — previously lived on User, now native to Driver.
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;

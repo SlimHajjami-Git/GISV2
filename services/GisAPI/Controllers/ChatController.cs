@@ -35,7 +35,9 @@ public class ChatController : ControllerBase
 
         var users = await _context.Users
             .AsNoTracking()
-            .Where(u => u.Id != userId && u.Status == "active")
+            .Where(u => u.Id != userId && u.Status == "active"
+                        // Jamais un compte chauffeur (migration 050) : l’annuaire de la société ne le concerne pas.
+                        && u.AccountType != GisAPI.Domain.Entities.UserAccountTypes.Driver)
             .Select(u => new
             {
                 u.Id,

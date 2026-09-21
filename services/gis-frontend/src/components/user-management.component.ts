@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -78,6 +78,12 @@ interface User {
   lastLoginAt?: string;
   assignedVehicleIds?: number[];
   userPermissions?: UserPermissions;
+  /**
+   * « Le chauffeur est un utilisateur » (décision du 21/09/2026) : 'driver' = compte
+   * réservé à l'application mobile (tournées), sans droit de gestion ni quota ;
+   * 'staff' (ou absent) = compte ordinaire du site.
+   */
+  accountType?: 'staff' | 'driver';
 }
 
 interface VehicleOption {
@@ -177,6 +183,17 @@ interface VehicleOption {
               <span class="stat-label">Inactifs</span>
             </div>
           </div>
+          <div class="stat-card stat-driver-accounts">
+            <div class="stat-icon driver-accounts">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
+              </svg>
+            </div>
+            <div class="stat-info">
+              <span class="stat-value">{{ getDriverAccountsCount() }}</span>
+              <span class="stat-label">Chauffeurs (app mobile)</span>
+            </div>
+          </div>
         </div>
 
         <!-- Users Table -->
@@ -219,9 +236,17 @@ interface VehicleOption {
                     </div>
                   </td>
                   <td>
-                    <span class="role-badge" [class.admin]="user.isCompanyAdmin">
-                      {{ user.isCompanyAdmin ? 'Admin' : getPermissionsLabel(user) }}
+                    <!-- Un compte chauffeur n'a aucune permission de gestion : le badge
+                         remplace le libellé « N modules », qui n'aurait aucun sens. -->
+                    <span class="role-badge driver" *ngIf="user.accountType === 'driver'; else permissionsBadge"
+                          title="Compte réservé à l'application mobile Calypso (tournées)">
+                      🚚 Chauffeur
                     </span>
+                    <ng-template #permissionsBadge>
+                      <span class="role-badge" [class.admin]="user.isCompanyAdmin">
+                        {{ user.isCompanyAdmin ? 'Admin' : getPermissionsLabel(user) }}
+                      </span>
+                    </ng-template>
                   </td>
                   <td>
                     <span class="status-badge" [class]="user.status">
@@ -275,15 +300,16 @@ interface VehicleOption {
               </button>
             </div>
 
-            <!-- Step Tabs -->
+            <!-- Step Tabs — un compte chauffeur n'a ni permissions ni véhicules :
+                 seules les étapes renvoyées par getUserSteps() sont proposées. -->
             <div class="step-tabs">
               <button class="step-tab" [class.active]="userModalStep === 1" (click)="userModalStep = 1">
                 <span class="step-num">1</span> Général
               </button>
-              <button class="step-tab" [class.active]="userModalStep === 2" (click)="userModalStep = 2">
+              <button class="step-tab" *ngIf="!userForm.isDriverAccount" [class.active]="userModalStep === 2" (click)="userModalStep = 2">
                 <span class="step-num">2</span> Permissions
               </button>
-              <button class="step-tab" [class.active]="userModalStep === 3" (click)="userModalStep = 3">
+              <button class="step-tab" *ngIf="!userForm.isDriverAccount" [class.active]="userModalStep === 3" (click)="userModalStep = 3">
                 <span class="step-num">3</span> Véhicules
               </button>
             </div>
@@ -320,6 +346,26 @@ interface VehicleOption {
                         <option value="inactive">Inactif</option>
                       </select>
                     </div>
+                  </div>
+                </div>
+
+                <!-- Compte chauffeur (décision du 21/09/2026 : « le chauffeur est un
+                     utilisateur »). Le serveur fait tout le cloisonnement ; l'écran
+                     reflète et propose. -->
+                <div class="form-section">
+                  <label class="perm-check perm-driver" style="display:flex; align-items:flex-start; gap:10px;">
+                    <input type="checkbox" class="driver-account-toggle" [(ngModel)]="userForm.isDriverAccount"
+                           (ngModelChange)="onDriverAccountToggle()" style="margin-top:3px;">
+                    <span style="display:flex; flex-direction:column;">
+                      <span class="perm-label">🚚 Chauffeur (application mobile)</span>
+                      <span class="perm-desc">Ce compte se connecte uniquement à l'application mobile Calypso pour
+                        recevoir ses tournées. Il n'a aucun accès au site, ne compte pas dans le quota
+                        d'utilisateurs, et une fiche Chauffeur lui est reliée (créée si elle n'existe pas,
+                        reliée si une fiche porte le même e-mail).</span>
+                    </span>
+                  </label>
+                  <div class="driver-note" *ngIf="userForm.isDriverAccount">
+                    Un chauffeur n'a aucun droit de gestion : il ne voit que ses tournées dans l'application.
                   </div>
                 </div>
               </div>
@@ -751,7 +797,7 @@ interface VehicleOption {
     /* Stats Row */
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(4, 1fr);
+      grid-template-columns: repeat(5, 1fr);
       gap: 16px;
       margin-bottom: 24px;
     }
@@ -779,6 +825,7 @@ interface VehicleOption {
     .stat-icon.active { background: #d1fae5; color: #059669; }
     .stat-icon.drivers { background: #fef3c7; color: #d97706; }
     .stat-icon.supervisors { background: #dbeafe; color: #2563eb; }
+    .stat-icon.driver-accounts { background: #d1fae5; color: #059669; }
 
     .stat-info {
       display: flex;
@@ -930,6 +977,13 @@ interface VehicleOption {
     .role-badge.admin {
       background: #fef3c7;
       color: #92400e;
+    }
+
+    /* Compte chauffeur : application mobile seulement */
+    .role-badge.driver {
+      background: #d1fae5;
+      color: #065f46;
+      white-space: nowrap;
     }
 
     .type-badge {
@@ -1667,6 +1721,9 @@ interface VehicleOption {
     .perm-desc { font-size:11px; color:#94a3b8; width:100%; padding-left:22px; }
     .perm-check.perm-critical { border-color:#fecaca; background:#fff5f5; }
     .perm-check.perm-critical:hover { border-color:#f87171; background:#fef2f2; }
+    .perm-check.perm-driver { border-color:#a7f3d0; background:#f0fdf4; }
+    .perm-check.perm-driver:hover { border-color:#34d399; background:#ecfdf5; }
+    .driver-note { margin-top:10px; padding:10px 12px; border-radius:8px; background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46; font-size:12px; line-height:1.5; }
     .perm-actions { display:flex; gap:12px; margin-top:12px; }
     .btn-text { background:none; border:none; color:#6366f1; font-size:12px; font-weight:500; cursor:pointer; padding:4px 8px; border-radius:4px; }
     .btn-text:hover { background:#f0f0ff; }
@@ -1839,6 +1896,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     roleId: 0,
     status: 'active',
     isCompanyAdmin: false,
+    // Compte chauffeur (application mobile) : recopié dans les DEUX branches de
+    // openUserModal et les DEUX payloads de saveUser, sinon il se perd.
+    isDriverAccount: false,
     assignedVehicleIds: [] as number[],
     canMonitoring: true,
     canVehicles: true,
@@ -1884,6 +1944,13 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     alertEntretien: false
   };
   availableVehicles: VehicleOption[] = [];
+
+  /**
+   * Arrivée depuis l'écran Chauffeurs (« Créer son compte ») : la fiche est passée
+   * en paramètres d'URL (?nouveau=chauffeur&prenom=…). Le formulaire s'ouvre prérempli,
+   * case « Chauffeur » cochée, dès que les rôles sont chargés (roleId en dépend).
+   */
+  private pendingDriverPrefill: { firstName: string; lastName: string; email: string; phone: string } | null = null;
 
   // Role Modal
   showRoleModal = false;
@@ -1978,6 +2045,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   constructor(
     private router: Router,
+    private route: ActivatedRoute,
     private apiService: ApiService,
     private toast: ToastService,
     private cdr: ChangeDetectorRef,
@@ -2005,7 +2073,35 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.reportPermissions.forEach(r => {
       this.reportLabels[r.key] = r.label;
     });
+    this.readDriverPrefillFromRoute();
     this.loadData();
+  }
+
+  private readDriverPrefillFromRoute() {
+    const qp = this.route.snapshot.queryParamMap;
+    if (qp.get('nouveau') !== 'chauffeur') return;
+    this.pendingDriverPrefill = {
+      firstName: qp.get('prenom') || '',
+      lastName: qp.get('nom') || '',
+      email: qp.get('email') || '',
+      phone: qp.get('telephone') || ''
+    };
+    // L'URL est nettoyée tout de suite : un F5 ne doit pas rouvrir le formulaire.
+    this.router.navigate([], { relativeTo: this.route, queryParams: {}, replaceUrl: true });
+  }
+
+  private openPendingDriverModal() {
+    const prefill = this.pendingDriverPrefill;
+    if (!prefill || this.showUserModal) return;
+    this.pendingDriverPrefill = null;
+    this.openUserModal();
+    this.userForm.firstName = prefill.firstName;
+    this.userForm.lastName = prefill.lastName;
+    this.userForm.email = prefill.email;
+    this.userForm.phone = prefill.phone;
+    this.userForm.isDriverAccount = true;
+    this.onDriverAccountToggle();
+    this.cdr.detectChanges();
   }
 
   loadData() {
@@ -2102,6 +2198,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       next: (roles) => {
         this.roles = roles;
         this.cdr.detectChanges();
+        this.openPendingDriverModal();
       },
       error: (err) => {
         console.error('Error loading roles:', err);
@@ -2162,6 +2259,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         roleId: user.roleId,
         status: user.status,
         isCompanyAdmin: user.isCompanyAdmin ?? false,
+        isDriverAccount: user.accountType === 'driver',
         assignedVehicleIds: [...(user.assignedVehicleIds || [])],
         canMonitoring: up?.canMonitoring ?? true,
         canVehicles: up?.canVehicles ?? true,
@@ -2216,6 +2314,7 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         roleId: this.roles.find(r => !r.isCompanyAdmin)?.id || (this.roles.length > 0 ? this.roles[0].id : 0),
         status: 'active',
         isCompanyAdmin: false,
+        isDriverAccount: false,
         assignedVehicleIds: [],
         canMonitoring: true,
         canVehicles: true,
@@ -2270,8 +2369,21 @@ export class UserManagementComponent implements OnInit, OnDestroy {
     this.userModalStep = 1;
   }
 
+  /** Étapes proposées : un compte chauffeur n'a ni permissions ni véhicules. */
   private getUserSteps(): number[] {
-    return [1, 2, 3];
+    return this.userForm.isDriverAccount ? [1] : [1, 2, 3];
+  }
+
+  /**
+   * Case « Chauffeur (application mobile) » cochée : le serveur ignorera de toute
+   * façon isCompanyAdmin, les cases can* et les affectations, mais on les neutralise
+   * aussi ici pour que l'écran ne raconte pas autre chose que ce qui sera enregistré.
+   */
+  onDriverAccountToggle() {
+    if (!this.userForm.isDriverAccount) return;
+    this.userForm.isCompanyAdmin = false;
+    this.userForm.assignedVehicleIds = [];
+    this.userModalStep = 1;
   }
 
   hasNextUserStep(): boolean {
@@ -2438,6 +2550,13 @@ export class UserManagementComponent implements OnInit, OnDestroy {
       alertEntretien: this.userForm.alertEntretien
     };
 
+    // Compte chauffeur : aucun droit, aucune affectation. Le booléen part TOUJOURS
+    // (jamais undefined) : en modification, false = « redevient compte ordinaire »
+    // et null/absent = « inchangé » côté serveur.
+    const isDriverAccount = this.userForm.isDriverAccount === true;
+    const isCompanyAdmin = isDriverAccount ? false : this.userForm.isCompanyAdmin;
+    const assignedVehicleIds = isDriverAccount ? [] : this.userForm.assignedVehicleIds;
+
     if (this.editingUser) {
       this.apiService.updateUser(this.editingUser.id, {
         firstName: this.userForm.firstName,
@@ -2446,8 +2565,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         phone: this.userForm.phone,
         roleId: this.userForm.roleId,
         status: this.userForm.status,
-        isCompanyAdmin: this.userForm.isCompanyAdmin,
-        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        isCompanyAdmin,
+        isDriverAccount,
+        assignedVehicleIds,
         ...permissionPayload
       }).subscribe({
         next: () => {
@@ -2468,8 +2588,9 @@ export class UserManagementComponent implements OnInit, OnDestroy {
         phone: this.userForm.phone,
         password: this.userForm.password,
         roleId: this.userForm.roleId,
-        isCompanyAdmin: this.userForm.isCompanyAdmin,
-        assignedVehicleIds: this.userForm.assignedVehicleIds,
+        isCompanyAdmin,
+        isDriverAccount,
+        assignedVehicleIds,
         ...permissionPayload
       }).subscribe({
         next: () => {
@@ -2705,6 +2826,11 @@ export class UserManagementComponent implements OnInit, OnDestroy {
 
   getInactiveUsersCount(): number {
     return this.users.filter(u => u.status !== 'active').length;
+  }
+
+  /** Comptes chauffeur (application mobile) : hors quota, sans droit de gestion. */
+  getDriverAccountsCount(): number {
+    return this.users.filter(u => u.accountType === 'driver').length;
   }
 
   getPermissionsLabel(user: User): string {

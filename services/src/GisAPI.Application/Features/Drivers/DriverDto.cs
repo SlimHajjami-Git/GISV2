@@ -16,5 +16,9 @@ public record DriverDto(
     string? AssignedVehicleName,
     string? AssignedVehiclePlate,
     string Status,
-    DateTime CreatedAt
+    DateTime CreatedAt,
+    // Compte chauffeur relié (migration 050) : null = pas d'accès à l'application ;
+    // AccountStatus = statut de ce compte (« active », « inactive »).
+    int? UserId = null,
+    string? AccountStatus = null
 );

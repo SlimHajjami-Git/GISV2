@@ -101,7 +101,7 @@ public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, List<UserList
                 u.AlertVisiteTechnique,
                 u.AlertEntretien,
                 u.DailyReportEmailEnabled
-            ))
+            ) { AccountType = u.AccountType })
             .ToListAsync(ct);
 
         // Rattache les IDs de véhicules assignés (requête séparée ci-dessus).

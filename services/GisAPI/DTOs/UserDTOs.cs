@@ -61,7 +61,10 @@ public record CreateUserRequest(
     bool AlertTaxeCirculation = false,
     bool AlertVisiteTechnique = false,
     bool AlertEntretien = false,
-    bool IsCompanyAdmin = false
+    bool IsCompanyAdmin = false,
+    // Compte chauffeur (migration 050) : application mobile seulement, aucune case Can*,
+    // hors quota d'utilisateurs, fiche chauffeur créée ou reliée.
+    bool IsDriverAccount = false
 );
 
 public record UpdateUserRequest(
@@ -116,7 +119,9 @@ public record UpdateUserRequest(
     bool? AlertTaxeCirculation = null,
     bool? AlertVisiteTechnique = null,
     bool? AlertEntretien = null,
-    bool? IsCompanyAdmin = null
+    bool? IsCompanyAdmin = null,
+    // true = devient (ou reste) chauffeur, false = redevient compte ordinaire, null = inchangé.
+    bool? IsDriverAccount = null
 );
 
 public record UserSettingsDto(

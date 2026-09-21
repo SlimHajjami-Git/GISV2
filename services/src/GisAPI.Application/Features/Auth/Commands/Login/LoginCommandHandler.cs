@@ -64,6 +64,15 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             throw new DomainException("Compte désactivé");
         }
 
+        // Compte chauffeur (migration 050) : application mobile SEULEMENT. Le site ne se
+        // déclare jamais comme appelant ; c'est ce refus, avec la liste blanche du
+        // PermissionMiddleware, qui fait qu'un chauffeur ne voit que ses tournées.
+        if (user.IsDriverAccount && !LoginClients.IsMobile(request.ClientType))
+        {
+            await RecordFailedLoginAsync(request, user, "compte chauffeur hors application mobile", ct);
+            throw new DomainException(LoginClients.DriverWebLoginRefused);
+        }
+
         // Société suspendue ou expirée au-delà de la grâce : pas de nouveau token
         // (le sys_admin plateforme, lui, doit toujours pouvoir se connecter).
         if (user.Societe != null && user.Role?.IsSystemRole != true)
@@ -103,7 +112,7 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         {
             Token = refreshTokenStr,
             UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.AddDays(RefreshTokenLifetime.DaysFor(user)),
             CreatedAt = DateTime.UtcNow
         };
         _context.RefreshTokens.Add(refreshTokenEntity);
@@ -269,7 +278,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             userPermissions,
             Currency: user.Societe?.Settings?.Currency ?? GisAPI.Domain.Common.AppCurrency.Default,
             SelfServiceSubscription: IsSelfServiceSubscription(user.Societe)
-        );
+        )
+        { AccountType = user.AccountType };
     }
 
     /// <summary>

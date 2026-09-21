@@ -83,7 +83,7 @@ public class GetUserByIdQueryHandler : IRequestHandler<GetUserByIdQuery, UserLis
                 u.AlertVisiteTechnique,
                 u.AlertEntretien,
                 u.DailyReportEmailEnabled
-            ))
+            ) { AccountType = u.AccountType })
             .FirstOrDefaultAsync(ct);
 
         if (user == null)

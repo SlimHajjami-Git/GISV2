@@ -46,6 +46,16 @@ public class User : TenantEntity
     public string? PasswordResetToken { get; set; }
     public DateTime? PasswordResetExpiresAt { get; set; }
 
+    // ── Type de compte (migration 050, 21/09/2026) ──
+    //
+    // « staff » : compte ordinaire, web et mobile. « driver » : chauffeur — créé par un
+    // administrateur dans l'écran Utilisateurs, il ne se connecte QU'À l'application
+    // mobile et n'y voit que ses tournées. C'est cette valeur, relue en base, que le
+    // serveur cloisonne (PermissionMiddleware, connexion, hub) ; les cases Can* d'un
+    // chauffeur sont toutes fausses et il ne compte pas dans le quota d'utilisateurs.
+    public string AccountType { get; set; } = UserAccountTypes.Staff;
+    public bool IsDriverAccount => AccountType == UserAccountTypes.Driver;
+
     // Module permissions (per-user access control)
     public string AccessLevel { get; set; } = "user"; // "admin" or "user"
     public bool CanMonitoring { get; set; } = true;
@@ -177,6 +187,20 @@ public class User : TenantEntity
     
     // Helper: is this user a driver?
     public bool IsDriver => string.Equals(EmployeeRole, "driver", StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>Valeurs de <see cref="User.AccountType"/> (contrainte users_account_type_check).</summary>
+public static class UserAccountTypes
+{
+    public const string Staff = "staff";
+    public const string Driver = "driver";
+}
+
+/// <summary>Noms des claims propres à Calypso dans le jeton d'accès (JwtService).</summary>
+public static class JwtClaims
+{
+    /// <summary>Type de compte : « staff » ou « driver » (absent = jeton antérieur à la migration 050 = staff).</summary>
+    public const string AccountType = "acct";
 }
 
 public class UserSettings : Entity

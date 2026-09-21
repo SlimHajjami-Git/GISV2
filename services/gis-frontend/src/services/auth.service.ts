@@ -72,7 +72,19 @@ export interface AuthUser {
    * d'abonnement leur est masqué.
    */
   selfServiceSubscription?: boolean;
+  /**
+   * 'staff' = compte ordinaire du site ; 'driver' = compte chauffeur réservé à
+   * l'application mobile (tournées), jamais admis sur le site (voir login()).
+   */
+  accountType?: string;
 }
+
+/**
+ * Message affiché quand un compte chauffeur tente d'ouvrir le site. Le serveur
+ * refuse déjà (400, même texte) ; le contrôle côté client est une ceinture.
+ */
+export const DRIVER_WEB_LOGIN_REFUSED =
+  "Ce compte est réservé à l'application mobile Calypso : ouvrez l'application sur votre téléphone pour vous connecter.";
 
 export interface AuthResponse {
   token: string;
@@ -96,6 +108,7 @@ export interface AuthResponse {
     userPermissions: UserPermissions | null;
     currency?: string;
     selfServiceSubscription?: boolean;
+    accountType?: string;
   };
 }
 
@@ -186,7 +199,8 @@ export class AuthService {
           currency: parsed.currency,
           // Sans cette ligne, le drapeau se perdait au rechargement de la page et
           // l'entrée « Abonnement » disparaissait pour un compte qui y a droit.
-          selfServiceSubscription: parsed.selfServiceSubscription ?? false
+          selfServiceSubscription: parsed.selfServiceSubscription ?? false,
+          accountType: parsed.accountType
         });
         this.applyAccountCurrency(parsed.currency);
       } catch (e) {
@@ -289,6 +303,11 @@ export class AuthService {
         console.log('AuthService.login - user object keys:', Object.keys(response.user));
       }),
       map(response => {
+        // Ceinture : un compte chauffeur n'ouvre JAMAIS de session sur le site, même
+        // si le serveur en renvoyait une. Rien n'est stocké ; l'erreur porte le message.
+        if (response.user?.accountType === 'driver') {
+          throw AuthService.driverRefusal();
+        }
         const user: AuthUser = {
           id: response.user.id?.toString() || '',
           name: `${response.user.firstName} ${response.user.lastName}`.trim(),
@@ -305,7 +324,8 @@ export class AuthService {
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
           userPermissions: response.user.userPermissions ?? null,
           currency: response.user.currency,
-          selfServiceSubscription: response.user.selfServiceSubscription ?? false
+          selfServiceSubscription: response.user.selfServiceSubscription ?? false,
+          accountType: response.user.accountType
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.userPermissions);
@@ -323,9 +343,23 @@ export class AuthService {
         // Le 429 (trop de tentatives depuis ce réseau) est relayé : réduit à null, il
         // s'affichait « Email ou mot de passe incorrect » et poussait à réessayer.
         if (err?.status === 429) return throwError(() => err);
+        // Compte chauffeur (refus du serveur en 400, ou de la ceinture ci-dessus) :
+        // relayé avec son message, sinon il se lirait « mot de passe incorrect ».
+        if (AuthService.isDriverRefusal(err)) return throwError(() => AuthService.driverRefusal());
         return of(null);
       })
     );
+  }
+
+  /** Erreur normalisée du refus « compte chauffeur », lue par l'écran de connexion. */
+  private static driverRefusal(): { status: number; driverAccount: true; error: { message: string } } {
+    return { status: 400, driverAccount: true, error: { message: DRIVER_WEB_LOGIN_REFUSED } };
+  }
+
+  private static isDriverRefusal(err: any): boolean {
+    if (err?.driverAccount === true) return true;
+    const message = err?.error?.message;
+    return typeof message === 'string' && message.startsWith("Ce compte est réservé à l'application mobile");
   }
 
   /**
@@ -497,7 +531,8 @@ export class AuthService {
       isSystemAdmin: response.user.isSystemAdmin,
       subscriptionFeatures: response.user.subscriptionFeatures,
       assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-      userPermissions: response.user.userPermissions ?? null
+      userPermissions: response.user.userPermissions ?? null,
+      accountType: response.user.accountType
     };
   }
 
@@ -531,7 +566,8 @@ export class AuthService {
           assignedVehicleIds: response.user.assignedVehicleIds ?? null,
           userPermissions: response.user.userPermissions ?? null,
           currency: response.user.currency,
-          selfServiceSubscription: response.user.selfServiceSubscription ?? false
+          selfServiceSubscription: response.user.selfServiceSubscription ?? false,
+          accountType: response.user.accountType
         };
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);

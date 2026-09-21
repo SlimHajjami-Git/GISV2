@@ -84,7 +84,8 @@ public class SubscriptionsController : ControllerBase
             .CountAsync();
 
         var userCount = await _context.Users
-            .Where(u => u.CompanyId == companyId)
+            // Les comptes chauffeurs (migration 050) ne consomment pas de place.
+            .Where(u => u.CompanyId == companyId && u.AccountType != GisAPI.Domain.Entities.UserAccountTypes.Driver)
             .CountAsync();
 
         var deviceCount = await _context.GpsDevices

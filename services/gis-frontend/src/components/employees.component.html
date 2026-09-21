@@ -182,10 +182,28 @@
 
               <!-- Status -->
               <td class="col-status">
-                <span class="status-pill" [class.active]="driver.status === 'active'" [class.inactive]="driver.status !== 'active'">
-                  <span class="status-dot"></span>
-                  {{ driver.status === 'active' ? 'Actif' : 'Inactif' }}
-                </span>
+                <div class="status-cell">
+                  <span class="status-pill" [class.active]="driver.status === 'active'" [class.inactive]="driver.status !== 'active'">
+                    <span class="status-dot"></span>
+                    {{ driver.status === 'active' ? 'Actif' : 'Inactif' }}
+                  </span>
+                  <!-- Compte relié à l'application mobile (« le chauffeur est un utilisateur »,
+                       21/09/2026) : userId = compte existant, accountStatus = son statut. -->
+                  @if (driver.userId) {
+                    <span class="app-badge" [class.active]="driver.accountStatus === 'active'" [class.inactive]="driver.accountStatus !== 'active'"
+                          title="Compte de l'application mobile Calypso">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
+                      Application : {{ driver.accountStatus === 'active' ? 'active' : 'désactivée' }}
+                    </span>
+                  } @else {
+                    <a class="app-create-link" [routerLink]="['/users']"
+                       [queryParams]="{ nouveau: 'chauffeur', prenom: driver.firstName || '', nom: driver.lastName || '', email: driver.email || '', telephone: driver.phone || '' }"
+                       (click)="$event.stopPropagation()"
+                       title="Ouvre le formulaire Utilisateurs prérempli, case « Chauffeur (application mobile) » cochée">
+                      Créer son compte
+                    </a>
+                  }
+                </div>
               </td>
 
               <!-- Actions -->

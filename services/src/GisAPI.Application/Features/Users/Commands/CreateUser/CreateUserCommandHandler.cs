@@ -39,9 +39,13 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             .Include(s => s.SubscriptionType)
             .FirstOrDefaultAsync(s => s.Id == companyId, ct);
 
-        if (company?.SubscriptionType != null)
+        // Les comptes chauffeurs (migration 050) ne comptent pas et ne sont pas comptés :
+        // un chauffeur n'est pas un poste de gestion, et le plan-basique (3 places) en
+        // aurait interdit le premier. Même exclusion dans SubscriptionsController.
+        if (company?.SubscriptionType != null && !request.IsDriverAccount)
         {
-            var currentUsers = await _context.Users.CountAsync(u => u.CompanyId == companyId, ct);
+            var currentUsers = await _context.Users.CountAsync(
+                u => u.CompanyId == companyId && u.AccountType != UserAccountTypes.Driver, ct);
             if (currentUsers >= company.SubscriptionType.MaxUsers)
                 throw new DomainException(
                     $"Limite d'utilisateurs atteinte ({company.SubscriptionType.MaxUsers} max pour votre abonnement)");
@@ -56,7 +60,8 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         // feature permissions no longer makes a user an admin — so a user can have
         // full permissions while staying restricted to their assigned vehicles.
         Role role;
-        if (request.IsCompanyAdmin)
+        // Un chauffeur n'est jamais administrateur, quoi que dise le formulaire.
+        if (request.IsCompanyAdmin && !request.IsDriverAccount)
         {
             // Assign company admin role
             role = await _context.Roles
@@ -83,7 +88,9 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         // Resolve the vehicle assignments to the subset that actually belongs to this
         // company. Stale/foreign ids are silently dropped instead of blocking the whole
         // create with "Un ou plusieurs véhicules sont invalides".
-        var validVehicleIds = request.AssignedVehicleIds is { Length: > 0 }
+        // Jamais d'affectation de véhicule à un chauffeur : UserVehicles est l'audience
+        // des alertes (NotificationAudience), et le chauffeur ne reçoit que ses tournées.
+        var validVehicleIds = request.AssignedVehicleIds is { Length: > 0 } && !request.IsDriverAccount
             ? await _context.Vehicles
                 .Where(v => request.AssignedVehicleIds.Contains(v.Id) && v.CompanyId == companyId)
                 .Select(v => v.Id)
@@ -150,9 +157,18 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             AlertVisiteTechnique = request.AlertVisiteTechnique,
             AlertEntretien = request.AlertEntretien
         };
+        if (request.IsDriverAccount) DriverAccountRules.Apply(user);
 
         _context.Users.Add(user);
         await _context.SaveChangesAsync(ct);
+
+        // Fiche chauffeur reliée ou créée (véhicule affecté, permis, tournées) : le compte
+        // seul ne suffit pas, c'est la fiche que les tournées désignent (tours."DriverId").
+        if (request.IsDriverAccount)
+        {
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+            await _context.SaveChangesAsync(ct);
+        }
 
         // Save vehicle assignments (valid company subset resolved above)
         if (validVehicleIds.Count > 0)
@@ -237,6 +253,6 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
             user.AlertVisiteTechnique,
             user.AlertEntretien,
             user.DailyReportEmailEnabled
-        );
+        ) { AccountType = user.AccountType };
     }
 }

@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Common.Security;
@@ -63,6 +64,10 @@ public static class NotificationAudience
             .AsNoTracking()
             .Where(u => u.CompanyId == companyId
                         && u.Status == "active"
+                        // Jamais un compte chauffeur (migration 050) : il ne reçoit que ses
+                        // tournées, pas les alertes de la flotte — même s'il avait des
+                        // affectations (aucune ligne UserVehicles ne lui est créée).
+                        && u.AccountType != UserAccountTypes.Driver
                         && u.Role != null
                         && (u.Role.IsCompanyAdmin
                             || u.Role.IsSystemRole
@@ -89,6 +94,7 @@ public static class NotificationAudience
             .AsNoTracking()
             .Where(u => u.CompanyId == companyId
                         && u.Status == "active"
+                        && u.AccountType != UserAccountTypes.Driver
                         && u.Role != null
                         && (u.Role.IsCompanyAdmin || u.Role.IsSystemRole))
             .Select(u => u.Id)

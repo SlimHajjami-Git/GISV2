@@ -38,6 +38,10 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
                       join v in _context.Vehicles
                           on d.AssignedVehicleId equals v.Id into vehicleJoin
                       from vehicle in vehicleJoin.DefaultIfEmpty()
+                      // Compte chauffeur relié (migration 050), pour le badge « application ».
+                      join u in _context.Users
+                          on d.UserId equals u.Id into userJoin
+                      from compte in userJoin.DefaultIfEmpty()
                       orderby d.LastName, d.FirstName
                       select new DriverDto(
                           d.Id,
@@ -55,7 +59,9 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
                           vehicle != null ? vehicle.Name : null,
                           vehicle != null ? vehicle.Plate : null,
                           d.Status,
-                          d.CreatedAt
+                          d.CreatedAt,
+                          d.UserId,
+                          compte != null ? compte.Status : null
                       ))
                       .ToListAsync(ct);
     }

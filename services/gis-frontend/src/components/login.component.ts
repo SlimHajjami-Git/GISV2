@@ -490,9 +490,13 @@ export class LoginComponent {
         this.isLoading = false;
         // 429 = plafond de tentatives du réseau (DEF-030) : annoncer un mot de passe faux
         // pousserait à réessayer aussitôt, donc à prolonger le blocage.
+        // driverAccount = compte chauffeur, réservé à l'application mobile : le message
+        // dit où se connecter, au lieu d'un faux « mot de passe incorrect ».
         this.errorMessage = err?.status === 429
           ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
-          : 'Email ou mot de passe incorrect';
+          : err?.driverAccount
+            ? err.error?.message
+            : 'Email ou mot de passe incorrect';
         this.cdr.detectChanges();
       }
     });

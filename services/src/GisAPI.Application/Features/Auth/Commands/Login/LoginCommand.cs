@@ -2,7 +2,38 @@ using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Application.Features.Auth.Commands.Login;
 
-public record LoginCommand(string Email, string Password, string? IpAddress = null, string? UserAgent = null) : ICommand<LoginResponse>;
+/// <param name="ClientType">Appelant déclaré : <see cref="LoginClients.Mobile"/> pour l'application, null pour le site.</param>
+public record LoginCommand(string Email, string Password, string? IpAddress = null, string? UserAgent = null, string? ClientType = null) : ICommand<LoginResponse>;
+
+/// <summary>
+/// Appelants de la connexion. Un compte chauffeur (users.account_type = driver, migration
+/// 050) n'obtient un jeton QUE depuis l'application mobile, qui se déclare par l'en-tête
+/// X-Calypso-Client ou le champ « client » ; le site, lui, ne se déclare jamais.
+/// </summary>
+public static class LoginClients
+{
+    public const string Mobile = "mobile";
+
+    public static bool IsMobile(string? clientType) =>
+        string.Equals(clientType?.Trim(), Mobile, StringComparison.OrdinalIgnoreCase);
+
+    public const string DriverWebLoginRefused =
+        "Ce compte est réservé à l'application mobile Calypso : ouvrez l'application sur votre téléphone pour vous connecter.";
+}
+
+/// <summary>
+/// Durée des jetons de rafraîchissement. Un chauffeur ne saisit pas son mot de passe
+/// tous les sept jours sur un téléphone de service : 90 jours glissants pour lui, la
+/// désactivation du compte (relue à chaque appel par PermissionMiddleware et au
+/// rafraîchissement) restant le vrai levier de révocation.
+/// </summary>
+public static class RefreshTokenLifetime
+{
+    public const int StaffDays = 7;
+    public const int DriverDays = 90;
+
+    public static int DaysFor(GisAPI.Domain.Entities.User user) => user.IsDriverAccount ? DriverDays : StaffDays;
+}
 
 public record LoginResponse(
     string Token,
@@ -39,7 +70,15 @@ public record UserDto(
     // La règle est calculée ICI, côté serveur, et pas déduite dans l'écran : elle
     // doit rester unique et vérifiable.
     bool SelfServiceSubscription = false
-);
+)
+{
+    /// <summary>
+    /// « staff » ou « driver » (migration 050). L'application mobile aiguille dessus :
+    /// un chauffeur n'ouvre que « Mes tournées ». Propriété init : ce DTO est construit
+    /// à plusieurs endroits, un paramètre positionnel de plus les casserait tous.
+    /// </summary>
+    public string AccountType { get; init; } = GisAPI.Domain.Entities.UserAccountTypes.Staff;
+}
 
 public record UserPermissionsDto(
     string AccessLevel,

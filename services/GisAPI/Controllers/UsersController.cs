@@ -107,7 +107,8 @@ public class UsersController : ControllerBase
             AlertTaxeCirculation: request.AlertTaxeCirculation,
             AlertVisiteTechnique: request.AlertVisiteTechnique,
             AlertEntretien: request.AlertEntretien,
-            IsCompanyAdmin: request.IsCompanyAdmin
+            IsCompanyAdmin: request.IsCompanyAdmin,
+            IsDriverAccount: request.IsDriverAccount
         );
 
         var user = await _mediator.Send(command);
@@ -167,7 +168,8 @@ public class UsersController : ControllerBase
             AlertTaxeCirculation: request.AlertTaxeCirculation,
             AlertVisiteTechnique: request.AlertVisiteTechnique,
             AlertEntretien: request.AlertEntretien,
-            IsCompanyAdmin: request.IsCompanyAdmin
+            IsCompanyAdmin: request.IsCompanyAdmin,
+            IsDriverAccount: request.IsDriverAccount
         );
 
         await _mediator.Send(command);

@@ -35,13 +35,19 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         //   false → demote to a non-admin role (prefer the role sent by the frontend)
         //   null  → leave the role unchanged
         // Granting all feature permissions no longer makes a user an admin.
-        if (request.IsCompanyAdmin == true)
+        // Compte chauffeur (migration 050) : true = devient ou reste chauffeur, false =
+        // redevient ordinaire, null = inchangé. Un chauffeur n'est jamais administrateur.
+        var devientChauffeur = request.IsDriverAccount == true;
+        var redevientOrdinaire = request.IsDriverAccount == false && user.IsDriverAccount;
+        var isCompanyAdmin = devientChauffeur ? false : request.IsCompanyAdmin;
+
+        if (isCompanyAdmin == true)
         {
             var adminRole = await _context.Roles
                 .FirstOrDefaultAsync(r => r.SocieteId == companyId && r.IsCompanyAdmin, ct);
             if (adminRole != null) user.RoleId = adminRole.Id;
         }
-        else if (request.IsCompanyAdmin == false)
+        else if (isCompanyAdmin == false)
         {
             var nonAdminRole = await _context.Roles
                 .FirstOrDefaultAsync(r => r.Id == request.RoleId && r.SocieteId == companyId && !r.IsCompanyAdmin, ct)
@@ -126,8 +132,29 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
             user.AlertPrefsConfigured = true;
         }
 
+        if (devientChauffeur)
+        {
+            // Après les cases ci-dessus : ce que le formulaire a coché ne compte pas.
+            DriverAccountRules.Apply(user);
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+            // Aucune affectation de véhicule à un chauffeur (audience des alertes).
+            var affectations = await _context.UserVehicles.Where(uv => uv.UserId == user.Id).ToListAsync(ct);
+            _context.UserVehicles.RemoveRange(affectations);
+        }
+        else if (redevientOrdinaire)
+        {
+            // La fiche chauffeur reste (véhicule, permis, tournées), seul le lien est coupé.
+            user.AccountType = UserAccountTypes.Staff;
+            await DriverAccountRules.UnlinkDriverAsync(_context, user.Id, ct);
+        }
+        else if (user.IsDriverAccount)
+        {
+            // Chauffeur qui le reste : sa fiche suit le nom et le téléphone du compte.
+            await DriverAccountRules.LinkOrCreateDriverAsync(_context, user, ct);
+        }
+
         // Update vehicle assignments if provided
-        if (request.AssignedVehicleIds != null)
+        if (request.AssignedVehicleIds != null && !user.IsDriverAccount)
         {
             // Resolve to the subset of vehicles that actually belong to this company.
             // Stale/foreign ids (e.g. left over from an old assignment of a since-deleted

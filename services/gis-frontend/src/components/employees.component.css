@@ -425,6 +425,47 @@
   background: currentColor;
 }
 
+/* Compte de l'application mobile relié à la fiche */
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+.app-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.app-badge.active {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.app-badge.inactive {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.app-create-link {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6366f1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-create-link:hover {
+  text-decoration: underline;
+}
+
 /* Action Buttons */
 .actions-cell {
   display: flex;

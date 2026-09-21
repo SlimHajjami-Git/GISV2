@@ -16,6 +16,18 @@ public class GpsHub : Hub
 
     public override async Task OnConnectedAsync()
     {
+        // Compte chauffeur (migration 050) : jamais sur le hub de la flotte — le groupe
+        // company_{id} diffuse les positions de tous les véhicules, et SubscribeToVehicle
+        // ne vérifie pas l'appartenance. Défense en profondeur : PermissionMiddleware refuse
+        // déjà /hubs/* et /api/hubs/* à ce type de compte.
+        if (Context.User?.FindFirst(GisAPI.Domain.Entities.JwtClaims.AccountType)?.Value
+            == GisAPI.Domain.Entities.UserAccountTypes.Driver)
+        {
+            _logger.LogWarning("Hub GPS refusé à un compte chauffeur ({ConnectionId})", Context.ConnectionId);
+            Context.Abort();
+            return;
+        }
+
         var companyId = Context.User?.FindFirst("companyId")?.Value;
         var userId = Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 

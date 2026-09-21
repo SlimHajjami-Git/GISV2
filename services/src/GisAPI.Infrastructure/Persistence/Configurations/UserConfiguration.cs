@@ -36,6 +36,14 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(e => e.Phone)
             .HasColumnName("phone")
             .HasMaxLength(20);
+
+        // Migration 050 : NOT NULL DEFAULT 'staff', CHECK (staff|driver).
+        builder.Property(e => e.AccountType)
+            .HasColumnName("account_type")
+            .HasMaxLength(16)
+            .IsRequired()
+            .HasDefaultValue(UserAccountTypes.Staff);
+        builder.Ignore(e => e.IsDriverAccount);
         
         builder.Property(e => e.PermitNumber)
             .HasColumnName("permit_number")

@@ -87,7 +87,7 @@ public class RefreshTokenCommandHandler : IRequestHandler<RefreshTokenCommand, L
         {
             Token = newRefreshTokenStr,
             UserId = user.Id,
-            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            ExpiresAt = DateTime.UtcNow.AddDays(RefreshTokenLifetime.DaysFor(user)),
             CreatedAt = DateTime.UtcNow
         };
         storedToken.ReplacedByToken = newRefreshTokenStr;

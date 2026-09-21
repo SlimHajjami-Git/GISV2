@@ -30,10 +30,17 @@ public class AuthController : ControllerBase
         _passwordHasher = passwordHasher;
     }
 
+    /// <summary>En-tête par lequel l'application mobile se déclare (voir <see cref="LoginClients"/>).</summary>
+    public const string ClientHeader = "X-Calypso-Client";
+
     [HttpPost("login")]
     public async Task<ActionResult<LoginResponse>> Login([FromBody] LoginRequest request)
     {
-        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent()));
+        // Qui appelle : l'application mobile se déclare (en-tête ou champ du corps), le site
+        // ne le fait jamais. Ne sert qu'à REFUSER un compte chauffeur hors de l'application ;
+        // un appelant qui ment n'obtient rien de plus qu'un jeton cloisonné par le serveur.
+        var client = request.Client ?? Request.Headers[ClientHeader].FirstOrDefault();
+        var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent(), client));
         return Ok(result);
     }
 
@@ -417,7 +424,8 @@ public class AuthController : ControllerBase
 }
 
 // Request DTOs for AuthController
-public record LoginRequest(string Email, string Password);
+/// <param name="Client">« mobile » quand l'application Calypso appelle (sinon l'en-tête X-Calypso-Client) ; absent pour le site.</param>
+public record LoginRequest(string Email, string Password, string? Client = null);
 
 /// <summary>
 /// Corps de l'inscription libre. AUCUN champ de plan d'abonnement : celui-ci vient

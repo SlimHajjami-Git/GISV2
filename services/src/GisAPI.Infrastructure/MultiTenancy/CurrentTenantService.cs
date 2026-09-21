@@ -9,8 +9,10 @@ public class CurrentTenantService : ICurrentTenantService
     private string? _userEmail;
     private string[] _userRoles = [];
     private string[] _permissions = [];
+    private string? _accountType;
 
     public int? CompanyId => _companyId;
+    public bool IsDriverAccount => _accountType == GisAPI.Domain.Entities.UserAccountTypes.Driver;
     public int? UserId => _userId;
     public string? UserEmail => _userEmail;
     public string[] UserRoles => _userRoles;
@@ -18,13 +20,14 @@ public class CurrentTenantService : ICurrentTenantService
     public bool IsAuthenticated => _userId.HasValue;
     public bool IsSystemAdmin => _userRoles.Contains("system_admin") || _userRoles.Contains("platform_admin");
 
-    public void SetTenant(int companyId, int userId, string email, string[] roles, string[] permissions)
+    public void SetTenant(int companyId, int userId, string email, string[] roles, string[] permissions, string? accountType = null)
     {
         _companyId = companyId;
         _userId = userId;
         _userEmail = email;
         _userRoles = roles;
         _permissions = permissions;
+        _accountType = accountType;
     }
 
     public bool HasPermission(string permission) =>

@@ -31,6 +31,10 @@ public class DriverConfiguration : IEntityTypeConfiguration<Driver>
         builder.Property(d => d.HireDate).HasColumnName("hire_date");
 
         builder.Property(d => d.AssignedVehicleId).HasColumnName("assigned_vehicle_id");
+        // Migration 050 : compte de connexion du chauffeur, FK users ON DELETE SET NULL,
+        // unique partiel (un compte, une fiche). Scalaire sans navigation, comme le véhicule.
+        builder.Property(d => d.UserId).HasColumnName("user_id");
+        builder.HasIndex(d => d.UserId).IsUnique().HasFilter("user_id IS NOT NULL").HasDatabaseName("ux_drivers_user_id");
         builder.Property(d => d.Status).HasColumnName("status").HasMaxLength(20).HasDefaultValue("active");
 
         // No navigation property for AssignedVehicle — consumers must join on

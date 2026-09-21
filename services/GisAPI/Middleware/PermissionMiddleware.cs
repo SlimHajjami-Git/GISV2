@@ -441,6 +441,30 @@ public class PermissionMiddleware
         return RouteGate.TenantChecks;
     }
 
+    // ── Compte chauffeur (application mobile, tournées) ──────────────────────────
+    public const string DriverAppOnlyCode = "DRIVER_APP_ONLY";
+    public const string DriverAppOnlyMessage =
+        "Ce compte est réservé à l'application mobile Calypso, pour ses tournées.";
+
+    /// <summary>
+    /// Les SEULS chemins qu'un compte chauffeur peut appeler : ses tournées
+    /// (/api/driver-app), le rafraîchissement et la fermeture de sa session, et
+    /// l'enregistrement du jeton de notification de son téléphone. Frontière de
+    /// segment : « /api/driver-app » ne couvre pas « /api/driver-apple ».
+    /// </summary>
+    internal static readonly string[] DriverAppAllowedPrefixes =
+    {
+        "/api/driver-app",
+        "/api/auth/refresh",
+        "/api/auth/logout",
+        "/api/devicetokens",
+    };
+
+    internal static bool IsDriverAppRoute(string path) =>
+        DriverAppAllowedPrefixes.Any(p =>
+            path.Equals(p, StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase));
+
     // IGisDbContext plutôt que GisDbContext : la DI rend la même instance scopée
     // (DependencyInjection.cs), et le middleware devient testable sur TestGisDbContext.
     public async Task InvokeAsync(HttpContext context, IGisDbContext dbContext)
@@ -453,6 +477,43 @@ public class PermissionMiddleware
         }
 
         var path = context.Request.Path.Value?.ToLower() ?? "";
+
+        // ── Compte chauffeur (migration 050) : liste blanche stricte, AVANT tout aiguillage ──
+        // Placé ici, et pas dans les contrôles par module plus bas, pour couvrir AUSSI ce que
+        // ClassifyRoute laisse passer sans regarder : les deux hubs SignalR (/hubs/gps et
+        // /api/hubs/gps — positions de toute la flotte), /health, les _skipRoutes (tableau de
+        // bord, statistiques, notifications…) et les lectures partagées (liste des chauffeurs
+        // avec CIN et téléphone). Un chauffeur ne voit que ses tournées.
+        // La décision est RELUE EN BASE (statut + type de compte) à chaque appel : une
+        // révocation prend effet tout de suite, sans attendre l'expiration du jeton (24 h).
+        if (context.User.FindFirst(JwtClaims.AccountType)?.Value == UserAccountTypes.Driver)
+        {
+            if (!IsDriverAppRoute(path))
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsJsonAsync(new { message = DriverAppOnlyMessage, code = DriverAppOnlyCode });
+                return;
+            }
+
+            var driverUid = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.User.FindFirst("sub")?.Value;
+            var compte = int.TryParse(driverUid, out var driverUserId)
+                ? await dbContext.Users.IgnoreQueryFilters().AsNoTracking()
+                    .Where(u => u.Id == driverUserId)
+                    .Select(u => new { u.Status, u.AccountType })
+                    .FirstOrDefaultAsync()
+                : null;
+            if (compte == null || compte.Status != "active" || compte.AccountType != UserAccountTypes.Driver)
+            {
+                context.Response.StatusCode = 401;
+                await context.Response.WriteAsJsonAsync(new { message = "Compte désactivé", code = "DRIVER_ACCOUNT_INACTIVE" });
+                return;
+            }
+
+            await _next(context);
+            return;
+        }
+
         var gate = ClassifyRoute(path, context.Request.Method);
 
         // Hors API, routes toujours ouvertes, compte de l'appelant. La lecture d'un référentiel
@@ -520,6 +581,17 @@ public class PermissionMiddleware
         {
             context.Response.StatusCode = 401;
             await context.Response.WriteAsJsonAsync(new { message = "Utilisateur introuvable" });
+            return;
+        }
+
+        // Compte passé « chauffeur » APRÈS l'émission de son jeton (pas de claim « acct ») :
+        // la garde du haut ne l'a pas vu, la ligne en base tranche. Les routes exemptées
+        // plus haut restent ouvertes à ce jeton jusqu'à son expiration, comme pour un
+        // compte supprimé (voir le commentaire du chargement ci-dessus).
+        if (currentUser.IsDriverAccount)
+        {
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsJsonAsync(new { message = DriverAppOnlyMessage, code = DriverAppOnlyCode });
             return;
         }
 

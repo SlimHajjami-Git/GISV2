@@ -30,4 +30,7 @@ public record UserListDto(
     public bool QuietHoursEnabled { get; init; }
     public TimeSpan? QuietHoursStart { get; init; }
     public TimeSpan? QuietHoursEnd { get; init; }
+
+    /// <summary>« staff » ou « driver » (migration 050) : l'écran Utilisateurs affiche le badge « Chauffeur ».</summary>
+    public string AccountType { get; init; } = GisAPI.Domain.Entities.UserAccountTypes.Staff;
 }

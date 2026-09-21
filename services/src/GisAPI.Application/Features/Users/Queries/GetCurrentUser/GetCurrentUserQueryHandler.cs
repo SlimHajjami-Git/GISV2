@@ -81,7 +81,8 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
             {
                 QuietHoursEnabled = u.QuietHoursEnabled,
                 QuietHoursStart = u.QuietHoursStart,
-                QuietHoursEnd = u.QuietHoursEnd
+                QuietHoursEnd = u.QuietHoursEnd,
+                AccountType = u.AccountType
             })
             .FirstOrDefaultAsync(ct);
 

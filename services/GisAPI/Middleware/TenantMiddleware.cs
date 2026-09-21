@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 
 namespace GisAPI.Middleware;
@@ -23,10 +24,13 @@ public class TenantMiddleware
                 ?? context.User.FindFirst("email")?.Value;
             var roles = context.User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray();
             var permissions = context.User.FindAll("permission").Select(c => c.Value).ToArray();
+            // « acct » : type de compte posé par JwtService (staff | driver), absent des jetons
+            // émis avant la migration 050 — absent vaut « staff ».
+            var accountType = context.User.FindFirst(JwtClaims.AccountType)?.Value;
 
             if (int.TryParse(userIdClaim, out var userId) && int.TryParse(companyIdClaim, out var companyId))
             {
-                tenantService.SetTenant(companyId, userId, emailClaim ?? "", roles, permissions);
+                tenantService.SetTenant(companyId, userId, emailClaim ?? "", roles, permissions, accountType);
             }
         }
 

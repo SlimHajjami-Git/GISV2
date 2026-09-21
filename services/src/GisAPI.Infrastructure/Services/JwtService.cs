@@ -35,6 +35,11 @@ public class JwtService : IJwtService
             new(JwtRegisteredClaimNames.Name, user.FullName),
             new("companyId", user.CompanyId.ToString()),
             new("roleId", user.RoleId.ToString()),
+            // Type de compte (migration 050) : « driver » = application mobile seulement.
+            // Posé ICI, donc sur les trois chemins qui émettent un jeton (connexion,
+            // rafraîchissement, impersonation). Le serveur relit la base pour trancher ;
+            // le claim n'est qu'un raccourci et une défense en profondeur (hub SignalR).
+            new(JwtClaims.AccountType, user.AccountType),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
