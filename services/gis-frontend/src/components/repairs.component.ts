@@ -530,10 +530,14 @@ function dateSeule(d: string | null | undefined): string {
                     <option value="pending">En attente</option>
                     <option value="in_progress">En cours</option>
                     <option value="completed">Terminée</option>
-                    <!-- « Annulée » ne se choisit pas : la liste Dépenses, le tableau de bord
-                         et l'assistant comptent encore une réparation annulée. Proposée
-                         seulement pour qu'une réparation déjà annulée garde son statut. -->
-                    <option value="cancelled" *ngIf="isCancelled(editingRepair)">Annulée</option>
+                    <!-- « Annulée » se choisit à nouveau (21/09/2026). Elle était cachée
+                         parce que la liste Dépenses, le tableau de bord et l'assistant
+                         comptaient encore une réparation annulée dans les coûts : le
+                         client aurait vu un montant qu'il n'a jamais payé. Les quatre
+                         chemins l'excluent désormais (OperatingCostAggregator,
+                         DashboardService, expenses.component, AiChatController), le
+                         garde-fou ne protégeait donc plus que d'un défaut disparu. -->
+                    <option value="cancelled">Annulée</option>
                   </select>
                 </div>
               </div>
@@ -947,7 +951,16 @@ function dateSeule(d: string | null | undefined): string {
     .btn-add-part:hover { background:#dcfce7; }
 
     .parts-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }
+    /* En-tête et ligne de saisie sont DEUX grilles distinctes : sans min-width:0,
+       chacune résout « 1fr » à sa façon, car un <input> impose une largeur
+       minimale intrinsèque que le texte d'un intitulé n'a pas. Les colonnes de la
+       ligne s'élargissaient donc, décalant chaque champ vers la droite par rapport
+       à son intitulé — 12,8 px à 520 px utiles, 72,8 px à 460 px — et la ligne
+       finissait par déborder du cadre (recette du 21/09/2026). Mesuré : 0 px de
+       décalage et 0 débordement de 460 à 520 px avec ces deux règles. */
     .parts-header, .parts-row { display:grid; grid-template-columns:1fr 80px 50px 80px 90px 36px; gap:8px; padding:8px 10px; align-items:center; }
+    .parts-header > *, .parts-row > * { min-width:0; }
+    .parts-row input { width:100%; box-sizing:border-box; }
     .parts-header { background:#f8fafc; font-size:10px; font-weight:600; color:#64748b; border-bottom:1px solid #e2e8f0; }
     .parts-row { border-bottom:1px solid #f1f5f9; }
     .parts-row:last-child { border-bottom:none; }
@@ -984,6 +997,10 @@ function dateSeule(d: string | null | undefined): string {
 
     .detail-parts-table { border:1px solid #e2e8f0; border-radius:6px; overflow:hidden; }
     .detail-parts-row { display:grid; grid-template-columns:1fr 50px 80px 90px; gap:8px; padding:10px 12px; font-size:12px; border-bottom:1px solid #f1f5f9; }
+    /* Même précaution que la grille de saisie : l'en-tête et les lignes sont des
+       grilles séparées, et un nom de pièce long élargirait « 1fr » ici sans
+       élargir « Designation » là-haut — les colonnes ne tomberaient plus en face. */
+    .detail-parts-row > * { min-width:0; overflow-wrap:anywhere; }
     .detail-parts-row.header { background:#f8fafc; font-weight:600; color:#64748b; }
     .detail-parts-row:last-child { border-bottom:none; }
     .detail-parts-row small { color:#94a3b8; }
