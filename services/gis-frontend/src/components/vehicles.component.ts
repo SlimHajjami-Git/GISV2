@@ -110,7 +110,7 @@ interface VehicleTrip {
               <option value="suv">SUV</option>
               <option value="utilitaire">Utilitaire</option>
             </select>
-            <button class="btn-add" *ngIf="isAdmin" (click)="openAddPopup()">
+            <button class="btn-add" *ngIf="isAdmin" (click)="openAddPopup()" data-guide="vehicules-nouveau">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -321,7 +321,10 @@ interface VehicleTrip {
 
       <!-- CORRECTION DU COMPTEUR — seul chemin qui accepte une baisse, motif obligatoire -->
       <div class="credit-overlay" *ngIf="mileageFix.open" (click)="closeMileageFix()">
-        <div class="credit-card" (click)="$event.stopPropagation()">
+        <!-- .credit-modal, pas .credit-card : cette derniere n'existe pas dans la
+             feuille de styles, la fenetre s'affichait donc sans fond ni largeur,
+             la liste des vehicules traversant par-dessus (constate le 21/09/2026). -->
+        <div class="credit-modal" (click)="$event.stopPropagation()">
           <div class="credit-head">
             <h3>Corriger le kilométrage</h3>
             <button class="credit-close" (click)="closeMileageFix()">✕</button>

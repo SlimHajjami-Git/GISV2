@@ -1,0 +1,134 @@
+import { TestBed } from '@angular/core/testing';
+import { HelpService } from './help.service';
+import { PermissionService } from './permission.service';
+import { AuthService } from './auth.service';
+
+/**
+ * Regle posee par Karim le 21/09/2026 : un client dont l'abonnement ne contient
+ * que la GPA ne doit PAS voir l'aide des fonctionnalites GPS (geofencing, suivi
+ * en direct, playback) — meme s'il est administrateur de sa societe.
+ *
+ * Ce test branche le VRAI PermissionService (pas un mock) sur l'aide, pour
+ * prouver que l'abonnement prime sur le statut d'administrateur.
+ */
+describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
+
+  function aideAvecCompte(compte: any): HelpService {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        HelpService,
+        PermissionService,
+        { provide: AuthService, useValue: { getCurrentUserSync: () => compte } }
+      ]
+    });
+    return TestBed.inject(HelpService);
+  }
+
+  /** Abonnement "gestion de parc seule" : pas de suivi GPS, pas de geofences. */
+  const abonnementGpa = {
+    moduleDashboard: true, moduleMonitoring: false, moduleGeofences: false,
+    moduleVehicles: true, moduleEmployees: true, moduleMaintenance: true,
+    moduleCosts: true, moduleReports: true, moduleFuel: true,
+    moduleDocuments: true, moduleUsers: true, moduleSettings: true,
+    moduleSuppliers: true, moduleAccidents: true, moduleFleetManagement: true,
+    moduleTours: true
+  };
+
+  const ARTICLES_GPS = ['suivre-en-direct', 'partager-position', 'rejouer-trajet', 'creer-geofence', 'remorquages'];
+
+  it('ADMIN de societe en GPA : aucun article GPS, malgre son statut d’administrateur', () => {
+    const aide = aideAvecCompte({
+      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: abonnementGpa, userPermissions: null
+    });
+
+    const visibles = aide.articlesVisibles().map(a => a.id);
+    for (const interdit of ARTICLES_GPS) {
+      expect(visibles).not.toContain(interdit);
+    }
+    // Et il garde bien tout le reste de la gestion de parc.
+    expect(visibles).toContain('ajouter-vehicule');
+    expect(visibles).toContain('saisir-plein');
+    expect(visibles).toContain('entretien-ou-reparation');
+  });
+
+  it('la recherche ne ramene rien sur "geofence" ni sur "suivi" pour ce meme admin', () => {
+    const aide = aideAvecCompte({
+      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: abonnementGpa, userPermissions: null
+    });
+
+    expect(aide.rechercher('geofence')).toEqual([]);
+    expect(aide.rechercher('zone')).toEqual([]);
+    expect(aide.rechercher('playback')).toEqual([]);
+    expect(aide.articleParId('suivre-en-direct')).toBeUndefined();
+  });
+
+  it('la visite guidee saute l’etape "carte en direct" en GPA', () => {
+    const aide = aideAvecCompte({
+      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: abonnementGpa, userPermissions: null
+    });
+
+    const etapes = aide.etapesGuide().map(e => e.id);
+    expect(etapes).not.toContain('voir-la-carte');
+    expect(etapes).toContain('ajouter-vehicule');
+    expect(etapes).toContain('premier-rapport');
+  });
+
+  it('meme abonnement GPA, utilisateur simple : toujours aucun article GPS', () => {
+    const aide = aideAvecCompte({
+      id: 'u-simple-gpa', isSystemAdmin: false, isCompanyAdmin: false,
+      subscriptionFeatures: abonnementGpa,
+      userPermissions: { canMonitoring: true, canGeofences: true, canVehicles: true }
+      // Droits utilisateur volontairement ouverts sur le GPS : l'abonnement doit primer.
+    });
+
+    const visibles = aide.articlesVisibles().map(a => a.id);
+    for (const interdit of ARTICLES_GPS) {
+      expect(visibles).not.toContain(interdit);
+    }
+  });
+
+  it('abonnement GPS complet : les articles GPS reviennent', () => {
+    const aide = aideAvecCompte({
+      id: 'u-admin-gps', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true },
+      userPermissions: null
+    });
+
+    const visibles = aide.articlesVisibles().map(a => a.id);
+    expect(visibles).toContain('suivre-en-direct');
+    expect(visibles).toContain('creer-geofence');
+    expect(visibles).toContain('rejouer-trajet');
+  });
+
+  it('abonnement GPS mais droit Monitoring retire a CET utilisateur : pas d’articles de suivi', () => {
+    const aide = aideAvecCompte({
+      id: 'u-compta', isSystemAdmin: false, isCompanyAdmin: false,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true },
+      userPermissions: { canMonitoring: false, canGeofences: false, canCosts: true, canMaintenance: true }
+    });
+
+    const visibles = aide.articlesVisibles().map(a => a.id);
+    expect(visibles).not.toContain('suivre-en-direct');
+    expect(visibles).not.toContain('creer-geofence');
+    // Le comptable garde ce qui le concerne.
+    expect(visibles).toContain('entretien-ou-reparation');
+  });
+
+  it('un droit non renseigne vaut REFUS, pas autorisation', () => {
+    // Regle du PermissionService : hors administrateur, un module absent de
+    // userPermissions retombe sur le tableau de bord seul. A savoir quand on
+    // cree un utilisateur : ne rien cocher ne donne pas "tout".
+    const aide = aideAvecCompte({
+      id: 'u-vierge', isSystemAdmin: false, isCompanyAdmin: false,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true },
+      userPermissions: {}
+    });
+
+    const modules = new Set(aide.articlesVisibles().map(a => a.module));
+    expect([...modules].every(m => m === 'general' || m === 'dashboard')).toBe(true);
+  });
+});
