@@ -74,6 +74,9 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
             }
         }
 
+        // Avertissement non bloquant renvoyé avec le véhicule enregistré (doublon hérité).
+        string? avertissement = null;
+
         if (r.HasGps == false)
         {
             await GpsDeviceResolver.ReleaseAsync(_context, vehicle.GpsDeviceId);
@@ -95,6 +98,14 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
             // Use existing device if the sent GPS identifiers match the current device
             // (comparaison normalisée, comme le garde-fou : espaces et casse ignorés).
             var existingDevice = vehicle.GpsDevice;
+
+            // Identifiants du boîtier actuel tels qu'ils sont EN BASE, relevés ICI : plus bas,
+            // GpsDeviceResolver.ResolveAsync peut retrouver ce même boîtier par son IMEI et
+            // réécrire aussitôt son MAT — relevé après, un MAT nouveau passait pour inchangé
+            // et échappait au contrôle anti-doublons (relecture du 21/09/2026).
+            var imeiAvant = existingDevice?.DeviceUid;
+            var matAvant = existingDevice?.Mat;
+            var simAvant = existingDevice?.SimNumber;
             var isSameDevice = vehicle.GpsDeviceId.HasValue && existingDevice != null && (
                 (r.GpsDeviceId.HasValue && r.GpsDeviceId.Value == existingDevice.Id) ||
                 (!r.GpsDeviceId.HasValue &&
@@ -130,6 +141,14 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
 
             if (gpsDevice != null)
             {
+                // Identifiants du boîtier ACTUEL du véhicule avant cette saisie. Seul ce cas
+                // bénéficie de la règle « inchangé = non contrôlé » (voir plus bas) : une fiche
+                // neuve, ou une AUTRE fiche que l'on rattache, garde le contrôle complet — le
+                // passage d'un boîtier à l'autre relève du remplacement, qui vérifie l'historique,
+                // la société et ce qu'il faut supprimer (GpsDeviceReplacementPlanner).
+                var boitierActuelConserve = gpsDevice.Id != 0 && gpsDevice.Id == currentDeviceId
+                                            && existingDevice != null && existingDevice.Id == gpsDevice.Id;
+
                 if (vehicle.GpsDeviceId.HasValue && vehicle.GpsDeviceId != gpsDevice.Id)
                     await GpsDeviceResolver.ReleaseAsync(_context, vehicle.GpsDeviceId);
 
@@ -161,10 +180,26 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
                 if (!string.IsNullOrWhiteSpace(r.GpsSimOperator)) gpsDevice.SimOperator = r.GpsSimOperator;
                 if (r.GpsInstallationDate.HasValue) gpsDevice.InstallationDate = r.GpsInstallationDate;
 
-                // Anti-doublons IMEI/MAT/SIM sur les valeurs FINALES du boîtier.
+                // Anti-doublons IMEI/MAT/SIM sur les valeurs FINALES du boîtier — mais
+                // seulement celles que cette saisie CHANGE sur une fiche existante. Le
+                // formulaire renvoie toujours l'IMEI, le MAT et la SIM affichés : un doublon
+                // déjà présent en base (recette du 21/09/2026 : 3 MAT partagés sur TN,
+                // 261 TU 4113 / 261 TU 4109, 237 TU 8371, HTZ 316) refusait alors TOUTE
+                // modification du véhicule, couleur ou kilométrage compris, sans aucune
+                // issue. Un doublon ne bloque que la saisie qui le crée ; celui qui existe
+                // déjà se corrige à part. Même règle que le matricule (VehicleWriteRules).
                 // Rien n'est persisté avant SaveChanges : retourner ici annule tout.
+                string? SiChange(string? apres, string? avant) =>
+                    boitierActuelConserve
+                    && GpsDeviceUniquenessGuard.Normalize(apres) == GpsDeviceUniquenessGuard.Normalize(avant)
+                        ? null
+                        : apres;
                 var conflict = await GpsDeviceUniquenessGuard.FindConflictDetailAsync(
-                    _context, gpsDevice.Id, gpsDevice.DeviceUid, gpsDevice.Mat, gpsDevice.SimNumber, ct);
+                    _context, gpsDevice.Id,
+                    SiChange(gpsDevice.DeviceUid, imeiAvant),
+                    SiChange(gpsDevice.Mat, matAvant),
+                    SiChange(gpsDevice.SimNumber, simAvant),
+                    ct);
                 if (conflict != null)
                 {
                     // Ce que ferait le remplacement proposé par l'écran, avec les valeurs que
@@ -177,13 +212,24 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
                     var (message, replaceSuggested) = DescribeConflict(conflict, currentDeviceId, gpsDevice.DeviceUid, plan);
                     return new UpdateAdminVehicleResult(false, message, ReplaceSuggested: replaceSuggested);
                 }
+
+                // Doublon HÉRITÉ (déjà en base, porté par des valeurs que cette saisie ne change
+                // pas) : il ne bloque plus, mais l’opérateur le voit après l’enregistrement.
+                if (boitierActuelConserve)
+                {
+                    var herite = await GpsDeviceUniquenessGuard.FindConflictDetailAsync(
+                        _context, gpsDevice.Id, gpsDevice.DeviceUid, gpsDevice.Mat, gpsDevice.SimNumber, ct);
+                    if (herite != null) avertissement = AvertissementDoublonHerite(herite, gpsDevice.DeviceUid);
+                }
             }
         }
 
         vehicle.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
-        return new UpdateAdminVehicleResult(true, Vehicle: GpsDeviceResolver.MapToDto(vehicle));
+        var dto = GpsDeviceResolver.MapToDto(vehicle);
+        dto.Warning = avertissement;
+        return new UpdateAdminVehicleResult(true, Vehicle: dto);
     }
 
     /// <summary>
@@ -209,29 +255,11 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
               $"de ce véhicule (#{conflict.DeviceId}, IMEI {conflict.DeviceImei})."
             : conflict.Message;
 
-        // MAT ou SIM partagé avec un boîtier NON AFFECTÉ d'IMEI différent, alors que
-        // l'IMEI du véhicule a la forme d'un IMEI mais une clé de Luhn fausse et que
-        // celui de l'autre boîtier est valide : très probablement une faute de recopie
-        // (fiche créée par l'ingestion, sans véhicule). Le contrôle de Luhn ne bloque
-        // jamais la saisie ; il empêche seulement de proposer un remplacement qui
-        // garderait l'IMEI faux en supprimant la fiche du vrai boîtier.
-        if (!ownDevice
-            && conflict.Identifier != GpsDeviceConflict.Imei
-            && conflict.VehicleId == null
-            && !string.IsNullOrWhiteSpace(requestedImei)
-            && GpsDeviceUniquenessGuard.Normalize(conflict.DeviceImei) != GpsDeviceUniquenessGuard.Normalize(requestedImei)
-            && IsFifteenDigits(requestedImei)
-            && !GpsDeviceUniquenessGuard.IsValidImei(requestedImei)
-            && GpsDeviceUniquenessGuard.IsValidImei(conflict.DeviceImei))
-        {
-            var same = conflict.Identifier == GpsDeviceConflict.Mat ? "le même MAT" : "le même numéro SIM";
-            message += $" L'IMEI de ce véhicule ({requestedImei.Trim()}) semble mal saisi (chiffre de contrôle invalide) ; " +
-                       $"le boîtier #{conflict.DeviceId} porte l'IMEI {conflict.DeviceImei} avec {same}. " +
-                       "Pour rattacher le vrai boîtier : dans la section « Appareil GPS » du formulaire, choisissez " +
-                       "« Ajouter un nouvel appareil » (les champs restent préremplis), remplacez l'IMEI par " +
-                       $"{conflict.DeviceImei}, enregistrez puis confirmez le remplacement.";
-            return (message, false);
-        }
+        // IMEI probablement mal saisi : le contrôle de Luhn ne bloque jamais la saisie ; il
+        // empêche seulement de proposer un remplacement qui garderait l'IMEI faux en
+        // supprimant la fiche du vrai boîtier.
+        if (!ownDevice && IndiceImeiMalSaisi(conflict, requestedImei) is { } indice)
+            return ($"{message} {indice}", false);
 
         if (plan == null) return (message, false);
         if (plan.CanProceed) return ($"{message} {plan.DescribeOutcome()}", true);
@@ -275,6 +303,47 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
         return plan.CanProceed
             ? new UpdateAdminVehicleResult(false, $"{foreign} {plan.DescribeOutcome()}", ReplaceSuggested: true)
             : new UpdateAdminVehicleResult(false, $"{foreign} {plan.Refusal}");
+    }
+
+    /// <summary>
+    /// MAT ou SIM partagé avec un boîtier NON AFFECTÉ d'IMEI différent, alors que l'IMEI
+    /// du véhicule a la forme d'un IMEI mais une clé de Luhn fausse et que celui de l'autre
+    /// boîtier est valide : très probablement une faute de recopie (fiche créée par
+    /// l'ingestion, sans véhicule). Rend la consigne pour rattacher le vrai boîtier, ou
+    /// null. Jamais quand l'autre boîtier appartient à un véhicule : conseiller de saisir
+    /// son IMEI mènerait à lui voler son boîtier.
+    /// </summary>
+    private static string? IndiceImeiMalSaisi(GpsDeviceConflict conflict, string? vehicleImei)
+    {
+        if (conflict.Identifier == GpsDeviceConflict.Imei
+            || conflict.VehicleId != null
+            || string.IsNullOrWhiteSpace(vehicleImei)
+            || GpsDeviceUniquenessGuard.Normalize(conflict.DeviceImei) == GpsDeviceUniquenessGuard.Normalize(vehicleImei)
+            || !IsFifteenDigits(vehicleImei)
+            || GpsDeviceUniquenessGuard.IsValidImei(vehicleImei)
+            || !GpsDeviceUniquenessGuard.IsValidImei(conflict.DeviceImei))
+            return null;
+
+        var same = conflict.Identifier == GpsDeviceConflict.Mat ? "le même MAT" : "le même numéro SIM";
+        return $"L'IMEI de ce véhicule ({vehicleImei.Trim()}) semble mal saisi (chiffre de contrôle invalide) ; " +
+               $"le boîtier #{conflict.DeviceId} porte l'IMEI {conflict.DeviceImei} avec {same}. " +
+               "Pour rattacher le vrai boîtier : dans la section « Appareil GPS » du formulaire, choisissez " +
+               "« Ajouter un nouvel appareil » (les champs restent préremplis), remplacez l'IMEI par " +
+               $"{conflict.DeviceImei}, enregistrez puis confirmez le remplacement.";
+    }
+
+    /// <summary>
+    /// Avertissement NON bloquant d'un doublon hérité : l'enregistrement a réussi, mais le
+    /// boîtier du véhicule partage un identifiant avec une autre fiche. C'était le seul signal
+    /// d'un IMEI mal saisi (HTZ 278 / 316 : la fiche du véhicule n'émet pas, le vrai boîtier
+    /// est ailleurs) — il ne bloque plus, il reste visible.
+    /// </summary>
+    private static string AvertissementDoublonHerite(GpsDeviceConflict conflict, string? vehicleImei)
+    {
+        var porteur = conflict.VehicleLabel != null ? $"véhicule {conflict.VehicleLabel}" : "boîtier non affecté";
+        var message = $"Modification enregistrée. Attention : {conflict.IdentifierLabel} « {conflict.Value} » de ce boîtier " +
+                      $"est aussi porté par le boîtier #{conflict.DeviceId} ({porteur}) — doublon déjà présent en base, à corriger.";
+        return IndiceImeiMalSaisi(conflict, vehicleImei) is { } indice ? $"{message} {indice}" : message;
     }
 
     private static bool IsFifteenDigits(string value)

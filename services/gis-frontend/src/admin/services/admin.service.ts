@@ -155,6 +155,8 @@ export interface DeviceCommandHistoryRow {
 
 export interface AdminVehicle {
   id: number;
+  /** Réponse d’une modification seulement : doublon d’identifiant déjà en base (non bloquant). */
+  warning?: string | null;
   name: string;
   type: string;
   brand?: string;

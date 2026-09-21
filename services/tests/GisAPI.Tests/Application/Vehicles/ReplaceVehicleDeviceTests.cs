@@ -107,58 +107,120 @@ public class ReplaceVehicleDeviceTests
 
     // ── La boucle, telle que l'opérateur la vivait ──
 
+    // ── Recette du 21/09/2026 : un doublon DÉJÀ en base ne bloque plus le véhicule ──
+    //
+    // Jusqu'ici, le formulaire renvoyant toujours l'IMEI, le MAT et la SIM affichés, le
+    // contrôle anti-doublons les revérifiait à chaque enregistrement : un MAT partagé en
+    // base refusait TOUTE modification du véhicule (couleur, kilométrage, chauffeur…),
+    // sans aucune issue quand l'autre fiche avait de l'historique. Sur TN : 261 TU 4113 /
+    // 261 TU 4109 (même MAT, deux boîtiers qui émettent), 237 TU 8371 (MAT partagé avec une
+    // fiche fantôme), HTZ 316 (IMEI mal saisi). Désormais seuls les identifiants que la
+    // saisie CHANGE sur le boîtier actuel sont contrôlés ; le passage à un autre boîtier
+    // garde le contrôle complet et le remplacement (cas B plus bas, inchangés).
+
     [Fact]
-    public async Task CaseA_EditingVehicleWithoutTouchingGps_MessagePointsToTheRealDevice_NoReplacementProposed()
+    public async Task Recette2109_EditingVehicleWithoutTouchingGps_Succeeds_DespiteMatSharedWithRealDevice()
     {
         using var context = TestDbContextFactory.Create();
         await SeedHtz278Async(context);
 
-        // Formulaire renvoyé tel quel : boîtier actuel, IMEI faux, MAT, kilométrage modifié.
+        // Formulaire renvoyé tel quel : boîtier actuel, IMEI (faux), MAT partagé, kilométrage modifié.
         var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
             FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: WrongImei278, mat: Mat278, sim: null, mileage: 12345),
             CancellationToken.None);
 
-        result.Success.Should().BeFalse();
-        result.ReplaceSuggested.Should().BeFalse("un remplacement gardant l'IMEI faux échouerait : c'était la boucle");
-        result.Error.Should().StartWith(
-            $"Doublon refusé : le MAT « {Mat278} » est déjà utilisé par le boîtier #{RealDevice278} (boîtier non affecté).");
-        result.Error.Should()
-            .Contain($"L'IMEI de ce véhicule ({WrongImei278}) semble mal saisi (chiffre de contrôle invalide)")
-            .And.Contain($"le boîtier #{RealDevice278} porte l'IMEI {RealImei278} avec le même MAT")
-            // Le mode « appareil existant » n'a pas de champ IMEI : le message dit où le saisir.
-            .And.Contain("choisissez « Ajouter un nouvel appareil »")
-            .And.Contain($"remplacez l'IMEI par {RealImei278}")
-            .And.NotContain("Si vous confirmez");
-
-        var vehicle = await context.Vehicles.AsNoTracking().FirstAsync(v => v.Id == Htz278);
-        vehicle.Mileage.Should().Be(1000, "rien n'est enregistré sur un doublon");
+        result.Success.Should().BeTrue(result.Error);
+        // Le seul signal d’un IMEI mal saisi reste visible : non bloquant, avec la consigne.
+        result.Vehicle!.Warning.Should()
+            .StartWith($"Modification enregistrée. Attention : le MAT « {Mat278} » de ce boîtier est aussi porté par le boîtier #{RealDevice278} (boîtier non affecté)")
+            .And.Contain($"L'IMEI de ce véhicule ({WrongImei278}) semble mal saisi (chiffre de contrôle invalide)")
+            .And.Contain($"remplacez l'IMEI par {RealImei278}");
+        using var fresh = Reopen(context);
+        (await fresh.Vehicles.AsNoTracking().FirstAsync(v => v.Id == Htz278)).Mileage.Should().Be(12345);
+        // Aucune fiche touchée : le doublon historique reste à corriger à part (remplacement).
+        (await fresh.Vehicles.AsNoTracking().FirstAsync(v => v.Id == Htz278)).GpsDeviceId.Should().Be(WrongDevice278);
+        (await fresh.GpsDevices.CountAsync()).Should().Be(2);
+        var real = await fresh.GpsDevices.AsNoTracking().FirstAsync(d => d.Id == RealDevice278);
+        (real.CompanyId, real.Status).Should().Be((Belive, "unassigned"));
+        (await fresh.GpsPositions.CountAsync(p => p.DeviceId == RealDevice278)).Should().Be(352);
     }
 
     [Fact]
-    public async Task CaseA_NoLuhnHint_WhenImeiIsValid()
+    public async Task Recette2109_TwoAssignedVehiclesSharingAMat_BothStayEditable()
+    {
+        // 261 TU 4113 / 261 TU 4109 (HERTZ) : deux boîtiers qui émettent, un MAT saisi deux fois.
+        using var context = TestDbContextFactory.Create();
+        await SeedCompaniesAsync(context);
+        context.GpsDevices.Add(Device(202124, "860141076675512", "NR08G0844", "99108859", BeliveSav, "assigned"));
+        context.GpsDevices.Add(Device(202129, "860141076676742", "NR08G0844", "99112866", BeliveSav, "assigned"));
+        context.Vehicles.Add(Vehicle(195, "261 TU 4113", 202124));
+        context.Vehicles.Add(Vehicle(197, "261 TU 4109", 202129));
+        AddPositions(context, 202124, 20);
+        AddPositions(context, 202129, 20);
+        await context.SaveChangesAsync();
+
+        foreach (var (vehicule, boitier, imei, sim) in new[]
+                 { (195, 202124, "860141076675512", "99108859"), (197, 202129, "860141076676742", "99112866") })
+        {
+            var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
+                FormUpdate(vehicule, gpsDeviceId: boitier, imei: imei, mat: "NR08G0844", sim: sim, mileage: 50_000),
+                CancellationToken.None);
+            result.Success.Should().BeTrue($"le véhicule {vehicule} doit rester modifiable : {result.Error}");
+        }
+
+        using var fresh = Reopen(context);
+        (await fresh.Vehicles.AsNoTracking().Where(v => v.Mileage == 50_000).CountAsync()).Should().Be(2);
+        (await fresh.GpsDevices.CountAsync()).Should().Be(2, "aucune fiche créée ni supprimée");
+    }
+
+    [Fact]
+    public async Task Recette2109_ChangingOnlyTheSim_ChecksTheSim_NotTheUnchangedSharedMat()
     {
         using var context = TestDbContextFactory.Create();
         await SeedHtz278Async(context);
-        // Fiche du véhicule avec un IMEI valide : le doublon de MAT est un vrai doublon,
-        // pas une faute de recopie probable.
-        var current = await context.GpsDevices.FirstAsync(d => d.Id == WrongDevice278);
-        current.DeviceUid = "860141076677286";
-        await context.SaveChangesAsync();
 
-        var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
-            FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: "860141076677286", mat: Mat278, sim: null, mileage: 12345),
+        // Nouvelle SIM, libre : l'enregistrement passe, le MAT partagé (inchangé) n'est pas rejugé.
+        var ok = await new UpdateAdminVehicleCommandHandler(context).Handle(
+            FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: WrongImei278, mat: Mat278, sim: "92111222", mileage: 1000),
             CancellationToken.None);
+        ok.Success.Should().BeTrue(ok.Error);
+        using (var fresh = Reopen(context))
+            (await fresh.GpsDevices.AsNoTracking().FirstAsync(d => d.Id == WrongDevice278)).SimNumber.Should().Be("92111222");
 
-        result.Success.Should().BeFalse();
-        result.ReplaceSuggested.Should().BeFalse();
-        result.Error.Should().StartWith("Doublon refusé").And.NotContain("semble mal saisi");
+        // SIM d'un AUTRE boîtier : toujours refusée — le contrôle porte sur ce qui change.
+        context.GpsDevices.Add(Device(777001, "860141076600001", "NR08G7001", "92999888", BeliveSav, "unassigned"));
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var refus = await new UpdateAdminVehicleCommandHandler(context).Handle(
+            FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: WrongImei278, mat: Mat278, sim: "92999888", mileage: 1000),
+            CancellationToken.None);
+        refus.Success.Should().BeFalse();
+        refus.Error.Should().StartWith("Doublon refusé : le numéro SIM « 92999888 » est déjà utilisé par le boîtier #777001");
     }
 
     [Fact]
-    public async Task LuhnHint_NotShown_WhenConflictingDeviceBelongsToAnotherVehicle()
+    public async Task Recette2109_ChangingTheMatToAnotherDevicesMat_IsStillRefused()
     {
-        // Doublon historique de SIM entre deux véhicules (cas 92002732, HTZ 159 / 262 TU 8165) :
-        // conseiller de saisir l'IMEI de l'autre véhicule mènerait à lui voler son boîtier.
+        using var context = TestDbContextFactory.Create();
+        await SeedHtz278Async(context);
+        context.GpsDevices.Add(Device(777002, "860141076600002", "NR08G7002", null, BeliveSav, "assigned"));
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
+            FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: WrongImei278, mat: "NR08G7002", sim: null, mileage: 12345),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.Error.Should().StartWith("Doublon refusé : le MAT « NR08G7002 » est déjà utilisé par le boîtier #777002");
+        using var fresh = Reopen(context);
+        (await fresh.Vehicles.AsNoTracking().FirstAsync(v => v.Id == Htz278)).Mileage.Should().Be(1000, "rien n'est enregistré");
+    }
+
+    [Fact]
+    public async Task Recette2109_SimAlreadySharedWithAnotherVehicle_DoesNotBlockAnUnrelatedEdit()
+    {
+        // Doublon historique de SIM entre deux véhicules (cas 92002732, HTZ 159 / 262 TU 8165).
         using var context = TestDbContextFactory.Create();
         await SeedCompaniesAsync(context);
         context.GpsDevices.Add(Device(WrongDevice278, WrongImei278, Mat278, "92002732", BeliveSav, "assigned"));
@@ -172,9 +234,52 @@ public class ReplaceVehicleDeviceTests
             FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: WrongImei278, mat: Mat278, sim: "92002732", mileage: 12345),
             CancellationToken.None);
 
-        result.Success.Should().BeFalse();
-        result.Error.Should().Contain("(véhicule 262 TU 8165)").And.NotContain("semble mal saisi");
-        result.ReplaceSuggested.Should().BeFalse();
+        result.Success.Should().BeTrue(result.Error);
+        result.Vehicle!.Warning.Should().Contain("(véhicule 262 TU 8165)")
+            .And.NotContain("semble mal saisi", "conseiller son IMEI mènerait à voler le boîtier d'un autre véhicule");
+        using var fresh = Reopen(context);
+        (await fresh.Vehicles.AsNoTracking().FirstAsync(v => v.Id == 999)).GpsDeviceId.Should().Be(RealDevice278,
+            "l'autre véhicule garde son boîtier");
+    }
+
+    [Fact]
+    public async Task Recette2109_ValidImei_WarnsAboutTheInheritedDuplicate_WithoutTheTypoHint()
+    {
+        using var context = TestDbContextFactory.Create();
+        await SeedHtz278Async(context);
+        var current = await context.GpsDevices.FirstAsync(d => d.Id == WrongDevice278);
+        current.DeviceUid = "860141076677286";   // IMEI valide : vrai doublon de MAT, pas une faute de recopie
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
+            FormUpdate(Htz278, gpsDeviceId: WrongDevice278, imei: "860141076677286", mat: Mat278, sim: null, mileage: 12345),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue(result.Error);
+        result.Vehicle!.Warning.Should().Contain("doublon déjà présent en base").And.NotContain("semble mal saisi");
+    }
+
+    [Fact]
+    public async Task Recette2109_CurrentDeviceFoundByImei_NewMatOfAnotherDevice_IsStillRefused()
+    {
+        // Relecture du 21/09 : sans gpsDeviceId, le résolveur retrouve le boîtier actuel par son
+        // IMEI et réécrit aussitôt son MAT. Relevé APRÈS, le nouveau MAT passait pour inchangé
+        // et créait un doublon avec un autre boîtier. La « valeur avant » est relevée en base.
+        using var context = TestDbContextFactory.Create();
+        await SeedHtz278Async(context);
+        context.GpsDevices.Add(Device(777003, "860141076600003", "NR08G7003", null, BeliveSav, "assigned"));
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var result = await new UpdateAdminVehicleCommandHandler(context).Handle(
+            FormUpdate(Htz278, gpsDeviceId: null, imei: WrongImei278, mat: "NR08G7003", sim: null, mileage: 12345),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse("le MAT NR08G7003 appartient au boîtier #777003");
+        result.Error.Should().StartWith("Doublon refusé : le MAT « NR08G7003 » est déjà utilisé par le boîtier #777003");
+        using var fresh = Reopen(context);
+        (await fresh.GpsDevices.AsNoTracking().FirstAsync(d => d.Id == WrongDevice278)).Mat.Should().Be(Mat278);
     }
 
     [Fact]

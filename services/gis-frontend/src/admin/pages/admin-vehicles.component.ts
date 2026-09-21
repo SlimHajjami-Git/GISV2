@@ -809,7 +809,10 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
 
     if (this.showEditModal && this.selectedVehicle) {
       this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
+        next: (enregistre) => {
+          // Enregistré, mais le boîtier partage un identifiant avec une autre fiche (doublon
+          // déjà en base) : le serveur ne bloque plus, il prévient.
+          if (enregistre?.warning) alert(enregistre.warning);
           this.loadData();
           this.closeModals();
         },

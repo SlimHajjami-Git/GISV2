@@ -2909,7 +2909,9 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
 
     if (this.selectedVehicle?.id) {
       this.adminService.updateVehicle(this.selectedVehicle.id, vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
+        next: (enregistre) => {
+          // Doublon d’identifiant déjà en base : enregistré, mais signalé (non bloquant).
+          if (enregistre?.warning) alert(enregistre.warning);
           this.closeVehiclePopup();
           this.loadVehicles();
         },

@@ -27,6 +27,12 @@ public class AdminVehicleDto
     public string? GpsFirmwareVersion { get; set; }
     public string? GpsFuelSensorMode { get; set; }
     public string? GpsSimNumber { get; set; }
+
+    /// <summary>
+    /// Renseigné seulement dans la réponse d'une MODIFICATION réussie : avertissement non
+    /// bloquant (doublon d'identifiant déjà présent en base, IMEI probablement mal saisi).
+    /// </summary>
+    public string? Warning { get; set; }
     public string? GpsSimOperator { get; set; }
     public DateTime? GpsInstallationDate { get; set; }
     public int? AssignedDriverId { get; set; }
