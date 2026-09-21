@@ -7,16 +7,25 @@ import { ApiService } from '../../core/services/api.service';
 import { KvStore } from '../../core/services/kv-store.service';
 import { PushNotificationService } from '../../core/services/push-notification.service';
 import { LocationConsentService } from '../../core/services/location-consent.service';
-import { SENSOR_NOT_AUTHORIZED, TourTrackingService } from '../../core/services/tour-tracking.service';
-import { DeclarationKind, DriverDeclarationsService, QueuedDeclaration } from '../../core/services/driver-declarations.service';
+import { TourTrackingService, sensorMessageFor } from '../../core/services/tour-tracking.service';
+import {
+  DeclarationKind, DriverDeclarationsService, QueuedDeclaration, RefusedDeclaration
+} from '../../core/services/driver-declarations.service';
+import { AuthService } from '../../core/services/auth.service';
 import {
   DRIVER_ERR_PENDING_STOPS, DRIVER_ERR_TOO_FAR, DriverTourDetail, DriverWaypoint
 } from '../../core/models/driver-app.types';
 import { decodePolyline6 } from '../../core/util/polyline';
-import { stepActionFor } from '../../core/util/tour-steps';
+import { isOverdue, nextExpected, stepActionFor } from '../../core/util/tour-steps';
 import { TOUR_STATUS_LABELS } from '../tours/driver-tours.page';
 
 const TOUR_CACHE_PREFIX = 'driver_tour_cache_';
+
+/** Fiche mise en cache pour le hors ligne, rattachée au compte qui l'a ouverte. */
+interface CachedTour {
+  userId: string;
+  tour: DriverTourDetail;
+}
 
 @Component({
   selector: 'app-driver-tour-detail',
@@ -45,9 +54,14 @@ const TOUR_CACHE_PREFIX = 'driver_tour_cache_';
         <ion-icon name="cloud-offline-outline"></ion-icon>
         <span>Hors ligne — dernière version connue de la tournée</span>
       </div>
+      <div class="banner warn" *ngFor="let r of refusals" (click)="acknowledgeRefusals()">
+        <ion-icon name="alert-circle-outline"></ion-icon>
+        <span>{{ refusalText(r) }}</span>
+        <ion-icon name="close-outline"></ion-icon>
+      </div>
       <div class="banner offline" *ngIf="queued.length > 0">
         <ion-icon name="time-outline"></ion-icon>
-        <span>{{ queued.length }} déclaration(s) en attente de réseau : elles partiront toutes seules</span>
+        <span>{{ queued.length }} déclaration(s) en attente d'envoi : elles partiront toutes seules</span>
       </div>
       <div class="banner tracking" *ngIf="trackingHere && !sensorError">
         <ion-icon name="radio-outline"></ion-icon>
@@ -111,6 +125,11 @@ const TOUR_CACHE_PREFIX = 'driver_tour_cache_';
                 </ion-button>
               </ng-container>
 
+              <ion-button *ngIf="action === 'arrive_ahead'" class="secondary" expand="block" fill="outline" color="medium"
+                          [disabled]="busy" (click)="arriveAhead(wp)">
+                <ion-icon name="flag-outline" slot="start"></ion-icon> Je suis arrivé ici
+              </ion-button>
+
               <ion-button *ngIf="action === 'redepart'" expand="block" size="large" color="tertiary"
                           [disabled]="busy" (click)="depart(wp, false)">
                 <ion-icon name="play-forward" slot="start"></ion-icon> Je repars
@@ -149,6 +168,7 @@ const TOUR_CACHE_PREFIX = 'driver_tour_cache_';
     .step-text .times { color: var(--ion-text-color); font-size:14px; }
     .step-actions { margin-top:12px; display:grid; gap:8px; }
     .step-actions ion-button { --border-radius:14px; min-height:58px; font-size:18px; font-weight:700; margin:0; }
+    .step-actions ion-button.secondary { min-height:46px; font-size:15px; font-weight:600; }
   `]
 })
 export class DriverTourDetailPage implements OnInit, OnDestroy {
@@ -163,11 +183,11 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
   queued: QueuedDeclaration[] = [];
   trackingHere = false;
   sensorError: string | null = null;
+  /** Déclarations de CETTE tournée rejouées puis refusées, pas encore vues par le chauffeur. */
+  refusals: RefusedDeclaration[] = [];
 
   get sensorMessage(): string {
-    return this.sensorError === SENSOR_NOT_AUTHORIZED
-      ? 'Localisation non autorisée : touchez ici pour l\'activer'
-      : 'Position du téléphone indisponible pour le moment';
+    return sensorMessageFor(this.sensorError);
   }
 
   private map: L.Map | null = null;
@@ -189,7 +209,8 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     private toastCtrl: ToastController,
     private loadingCtrl: LoadingController,
     private actionSheetCtrl: ActionSheetController,
-    private zone: NgZone
+    private zone: NgZone,
+    private auth: AuthService
   ) {}
 
   ngOnInit() {
@@ -200,10 +221,13 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     // Pas de SignalR pour un chauffeur : le push et le rejeu de la file sont les seuls signaux.
     this.subs.add(this.push.tourPush$.subscribe(ev => { if (ev.tourId === this.tourId) this.load(); }));
     this.subs.add(this.declarations.replayed$.subscribe(item => { if (item.tourId === this.tourId) this.load(); }));
-    this.subs.add(this.declarations.dropped$.subscribe(({ item, message }) => {
-      if (item.tourId !== this.tourId) return;
-      this.toast(message || 'Une déclaration faite hors ligne a été refusée par le serveur. Refaites-la si besoin.', 'warning', 6000);
-      this.load();
+    // Refus d'une déclaration rejouée : bandeau persistant (l'application était peut-être en
+    // arrière-plan au moment du refus), jusqu'à ce que le chauffeur le touche.
+    this.subs.add(this.declarations.refused$.subscribe(list => {
+      this.zone.run(() => { this.refusals = list.filter(r => r.tourId === this.tourId); });
+    }));
+    this.subs.add(this.declarations.dropped$.subscribe(({ item }) => {
+      if (item.tourId === this.tourId) this.load();
     }));
   }
 
@@ -235,15 +259,17 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     try {
       const tour = await firstValueFrom(this.api.getDriverTour(this.tourId));
       this.fromCache = false;
-      await this.store.set(TOUR_CACHE_PREFIX + this.tourId, tour);
+      const userId = this.auth.currentUserId();
+      if (userId) await this.store.set<CachedTour>(TOUR_CACHE_PREFIX + this.tourId, { userId, tour });
       await this.show(tour);
       this.markOpened(tour);
     } catch (err: any) {
       if (err?.status === 0) {
-        const cached = await this.store.get<DriverTourDetail>(TOUR_CACHE_PREFIX + this.tourId);
-        if (cached) {
+        const cached = await this.store.get<CachedTour>(TOUR_CACHE_PREFIX + this.tourId);
+        // Fiche ouverte par un AUTRE compte sur ce téléphone : jamais montrée.
+        if (cached?.tour && cached.userId === this.auth.currentUserId()) {
           this.fromCache = true;
-          await this.show(cached);
+          await this.show(cached.tour);
         } else {
           this.error = 'Pas de réseau, et cette tournée n\'a jamais été ouverte sur ce téléphone.';
         }
@@ -313,6 +339,33 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     await this.declare(wp, 'arrive', { confirmSkipPending });
   }
 
+  /**
+   * « Je suis arrivé ici » sur une étape plus loin que la prochaine attendue : on fait
+   * confirmer (un toucher sur la mauvaise carte validerait une étape où il n'est pas).
+   * Destination : le serveur répond PENDING_STOPS et le dialogue habituel prend le relais.
+   */
+  async arriveAhead(wp: DriverWaypoint) {
+    if (this.busy || !this.tour) return;
+    if (wp.type === 'destination') {
+      await this.arrive(wp);
+      return;
+    }
+    const skipped = this.tour.waypoints
+      .filter(w => w.sequenceOrder < wp.sequenceOrder && stepActionFor(this.tour!, w) === 'arrive')
+      .map(w => w.name || w.address || this.typeLabel(w.type));
+    const alert = await this.alertCtrl.create({
+      header: `Arrivé à ${wp.name || wp.address || this.typeLabel(wp.type)} ?`,
+      message: skipped.length
+        ? `L'étape ${skipped.join(', ')} n'est pas signalée : elle restera à signaler, ou sera marquée « non visitée » à l'arrivée à destination.`
+        : 'Confirmez votre arrivée à cette étape.',
+      buttons: [
+        { text: 'Annuler', role: 'cancel' },
+        { text: 'Je suis arrivé ici', handler: () => { this.arrive(wp); } }
+      ]
+    });
+    await alert.present();
+  }
+
   private async declare(wp: DriverWaypoint, kind: DeclarationKind, opts: { startsTour?: boolean; confirmSkipPending?: boolean }) {
     this.busy = true;
     const spinner = await this.loadingCtrl.create({ message: 'Envoi…', spinner: 'crescent' });
@@ -321,6 +374,7 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
       const outcome = await this.declarations.declare(this.tourId, wp.id, kind, {
         withPosition: true,
         startsTour: opts.startsTour,
+        closesTour: kind === 'arrive' && wp.type === 'destination',
         confirmSkipPending: opts.confirmSkipPending
       });
       await spinner.dismiss();
@@ -333,11 +387,12 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
         // Le suivi vient peut-être de démarrer sans permission : le bandeau le dira.
         await this.load();
       } else {
-        // Hors ligne : le geste est en file avec son heure ; l'écran avance quand même.
+        // Réseau absent ou serveur indisponible : le geste est en file avec son heure ;
+        // l'écran avance quand même.
         if (this.tour) this.applyLocally(this.tour, wp.id, kind, new Date().toISOString());
         this.queued = await this.declarations.pendingFor(this.tourId);
         this.drawMap();
-        this.toast('Pas de réseau : déclaration enregistrée, elle sera envoyée automatiquement.', 'warning', 5000);
+        this.toast('Envoi impossible pour le moment (réseau ou serveur) : déclaration enregistrée, elle partira automatiquement.', 'warning', 5000);
       }
     } catch (err: any) {
       await spinner.dismiss();
@@ -400,9 +455,26 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Bandeau rouge touché : refaire le parcours explication → permission, puis relancer le capteur. */
+  /**
+   * Bandeau rouge touché : refaire le parcours explication → permission (ou activation de
+   * la localisation du téléphone), puis revérifier et démarrer le capteur — l'écran est
+   * visible, Android l'autorise. Le bandeau reste si le souci n'est pas levé.
+   */
   async fixSensor() {
-    if (await this.consent.ensure()) await this.tracking.restartSensor();
+    await this.consent.ensure();
+    await this.tracking.ensureSensor({ foreground: true });
+  }
+
+  refusalText(r: RefusedDeclaration): string {
+    const wp = this.tour?.waypoints.find(w => w.id === r.waypointId);
+    const where = wp ? (wp.name || wp.address || this.typeLabel(wp.type)) : 'une étape';
+    const what = r.kind === 'arrive' ? 'Arrivée' : 'Départ';
+    return `${what} déclaré(e) hors ligne à « ${where} » refusé(e) par le serveur : `
+      + `${r.message || 'refaites-la si besoin.'} (toucher pour masquer)`;
+  }
+
+  acknowledgeRefusals() {
+    this.declarations.acknowledgeRefusals(this.tourId);
   }
 
   // ────────────────── Navigation ──────────────────
@@ -458,7 +530,7 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
       : L.polyline(straight, { color: '#1a56db', weight: 3, opacity: 0.7, dashArray: '6 6' });
     line.addTo(this.layers);
 
-    const next = wps.find(w => !w.isCompleted && w.waypointStatus === 'pending');
+    const next = nextExpected(wps);
     wps.forEach((w, i) => {
       const bg = w.isCompleted ? '#64748b'
         : w.type === 'origin' ? '#10b981'
@@ -494,6 +566,8 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     if (this.queued.some(q => q.waypointId === wp.id)) return { label: 'En attente d\'envoi', color: 'warning' };
     if (wp.waypointStatus === 'skipped') return { label: 'Non visitée', color: 'medium' };
     if (wp.isCompleted) return { label: 'Atteinte', color: 'success' };
+    // Échéance dépassée (moniteur) : toujours attendue, on peut encore y déclarer l'arrivée.
+    if (isOverdue(wp)) return { label: 'En retard', color: 'danger' };
     return { label: 'À venir', color: 'light' };
   }
 

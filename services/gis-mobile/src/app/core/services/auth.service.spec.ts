@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Preferences } from '@capacitor/preferences';
+import { firstValueFrom } from 'rxjs';
 import { AuthService, AuthResponse, CALYPSO_CLIENT_HEADER } from './auth.service';
 
 /** Jeton JWT factice : seul le champ exp est lu par l'application. */
@@ -165,9 +166,89 @@ describe('AuthService', () => {
       expect(service.getCurrentUserSync()).toBeNull();
     });
 
+    it('refresh refusé en 403 (compte désactivé) : déconnexion aussi', async () => {
+      await storeSession(jwt(-60));
+      const service = await create();
+
+      const restored = service.restoreSession();
+      (await expectOneEventually('/auth/refresh')).flush({ message: 'désactivé' }, { status: 403, statusText: 'Forbidden' });
+
+      expect(await restored).toBeFalse();
+      expect(service.getCurrentUserSync()).toBeNull();
+    });
+
+    for (const status of [502, 503, 504, 408, 429, 500]) {
+      it(`refresh en échec ${status} (rollout de l'API, surcharge) : la session est GARDÉE`, async () => {
+        await storeSession(jwt(-60));
+        const service = await create();
+
+        const restored = service.restoreSession();
+        (await expectOneEventually('/auth/refresh')).flush({ message: 'indisponible' }, { status, statusText: 'Erreur' });
+
+        expect(await restored).toBeTrue();
+        expect(service.getCurrentUserSync()).not.toBeNull();
+        expect(service.getToken()).not.toBeNull();
+        const { value } = await Preferences.get({ key: 'refresh_token' });
+        expect(value).toBe('refresh-1');
+      });
+    }
+
     it('aucune session : restoreSession() faux sans appel réseau', async () => {
       const service = await create();
       expect(await service.restoreSession()).toBeFalse();
+    });
+  });
+
+  describe('un seul rafraîchissement en vol pour toute l\'application', () => {
+    it('garde (restoreSession) + intercepteur en même temps : UN SEUL POST /auth/refresh, le même résultat', async () => {
+      await storeSession(jwt(-60));
+      const service = await create();
+
+      const fromInterceptor = firstValueFrom(service.refreshAccessToken());
+      const fromGuard = service.restoreSession();
+      const fromSwitch = firstValueFrom(service.refreshAccessToken());
+      await new Promise(r => setTimeout(r, 20));
+      const reqs = http.match(r => r.url.includes('/auth/refresh'));
+      // Un second POST avec le même jeton de rafraîchissement serait refusé (révoqué au
+      // premier usage) et déconnecterait la session que le premier vient de restaurer.
+      expect(reqs.length).toBe(1);
+      const fresh = jwt(3600);
+      reqs.forEach(req => req.flush(response('driver', fresh)));
+
+      expect(await fromGuard).toBeTrue();
+      expect((await fromInterceptor)?.token).toBe(fresh);
+      expect((await fromSwitch)?.token).toBe(fresh);
+      expect(service.getToken()).toBe(fresh);
+    });
+
+    it('l\'échec (401) d\'un jeton déjà remplacé par une nouvelle connexion ne déconnecte PAS', async () => {
+      await storeSession(jwt(-60));
+      const service = await create();
+
+      const stale = firstValueFrom(service.refreshAccessToken());
+      const refreshReq = await expectOneEventually('/auth/refresh');
+      const loggedIn = new Promise<any>(resolve => service.login('a@b.tn', 'x').subscribe(resolve));
+      const loginToken = jwt(3600);
+      http.expectOne(r => r.url.endsWith('/auth/login')).flush(response('driver', loginToken));
+      await loggedIn;
+
+      refreshReq.flush({ message: 'Refresh token révoqué' }, { status: 401, statusText: 'Unauthorized' });
+      expect(await stale).toBeNull();
+      await new Promise(r => setTimeout(r, 5));
+      expect(service.getToken()).toBe(loginToken);
+      expect(service.getCurrentUserSync()).not.toBeNull();
+    });
+
+    it('pendingRefresh expose le rafraîchissement en vol, puis revient à null', async () => {
+      await storeSession(jwt(-60));
+      const service = await create();
+      expect(service.pendingRefresh).toBeNull();
+      const done = firstValueFrom(service.refreshAccessToken());
+      expect(service.pendingRefresh).not.toBeNull();
+      (await expectOneEventually('/auth/refresh')).flush(response('driver'));
+      await done;
+      await new Promise(r => setTimeout(r, 0));
+      expect(service.pendingRefresh).toBeNull();
     });
   });
 });

@@ -1,6 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 
 import { AppComponent } from './app.component';
@@ -19,7 +19,7 @@ describe('AppComponent', () => {
   let declarations: jasmine.SpyObj<DriverDeclarationsService>;
 
   const settle = () => new Promise(r => setTimeout(r, 10));
-  const user = (accountType: 'staff' | 'driver') => ({ id: '1', name: 'X', accountType } as AuthUser);
+  const user = (accountType: 'staff' | 'driver', id = '1') => ({ id, name: 'X', accountType } as AuthUser);
 
   beforeEach(async () => {
     user$ = new BehaviorSubject<AuthUser | null>(null);
@@ -31,7 +31,7 @@ describe('AppComponent', () => {
     tracking = jasmine.createSpyObj('TourTrackingService', ['resume', 'stop']);
     tracking.resume.and.resolveTo();
     tracking.stop.and.resolveTo();
-    declarations = jasmine.createSpyObj('DriverDeclarationsService', ['armAutoReplay', 'replay']);
+    declarations = jasmine.createSpyObj('DriverDeclarationsService', ['armAutoReplay', 'disarmAutoReplay', 'replay']);
     declarations.replay.and.resolveTo();
 
     await TestBed.configureTestingModule({
@@ -74,15 +74,44 @@ describe('AppComponent', () => {
     expect(tracking.resume).toHaveBeenCalled();
   });
 
-  it('le null initial (session pas encore relue) n\'efface pas un suivi persisté ; la déconnexion l\'arrête', async () => {
+  it('le null initial (session pas encore relue) n\'efface pas un suivi persisté', async () => {
     TestBed.createComponent(AppComponent);
     await settle();
     expect(tracking.stop).not.toHaveBeenCalled();
+  });
 
+  it('session perdue : le suivi s\'arrête en GARDANT état et file du compte, rejeu désarmé, retour à la connexion', async () => {
+    const nav = spyOn(TestBed.inject(Router), 'navigate').and.resolveTo(true);
+    TestBed.createComponent(AppComponent);
     user$.next(user('driver'));
     await settle();
     user$.next(null);
     await settle();
-    expect(tracking.stop).toHaveBeenCalledTimes(1);
+    expect(tracking.stop).toHaveBeenCalledOnceWith({ keep: true });
+    expect(declarations.disarmAutoReplay).toHaveBeenCalled();
+    expect(nav).toHaveBeenCalledWith(['/login'], { replaceUrl: true });
+  });
+
+  it('même compte converti chauffeur (appris au rafraîchissement) : renvoyé vers « Mes tournées »', async () => {
+    const nav = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+    TestBed.createComponent(AppComponent);
+    user$.next(user('staff', '5'));
+    await settle();
+    expect(nav).not.toHaveBeenCalled();
+    user$.next(user('driver', '5'));
+    await settle();
+    expect(nav).toHaveBeenCalledWith('/driver/tours', { replaceUrl: true });
+  });
+
+  it('un AUTRE compte qui se connecte n\'est pas un changement de type', async () => {
+    const nav = spyOn(TestBed.inject(Router), 'navigateByUrl').and.resolveTo(true);
+    TestBed.createComponent(AppComponent);
+    user$.next(user('staff', '5'));
+    await settle();
+    user$.next(null);
+    user$.next(user('driver', '6'));
+    await settle();
+    // (navigate(['/login']) passe lui aussi par navigateByUrl : seule la bascule d'espace compte.)
+    expect(nav.calls.allArgs().some(args => String(args[0]) === '/driver/tours')).toBeFalse();
   });
 });

@@ -265,16 +265,21 @@ export class PushNotificationService {
    * Désinscrit le jeton FCM du compte (DELETE /api/devicetokens) — à appeler AVANT
    * authService.logout(), tant que le jeton d'accès est encore là. Attend la réponse
    * (meilleur effort, jamais bloquant) pour que la déconnexion ne coupe pas l'appel.
+   *
+   * Dès qu'un jeton FCM est connu, qu'il ait été inscrit PENDANT cette session ou non :
+   * le serveur garde la ligne active des sessions précédentes, et une inscription ratée
+   * au démarrage (hors ligne, 401 pendant un rafraîchissement) laissait registeredUserId
+   * à null — le téléphone recevait alors encore les alertes du compte déconnecté
+   * (relecture du 21/09/2026, constat 25). Le DELETE est idempotent côté serveur.
    */
   async unregister(): Promise<void> {
-    if (this.currentToken && this.registeredUserId) {
-      const token = this.currentToken;
-      this.registeredUserId = null;
-      try {
-        await firstValueFrom(this.api.unregisterDeviceToken(token));
-      } catch (e) {
-        console.warn('[PushNotif] unregister failed (token may stay active until stale)', e);
-      }
+    if (!this.currentToken) return;
+    const token = this.currentToken;
+    this.registeredUserId = null;
+    try {
+      await firstValueFrom(this.api.unregisterDeviceToken(token));
+    } catch (e) {
+      console.warn('[PushNotif] unregister failed (token may stay active until stale)', e);
     }
   }
 }

@@ -1,8 +1,18 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Sauvegarde Android : Preferences (CapacitorStorage.xml) est EXCLU. Il contient les
+         jetons de session, le consentement de localisation et les files hors ligne du
+         chauffeur. Restauré après une réinstallation ou sur un nouveau téléphone, il faisait
+         apparaître l'invite système de localisation SANS l'écran d'explication exigé par
+         Google Play, reprenait un suivi et rouvrait une session avec un jeton copié
+         (relecture du 21/09/2026, constat 29). dataExtractionRules : Android 12+ (sauvegarde
+         en ligne ET transfert d'appareil à appareil) ; fullBackupContent : Android 11 et avant. -->
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -65,5 +75,15 @@
          manifeste du plugin. PAS de ACCESS_BACKGROUND_LOCATION : le suivi démarre
          toujours depuis l'écran (« Je pars ») et vit dans le service au premier plan. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Le manifeste du plugin background-geolocation déclare la puce GPS sans
+         android:required, donc OBLIGATOIRE : Google Play cesserait de proposer
+         l'application (et ses mises à jour) aux appareils sans GPS — tablettes Wi-Fi des
+         gestionnaires, dont le mode n'a aucun besoin de GPS (constat 30). Sur un tel
+         appareil, le suivi d'un chauffeur se contente de ce que donne la position réseau. -->
+    <uses-feature
+        android:name="android.hardware.location.gps"
+        android:required="false"
+        tools:replace="android:required" />
 
 </manifest>

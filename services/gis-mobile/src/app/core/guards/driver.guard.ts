@@ -8,8 +8,13 @@ import { AuthService } from '../services/auth.service';
  * répond 403 sur toute autre route, y compris le hub SignalR. Ces gardes évitent
  * donc d'ouvrir des écrans qui ne pourraient rien charger.
  *
- * Les deux gardes supposent que l'AuthGuard est passé avant elles (session
- * restaurée) : elles ne lisent que l'utilisateur courant.
+ * Angular exécute les canActivate d'une même route EN PARALLÈLE, pas l'un après
+ * l'autre : ces gardes ne peuvent donc pas compter sur l'AuthGuard pour avoir
+ * restauré la session avant elles (constat 24 de la relecture du 21/09/2026). Elles
+ * attendent elles-mêmes restoreSession() — partagée, donc un seul rafraîchissement —
+ * avant de lire le type de compte : un jeton expiré dont le rafraîchissement apporte
+ * accountType 'driver' (compte converti la veille) doit mener à « Mes tournées », pas
+ * aux onglets gestionnaire où tout répondrait 403.
  */
 
 /** Protège /driver/* : réservé aux comptes chauffeur ; un gestionnaire retourne aux onglets. */
@@ -18,7 +23,7 @@ export class DriverGuard implements CanActivate {
   constructor(private authService: AuthService, private router: Router) {}
 
   async canActivate(): Promise<boolean | UrlTree> {
-    await this.authService.ready;
+    await this.authService.restoreSession();
     if (this.authService.isDriver()) return true;
     return this.router.createUrlTree(['/tabs/dashboard']);
   }
@@ -30,7 +35,7 @@ export class StaffGuard implements CanActivate {
   constructor(private authService: AuthService, private router: Router) {}
 
   async canActivate(): Promise<boolean | UrlTree> {
-    await this.authService.ready;
+    await this.authService.restoreSession();
     if (!this.authService.isDriver()) return true;
     return this.router.createUrlTree(['/driver/tours']);
   }

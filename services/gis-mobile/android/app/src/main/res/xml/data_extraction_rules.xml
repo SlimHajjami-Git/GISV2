@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31) : ce qui part dans la sauvegarde Google et dans le transfert
+     d'un téléphone à l'autre. Preferences de Capacitor (groupe « CapacitorStorage ») est
+     exclu : jetons de session, consentement de localisation, état du suivi et files hors
+     ligne du chauffeur ne doivent JAMAIS être restaurés (voir AndroidManifest.xml). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="CapacitorStorage.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="CapacitorStorage.xml" />
+    </device-transfer>
+</data-extraction-rules>

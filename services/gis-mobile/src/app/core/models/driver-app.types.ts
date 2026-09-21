@@ -85,7 +85,14 @@ export interface DriverTourDetail {
 
 /** Corps de POST …/waypoints/{wid}/depart et /arrive (DriverEventRequest). */
 export interface DriverEventRequest {
+  /** Heure du GESTE (horloge du téléphone) : conservée telle quelle dans la file hors ligne. */
   clientTime?: string;
+  /**
+   * Heure de l'ENVOI (même horloge), reposée à chaque tentative, rejeu compris, et jamais
+   * stockée dans la file : le serveur y lit le décalage de l'horloge et si la déclaration
+   * est rejouée (DriverTourRules.ReadDeclarationTime).
+   */
+  sentAt?: string;
   latitude?: number;
   longitude?: number;
   accuracyM?: number;
@@ -136,6 +143,11 @@ export interface PhonePositionsRequest {
   points: PhonePoint[];
   sentAt: string;
   batteryLevel?: number | null;
+  /**
+   * Tournée que CE lot concerne (celle que le téléphone suit) : le serveur la retient si
+   * elle est au chauffeur, en cours et dans sa fenêtre, sinon la plus récente en cours.
+   */
+  activeTourId?: number | null;
 }
 
 export interface PhonePositionsResponse {

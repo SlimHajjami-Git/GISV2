@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
-import { Observable, BehaviorSubject, of, map, catchError, from, switchMap, firstValueFrom } from 'rxjs';
+import { Observable, BehaviorSubject, map, catchError, from, switchMap, firstValueFrom } from 'rxjs';
 import { Preferences } from '@capacitor/preferences';
 import { environment } from '../../../environments/environment';
 
@@ -117,10 +117,17 @@ export class AuthService {
   private token: string | null = null;
   private refreshTokenValue: string | null = null;
   private _ready: Promise<void>;
-  /** Rafraîchissement en cours (partagé pour ne pas en lancer deux). */
+  /** Restauration de session en cours (partagée entre les gardes lancées en parallèle). */
   private restoreInFlight: Promise<boolean> | null = null;
-  /** Le dernier rafraîchissement a échoué faute de réseau (et non parce que le jeton est révoqué). */
-  private lastRefreshWasNetworkError = false;
+  /**
+   * LE rafraîchissement du jeton en vol, unique pour toute l'application : restoreSession,
+   * l'intercepteur (refresh proactif, rattrapage d'un 401) et la bascule d'espace passent
+   * tous par lui. Relecture du 21/09/2026 (constat 1) : l'intercepteur avait son propre
+   * drapeau ; deux POST /auth/refresh partaient avec le MÊME jeton de rafraîchissement,
+   * le serveur le révoque au premier usage, le second recevait 401 et effaçait la session
+   * que le premier venait de restaurer (chauffeur déconnecté, suivi arrêté).
+   */
+  private refreshInFlight: Promise<AuthResponse | null> | null = null;
 
   constructor(private http: HttpClient) {
     this._ready = this.loadStoredAuth();
@@ -241,6 +248,11 @@ export class AuthService {
     this.currentUser$.next(null);
   }
 
+  /** Identifiant du compte connecté (propriétaire des files hors ligne), null sans session. */
+  currentUserId(): string | null {
+    return this.currentUser$.value?.id || null;
+  }
+
   isAuthenticated(): boolean {
     if (!this.token) return false;
     return !this.isTokenExpired(this.token);
@@ -260,9 +272,10 @@ export class AuthService {
    * Session utilisable ? Vrai si le jeton d'accès est valide ; sinon, s'il existe un
    * jeton de rafraîchissement, tente un rafraîchissement SILENCIEUX (un chauffeur ne
    * ressaisit pas son mot de passe tous les jours sur un téléphone de service).
-   * Échec réseau : la session stockée est conservée et considérée utilisable —
-   * l'intercepteur rafraîchira au premier 401 quand le réseau reviendra. Refus du
-   * serveur (jeton révoqué, compte désactivé) : déconnexion.
+   * Échec passager (pas de réseau, 5xx pendant un déploiement, délai, 429) : la session
+   * stockée est conservée et considérée utilisable — l'intercepteur rafraîchira au
+   * premier 401 quand le serveur répondra. Refus explicite du jeton (401/403 : révoqué,
+   * compte désactivé) : la session a été effacée, on rend faux.
    */
   restoreSession(): Promise<boolean> {
     if (!this.restoreInFlight) {
@@ -276,9 +289,10 @@ export class AuthService {
     if (this.isAuthenticated()) return true;
     if (!this.hasRefreshToken()) return false;
 
-    const refreshed = await firstValueFrom(this.refreshAccessToken());
+    const refreshed = await this.refreshShared();
     if (refreshed) return true;
-    return this.lastRefreshWasNetworkError && !!this.currentUser$.value;
+    // Un refus explicite a effacé la session (plus de jeton) ; sinon elle reste utilisable.
+    return this.hasRefreshToken() && !!this.currentUser$.value;
   }
 
   private isTokenExpired(token: string): boolean {
@@ -301,38 +315,62 @@ export class AuthService {
     }
   }
 
+  /**
+   * Rafraîchit le jeton d'accès. UN SEUL appel réseau à la fois pour toute l'application :
+   * un appel concurrent reçoit le résultat du rafraîchissement déjà en vol. Rend null en
+   * cas d'échec, jamais d'erreur.
+   *
+   * La session n'est effacée QUE sur un refus explicite (401/403) du jeton de
+   * rafraîchissement ENCORE EN PLACE. Jamais sur 0 (réseau), 408, 429 ni 5xx (rollout de
+   * l'API, Traefik 502/503) : on déconnecterait un chauffeur en pleine tournée pour une
+   * panne passagère (constats 5 et 12). Jamais non plus sur l'échec d'un jeton déjà
+   * remplacé entre-temps (nouvelle connexion) : ce refus ne concerne plus la session.
+   */
   refreshAccessToken(): Observable<AuthResponse | null> {
-    if (!this.token || !this.refreshTokenValue) return of(null);
+    return from(this.refreshShared());
+  }
 
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, {
-      token: this.token,
-      refreshToken: this.refreshTokenValue
-    }, { headers: this.clientHeaders }).pipe(
-      switchMap(response => {
-        const user = this.mapUser(response);
-        this.token = response.token;
-        this.refreshTokenValue = response.refreshToken;
-        this.lastRefreshWasNetworkError = false;
+  /** Le rafraîchissement en vol, s'il y en a un : l'intercepteur y fait attendre les requêtes. */
+  get pendingRefresh(): Promise<AuthResponse | null> | null {
+    return this.refreshInFlight;
+  }
 
-        return from(this.saveAuth(response.token, response.refreshToken, user)).pipe(
-          map(() => {
-            this.currentUser$.next(user);
-            return response;
-          })
-        );
-      }),
-      catchError(err => {
-        console.error('Token refresh failed:', err);
-        // Pas de réseau (status 0) : le jeton n'est pas refusé, il n'a pas pu être
-        // présenté. Garder la session pour réessayer plus tard au lieu de déconnecter
-        // un chauffeur en zone blanche.
-        this.lastRefreshWasNetworkError = err?.status === 0;
-        if (!this.lastRefreshWasNetworkError) {
-          this.logout();
-        }
-        return of(null);
-      })
-    );
+  /** 401/403 sur /auth/refresh : le serveur refuse ce jeton (révoqué, compte désactivé). */
+  static isExplicitRefusal(err: any): boolean {
+    return err?.status === 401 || err?.status === 403;
+  }
+
+  private refreshShared(): Promise<AuthResponse | null> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    if (!this.token || !this.refreshTokenValue) return Promise.resolve(null);
+    this.refreshInFlight = this.doRefresh(this.token, this.refreshTokenValue)
+      .finally(() => { this.refreshInFlight = null; });
+    return this.refreshInFlight;
+  }
+
+  private async doRefresh(token: string, sentRefresh: string): Promise<AuthResponse | null> {
+    let response: AuthResponse;
+    try {
+      response = await firstValueFrom(this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, {
+        token,
+        refreshToken: sentRefresh
+      }, { headers: this.clientHeaders }));
+    } catch (err: any) {
+      console.error('Token refresh failed:', err);
+      if (AuthService.isExplicitRefusal(err) && this.refreshTokenValue === sentRefresh) {
+        await this.logout();
+      }
+      return null;
+    }
+    // Déconnexion ou autre connexion pendant l'appel : ne pas ressusciter l'ancienne session.
+    if (this.refreshTokenValue !== sentRefresh) return null;
+
+    const user = this.mapUser(response);
+    this.token = response.token;
+    this.refreshTokenValue = response.refreshToken;
+    await this.saveAuth(response.token, response.refreshToken, user);
+    this.currentUser$.next(user);
+    return response;
   }
 
   getCurrentUser(): Observable<AuthUser | null> {

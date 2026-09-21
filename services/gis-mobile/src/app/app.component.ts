@@ -4,9 +4,10 @@ import { App, URLOpenListenerEvent } from '@capacitor/app';
 import { ImmobilizationApprovalService } from './core/services/immobilization-approval.service';
 import { PushNotificationService } from './core/services/push-notification.service';
 import { SignalRService } from './core/services/signalr.service';
-import { AuthService } from './core/services/auth.service';
+import { AuthService, AuthUser } from './core/services/auth.service';
 import { TourTrackingService } from './core/services/tour-tracking.service';
 import { DriverDeclarationsService } from './core/services/driver-declarations.service';
+import { homeUrlFor } from './core/guards/driver.guard';
 
 @Component({
   selector: 'app-root',
@@ -56,10 +57,15 @@ export class AppComponent {
     // Le BehaviorSubject émet d'abord null (session pas encore relue) : seul un vrai
     // passage « connecté → déconnecté » doit arrêter le suivi, sinon le démarrage à
     // froid effacerait l'état persisté que resume() vient justement relire.
-    let hadUser = false;
+    let previous: AuthUser | null = null;
     this.authService.getCurrentUser().subscribe(user => {
       if (user) {
-        hadUser = true;
+        // Même compte, type changé côté serveur (converti chauffeur, ou repassé
+        // gestionnaire) : le rafraîchissement du jeton vient de l'apprendre. L'écran
+        // courant n'est plus le sien, et changer d'onglet ne rejoue pas les gardes du
+        // parent : on le renvoie à SA page d'accueil (constat 24).
+        const typeChanged = !!previous && previous.id === user.id && previous.accountType !== user.accountType;
+        previous = user;
         // Defer off first paint: the WebSocket handshake + FCM registration
         // (permission prompt, channel creation) were blocking startup.
         setTimeout(() => {
@@ -75,14 +81,27 @@ export class AppComponent {
             this.declarations.replay();
             this.tourTracking.resume();
           } else {
+            this.declarations.disarmAutoReplay();
             this.signalr.startConnection();
             this.pushService.init();
           }
+          if (typeChanged) {
+            this.zone.run(() => this.router.navigateByUrl(homeUrlFor(user.accountType === 'driver'), { replaceUrl: true }))
+              .catch(() => { /* navigation annulée */ });
+          }
         }, 0);
-      } else if (hadUser) {
-        // Déconnexion : plus de suivi par téléphone (le service est idempotent).
-        hadUser = false;
-        this.tourTracking.stop();
+      } else if (previous) {
+        previous = null;
+        // Plus de session. Déconnexion volontaire : la page profil a déjà tenté un dernier
+        // envoi puis vidé les files. Session REFUSÉE par le serveur (jeton révoqué, compte
+        // désactivé) : on arrête le capteur mais on GARDE l'état et la file de positions
+        // persistés — rattachés au compte, ils repartent quand ce même chauffeur se
+        // reconnecte, et aucun autre compte ne les lit (constat 12).
+        this.tourTracking.stop({ keep: true });
+        this.declarations.disarmAutoReplay();
+        if (!this.router.url.startsWith('/login')) {
+          this.zone.run(() => this.router.navigate(['/login'], { replaceUrl: true })).catch(() => { /* navigation annulée */ });
+        }
       }
     });
   }

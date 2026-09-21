@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 et avant : sauvegarde automatique. Même exclusion que
+     data_extraction_rules.xml (Preferences de Capacitor, voir AndroidManifest.xml). -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="CapacitorStorage.xml" />
+</full-backup-content>

@@ -7,15 +7,22 @@ import { AuthService } from '../services/auth.service';
 describe('Gardes de l\'espace chauffeur', () => {
   let isDriver: boolean;
   let restore: boolean;
+  /** Ce que le rafraîchissement du jeton apprend du serveur (compte converti entre-temps). */
+  let driverAfterRestore: boolean | null;
   let router: Router;
 
   beforeEach(() => {
     isDriver = false;
     restore = true;
+    driverAfterRestore = null;
     const auth = {
       ready: Promise.resolve(),
       isDriver: () => isDriver,
-      restoreSession: () => Promise.resolve(restore)
+      restoreSession: async () => {
+        await new Promise(r => setTimeout(r, 1));   // le rafraîchissement prend du temps
+        if (driverAfterRestore !== null) isDriver = driverAfterRestore;
+        return restore;
+      }
     };
     TestBed.configureTestingModule({
       providers: [provideRouter([]), { provide: AuthService, useValue: auth }]
@@ -43,6 +50,18 @@ describe('Gardes de l\'espace chauffeur', () => {
   it('StaffGuard : laisse passer un gestionnaire', async () => {
     isDriver = false;
     expect(await TestBed.inject(StaffGuard).canActivate()).toBeTrue();
+  });
+
+  it('StaffGuard attend la session restaurée : un jeton expiré dont le rafraîchissement apporte « driver » mène à ses tournées', async () => {
+    isDriver = false;                 // session stockée : gestionnaire
+    driverAfterRestore = true;        // converti chauffeur côté serveur hier
+    expect(url(await TestBed.inject(StaffGuard).canActivate())).toBe('/driver/tours');
+  });
+
+  it('DriverGuard attend la session restaurée : un chauffeur repassé gestionnaire retourne aux onglets', async () => {
+    isDriver = true;
+    driverAfterRestore = false;
+    expect(url(await TestBed.inject(DriverGuard).canActivate())).toBe('/tabs/dashboard');
   });
 
   it('homeUrlFor : page d\'accueil selon le compte', () => {

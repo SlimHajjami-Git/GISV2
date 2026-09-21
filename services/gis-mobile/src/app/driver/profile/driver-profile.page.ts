@@ -5,7 +5,7 @@ import { Subscription } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService, AuthUser } from '../../core/services/auth.service';
 import { PushNotificationService } from '../../core/services/push-notification.service';
-import { TourTrackingService, TrackingState } from '../../core/services/tour-tracking.service';
+import { TourTrackingService, TrackingState, sensorMessageFor } from '../../core/services/tour-tracking.service';
 import { DriverDeclarationsService } from '../../core/services/driver-declarations.service';
 import { DriverMe } from '../../core/models/driver-app.types';
 import { environment } from '../../../environments/environment';
@@ -50,13 +50,15 @@ export const APP_VERSION = '1.2.0';
       <ion-card class="card">
         <ion-card-content>
           <div class="line">
-            <ion-icon [name]="tracking ? 'radio-outline' : 'radio-button-off-outline'" [color]="tracking ? 'success' : 'medium'"></ion-icon>
-            <span *ngIf="tracking">Suivi actif (mode {{ tracking.mode === 'eco' ? 'économique' : 'complet' }}), {{ trackingService.pendingCount }} point(s) en attente</span>
+            <ion-icon [name]="tracking ? 'radio-outline' : 'radio-button-off-outline'"
+                      [color]="tracking ? (sensorError ? 'danger' : 'success') : 'medium'"></ion-icon>
+            <span *ngIf="tracking && !sensorError">Suivi actif (mode {{ tracking.mode === 'eco' ? 'économique' : 'complet' }}), {{ trackingService.pendingCount }} point(s) en attente</span>
+            <span *ngIf="tracking && sensorError">{{ sensorMessage }}</span>
             <span *ngIf="!tracking">Aucun suivi en cours</span>
           </div>
           <div class="line" *ngIf="pendingDeclarations > 0">
             <ion-icon name="cloud-offline-outline" color="warning"></ion-icon>
-            <span>{{ pendingDeclarations }} déclaration(s) en attente de réseau</span>
+            <span>{{ pendingDeclarations }} déclaration(s) en attente d'envoi</span>
           </div>
         </ion-card-content>
       </ion-card>
@@ -99,7 +101,10 @@ export class DriverProfilePage implements OnInit, OnDestroy {
   loadError: string | null = null;
   tracking: TrackingState | null = null;
   pendingDeclarations = 0;
+  sensorError: string | null = null;
   version = APP_VERSION;
+  /** Dernier texte de confirmation de déconnexion (lisible par les tests). */
+  message = '';
   private subs = new Subscription();
 
   constructor(
@@ -113,9 +118,14 @@ export class DriverProfilePage implements OnInit, OnDestroy {
     private zone: NgZone
   ) {}
 
+  get sensorMessage(): string {
+    return sensorMessageFor(this.sensorError);
+  }
+
   ngOnInit() {
     this.user = this.authService.getCurrentUserSync();
     this.subs.add(this.trackingService.state$.subscribe(s => this.zone.run(() => { this.tracking = s; })));
+    this.subs.add(this.trackingService.sensorError$.subscribe(e => this.zone.run(() => { this.sensorError = e; })));
     this.subs.add(this.declarations.pendingCount$.subscribe(n => this.zone.run(() => { this.pendingDeclarations = n; })));
     this.pendingDeclarations = this.declarations.pendingCount;
     this.api.getDriverMe().subscribe({
@@ -133,12 +143,19 @@ export class DriverProfilePage implements OnInit, OnDestroy {
     window.open(`${baseUrl}/politique-de-confidentialite`, '_system');
   }
 
+  /**
+   * Déconnexion volontaire. On tente d'abord d'envoyer ce qui attend (déclarations), tant
+   * que le jeton existe ; ce qui n'a pas pu partir est annoncé AVANT de confirmer, car la
+   * déconnexion l'abandonne : la file est propre à ce compte et le compte suivant du
+   * téléphone ne doit jamais la rejouer (relecture du 21/09/2026, constat 7).
+   */
   async confirmLogout() {
+    await this.declarations.replay();
+    this.message = this.logoutMessage();
     const alert = await this.alertCtrl.create({
       header: 'Déconnexion',
-      message: this.tracking
-        ? 'Une tournée est en cours de suivi : la déconnexion arrête la transmission de votre position. Continuer ?'
-        : 'Voulez-vous vraiment vous déconnecter ?',
+      message: this.message,
+      cssClass: 'driver-alert-multiline',
       buttons: [
         { text: 'Annuler', role: 'cancel' },
         { text: 'Déconnecter', role: 'destructive', handler: () => { this.doLogout(); } }
@@ -147,13 +164,32 @@ export class DriverProfilePage implements OnInit, OnDestroy {
     await alert.present();
   }
 
+  /** Texte de la confirmation : ce que la déconnexion arrête, et ce qu'elle ferait perdre. */
+  logoutMessage(): string {
+    const parts: string[] = [];
+    const lost = this.declarations.pendingCount;
+    if (lost > 0) {
+      parts.push(`${lost} déclaration(s) n'ont pas pu être envoyées (réseau ou serveur indisponible) : `
+        + 'elles seront PERDUES si vous vous déconnectez maintenant.');
+    }
+    if (this.tracking) {
+      parts.push('Une tournée est en cours de suivi : la déconnexion arrête la transmission de votre position'
+        + (this.trackingService.pendingCount > 0 ? ' (un dernier envoi des positions en attente sera tenté).' : '.'));
+    }
+    return parts.length ? parts.join('\n\n') + '\n\nSe déconnecter quand même ?' : 'Voulez-vous vraiment vous déconnecter ?';
+  }
+
   /**
-   * Ordre important : dernier envoi des positions et désinscription du jeton FCM
-   * pendant que le jeton d'accès existe encore, puis effacement de la session.
+   * Ordre important, tant que le jeton d'accès existe encore : dernier rejeu des
+   * déclarations, dernier envoi de TOUTES les positions, désinscription du jeton FCM ;
+   * puis on vide les files de ce compte et on efface la session.
    */
   async doLogout() {
+    await this.declarations.replay();
     await this.trackingService.stop({ flush: true });
     await this.push.unregister();
+    await this.declarations.discardForCurrentUser();
+    this.declarations.disarmAutoReplay();
     await this.authService.logout();
     this.router.navigate(['/login'], { replaceUrl: true });
   }
