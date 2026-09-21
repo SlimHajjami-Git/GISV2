@@ -32,8 +32,12 @@ public class DriverAppControllerTests
     private const int AutreChauffeur = 62;
     private const int AutreFiche = 32;
     private const int Salarie = 63;
+    private const int Admin = 1;                // administrateur de la société : dans l'audience du véhicule
+    private const int Operateur = 2;            // opérateur NON affecté au véhicule
     private const int Vehicule = 5;
-    private static readonly DateTime Depart = new(2026, 9, 21, 7, 0, 0, DateTimeKind.Utc);
+    // Relatif à maintenant : une date fixe (le 21/09/2026 07:00) faisait échouer les tests
+    // « en cours » dès que l'horloge dépassait la fenêtre de suivi de 12 h.
+    private static readonly DateTime Depart = DateTime.UtcNow.AddHours(-1);
     private const double OrigLat = 36.80, OrigLon = 10.18;
     private const double StopLat = 36.40, StopLon = 10.60;
     private const double DestLat = 35.82, DestLon = 10.63;
@@ -83,6 +87,13 @@ public class DriverAppControllerTests
     {
         var ctx = TestDbContextFactory.Create();
         ctx.Societes.Add(TestDataBuilder.CreateSociete(id: CompanyId));
+        ctx.Roles.Add(new Role { Id = 1, Name = "Administrateur", SocieteId = CompanyId, IsCompanyAdmin = true });
+        ctx.Roles.Add(new Role { Id = 2, Name = "Opérateur", SocieteId = CompanyId });
+        var admin = TestDataBuilder.CreateUser(id: Admin, companyId: CompanyId, email: "admin@test.com");
+        admin.RoleId = 1;
+        var operateur = TestDataBuilder.CreateUser(id: Operateur, companyId: CompanyId, email: "op@test.com");
+        operateur.RoleId = 2;
+        ctx.Users.AddRange(admin, operateur);
         ctx.Vehicles.Add(new Vehicle { Id = Vehicule, Name = "Camion 5", Plate = "100 TU 5", CompanyId = CompanyId, GpsDeviceId = 900 });
         ctx.GpsDevices.Add(new GpsDevice { Id = 900, DeviceUid = "IMEI900", CompanyId = CompanyId });
         ctx.Drivers.Add(new Driver { Id = Fiche, CompanyId = CompanyId, UserId = Chauffeur, FirstName = "Ali", LastName = "B", AssignedVehicleId = Vehicule });
@@ -187,9 +198,33 @@ public class DriverAppControllerTests
         var origine = tour.Waypoints.Single(w => w.Id == 101);
         (origine.IsCompleted, origine.ArrivalSource).Should().Be((true, DriverTourRules.SourceDriver));
         origine.DriverDepartedAt.Should().BeCloseTo(heure, TimeSpan.FromSeconds(1));
-        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, 1, "tour_departed", It.IsAny<string>(), It.IsAny<string>(),
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, Admin, "tour_departed", It.IsAny<string>(), It.IsAny<string>(),
             It.IsAny<string>(), "tour", 10, "/tournees/10", It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()),
-            Times.Once, "la personne qui a envoyé la tournée est prévenue");
+            Times.Once, "l'administrateur voit le véhicule, il est prévenu");
+    }
+
+    [Theory]
+    [InlineData("active")]      // retiré du véhicule (il n'y est pas affecté)
+    [InlineData("inactive")]    // compte désactivé depuis l'envoi
+    public async Task L_expediteur_hors_du_perimetre_du_vehicule_n_est_plus_prevenu(string statut)
+    {
+        // Relecture du 21/09/2026 (F9/F25) : tours."SentByUserId" était ajouté à l'audience
+        // sans contrôle — un compte retiré du véhicule ou désactivé restait notifié.
+        using var ctx = await ParcAsync();
+        var tour = await ctx.Tours.SingleAsync(t => t.Id == 10);
+        tour.SentByUserId = Operateur;
+        (await ctx.Users.SingleAsync(u => u.Id == Operateur)).Status = statut;
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, notifs) = Controleur(ctx, Chauffeur);
+
+        await c.Depart(10, 101, new DriverEventRequest());
+
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, Operateur, It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<Dictionary<string, object>?>(),
+            It.IsAny<CancellationToken>()), Times.Never);
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, Admin, "tour_departed", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), "tour", 10, "/tournees/10", It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -325,5 +360,175 @@ public class DriverAppControllerTests
         ctx.ChangeTracker.Clear();
         var pos = await ctx.DriverAppPositions.AsNoTracking().SingleAsync();
         pos.RecordedAt.Should().BeCloseTo(now.AddSeconds(-10), TimeSpan.FromSeconds(2), "recordedAt + (serveur − sentAt)");
+    }
+
+    // ── Relecture du 21/09/2026 ────────────────────────────────────────────────
+
+    private static Tour TourneeDeLaVeille() => new()
+    {
+        Id = 12, CompanyId = CompanyId, Name = "Hier", VehicleId = Vehicule, DriverId = Fiche, Status = "in_progress",
+        ScheduledStartTime = DateTime.UtcNow.AddHours(-20), ActualStartTime = DateTime.UtcNow.AddHours(-20),
+        SentAt = DateTime.UtcNow.AddHours(-21)
+    };
+
+    [Fact]
+    public async Task Une_tournee_de_la_veille_restee_en_cours_ne_capte_pas_les_positions_du_jour()
+    {
+        // F17 : la plus ANCIENNE tournée en cours était choisie ; hors de sa fenêtre, elle
+        // refusait tous les points et répondait tracking:false — le suivi du jour s'arrêtait.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        ctx.Tours.Add(TourneeDeLaVeille());
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+        var now = DateTime.UtcNow;
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(new PhonePositionsRequest
+        {
+            SentAt = now,
+            Points = new List<PhonePoint> { new() { RecordedAt = now.AddSeconds(-20), Latitude = 36.5, Longitude = 10.4, AccuracyM = 10 } }
+        }));
+
+        r.GetProperty("tracking").GetBoolean().Should().BeTrue("la tournée du jour est suivie");
+        r.GetProperty("activeTourId").GetInt32().Should().Be(10);
+        r.GetProperty("accepted").GetInt32().Should().Be(1);
+        ctx.ChangeTracker.Clear();
+        (await ctx.DriverAppPositions.AsNoTracking().SingleAsync()).TourId.Should().Be(10);
+    }
+
+    [Fact]
+    public async Task Seule_une_tournee_partie_il_y_a_plus_de_12_h_le_telephone_est_prie_d_arreter()
+    {
+        using var ctx = await ParcAsync(statut: "planned");
+        ctx.Tours.Add(TourneeDeLaVeille());
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Positions(new PhonePositionsRequest
+        {
+            Points = new List<PhonePoint> { new() { RecordedAt = DateTime.UtcNow, Latitude = 36.5, Longitude = 10.4 } }
+        }));
+
+        r.GetProperty("tracking").GetBoolean().Should().BeFalse();
+        (await ctx.DriverAppPositions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Une_declaration_rejouee_ne_se_mesure_pas_a_la_position_actuelle_du_boitier()
+    {
+        // F18 : « Je suis arrivé » touché il y a 25 min sans réseau, à 20 m de l'étape ; le
+        // camion est maintenant 15 km plus loin. Aucune trame du boîtier autour de l'heure
+        // déclarée : seul le téléphone, capturé au moment du geste, témoigne.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var maintenant = new VehiclePositionCache { Latitude = StopLat + 0.135, Longitude = StopLon, RecordedAt = DateTime.UtcNow.AddSeconds(-10), IgnitionOn = true };
+        var (c, _) = Controleur(ctx, Chauffeur, maintenant);
+        var heure = DateTime.UtcNow.AddMinutes(-25);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Arrive(10, 102, new DriverEventRequest
+        {
+            ClientTime = heure, Latitude = StopLat + 0.0002, Longitude = StopLon, AccuracyM = 10
+        }));
+
+        r.GetProperty("warning").ValueKind.Should().Be(System.Text.Json.JsonValueKind.Null, "à 20 m de l'étape au moment du geste");
+        ctx.ChangeTracker.Clear();
+        var wp = await ctx.TourWaypoints.AsNoTracking().SingleAsync(w => w.Id == 102);
+        wp.DriverDeclarationDistanceM.Should().BeLessThan(100);
+        wp.DriverArrivedAt.Should().BeCloseTo(heure, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task Une_declaration_rejouee_lit_la_trame_du_boitier_a_l_heure_declaree_y_compris_pour_le_refus()
+    {
+        // F18, même règle pour TOO_FAR : le boîtier est MAINTENANT sur l'étape (le camion y
+        // est arrivé depuis), mais à l'heure déclarée sa trame et le téléphone étaient tous
+        // deux à plus de 2 km — la déclaration est refusée.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var heure = DateTime.UtcNow.AddMinutes(-25);
+        ctx.GpsPositions.Add(new GpsPosition { DeviceId = 900, RecordedAt = heure.AddMinutes(1), Latitude = StopLat + 0.027, Longitude = StopLon, IsValid = true });
+        ctx.GpsPositions.Add(new GpsPosition { DeviceId = 900, RecordedAt = heure.AddMinutes(10), Latitude = StopLat, Longitude = StopLon, IsValid = true });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var surPlace = new VehiclePositionCache { Latitude = StopLat, Longitude = StopLon, RecordedAt = DateTime.UtcNow.AddSeconds(-10), IgnitionOn = true };
+        var (c, _) = Controleur(ctx, Chauffeur, surPlace);
+
+        var r = await c.Arrive(10, 102, new DriverEventRequest
+        {
+            ClientTime = heure, Latitude = StopLat + 0.0225, Longitude = StopLon, AccuracyM = 10
+        });
+
+        System.Text.Json.JsonSerializer.Serialize(r.Should().BeOfType<ConflictObjectResult>().Subject.Value)
+            .Should().Contain(DriverAppController.TooFarCode);
+    }
+
+    [Fact]
+    public async Task Une_declaration_rejouee_sans_trame_a_l_heure_declaree_n_est_pas_refusee_sur_la_position_actuelle()
+    {
+        // F18 : sans trame à ± 3 min, le boîtier ne témoigne pas ; le téléphone seul (loin)
+        // ne suffit jamais à refuser — la déclaration passe, avec son avertissement.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        var loin = new VehiclePositionCache { Latitude = StopLat + 0.027, Longitude = StopLon, RecordedAt = DateTime.UtcNow.AddSeconds(-10), IgnitionOn = true };
+        var (c, _) = Controleur(ctx, Chauffeur, loin);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Arrive(10, 102, new DriverEventRequest
+        {
+            ClientTime = DateTime.UtcNow.AddMinutes(-25), Latitude = StopLat + 0.0225, Longitude = StopLon, AccuracyM = 10
+        }));
+
+        r.GetProperty("warning").GetString().Should().Contain("km de l'étape");
+    }
+
+    [Fact]
+    public async Task Je_suis_arrive_a_une_destination_deja_validee_cloture_quand_meme_la_tournee()
+    {
+        // F19 : le gestionnaire avait coché l'étape et la destination depuis le détail (sans
+        // clôturer). La déclaration à destination ne changeait rien à l'étape, et la clôture
+        // n'était faite que dans ce cas : la tournée restait « en cours » indéfiniment.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        foreach (var w in await ctx.TourWaypoints.Where(w => w.Id == 102 || w.Id == 103).ToListAsync())
+        {
+            TourPlanning.MarkReached(w, DateTime.UtcNow.AddMinutes(-5));
+            w.ArrivalSource = DriverTourRules.SourceManager;
+        }
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, notifs) = Controleur(ctx, Chauffeur);
+
+        var r = Corps<System.Text.Json.JsonElement>(await c.Arrive(10, 103, new DriverEventRequest()));
+
+        r.GetProperty("tourStatus").GetString().Should().Be("completed");
+        r.GetProperty("tracking").GetBoolean().Should().BeFalse("le téléphone arrête le suivi");
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().Include(t => t.Waypoints).SingleAsync(t => t.Id == 10);
+        (tour.Status, tour.ActualEndTime.HasValue).Should().Be(("completed", true));
+        tour.Waypoints.Single(w => w.Id == 103).ArrivalSource.Should().Be(DriverTourRules.SourceManager, "la validation du gestionnaire garde sa source");
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, Admin, "tour_completed", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), "tour", 10, "/tournees/10", It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()), Times.Once);
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, Admin, "tour_waypoint", It.IsAny<string>(), It.IsAny<string>(),
+            It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<int?>(), It.IsAny<string?>(), It.IsAny<Dictionary<string, object>?>(),
+            It.IsAny<CancellationToken>()), Times.Never, "l'étape n'a pas changé d'état");
+    }
+
+    [Fact]
+    public async Task La_cloture_par_le_chauffeur_calcule_la_distance_reelle_comme_le_moniteur()
+    {
+        // F21 : seule la clôture automatique calculait distance et carburant réels.
+        using var ctx = await ParcAsync(statut: "in_progress");
+        // Trace du boîtier pendant la tournée : 0,1° de latitude ≈ 11,1 km.
+        ctx.GpsPositions.AddRange(
+            new GpsPosition { DeviceId = 900, RecordedAt = Depart.AddMinutes(5), Latitude = 36.80, Longitude = 10.18, IsValid = true },
+            new GpsPosition { DeviceId = 900, RecordedAt = Depart.AddMinutes(15), Latitude = 36.85, Longitude = 10.18, IsValid = true },
+            new GpsPosition { DeviceId = 900, RecordedAt = Depart.AddMinutes(25), Latitude = 36.90, Longitude = 10.18, IsValid = true });
+        await ctx.SaveChangesAsync();
+        ctx.ChangeTracker.Clear();
+        var (c, _) = Controleur(ctx, Chauffeur);
+
+        await c.Arrive(10, 103, new DriverEventRequest { ConfirmSkipPending = true });
+
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10);
+        tour.Status.Should().Be("completed");
+        tour.ActualDistanceKm.Should().BeApproximately(11.12m, 0.1m);
+        tour.ActualFuelLiters.Should().BeApproximately(0.89m, 0.02m, "8 L/100 km, comme la clôture automatique");
     }
 }

@@ -38,6 +38,18 @@ public static class DriverTourRules
     public static readonly TimeSpan MaxTrackingDuration = TimeSpan.FromHours(12);
     /// <summary>Tournée envoyée à un chauffeur et toujours pas partie autant après l'heure prévue : le gestionnaire est prévenu.</summary>
     public static readonly TimeSpan NotStartedAlertAfter = TimeSpan.FromMinutes(15);
+    /// <summary>Une déclaration dont l'heure retenue précède la réception de plus que ceci
+    /// a été REJOUÉE (file hors ligne) : la position actuelle du boîtier ne dit plus rien
+    /// de l'endroit où était le chauffeur au moment du geste.</summary>
+    public static readonly TimeSpan DeclarationReplayedAfter = TimeSpan.FromMinutes(2);
+    /// <summary>Déclaration rejouée : trame du boîtier retenue si elle est à moins de ceci de l'heure déclarée.</summary>
+    public static readonly TimeSpan ReplayedDeviceFrameWindow = TimeSpan.FromMinutes(3);
+    /// <summary>Une arrivée déclarée n'est confirmée que par une détection proche de la
+    /// déclaration : au plus autant AVANT (le véhicule s'est arrêté, le chauffeur a
+    /// touché un peu plus tard)…</summary>
+    public static readonly TimeSpan DeclaredConfirmationBefore = TimeSpan.FromMinutes(15);
+    /// <summary>…et au plus autant APRÈS (trame ou point téléphone arrivé en retard).</summary>
+    public static readonly TimeSpan DeclaredConfirmationAfter = TimeSpan.FromMinutes(30);
 
     /// <summary>
     /// Heure retenue pour une déclaration : celle du téléphone si elle est plausible
@@ -117,6 +129,38 @@ public static class DriverTourRules
     /// <summary>Étape validée par le chauffeur seul, sans détection : « non confirmée » à l'écran.</summary>
     public static bool IsUnconfirmed(TourWaypoint wp) =>
         wp.IsCompleted && wp.ArrivalSource == SourceDriver;
+
+    /// <summary>
+    /// Fenêtre dans laquelle le moniteur peut CONFIRMER une arrivée déclarée par le
+    /// chauffeur (points de trace entre DriverArrivedAt − 15 min et + 30 min), ou null
+    /// s'il ne doit rien chercher.
+    ///
+    /// Relecture du 21/09/2026 (F20) : la recherche n'avait aucune borne de temps. Un
+    /// véhicule qui repassait plus tard près d'une étape déclarée (aller-retour, dépôt
+    /// sur le trajet) « confirmait » l'arrivée à l'heure du REPASSAGE, et l'origine —
+    /// marquée « driver » par « Je pars », ce que l'écran affiche comme « Départ signalé
+    /// par le chauffeur » — était re-cherchée à chaque cycle : sur un aller-retour, le
+    /// retour au dépôt à 17:00 écrasait l'heure de départ de 08:00. L'origine n'est donc
+    /// jamais re-cherchée : son heure est celle du départ déclaré.
+    /// </summary>
+    public static (DateTime From, DateTime To)? DeclaredArrivalConfirmationWindow(TourWaypoint wp)
+    {
+        if (!IsUnconfirmed(wp) || wp.Type == "origin" || wp.DriverArrivedAt is not DateTime declared) return null;
+        return (declared - DeclaredConfirmationBefore, declared + DeclaredConfirmationAfter);
+    }
+
+    /// <summary>La déclaration a-t-elle été rejouée depuis la file hors ligne du téléphone ?</summary>
+    public static bool IsReplayedDeclaration(DateTime declaredAt, DateTime now) =>
+        now - declaredAt > DeclarationReplayedAfter;
+
+    /// <summary>
+    /// Quelque chose est-il CENSÉ suivre cette tournée ? Le boîtier du véhicule s'il en a
+    /// un, le téléphone du chauffeur si elle lui a été envoyée. Sinon (offre sans GPS,
+    /// tournée classique sans chauffeur), elle n'est pas suivie : ni source, ni
+    /// « Suivi interrompu » — rien n'a jamais dû la suivre (relecture du 21/09/2026, F16).
+    /// </summary>
+    public static bool HasExpectedTrackingSource(Tour tour) =>
+        tour.Vehicle?.GpsDeviceId != null || StartsOnDriverDeparture(tour);
 
     /// <summary>
     /// Une tournée envoyée à un chauffeur qui possède un compte ne démarre plus toute

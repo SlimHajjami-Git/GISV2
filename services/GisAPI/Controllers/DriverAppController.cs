@@ -264,7 +264,13 @@ public class DriverAppController : ControllerBase
         // Où est-il vraiment ? Boîtier (position fraîche) et téléphone (position jointe à
         // la déclaration, précision acceptable). La déclaration n'est refusée que si les
         // DEUX disent « loin » ; sinon elle passe, avec sa distance pour le gestionnaire.
-        var boitier = await PositionBoitierAsync(tour, now);
+        // Déclaration REJOUÉE par la file hors ligne : le boîtier est lu à l'heure déclarée,
+        // pas maintenant — le camion est peut-être déjà 15 km plus loin (relecture du
+        // 21/09/2026, F18). Sans trame à ± 3 min, seul le téléphone, capturé au moment du
+        // geste, témoigne ; la même règle vaut pour le refus TOO_FAR.
+        var boitier = DriverTourRules.IsReplayedDeclaration(declaredAt, now)
+            ? await PositionBoitierAuMomentAsync(tour, declaredAt, ct)
+            : await PositionBoitierAsync(tour, now);
         int? distBoitier = boitier != null ? DriverTourRules.DistanceToStop(boitier.Latitude, boitier.Longitude, wp) : null;
         var telephoneFiable = request?.Latitude != null && request.Longitude != null
                               && (request.AccuracyM ?? 0) <= TrackingSourceSelector.PhoneMaxAccuracyM;
@@ -307,39 +313,54 @@ public class DriverAppController : ControllerBase
                 waypointStatus = "completed", actualArrivalTime = wp.ActualArrivalTime,
                 arrivalSource = wp.ArrivalSource, declarationDistanceM = wp.DriverDeclarationDistanceM, timestamp = now
             }, ct);
+        }
 
-            var libelle = wp.Name ?? wp.Address ?? (estDestination ? "Destination" : "Arrêt");
-            if (estDestination)
-            {
-                tour.Status = "completed";
-                tour.ActualEndTime = declaredAt;
-                if (tour.ActualStartTime.HasValue)
-                    tour.ActualDurationMinutes = (int)(declaredAt - (tour.ActualDepartureTime ?? tour.ActualStartTime.Value)).TotalMinutes;
-                TourPlanning.CloseWaypointsOnCompletion(tour, declaredAt);
-                tour.TrackingSource = TrackingSourceSelector.None;
-                tour.TrackingSourceSince = declaredAt;
-                await _context.SaveChangesAsync(ct);
+        var libelle = wp.Name ?? wp.Address ?? (estDestination ? "Destination" : "Arrêt");
+        if (estDestination)
+        {
+            // Arrivée déclarée à destination = tournée terminée, même si l'étape était déjà
+            // validée (gestionnaire, détection) : sinon ni le chauffeur ni le moniteur — qui
+            // saute une étape déjà complétée — ne la clôturaient plus, et le téléphone
+            // restait en suivi jusqu'à 12 h (relecture du 21/09/2026, F19).
+            tour.Status = "completed";
+            tour.ActualEndTime = declaredAt;
+            if (tour.ActualStartTime.HasValue)
+                tour.ActualDurationMinutes = (int)(declaredAt - (tour.ActualDepartureTime ?? tour.ActualStartTime.Value)).TotalMinutes;
+            TourPlanning.CloseWaypointsOnCompletion(tour, declaredAt);
+            tour.TrackingSource = TrackingSourceSelector.None;
+            tour.TrackingSourceSince = declaredAt;
 
-                await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourStatusChanged", new
-                {
-                    tourId = tour.Id, status = "completed", tourName = tour.Name,
-                    message = $"Tournée terminée par le chauffeur : {tour.Name}", timestamp = declaredAt
-                }, ct);
-                await NotifierGestionnairesAsync(tour, "tour_completed",
-                    $"Tournée terminée : {tour.Name}",
-                    $"{p.Driver.FirstName} {p.Driver.LastName} a signalé son arrivée à destination ({HeureLocale(declaredAt)})."
-                    + (warning != null ? " " + warning : ""),
-                    "normal", ct);
-            }
-            else
+            // Mêmes chiffres réels (distance, carburant) que la clôture par le moniteur (F21).
+            try
             {
-                await _context.SaveChangesAsync(ct);
-                await NotifierGestionnairesAsync(tour, "tour_waypoint",
-                    $"Étape signalée : {libelle}",
-                    $"Tournée '{tour.Name}' — le chauffeur a signalé son arrivée à '{libelle}' ({HeureLocale(declaredAt)})."
-                    + (warning != null ? " " + warning : ""),
-                    "normal", ct);
+                await TourMetrics.CalculateActualMetricsAsync(tour, _context, ct);
             }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tournée {TourId} : métriques réelles non calculées à la clôture par le chauffeur", tour.Id);
+            }
+            await _context.SaveChangesAsync(ct);
+
+            await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourStatusChanged", new
+            {
+                tourId = tour.Id, status = "completed", tourName = tour.Name,
+                message = $"Tournée terminée par le chauffeur : {tour.Name}",
+                actualDistanceKm = tour.ActualDistanceKm, timestamp = declaredAt
+            }, ct);
+            await NotifierGestionnairesAsync(tour, "tour_completed",
+                $"Tournée terminée : {tour.Name}",
+                $"{p.Driver.FirstName} {p.Driver.LastName} a signalé son arrivée à destination ({HeureLocale(declaredAt)})."
+                + (warning != null ? " " + warning : ""),
+                "normal", ct);
+        }
+        else if (changed)
+        {
+            await _context.SaveChangesAsync(ct);
+            await NotifierGestionnairesAsync(tour, "tour_waypoint",
+                $"Étape signalée : {libelle}",
+                $"Tournée '{tour.Name}' — le chauffeur a signalé son arrivée à '{libelle}' ({HeureLocale(declaredAt)})."
+                + (warning != null ? " " + warning : ""),
+                "normal", ct);
         }
         else
         {
@@ -364,17 +385,21 @@ public class DriverAppController : ControllerBase
         var p = await ProfilAsync(ct);
         if (p == null) return SansFiche();
 
-        // Au plus une tournée en cours par chauffeur : la plus ancienne démarrée si
-        // plusieurs (données incohérentes), pour ne jamais perdre la trace.
+        // Tournée en cours dont la fenêtre de suivi contient maintenant (départ il y a moins
+        // de 12 h), la plus récemment partie. Relecture du 21/09/2026 (F17) : on prenait la
+        // plus ANCIENNE en cours ; une tournée de la veille jamais clôturée captait alors
+        // tous les points, hors de sa fenêtre (acceptés : 0), et répondait tracking:false —
+        // le téléphone arrêtait le suivi de la tournée du jour.
+        var now = DateTime.UtcNow;
+        var plancher = now - DriverTourRules.MaxTrackingDuration;
         var tour = await MesTournees(p)
             .Include(t => t.Vehicle).ThenInclude(v => v!.GpsDevice)
-            .Where(t => t.Status == "in_progress")
-            .OrderBy(t => t.ActualStartTime)
+            .Where(t => t.Status == "in_progress" && (t.ActualStartTime ?? t.ScheduledStartTime) >= plancher)
+            .OrderByDescending(t => t.ActualStartTime ?? t.ScheduledStartTime)
             .FirstOrDefaultAsync(ct);
         if (tour == null)
             return Ok(new { tracking = false, mode = TrackingSourceSelector.PhoneMode(false), activeTourId = (int?)null, accepted = 0 });
 
-        var now = DateTime.UtcNow;
         var start = tour.ActualStartTime ?? tour.ScheduledStartTime;
 
         // Horloge du téléphone : corrigée du décalage mesuré sur « sentAt », seulement
@@ -431,6 +456,36 @@ public class DriverAppController : ControllerBase
         return TrackingSourceSelector.IsDeviceAlive(now, etat) ? cached : null;
     }
 
+    /// <summary>
+    /// Position du boîtier à l'heure d'une déclaration rejouée : la trame valide la plus
+    /// proche de <paramref name="at"/> à ± 3 min (deux recherches par index, avant et
+    /// après), sinon null — le téléphone reste alors seul témoin.
+    /// </summary>
+    private async Task<VehiclePositionCache?> PositionBoitierAuMomentAsync(Tour tour, DateTime at, CancellationToken ct)
+    {
+        var deviceId = tour.Vehicle?.GpsDeviceId;
+        if (deviceId == null || !TourPlanning.VehicleBelongsToTourCompany(tour)) return null;
+
+        var debut = at - DriverTourRules.ReplayedDeviceFrameWindow;
+        var fin = at + DriverTourRules.ReplayedDeviceFrameWindow;
+        var avant = await _context.GpsPositions.AsNoTracking()
+            .Where(g => g.DeviceId == deviceId.Value && g.RecordedAt >= debut && g.RecordedAt <= at && g.IsValid)
+            .OrderByDescending(g => g.RecordedAt)
+            .Select(g => new { g.Latitude, g.Longitude, g.RecordedAt })
+            .FirstOrDefaultAsync(ct);
+        var apres = await _context.GpsPositions.AsNoTracking()
+            .Where(g => g.DeviceId == deviceId.Value && g.RecordedAt > at && g.RecordedAt <= fin && g.IsValid)
+            .OrderBy(g => g.RecordedAt)
+            .Select(g => new { g.Latitude, g.Longitude, g.RecordedAt })
+            .FirstOrDefaultAsync(ct);
+
+        var trame = avant == null ? apres
+            : apres == null ? avant
+            : (at - avant.RecordedAt) <= (apres.RecordedAt - at) ? avant : apres;
+        return trame == null ? null
+            : new VehiclePositionCache { Latitude = trame.Latitude, Longitude = trame.Longitude, RecordedAt = trame.RecordedAt };
+    }
+
     private async Task<string> PhoneModeAsync(Tour tour, CancellationToken ct)
     {
         var boitier = await PositionBoitierAsync(tour, DateTime.UtcNow);
@@ -439,15 +494,18 @@ public class DriverAppController : ControllerBase
 
     /// <summary>
     /// Gestionnaires à prévenir : l'audience habituelle du véhicule (administrateurs et
-    /// utilisateurs affectés) PLUS la personne qui a envoyé la tournée, qui n'est pas
-    /// forcément l'une ni l'autre. Jamais le chauffeur lui-même.
+    /// utilisateurs affectés, comptes actifs). Jamais le chauffeur lui-même.
+    ///
+    /// La personne qui a envoyé la tournée n'est plus ajoutée à part (relecture du
+    /// 21/09/2026, F9/F25) : pour l'envoyer, elle devait voir le véhicule, donc elle figure
+    /// déjà dans cette audience. L'ajout ne jouait que lorsqu'elle avait perdu ce droit ou
+    /// été désactivée — exactement ce que le cloisonnement du 16/09 veut fermer.
     /// </summary>
     private async Task NotifierGestionnairesAsync(Tour tour, string type, string titre, string message, string priorite, CancellationToken ct)
     {
         try
         {
             var ids = await NotificationAudience.ForVehicleAsync(_context, tour.CompanyId, tour.VehicleId, ct);
-            if (tour.SentByUserId is int envoyeur && !ids.Contains(envoyeur)) ids.Add(envoyeur);
             foreach (var userId in ids.Distinct())
             {
                 await _notifications.CreateAndSendAsync(tour.CompanyId, userId, type, titre, message,

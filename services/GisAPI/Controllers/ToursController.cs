@@ -401,6 +401,10 @@ public class ToursController : ControllerBase
         }
 
         var previousStart = tour.ScheduledStartTime;
+        // Tournée déjà ENVOYÉE dont on retire le chauffeur : il est prévenu après
+        // l'enregistrement, sous le nom qu'il a reçu (cf. plus bas).
+        int? ficheRetiree = null;
+        var nomRecu = tour.Name;
 
         if (request.Name != null) tour.Name = request.Name;
         if (request.Description != null) tour.Description = request.Description;
@@ -411,6 +415,7 @@ public class ToursController : ControllerBase
         {
             // Autre chauffeur : la tournée n'est plus « envoyée » — l'ancien ne doit plus
             // la voir sur son téléphone, le nouveau ne l'a pas encore reçue.
+            if (tour.SentAt.HasValue) ficheRetiree = tour.DriverId;
             tour.DriverId = request.DriverId;
             tour.SentAt = null;
             tour.SentByUserId = null;
@@ -468,6 +473,17 @@ public class ToursController : ControllerBase
 
         await _context.SaveChangesAsync(ct);
 
+        // L'ancien chauffeur avait reçu la tournée sur son téléphone : il doit savoir tout
+        // de suite qu'elle n'est plus à lui, comme pour une annulation — sinon la
+        // notification « Nouvelle tournée » reste dans sa barre et il part la faire
+        // (relecture du 21/09/2026, F10).
+        if (ficheRetiree is int ancienne)
+            await PrevenirFicheAsync(tour, ancienne, "tour_cancelled",
+                $"Tournée retirée : {nomRecu}",
+                tour.DriverId.HasValue
+                    ? "Votre gestionnaire a confié cette tournée à un autre chauffeur."
+                    : "Votre gestionnaire vous a retiré cette tournée.", ct);
+
         var updated = await _context.Tours
             .Include(t => t.Vehicle).Include(t => t.Driver)
             .Include(t => t.Waypoints.OrderBy(w => w.SequenceOrder))
@@ -483,6 +499,14 @@ public class ToursController : ControllerBase
     {
         var tour = await (await ScopedToursAsync(ct)).FirstOrDefaultAsync(t => t.Id == id, ct);
         if (tour == null) return NotFound();
+
+        // Supprimée alors que le chauffeur l'a reçue et peut encore la faire : il est
+        // prévenu AVANT la suppression, comme pour une annulation (F10). Une tournée déjà
+        // terminée ou annulée ne lui demande plus rien — pas de notification.
+        if (tour.Status is "planned" or "in_progress")
+            await PrevenirChauffeurAsync(tour, "tour_cancelled",
+                $"Tournée retirée : {tour.Name}",
+                "Cette tournée a été supprimée par votre gestionnaire.", ct);
 
         _context.Tours.Remove(tour);
         await _context.SaveChangesAsync(ct);
@@ -739,12 +763,23 @@ public class ToursController : ControllerBase
     /// <summary>Notification au chauffeur d'une tournée déjà envoyée (rien si elle ne l'était pas).</summary>
     private async Task PrevenirChauffeurAsync(Tour tour, string type, string titre, string message, CancellationToken ct)
     {
-        if (!tour.SentAt.HasValue) return;
+        if (!tour.SentAt.HasValue || tour.DriverId is not int ficheId) return;
+        await PrevenirFicheAsync(tour, ficheId, type, titre, message, ct);
+    }
+
+    /// <summary>
+    /// Notification au compte application relié à la fiche chauffeur <paramref name="ficheId"/>
+    /// — qui peut ne plus être le chauffeur de la tournée (réaffectation). Rien si la
+    /// fiche n'a pas de compte actif ; un échec n'empêche jamais l'action du gestionnaire.
+    /// </summary>
+    private async Task PrevenirFicheAsync(Tour tour, int ficheId, string type, string titre, string message, CancellationToken ct)
+    {
         try
         {
-            var driver = tour.Driver ?? (tour.DriverId is int did
-                ? await _context.Drivers.AsNoTracking().FirstOrDefaultAsync(d => d.Id == did, ct)
-                : null);
+            var driver = tour.Driver?.Id == ficheId
+                ? tour.Driver
+                : await _context.Drivers.AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.Id == ficheId && d.CompanyId == tour.CompanyId, ct);
             if (driver == null) return;
             var compte = await CompteChauffeurAsync(driver, ct);
             if (compte == null) return;

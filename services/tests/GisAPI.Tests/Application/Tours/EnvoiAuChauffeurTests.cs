@@ -157,6 +157,83 @@ public class EnvoiAuChauffeurTests
         (tour.DriverId, tour.SentAt, tour.SentByUserId).Should().Be((FicheSansCompte, (DateTime?)null, (int?)null));
     }
 
+    // ── Relecture du 21/09/2026 (F10) : l'ancien chauffeur est prévenu ─────────
+
+    private static void VerifierRetrait(Mock<INotificationService> notifs, Times fois) =>
+        notifs.Verify(n => n.CreateAndSendAsync(CompanyId, CompteChauffeur, "tour_cancelled",
+            It.Is<string>(s => s.StartsWith("Tournée retirée")), It.IsAny<string>(), "high", "tour", 10, "/tournees/10",
+            It.IsAny<Dictionary<string, object>?>(), It.IsAny<CancellationToken>()), fois);
+
+    [Fact]
+    public async Task Changer_le_chauffeur_d_une_tournee_envoyee_previent_l_ancien()
+    {
+        using var ctx = await ParcAsync();
+        var (c, notifs) = Controleur(ctx);
+        await c.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+
+        (await c.UpdateTour(10, new UpdateTourRequest { DriverId = FicheSansCompte })).Should().BeOfType<OkObjectResult>();
+
+        VerifierRetrait(notifs, Times.Once());
+    }
+
+    [Fact]
+    public async Task Retirer_le_chauffeur_d_une_tournee_envoyee_le_previent_aussi()
+    {
+        using var ctx = await ParcAsync();
+        var (c, notifs) = Controleur(ctx);
+        await c.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+
+        (await c.UpdateTour(10, new UpdateTourRequest { DriverId = null })).Should().BeOfType<OkObjectResult>();
+
+        VerifierRetrait(notifs, Times.Once());
+    }
+
+    [Fact]
+    public async Task Modifier_une_tournee_sans_changer_de_chauffeur_ou_jamais_envoyee_ne_previent_personne()
+    {
+        using var ctx = await ParcAsync();
+        var (c, notifs) = Controleur(ctx);
+
+        // Jamais envoyée : le chauffeur n'en sait rien, il n'y a rien à lui retirer.
+        await c.UpdateTour(10, new UpdateTourRequest { DriverId = FicheSansCompte });
+        ctx.ChangeTracker.Clear();
+        await c.UpdateTour(10, new UpdateTourRequest { DriverId = Fiche });
+        ctx.ChangeTracker.Clear();
+        // Envoyée, puis simple changement de nom.
+        await c.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+        await c.UpdateTour(10, new UpdateTourRequest { Name = "Livraison bis", DriverId = Fiche });
+
+        VerifierRetrait(notifs, Times.Never());
+    }
+
+    [Fact]
+    public async Task Supprimer_une_tournee_envoyee_previent_le_chauffeur_avant_la_suppression()
+    {
+        using var ctx = await ParcAsync();
+        var (c, notifs) = Controleur(ctx);
+        await c.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+
+        (await c.DeleteTour(10)).Should().BeOfType<NoContentResult>();
+
+        VerifierRetrait(notifs, Times.Once());
+        (await ctx.Tours.AsNoTracking().AnyAsync(t => t.Id == 10)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Supprimer_une_tournee_jamais_envoyee_ne_previent_personne()
+    {
+        using var ctx = await ParcAsync();
+        var (c, notifs) = Controleur(ctx);
+
+        (await c.DeleteTour(10)).Should().BeOfType<NoContentResult>();
+
+        VerifierRetrait(notifs, Times.Never());
+    }
+
     [Fact]
     public async Task Le_push_non_delivre_est_dit_au_gestionnaire_sans_annuler_l_envoi()
     {
