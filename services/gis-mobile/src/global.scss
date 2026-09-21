@@ -66,3 +66,8 @@ ion-tab-button {
   .alert-title { color: #fff !important; font-size: 18px !important; font-weight: 800 !important; }
   .alert-danger-btn { color: #dc2626 !important; font-weight: 800 !important; }
 }
+
+/* Espace chauffeur : les alertes listent les étapes restantes, une par ligne. */
+.driver-alert-multiline .alert-message {
+  white-space: pre-line;
+}

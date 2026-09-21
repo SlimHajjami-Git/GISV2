@@ -15,6 +15,13 @@ const config: CapacitorConfig = {
     androidScheme: 'http',
     cleartext: true
   },
+  android: {
+    // Exigé par @capacitor-community/background-geolocation (README, issue #89) : sans
+    // le pont « legacy », Android cesse de livrer les positions à la WebView après
+    // ~5 min en arrière-plan. CapacitorHttp (ci-dessous) est l'autre moitié de la
+    // consigne : les envois passent par le HTTP natif, que l'arrière-plan ne bride pas.
+    useLegacyBridge: true
+  },
   plugins: {
     CapacitorHttp: {
       enabled: true

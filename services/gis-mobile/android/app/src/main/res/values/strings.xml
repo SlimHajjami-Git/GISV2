@@ -4,4 +4,9 @@
     <string name="title_activity_main">Calypso</string>
     <string name="package_name">tn.belive.gisv2</string>
     <string name="custom_url_scheme">tn.belive.gisv2</string>
+    <!-- Nom du canal de la notification permanente du suivi de tournée (plugin
+         background-geolocation) : visible par un appui long sur la notification. -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Suivi de tournée</string>
+    <!-- Sans « @ » : le plugin découpe « type/nom » (voir drawable/ic_stat_tour.xml). -->
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_stat_tour</string>
 </resources>

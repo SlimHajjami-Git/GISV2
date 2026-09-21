@@ -2,12 +2,15 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { TabsPage } from './tabs.page';
 import { AuthGuard } from '../core/guards/auth.guard';
+import { StaffGuard } from '../core/guards/driver.guard';
 
 const routes: Routes = [
   {
     path: 'tabs',
     component: TabsPage,
-    canActivate: [AuthGuard],
+    // StaffGuard : un compte chauffeur est renvoyé vers /driver/tours (le serveur
+    // lui répond 403 sur tout ce que ces onglets chargent).
+    canActivate: [AuthGuard, StaffGuard],
     children: [
       {
         path: 'dashboard',

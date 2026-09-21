@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { AlertController, ToastController } from '@ionic/angular';
 import { AuthService, AuthUser } from '../../core/services/auth.service';
 import { SignalRService } from '../../core/services/signalr.service';
+import { PushNotificationService } from '../../core/services/push-notification.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -91,7 +92,7 @@ import { environment } from '../../../environments/environment';
       </div>
 
       <div class="version-text">
-        Calypso v1.1.0
+        Calypso v1.2.0
       </div>
     </ion-content>
   `,
@@ -133,6 +134,7 @@ export class ProfilePage implements OnInit {
   constructor(
     private authService: AuthService,
     private signalr: SignalRService,
+    private push: PushNotificationService,
     private router: Router,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController
@@ -170,7 +172,7 @@ export class ProfilePage implements OnInit {
     const alert = await this.alertCtrl.create({
       header: 'Calypso',
       message: `
-        <p><strong>Version:</strong> 1.1.0</p>
+        <p><strong>Version:</strong> 1.2.0</p>
         <p><strong>Plateforme:</strong> Ionic + Angular + Capacitor</p>
         <p><strong>Backend:</strong> .NET 8 API</p>
         <p><strong>GPS:</strong> Temps réel via SignalR</p>
@@ -200,6 +202,9 @@ export class ProfilePage implements OnInit {
 
   async doLogout() {
     await this.signalr.stopConnection();
+    // Désinscrire le jeton FCM tant que le jeton d'accès existe encore : sinon ce
+    // téléphone continue de recevoir les notifications du compte déconnecté.
+    await this.push.unregister();
     await this.authService.logout();
     this.router.navigate(['/login'], { replaceUrl: true });
   }

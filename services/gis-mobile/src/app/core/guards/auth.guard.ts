@@ -12,8 +12,10 @@ export class AuthGuard implements CanActivate {
   ) {}
 
   async canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Promise<boolean> {
-    await this.authService.ready;
-    if (this.authService.isAuthenticated()) {
+    // Jeton d'accès valide, ou jeton expiré rafraîchi EN SILENCE grâce au refresh
+    // token stocké : on ne renvoie vers la connexion que si la session est vraiment
+    // perdue (aucun jeton, ou refus du serveur).
+    if (await this.authService.restoreSession()) {
       return true;
     }
     // Conserver la cible (ex: deep link QR /tabs/monitoring?vehicleId=..)

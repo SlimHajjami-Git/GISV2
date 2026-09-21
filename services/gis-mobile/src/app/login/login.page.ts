@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { LoadingController, ToastController, AlertController } from '@ionic/angular';
 import { AuthService } from '../core/services/auth.service';
+import { homeUrlFor } from '../core/guards/driver.guard';
 
 @Component({
   selector: 'app-login',
@@ -155,11 +156,16 @@ export class LoginPage {
           // Revenir sur la cible interceptée par l'AuthGuard (ex: deep link
           // QR vers /tabs/monitoring?vehicleId=..). Uniquement des URLs
           // internes ('/...') pour éviter toute redirection ouverte.
+          // Un chauffeur n'a que son espace : une cible hors /driver serait
+          // refusée par la garde, autant aller droit à ses tournées.
+          const isDriver = user.accountType === 'driver';
           const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl');
-          if (returnUrl && returnUrl.startsWith('/')) {
-            this.router.navigateByUrl(returnUrl, { replaceUrl: true });
+          const returnAllowed = !!returnUrl && returnUrl.startsWith('/')
+            && (isDriver ? returnUrl.startsWith('/driver') : !returnUrl.startsWith('/driver'));
+          if (returnAllowed) {
+            this.router.navigateByUrl(returnUrl!, { replaceUrl: true });
           } else {
-            this.router.navigate(['/tabs/dashboard'], { replaceUrl: true });
+            this.router.navigateByUrl(homeUrlFor(isDriver), { replaceUrl: true });
           }
         } else {
           const toast = await this.toastCtrl.create({

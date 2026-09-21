@@ -2,6 +2,10 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { Vehicle, Geofence, VehicleTrip, DashboardStats, Notification } from '../models/types';
+import {
+  DriverEventRequest, DriverEventResponse, DriverMe, DriverTourDetail, DriverTourSummary,
+  PhonePositionsRequest, PhonePositionsResponse
+} from '../models/driver-app.types';
 import { AuthService } from './auth.service';
 
 @Injectable({
@@ -207,5 +211,39 @@ export class ApiService {
 
   unregisterDeviceToken(token: string): Observable<any> {
     return this.http.delete<any>(`${this.API}/devicetokens`, { body: { token } });
+  }
+
+  // ─── Espace chauffeur (/api/driver-app) ─────────────────
+  // Les SEULES routes qu'un compte chauffeur peut appeler, avec /auth/refresh,
+  // /auth/logout et /devicetokens (PermissionMiddleware, liste blanche stricte).
+  getDriverMe(): Observable<DriverMe> {
+    return this.http.get<DriverMe>(`${this.API}/driver-app/me`);
+  }
+
+  getDriverTours(scope: 'active' | 'history'): Observable<DriverTourSummary[]> {
+    return this.http.get<DriverTourSummary[]>(`${this.API}/driver-app/tours`, { params: new HttpParams().set('scope', scope) });
+  }
+
+  getDriverTour(id: number): Observable<DriverTourDetail> {
+    return this.http.get<DriverTourDetail>(`${this.API}/driver-app/tours/${id}`);
+  }
+
+  markDriverTourOpened(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API}/driver-app/tours/${id}/opened`, {});
+  }
+
+  /** « Je pars » (origine, tournée planifiée) ou « Je repars » (étape atteinte). */
+  driverDepart(tourId: number, waypointId: number, body: DriverEventRequest): Observable<DriverEventResponse> {
+    return this.http.post<DriverEventResponse>(`${this.API}/driver-app/tours/${tourId}/waypoints/${waypointId}/depart`, body);
+  }
+
+  /** « Je suis arrivé » ; 409 PENDING_STOPS ou TOO_FAR possibles. */
+  driverArrive(tourId: number, waypointId: number, body: DriverEventRequest): Observable<DriverEventResponse> {
+    return this.http.post<DriverEventResponse>(`${this.API}/driver-app/tours/${tourId}/waypoints/${waypointId}/arrive`, body);
+  }
+
+  /** Lot de positions du téléphone pendant une tournée en cours. */
+  postDriverPositions(body: PhonePositionsRequest): Observable<PhonePositionsResponse> {
+    return this.http.post<PhonePositionsResponse>(`${this.API}/driver-app/positions`, body);
   }
 }

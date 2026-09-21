@@ -1,10 +1,23 @@
-import { Injectable } from '@angular/core';
-import { Platform } from '@ionic/angular';
+import { Injectable, NgZone } from '@angular/core';
+import { Router } from '@angular/router';
+import { Platform, ToastController } from '@ionic/angular';
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from '@capacitor/push-notifications';
 import { Device } from '@capacitor/device';
+import { Subject, firstValueFrom } from 'rxjs';
 import { ApiService } from './api.service';
 import { AuthService } from './auth.service';
 import { ImmobilizationApprovalService } from './immobilization-approval.service';
+
+/** Types de push des tournées (FcmChannels.Tours côté serveur) et la tournée visée. */
+export type TourPushType = 'tour_assigned' | 'tour_updated' | 'tour_cancelled';
+export interface TourPushEvent {
+  type: TourPushType;
+  tourId: number;
+  title?: string;
+  message?: string;
+}
+
+const TOUR_PUSH_TYPES: ReadonlySet<string> = new Set(['tour_assigned', 'tour_updated', 'tour_cancelled']);
 
 /**
  * FCM push notifications for the remote stop approval flow.
@@ -21,23 +34,46 @@ import { ImmobilizationApprovalService } from './immobilization-approval.service
  *
  * Real-time updates while the app is already open continue to arrive via SignalR;
  * FCM is the fallback when the SignalR connection isn't active.
+ *
+ * Tournées (compte chauffeur) : canal Android « tours » (importance HIGH), types
+ * tour_assigned / tour_updated / tour_cancelled avec `tourId`. Au toucher → fiche
+ * de la tournée ; au premier plan → toast « Voir » + événement tourPush$ pour que
+ * la liste se recharge (un chauffeur n'a PAS SignalR : le push est sa seule source).
  */
 @Injectable({
   providedIn: 'root'
 })
 export class PushNotificationService {
   private initialized = false;
+  /** Dernier jeton FCM reçu : conservé d'une session à l'autre (FCM ne le redonne pas à chaque connexion). */
   private currentToken: string | null = null;
+  /** Compte pour lequel ce jeton est inscrit côté serveur (null = désinscrit). */
+  private registeredUserId: string | null = null;
+
+  /** Push de tournée reçu (premier plan ou toucher) : les pages chauffeur rechargent. */
+  readonly tourPush$ = new Subject<TourPushEvent>();
 
   constructor(
     private platform: Platform,
     private api: ApiService,
     private authService: AuthService,
-    private immoApproval: ImmobilizationApprovalService
+    private immoApproval: ImmobilizationApprovalService,
+    private router: Router,
+    private zone: NgZone,
+    private toastCtrl: ToastController
   ) {}
 
   async init(): Promise<void> {
-    if (this.initialized) return;
+    if (this.initialized) {
+      // Déjà armé dans cette session de l'application : les écouteurs restent, mais après
+      // une déconnexion (jeton désinscrit) puis une connexion — même compte ou autre —
+      // il faut RÉINSCRIRE le jeton, sinon le nouveau compte ne reçoit aucun push.
+      const userId = this.authService.getCurrentUserSync()?.id ?? null;
+      if (this.currentToken && userId && this.registeredUserId !== userId) {
+        this.registerTokenWithBackend(this.currentToken);
+      }
+      return;
+    }
     if (!this.platform.is('capacitor')) return; // Only on native
 
     // Request permission FIRST, BEFORE setting `initialized = true`.
@@ -89,6 +125,26 @@ export class PushNotificationService {
         // Do NOT abort: on some OEMs (Xiaomi/Huawei) the call can throw even
         // when the channel is live. Registration must still proceed.
       }
+
+      // Canal « tours » : le serveur y envoie les tour_* (FcmChannels.Tours) en
+      // priorité HIGH — ça sonne et s'affiche, sans interrompre le chauffeur
+      // comme le fait le canal MAX des immobilisations. Sans ce canal créé par
+      // l'application, Android 8+ jetterait la notification en silence.
+      try {
+        await PushNotifications.createChannel({
+          id: 'tours',
+          name: 'Tournées',
+          description: 'Tournées envoyées, modifiées ou annulées par votre gestionnaire',
+          importance: 4,
+          visibility: 1,
+          sound: 'default',
+          vibration: true,
+          lights: true,
+        });
+        console.log('[PushNotif] Channel "tours" created/confirmed');
+      } catch (err) {
+        console.warn('[PushNotif] createChannel(tours) failed:', err);
+      }
     }
 
     // Listen for registration
@@ -110,6 +166,8 @@ export class PushNotificationService {
       const data = notification.data;
       if (data?.type === 'immobilization_request') {
         this.immoApproval.handlePushNotification(data);
+      } else if (this.isTourPush(data)) {
+        this.handleTourPush(data, notification.title, notification.body, false);
       }
     });
 
@@ -121,6 +179,10 @@ export class PushNotificationService {
         // Small delay to let the app fully initialize
         setTimeout(() => {
           this.immoApproval.handlePushNotification(data);
+        }, 500);
+      } else if (this.isTourPush(data)) {
+        setTimeout(() => {
+          this.handleTourPush(data, action.notification.title, action.notification.body, true);
         }, 500);
       }
     });
@@ -135,6 +197,51 @@ export class PushNotificationService {
     console.log('[PushNotif] init() complete — lock-screen notifications armed');
   }
 
+  private isTourPush(data: any): boolean {
+    return !!data && TOUR_PUSH_TYPES.has(String(data.type)) && !!data.tourId;
+  }
+
+  /**
+   * Push de tournée. `tapped` = l'utilisateur a touché la notification (application en
+   * arrière-plan ou fermée) → on ouvre la fiche. Au premier plan, un toast avec « Voir ».
+   * Les callbacks des plugins arrivent hors zone Angular : tout passe par zone.run.
+   */
+  private handleTourPush(data: any, title?: string, body?: string, tapped = false): void {
+    const event: TourPushEvent = {
+      type: data.type as TourPushType,
+      tourId: parseInt(String(data.tourId), 10),
+      title: title || data.title,
+      message: body || data.message
+    };
+    if (!event.tourId) return;
+
+    this.zone.run(async () => {
+      this.tourPush$.next(event);
+      if (tapped) {
+        this.openTour(event);
+        return;
+      }
+      const toast = await this.toastCtrl.create({
+        header: event.title || 'Tournée',
+        message: event.message || '',
+        duration: 6000,
+        position: 'top',
+        icon: event.type === 'tour_cancelled' ? 'close-circle-outline' : 'map-outline',
+        color: event.type === 'tour_cancelled' ? 'warning' : 'primary',
+        buttons: [{ text: 'Voir', handler: () => this.openTour(event) }]
+      });
+      await toast.present();
+    });
+  }
+
+  private openTour(event: TourPushEvent): void {
+    // Une tournée annulée n'est plus dans la liste active : la fiche répond 404 seulement
+    // si elle n'est plus envoyée ; sinon elle s'ouvre avec son statut « annulée ».
+    // Seul un compte chauffeur possède cet écran ; pour un gestionnaire, la garde renvoie aux onglets.
+    if (!this.authService.isDriver()) return;
+    this.router.navigate(['/driver/tours', event.tourId]);
+  }
+
   private async registerTokenWithBackend(token: string): Promise<void> {
     const platform = this.platform.is('android') ? 'android' : 'ios';
     // Identifiant STABLE de l'appareil (survit aux réinstallations) : permet au
@@ -147,16 +254,27 @@ export class PushNotificationService {
     } catch (e) {
       console.warn('[PushNotif] Device.getId() failed, registering without deviceId', e);
     }
+    const userId = this.authService.getCurrentUserSync()?.id ?? null;
     this.api.registerDeviceToken(token, platform, deviceId).subscribe({
-      next: () => console.log('Device token registered with backend'),
+      next: () => { this.registeredUserId = userId; console.log('Device token registered with backend'); },
       error: (err) => console.error('Failed to register device token:', err)
     });
   }
 
+  /**
+   * Désinscrit le jeton FCM du compte (DELETE /api/devicetokens) — à appeler AVANT
+   * authService.logout(), tant que le jeton d'accès est encore là. Attend la réponse
+   * (meilleur effort, jamais bloquant) pour que la déconnexion ne coupe pas l'appel.
+   */
   async unregister(): Promise<void> {
-    if (this.currentToken) {
-      this.api.unregisterDeviceToken(this.currentToken).subscribe();
-      this.currentToken = null;
+    if (this.currentToken && this.registeredUserId) {
+      const token = this.currentToken;
+      this.registeredUserId = null;
+      try {
+        await firstValueFrom(this.api.unregisterDeviceToken(token));
+      } catch (e) {
+        console.warn('[PushNotif] unregister failed (token may stay active until stale)', e);
+      }
     }
   }
 }

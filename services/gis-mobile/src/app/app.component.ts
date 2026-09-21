@@ -5,6 +5,8 @@ import { ImmobilizationApprovalService } from './core/services/immobilization-ap
 import { PushNotificationService } from './core/services/push-notification.service';
 import { SignalRService } from './core/services/signalr.service';
 import { AuthService } from './core/services/auth.service';
+import { TourTrackingService } from './core/services/tour-tracking.service';
+import { DriverDeclarationsService } from './core/services/driver-declarations.service';
 
 @Component({
   selector: 'app-root',
@@ -18,6 +20,8 @@ export class AppComponent {
     private pushService: PushNotificationService,
     private signalr: SignalRService,
     private authService: AuthService,
+    private tourTracking: TourTrackingService,
+    private declarations: DriverDeclarationsService,
     private router: Router,
     private zone: NgZone
   ) {
@@ -49,14 +53,36 @@ export class AppComponent {
     //  - logout → login as different user (null then new user)
     // Both startConnection() and pushService.init() are idempotent so
     // re-emits of the same user are harmless.
+    // Le BehaviorSubject émet d'abord null (session pas encore relue) : seul un vrai
+    // passage « connecté → déconnecté » doit arrêter le suivi, sinon le démarrage à
+    // froid effacerait l'état persisté que resume() vient justement relire.
+    let hadUser = false;
     this.authService.getCurrentUser().subscribe(user => {
       if (user) {
+        hadUser = true;
         // Defer off first paint: the WebSocket handshake + FCM registration
         // (permission prompt, channel creation) were blocking startup.
         setTimeout(() => {
-          this.signalr.startConnection();
-          this.pushService.init();
+          if (user.accountType === 'driver') {
+            // Compte chauffeur : JAMAIS SignalR. Le serveur refuse le hub (403) et la
+            // boucle de reconnexion viderait la batterie pour rien. Le push FCM est sa
+            // seule source d'événements ; on reprend aussi un suivi interrompu et on
+            // rejoue les déclarations restées en file. stopConnection() couvre le compte
+            // passé chauffeur en cours de session (une connexion ouverte en « staff »).
+            this.signalr.stopConnection();
+            this.pushService.init();
+            this.declarations.armAutoReplay();
+            this.declarations.replay();
+            this.tourTracking.resume();
+          } else {
+            this.signalr.startConnection();
+            this.pushService.init();
+          }
         }, 0);
+      } else if (hadUser) {
+        // Déconnexion : plus de suivi par téléphone (le service est idempotent).
+        hadUser = false;
+        this.tourTracking.stop();
       }
     });
   }

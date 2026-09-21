@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-import { Observable, BehaviorSubject, of, tap, map, catchError, from, switchMap } from 'rxjs';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { Observable, BehaviorSubject, of, map, catchError, from, switchMap, firstValueFrom } from 'rxjs';
 import { Preferences } from '@capacitor/preferences';
 import { environment } from '../../../environments/environment';
 
@@ -51,6 +51,13 @@ export interface SubscriptionFeatures {
   historyRetentionDays: number;
 }
 
+/**
+ * Type de compte renvoyé par le serveur (users.account_type, migration 050) :
+ * « staff » = gestionnaire ordinaire (onglets classiques), « driver » = chauffeur
+ * (uniquement « Mes tournées » ; le serveur répond 403 partout ailleurs).
+ */
+export type AccountType = 'staff' | 'driver';
+
 export interface AuthUser {
   id: string;
   name: string;
@@ -66,6 +73,7 @@ export interface AuthUser {
   subscriptionFeatures: SubscriptionFeatures | null;
   assignedVehicleIds: number[] | null;
   userPermissions: UserPermissions | null;
+  accountType: AccountType;
 }
 
 export interface AuthResponse {
@@ -88,8 +96,17 @@ export interface AuthResponse {
     subscriptionFeatures: SubscriptionFeatures | null;
     assignedVehicleIds: number[] | null;
     userPermissions: UserPermissions | null;
+    accountType?: string;
   };
 }
+
+/**
+ * En-tête par lequel l'application se déclare au serveur (AuthController.ClientHeader).
+ * OBLIGATOIRE sur /auth/login : sans lui, un compte chauffeur est refusé avec
+ * « Ce compte est réservé à l'application mobile Calypso… ».
+ */
+export const CALYPSO_CLIENT_HEADER = 'X-Calypso-Client';
+export const CALYPSO_CLIENT_MOBILE = 'mobile';
 
 @Injectable({
   providedIn: 'root'
@@ -100,6 +117,10 @@ export class AuthService {
   private token: string | null = null;
   private refreshTokenValue: string | null = null;
   private _ready: Promise<void>;
+  /** Rafraîchissement en cours (partagé pour ne pas en lancer deux). */
+  private restoreInFlight: Promise<boolean> | null = null;
+  /** Le dernier rafraîchissement a échoué faute de réseau (et non parce que le jeton est révoqué). */
+  private lastRefreshWasNetworkError = false;
 
   constructor(private http: HttpClient) {
     this._ready = this.loadStoredAuth();
@@ -112,6 +133,10 @@ export class AuthService {
 
   get API_URL(): string {
     return this.apiUrl;
+  }
+
+  private get clientHeaders(): HttpHeaders {
+    return new HttpHeaders({ [CALYPSO_CLIENT_HEADER]: CALYPSO_CLIENT_MOBILE });
   }
 
   async setServerUrl(url: string) {
@@ -144,7 +169,9 @@ export class AuthService {
       this.refreshTokenValue = refreshToken;
 
       if (token && userData) {
-        const parsed = JSON.parse(userData);
+        const parsed = JSON.parse(userData) as AuthUser;
+        // Sessions stockées avant l'arrivée des comptes chauffeur : gestionnaire.
+        if (parsed.accountType !== 'driver') parsed.accountType = 'staff';
         this.currentUser$.next(parsed);
       }
     } catch (e) {
@@ -152,26 +179,36 @@ export class AuthService {
     }
   }
 
-  login(email: string, password: string): Observable<AuthUser | null> {
-    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
-      switchMap(response => {
-        const user: AuthUser = {
-          id: response.user.id?.toString() || '',
-          name: `${response.user.firstName} ${response.user.lastName}`.trim(),
-          email: response.user.email,
-          phone: response.user.phone,
-          roles: [response.user.roleName],
-          permissions: response.user.permissions || {},
-          companyId: response.user.companyId.toString(),
-          companyName: response.user.companyName,
-          companyType: response.user.companyType || '',
-          isCompanyAdmin: response.user.isCompanyAdmin,
-          isSystemAdmin: response.user.isSystemAdmin,
-          subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-          userPermissions: response.user.userPermissions ?? null
-        };
+  /** Réponse serveur → utilisateur de l'application (même forme au login et au refresh). */
+  private mapUser(response: AuthResponse): AuthUser {
+    const u = response.user;
+    return {
+      id: u.id?.toString() || '',
+      name: `${u.firstName} ${u.lastName}`.trim(),
+      email: u.email,
+      phone: u.phone,
+      roles: [u.roleName],
+      permissions: u.permissions || {},
+      companyId: u.companyId.toString(),
+      companyName: u.companyName,
+      companyType: u.companyType || '',
+      isCompanyAdmin: u.isCompanyAdmin,
+      isSystemAdmin: u.isSystemAdmin,
+      subscriptionFeatures: u.subscriptionFeatures,
+      assignedVehicleIds: u.assignedVehicleIds ?? null,
+      userPermissions: u.userPermissions ?? null,
+      accountType: u.accountType === 'driver' ? 'driver' : 'staff'
+    };
+  }
 
+  login(email: string, password: string): Observable<AuthUser | null> {
+    // L'application se déclare DEUX fois (le serveur accepte l'un ou l'autre) : en-tête
+    // X-Calypso-Client ET champ « client » du corps — un proxy peut retirer un en-tête
+    // qu'il ne connaît pas, et un compte chauffeur serait alors refusé.
+    const body = { email, password, client: CALYPSO_CLIENT_MOBILE };
+    return this.http.post<AuthResponse>(`${this.apiUrl}/auth/login`, body, { headers: this.clientHeaders }).pipe(
+      switchMap(response => {
+        const user = this.mapUser(response);
         this.token = response.token;
         this.refreshTokenValue = response.refreshToken;
 
@@ -209,6 +246,41 @@ export class AuthService {
     return !this.isTokenExpired(this.token);
   }
 
+  /** Un jeton de rafraîchissement est stocké (la session peut être restaurée sans mot de passe). */
+  hasRefreshToken(): boolean {
+    return !!this.token && !!this.refreshTokenValue;
+  }
+
+  /** Compte chauffeur : uniquement « Mes tournées », jamais SignalR ni les autres routes. */
+  isDriver(): boolean {
+    return this.currentUser$.value?.accountType === 'driver';
+  }
+
+  /**
+   * Session utilisable ? Vrai si le jeton d'accès est valide ; sinon, s'il existe un
+   * jeton de rafraîchissement, tente un rafraîchissement SILENCIEUX (un chauffeur ne
+   * ressaisit pas son mot de passe tous les jours sur un téléphone de service).
+   * Échec réseau : la session stockée est conservée et considérée utilisable —
+   * l'intercepteur rafraîchira au premier 401 quand le réseau reviendra. Refus du
+   * serveur (jeton révoqué, compte désactivé) : déconnexion.
+   */
+  restoreSession(): Promise<boolean> {
+    if (!this.restoreInFlight) {
+      this.restoreInFlight = this.doRestoreSession().finally(() => { this.restoreInFlight = null; });
+    }
+    return this.restoreInFlight;
+  }
+
+  private async doRestoreSession(): Promise<boolean> {
+    await this.ready;
+    if (this.isAuthenticated()) return true;
+    if (!this.hasRefreshToken()) return false;
+
+    const refreshed = await firstValueFrom(this.refreshAccessToken());
+    if (refreshed) return true;
+    return this.lastRefreshWasNetworkError && !!this.currentUser$.value;
+  }
+
   private isTokenExpired(token: string): boolean {
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
@@ -235,26 +307,12 @@ export class AuthService {
     return this.http.post<AuthResponse>(`${this.apiUrl}/auth/refresh`, {
       token: this.token,
       refreshToken: this.refreshTokenValue
-    }).pipe(
+    }, { headers: this.clientHeaders }).pipe(
       switchMap(response => {
-        const user: AuthUser = {
-          id: response.user.id?.toString() || '',
-          name: `${response.user.firstName} ${response.user.lastName}`.trim(),
-          email: response.user.email,
-          phone: response.user.phone,
-          roles: [response.user.roleName],
-          permissions: response.user.permissions || {},
-          companyId: response.user.companyId.toString(),
-          companyName: response.user.companyName,
-          isCompanyAdmin: response.user.isCompanyAdmin,
-          isSystemAdmin: response.user.isSystemAdmin,
-          subscriptionFeatures: response.user.subscriptionFeatures,
-          assignedVehicleIds: response.user.assignedVehicleIds ?? null,
-          userPermissions: response.user.userPermissions ?? null
-        };
-
+        const user = this.mapUser(response);
         this.token = response.token;
         this.refreshTokenValue = response.refreshToken;
+        this.lastRefreshWasNetworkError = false;
 
         return from(this.saveAuth(response.token, response.refreshToken, user)).pipe(
           map(() => {
@@ -265,7 +323,13 @@ export class AuthService {
       }),
       catchError(err => {
         console.error('Token refresh failed:', err);
-        this.logout();
+        // Pas de réseau (status 0) : le jeton n'est pas refusé, il n'a pas pu être
+        // présenté. Garder la session pour réessayer plus tard au lieu de déconnecter
+        // un chauffeur en zone blanche.
+        this.lastRefreshWasNetworkError = err?.status === 0;
+        if (!this.lastRefreshWasNetworkError) {
+          this.logout();
+        }
         return of(null);
       })
     );

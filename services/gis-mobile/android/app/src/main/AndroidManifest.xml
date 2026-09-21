@@ -57,5 +57,13 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Suivi d'une tournée par le téléphone du chauffeur (plugin
+         @capacitor-community/background-geolocation) : service au premier plan de
+         type « location » avec la notification permanente « Tournée en cours ».
+         Android 14+ (API 34) exige cette permission pour démarrer un tel service ;
+         le service lui-même (foregroundServiceType="location") est déclaré par le
+         manifeste du plugin. PAS de ACCESS_BACKGROUND_LOCATION : le suivi démarre
+         toujours depuis l'écran (« Je pars ») et vit dans le service au premier plan. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
 </manifest>
