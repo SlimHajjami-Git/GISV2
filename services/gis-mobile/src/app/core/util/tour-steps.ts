@@ -28,6 +28,18 @@ export function isOverdue(wp: DriverWaypoint): boolean {
   return isExpected(wp) && wp.waypointStatus === 'temps_depasse';
 }
 
+/**
+ * Étapes encore « pending » AVANT `stop`, dans l'ordre — miroir de
+ * TourPlanning.HasPendingStopBefore : ce sont elles qui font répondre PENDING_STOPS à une
+ * arrivée à la destination sans confirmSkipPending, et elles qui passeront « non visitées ».
+ * Une étape « temps_depasse » n'en fait pas partie : le serveur ne bloque plus sur elle.
+ */
+export function pendingStopsBefore(waypoints: DriverWaypoint[], stop: DriverWaypoint): DriverWaypoint[] {
+  return [...waypoints]
+    .sort((a, b) => a.sequenceOrder - b.sequenceOrder)
+    .filter(w => w.sequenceOrder < stop.sequenceOrder && isExpected(w) && w.waypointStatus === 'pending');
+}
+
 /** Prochaine étape attendue, dans l'ordre de la tournée (null s'il n'y en a plus). */
 export function nextExpected(waypoints: DriverWaypoint[]): DriverWaypoint | null {
   const ordered = [...waypoints].sort((a, b) => a.sequenceOrder - b.sequenceOrder);
@@ -38,10 +50,10 @@ export function nextExpected(waypoints: DriverWaypoint[]): DriverWaypoint | null
  * Bouton à afficher sur une étape (fonction pure, testée seule) :
  *  - tournée planifiée : « Je pars » sur l'origine, rien ailleurs ;
  *  - tournée en cours : « Je suis arrivé » sur la prochaine étape attendue, et « Je suis
- *    arrivé ici » sur toute étape attendue plus loin — destination comprise : le serveur
- *    répond alors PENDING_STOPS et la fiche demande de confirmer que les étapes sautées
- *    seront « non visitées » (constat 3 : ce dialogue ne s'ouvrait jamais, et TOO_FAR sur
- *    la seule étape proposée bloquait le chauffeur) ;
+ *    arrivé ici » sur toute étape attendue plus loin — destination comprise : la fiche
+ *    demande alors, AVANT l'envoi, de confirmer que les étapes sautées seront « non
+ *    visitées » (constat 3 : ce dialogue ne s'ouvrait jamais, et TOO_FAR sur la seule
+ *    étape proposée bloquait le chauffeur) ;
  *  - « Je repars » sur la DERNIÈRE étape atteinte (la plus avancée dans la tournée) tant
  *    que le départ n'en est pas déclaré — jamais sur la destination : y arriver clôt la
  *    tournée.

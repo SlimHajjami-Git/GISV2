@@ -1,4 +1,4 @@
-import { isExpected, isOverdue, nextExpected, stepActionFor } from './tour-steps';
+import { isExpected, isOverdue, nextExpected, pendingStopsBefore, stepActionFor } from './tour-steps';
 import { DriverWaypoint } from '../models/driver-app.types';
 
 function wp(id: number, seq: number, type: string, over: Partial<DriverWaypoint> = {}): DriverWaypoint {
@@ -132,5 +132,21 @@ describe('étapes attendues', () => {
     const wps = [wp(3, 2, 'destination'), wp(2, 1, 'stop', { waypointStatus: 'temps_depasse' }), wp(1, 0, 'origin', reached)];
     expect(nextExpected(wps)?.id).toBe(2);
     expect(nextExpected([wp(1, 0, 'origin', reached)])).toBeNull();
+  });
+
+  it('pendingStopsBefore : les étapes « pending » AVANT la destination, comme PENDING_STOPS côté serveur', () => {
+    const dest = wp(6, 5, 'destination');
+    const wps = [
+      dest,
+      wp(4, 3, 'stop'),                                      // attendue
+      wp(1, 0, 'origin', departed),
+      wp(2, 1, 'stop'),                                      // attendue
+      wp(3, 2, 'stop', reached),
+      wp(5, 4, 'stop', { waypointStatus: 'temps_depasse' }), // en retard : le serveur ne bloque plus dessus
+      wp(7, 6, 'stop', { waypointStatus: 'skipped' })
+    ];
+    expect(pendingStopsBefore(wps, dest).map(w => w.id)).toEqual([2, 4]);
+    expect(pendingStopsBefore(wps, wps[3]).map(w => w.id)).toEqual([]);
+    expect(pendingStopsBefore([wp(1, 0, 'origin', departed), dest], dest)).toEqual([]);
   });
 });

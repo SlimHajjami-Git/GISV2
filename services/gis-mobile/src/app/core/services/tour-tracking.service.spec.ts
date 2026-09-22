@@ -570,6 +570,256 @@ describe('TourTrackingService', () => {
     teardown();
   }));
 
+  it('déclaration sur une AUTRE tournée : une arrivée à destination sur X ne coupe pas le suivi de Y', fakeAsync(() => {
+    service.start(8, 'full');                 // le téléphone suit Y (8)
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+
+    service.applyVerdict({ tracking: false, mode: 'full' }, 7);   // réponse de l'arrivée qui clôt X (7)
+    flushMicrotasks();
+
+    expect(service.isActive).toBeTrue();
+    expect(service.activeTourId).toBe(8);
+    expect(service.state$.value?.tourId).toBe(8);
+    expect(loc.stopWatchCalls).toBe(0);       // capteur et service au premier plan intacts
+    expect(store.peek<any>(trackingStateKey('42'))?.tourId).toBe(8);
+    expect(service.pendingCount).toBe(1);
+    expect(posts.length).toBe(0);             // aucun vidage déclenché
+    teardown();
+  }));
+
+  it('déclaration sur une AUTRE tournée : une arrivée intermédiaire sur X ne bascule pas le suivi de Y', fakeAsync(() => {
+    respond = ok({ activeTourId: 8 });
+    service.start(8, 'full');
+    flushMicrotasks();
+
+    service.applyVerdict({ tracking: true, mode: 'eco' }, 7);     // X (7) encore en cours
+    flushMicrotasks();
+    expect(service.activeTourId).toBe(8);
+    expect(service.mode).toBe('full');        // la cadence de X ne s'applique pas à Y
+    expect(loc.startWatchCalls).toBe(1);
+
+    service.ingest(fixAt(0));
+    tick(30 * S);
+    expect(posts.map(p => p.activeTourId)).toEqual([8]);   // les points de Y restent sur Y
+    teardown();
+  }));
+
+  it('déclaration sur la tournée SUIVIE : son verdict pilote toujours le suivi', fakeAsync(() => {
+    service.start(8, 'full');
+    flushMicrotasks();
+    service.applyVerdict({ tracking: true, mode: 'eco' }, 8);
+    flushMicrotasks();
+    expect(service.mode).toBe('eco');
+    service.applyVerdict({ tracking: false, mode: 'full' }, 8);   // arrivée à SA destination
+    flushMicrotasks();
+    expect(service.isActive).toBeFalse();
+    teardown();
+  }));
+
+  // ─────────────── Reliquat d'une tournée quittée ───────────────
+
+  /** Réponse selon la tournée du lot : X (7) close (fenêtre fin + 2 min), Y (8) en cours. */
+  const serverWithXClosed = () => () => posts[posts.length - 1].activeTourId === 7
+    ? of({ tracking: false, mode: 'full', activeTourId: 7, accepted: 1 } as PhonePositionsResponse)
+    : of({ tracking: true, mode: 'full', activeTourId: 8, accepted: 1 } as PhonePositionsResponse);
+
+  it('passage à Y hors ligne : les points de X ne sont pas jetés et partent au nom de X, AVANT ceux de Y', fakeAsync(() => {
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    service.ingest(fixAt(0.001));
+    respond = offline;
+
+    service.start(8, 'full');                 // « Je pars » sur Y, toujours hors ligne
+    flushMicrotasks();
+    expect(posts.map(p => p.activeTourId)).toEqual([7]);   // dernier envoi tenté, échoué
+    expect(service.activeTourId).toBe(8);
+    expect(service.pendingCount).toBe(2);
+    expect(queued().map(p => (p as any).tourId)).toEqual([7, 7]);   // persisté tout de suite, avec sa tournée
+
+    service.ingest(fixAt(0.002));             // premier point de Y
+    respond = serverWithXClosed();
+    tick(30 * S);                             // réseau revenu : première échéance de lot
+
+    expect(posts.slice(1).map(p => [p.activeTourId, p.points.length])).toEqual([[7, 2], [8, 1]]);
+    expect(posts[1].points.every(pt => !('tourId' in pt))).toBeTrue();   // la tournée ne part pas dans les points
+    expect(service.isActive).toBeTrue();      // le verdict du reliquat (X close) n'a pas coupé Y
+    expect(service.activeTourId).toBe(8);
+    expect(service.pendingCount).toBe(0);
+    expect(queued().length).toBe(0);
+    teardown();
+  }));
+
+  it('reliquat de X encore en cours : son verdict (tracking:true sur X) ne détourne pas le suivi de Y', fakeAsync(() => {
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = () => throwError(() => new HttpErrorResponse({ status: 503 }));
+    service.start(8, 'full');
+    flushMicrotasks();
+    expect(service.pendingCount).toBe(1);     // un 503 ne jette rien non plus
+    service.ingest(fixAt(0.001));             // premier point de Y
+
+    respond = () => {
+      const lot = posts[posts.length - 1].activeTourId;
+      return of({ tracking: true, mode: lot === 7 ? 'eco' : 'full', activeTourId: lot, accepted: 1 } as PhonePositionsResponse);
+    };
+    tick(30 * S);
+    expect(posts.slice(1).map(p => p.activeTourId)).toEqual([7, 8]);
+    expect(service.activeTourId).toBe(8);
+    expect(service.mode).toBe('full');        // la cadence annoncée pour X ne s'applique pas
+    teardown();
+  }));
+
+  it('barrière fermée (« Je pars » de Y en file) : le reliquat de X part quand même, pas les points de Y', fakeAsync(() => {
+    let gate = false;
+    let unblocks = 0;
+    service.setFlushGate({ blocked: () => gate, unblock: () => { unblocks++; } });
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = offline;
+    gate = true;
+    service.start(8, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0.001));
+
+    respond = serverWithXClosed();
+    tick(30 * S);
+    expect(posts.slice(1).map(p => [p.activeTourId, p.points.length])).toEqual([[7, 1]]);
+    expect(unblocks).toBe(1);                 // le rejeu du « Je pars » est relancé
+    expect(service.pendingCount).toBe(1);     // le point de Y attend son départ
+    expect(service.activeTourId).toBe(8);
+    teardown();
+  }));
+
+  it('drain(X) avant l\'arrivée de X vide le reliquat de X, mais garde les points de Y', fakeAsync(() => {
+    service.setFlushGate({ blocked: () => true, unblock: () => {} });
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = offline;
+    service.start(8, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0.001));
+
+    respond = ok({ activeTourId: 7 });        // X encore en cours : son arrivée attend en file
+    let done = false;
+    service.drain(7).then(() => { done = true; });
+    flushMicrotasks();
+    expect(done).toBeTrue();
+    expect(posts.slice(1).map(p => [p.activeTourId, p.points.length])).toEqual([[7, 1]]);
+    expect(service.pendingCount).toBe(1);
+    expect(service.activeTourId).toBe(8);
+
+    respond = offline;                        // l'échec passager remonte (l'arrivée attendra)
+    service.ingest(fixAt(0.002));
+    let failed: any = null;
+    service.drain(8).catch(e => { failed = e; });
+    flushMicrotasks();
+    expect(failed?.status).toBe(0);
+    expect(service.pendingCount).toBe(2);
+    teardown();
+  }));
+
+  it('fin de tournée sans réseau (tracking:false) : les points non envoyés sont gardés, puis partent', fakeAsync(() => {
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    service.ingest(fixAt(0.001));
+    respond = offline;
+
+    service.applyVerdict({ tracking: false, mode: 'full' }, 7);   // arrivée acceptée, réseau perdu aussitôt
+    flushMicrotasks();
+    expect(service.isActive).toBeFalse();
+    expect(loc.stopWatchCalls).toBe(1);
+    expect(store.peek(trackingStateKey('42'))).toBeNull();
+    expect(queued().map(p => (p as any).tourId)).toEqual([7, 7]);
+
+    respond = ok({ tracking: false, activeTourId: 7 });
+    service.flush();                          // après le rejeu des déclarations, par exemple
+    flushMicrotasks();
+    expect(posts.slice(1).map(p => [p.activeTourId, p.points.length])).toEqual([[7, 2]]);
+    expect(service.pendingCount).toBe(0);
+    expect(store.peek(trackingQueueKey('42'))).toBeNull();
+    teardown();
+  }));
+
+  it('le reliquat survit à un redémarrage : resume() sans suivi l\'envoie au nom de sa tournée', fakeAsync(() => {
+    store.set(trackingQueueKey('42'), [{ recordedAt: new Date().toISOString(), latitude: 1, longitude: 2, isMocked: false, tourId: 7 }]);
+    flushMicrotasks();
+    respond = ok({ tracking: false, activeTourId: 7 });
+
+    service.resume();
+    flushMicrotasks();
+    expect(service.isActive).toBeFalse();
+    expect(posts.map(p => [p.activeTourId, p.points.length])).toEqual([[7, 1]]);
+    expect(store.peek(trackingQueueKey('42'))).toBeNull();
+    teardown();
+  }));
+
+  it('le reliquat d\'un compte ne part jamais avec le jeton d\'un autre', fakeAsync(() => {
+    store.set(trackingQueueKey('42'), [{ recordedAt: new Date().toISOString(), latitude: 1, longitude: 2, isMocked: false, tourId: 7 }]);
+    flushMicrotasks();
+    auth.userId = '99';
+    service.resume();
+    flushMicrotasks();
+    service.flush();
+    flushMicrotasks();
+    expect(posts.length).toBe(0);
+    expect(queued().length).toBe(1);          // intact pour son propriétaire
+    teardown();
+  }));
+
+  it('« Je pars » refusé (stop()) : les points de la tournée refusée sont jetés, le reliquat de X gardé', fakeAsync(() => {
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = offline;
+    service.start(8, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0.001));
+
+    service.stop();
+    flushMicrotasks();
+    expect(service.isActive).toBeFalse();
+    expect(service.pendingCount).toBe(1);
+    expect(queued().map(p => (p as any).tourId)).toEqual([7]);
+    teardown();
+  }));
+
+  it('déconnexion volontaire (stop flush) : ce qui ne part pas est supprimé, reliquat compris', fakeAsync(() => {
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = offline;
+    service.start(8, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0.001));
+
+    service.stop({ flush: true });
+    flushMicrotasks();
+    expect(posts.slice(1).map(p => p.activeTourId)).toEqual([7]);   // dernier envoi tenté, dans l'ordre
+    expect(service.pendingCount).toBe(0);
+    expect(store.peek(trackingQueueKey('42'))).toBeNull();
+    teardown();
+  }));
+
+  it('12 h : ce qui ne part pas au dernier envoi est supprimé', fakeAsync(() => {
+    loc.currentFix = null;
+    service.start(7, 'full');
+    flushMicrotasks();
+    service.ingest(fixAt(0));
+    respond = offline;
+    tick(12 * H);
+    flushMicrotasks();
+    expect(service.isActive).toBeFalse();
+    expect(service.pendingCount).toBe(0);
+    expect(store.peek(trackingQueueKey('42'))).toBeNull();
+    teardown();
+  }));
+
   // ─────────────── Reprise, comptes ───────────────
 
   it('resume() reprend un suivi de moins de 12 h avec sa file', fakeAsync(() => {

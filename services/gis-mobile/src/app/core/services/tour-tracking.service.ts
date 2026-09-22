@@ -36,6 +36,33 @@ export interface FlushGate {
   unblock(): void;
 }
 
+/**
+ * Un point en file, avec la tournée à laquelle il appartient. La file peut porter les points
+ * de DEUX tournées ou plus : au passage de X à Y hors ligne, ceux de X n'ont pas pu partir et
+ * ne doivent ni être jetés ni partir au nom de Y (relecture du 22/09/2026). Chaque lot ne
+ * contient qu'une tournée et la nomme dans activeTourId. `tourId` absent : point écrit par
+ * une version antérieure (rattaché à la tournée reprise, comme avant).
+ */
+export type QueuedPoint = PhonePoint & { tourId?: number | null };
+
+/** Tournée d'un point en file (null : inconnue, le serveur prend la plus récente en cours). */
+function tourOf(p: QueuedPoint): number | null {
+  return p.tourId ?? null;
+}
+
+/** Le point tel que le serveur l'attend (PhonePoint), sans la tournée qui ne sert qu'ici. */
+function toPhonePoint(p: QueuedPoint): PhonePoint {
+  return {
+    recordedAt: p.recordedAt,
+    latitude: p.latitude,
+    longitude: p.longitude,
+    accuracyM: p.accuracyM,
+    speedKph: p.speedKph,
+    heading: p.heading,
+    isMocked: p.isMocked
+  };
+}
+
 /** État et file persistés, PAR COMPTE (le téléphone de service peut changer de mains). */
 export const trackingStateKey = (userId: string) => `driver_tracking_state_${userId}`;
 export const trackingQueueKey = (userId: string) => `driver_tracking_queue_${userId}`;
@@ -102,6 +129,12 @@ function sensorCodeFor(status: LocationStatus): string {
  * envoi est toujours tenté. Une session perdue sans le vouloir garde état et file pour le
  * retour du même chauffeur (constat 12).
  *
+ * Reliquat : chaque point porte sa tournée. Ce qui n'a pas pu partir quand le suivi quitte
+ * une tournée (fin de tournée, passage à la suivante) reste en file et part au premier envoi
+ * réussi, AVANT les points de la tournée suivie, au nom de SA tournée (le serveur accepte
+ * les points d'une tournée close jusqu'à sa fin + 2 min). Le verdict d'un tel lot ne pilote
+ * pas le suivi. Seules la déconnexion volontaire et la limite des 12 h suppriment sans envoi.
+ *
  * Le capteur est derrière PhoneLocationService (plugin background-geolocation : service
  * au premier plan Android de type « location », notification permanente « Tournée en
  * cours »). Il n'est démarré QUE si la position PRÉCISE est déjà accordée et la
@@ -133,11 +166,9 @@ export class TourTrackingService {
   static readonly NOTIFICATION_MESSAGE = 'Calypso transmet votre position à votre gestionnaire pendant la tournée.';
 
   private state: TrackingState | null = null;
-  private queue: PhonePoint[] = [];
-  /** Compte à qui appartient la file en mémoire. */
+  private queue: QueuedPoint[] = [];
+  /** Compte à qui appartient la file en mémoire (reste connu tant qu'un reliquat y attend). */
   private queueOwner: string | null = null;
-  /** Tournée des points en file (reste connue pendant le dernier envoi, après l'arrêt). */
-  private queueTourId: number | null = null;
   private lastFix: PhoneFix | null = null;
   private lastAccepted: { lat: number; lng: number; at: number } | null = null;
   /** Heure de MESURE du point le plus récent mis en file (jamais deux fois la même mesure). */
@@ -179,7 +210,7 @@ export class TourTrackingService {
     return this.state?.mode ?? null;
   }
 
-  /** Points en attente d'envoi. */
+  /** Points en attente d'envoi (reliquat d'une tournée précédente compris). */
   get pendingCount(): number {
     return this.queue.length;
   }
@@ -204,10 +235,18 @@ export class TourTrackingService {
     for (const key of LEGACY_TRACKING_KEYS) await this.store.remove(key);
 
     const saved = await this.store.get<TrackingState>(trackingStateKey(userId));
-    if (!saved || this.state) return;
+    if (this.state) return;
+    if (!saved) {
+      // Aucun suivi à reprendre, mais peut-être le reliquat d'une tournée quittée sans
+      // réseau (application tuée depuis) : il part au premier envoi possible.
+      await this.loadLeftovers(userId);
+      this.flush();
+      return;
+    }
     if (Date.now() - saved.startedAt >= TourTrackingService.MAX_DURATION_MS) {
       await this.store.remove(trackingStateKey(userId));
       await this.store.remove(trackingQueueKey(userId));
+      if (this.queueOwner === userId) { this.queue = []; this.queueOwner = null; }
       return;
     }
     await this.begin({ ...saved, userId });
@@ -224,33 +263,46 @@ export class TourTrackingService {
     if (this.state) {
       // Autre tournée (le serveur n'en suit qu'une par chauffeur) : dernier envoi des points
       // de l'ancienne, mais le capteur et son service au premier plan RESTENT — les
-      // recréer depuis l'arrière-plan est interdit par Android.
+      // recréer depuis l'arrière-plan est interdit par Android. Ce qui ne part pas (hors
+      // ligne, 5xx) reste en file au nom de l'ancienne tournée : c'était son dernier
+      // tronçon, souvent fait sans réseau, et il était jeté ici.
       await this.halt({ flush: true, keepSensor: true });
     }
     await this.begin({ tourId, startedAt: Date.now(), mode, userId });
   }
 
   /**
-   * Arrête tout.
-   *  - `flush` : tenter d'abord d'envoyer TOUS les points restants (fin de tournée,
-   *    déconnexion volontaire, 12 h) ; ce qui n'a pas pu partir est ensuite jeté.
+   * Arrêt voulu par l'application.
+   *  - `flush` : déconnexion VOLONTAIRE — tenter d'envoyer TOUS les points restants, puis
+   *    tout supprimer, reliquat compris (le chauffeur a été prévenu de ce qui attendait).
    *  - `keep` : session perdue sans que le chauffeur l'ait voulu (jeton refusé) — on ne
    *    peut plus rien envoyer, mais état et file restent persistés, rattachés au compte,
    *    et repartent quand CE chauffeur se reconnecte.
+   *  - ni l'un ni l'autre (« Je pars » refusé) : les points de la tournée suivie sont
+   *    jetés — elle n'a pas démarré ; le reliquat d'une tournée précédente est gardé.
    */
   async stop(options: { flush?: boolean; keep?: boolean } = {}): Promise<void> {
-    await this.halt(options);
+    await this.halt({ ...options, discard: !!options.flush && !options.keep });
   }
 
   /**
    * Applique ce que le serveur vient de dire (réponse à un lot, à « Je pars », à
    * « Je suis arrivé ») : arrêt sur tracking:false, démarrage ou changement de cadence sinon.
-   * `tourId` : la tournée concernée quand la réponse ne la nomme pas (depart / arrive).
+   * `tourId` : la tournée de la DÉCLARATION (depart / arrive), absente pour un lot.
    */
   async applyVerdict(verdict: TrackingVerdict, tourId?: number | null): Promise<void> {
+    // Déclaration faite sur une AUTRE tournée que celle suivie (arrivée ou « Je repars » sur
+    // X pendant que le téléphone suit Y, en ligne ou au rejeu de la file) : la réponse ne
+    // parle que de X. L'appliquer coupait le suivi de Y (X close : tracking:false) ou le
+    // détournait vers X (arrivée intermédiaire : tracking:true), sans un mot — et au rejeu,
+    // écran verrouillé, Android refuse ensuite de relancer le service au premier plan : Y
+    // restait « Suivi actif » sans transmettre (relecture du 22/09/2026). Seuls les verdicts
+    // des lots et ceux de la tournée suivie pilotent le suivi ; le « Je pars » qui démarre
+    // une tournée est déjà passé par start() avant l'appel réseau.
+    if (tourId != null && this.state && this.state.tourId !== tourId) return;
     if (!verdict.tracking) {
-      // Dernier envoi AVANT de vider (constat 8) : le serveur garde ce qui tombe encore
-      // dans la fenêtre de la tournée ; le reste ne pourrait plus être rattaché à rien.
+      // Dernier envoi AVANT d'arrêter (constat 8) : le serveur garde ce qui tombe encore
+      // dans la fenêtre de la tournée. Un échec passager garde les points en reliquat.
       if (this.state) await this.halt({ flush: true });
       return;
     }
@@ -330,9 +382,30 @@ export class TourTrackingService {
     this.enqueue(fix);
   }
 
-  /** Envoi du lot en attente (minuterie de 30 s, ou à la demande après une déclaration). */
+  /**
+   * Envoi (minuterie de 30 s, ou à la demande après le rejeu des déclarations) : d'abord
+   * le reliquat des tournées quittées, puis un lot de la tournée suivie.
+   */
   async flush(): Promise<void> {
-    if (!this.state || this.sending) return;
+    if (this.sending) return;
+    const epoch = this.epoch;
+
+    // Reliquat d'une tournée précédente : il part en premier, barrière fermée ou non. Son
+    // lot nomme SA tournée ; son verdict ne concerne qu'elle et n'est pas appliqué — il
+    // arrêterait (tournée close) ou détournerait (encore en cours) le suivi de l'actuelle.
+    // La tournée suivie est figée MAINTENANT : si le suivi s'arrête pendant l'envoi (« Je
+    // pars » refusé), ses points ne doivent pas partir avec le reliquat.
+    const leftover = this.leftoverFilter();
+    if (this.ownsQueue() && this.queue.some(p => leftover(tourOf(p)))) {
+      try {
+        await this.exclusive(() => this.drainQueue(leftover));
+      } catch (err: any) {
+        if (err?.status === 403 && epoch === this.epoch) await this.halt({ discard: true });
+        return;   // passager : tout reste en file, la tournée suivie attend son tour
+      }
+    }
+    if (!this.state || epoch !== this.epoch) return;
+
     if (this.gate && this.gate.blocked()) {
       // Barrière fermée : ce qui la lèvera (le rejeu du « Je pars ») est relancé ici, à
       // chaque échéance. Sans cela, un départ en file sans coupure réseau visible
@@ -341,16 +414,17 @@ export class TourTrackingService {
       this.gate.unblock();
       return;
     }
-    if (this.queue.length === 0 && Date.now() - this.lastSendAt < TourTrackingService.EMPTY_POLL_MS) return;
+    const tourId = this.state.tourId;
+    const mine = this.queue.some(p => tourOf(p) === tourId);
+    if (!mine && Date.now() - this.lastSendAt < TourTrackingService.EMPTY_POLL_MS) return;
 
-    const epoch = this.epoch;
     let verdict: TrackingVerdict | null;
     try {
-      verdict = await this.exclusive(() => this.sendBatch());
+      verdict = await this.exclusive(() => this.sendBatch(tourId));
     } catch (err: any) {
       // Réseau absent, 401 pendant un rafraîchissement, 5xx : les points restent en file.
       // 403 = plus de fiche chauffeur / compte hors périmètre : inutile d'insister.
-      if (err?.status === 403 && epoch === this.epoch) await this.halt({});
+      if (err?.status === 403 && epoch === this.epoch) await this.halt({ discard: true });
       return;
     }
     // Arrêté ou passé à une autre tournée pendant l'appel : ce verdict ne concerne plus
@@ -359,27 +433,68 @@ export class TourTrackingService {
   }
 
   /**
-   * Envoie TOUS les points en attente, lot après lot, en ignorant la barrière. Appelé
-   * avant « Je suis arrivé » à la DESTINATION : une fois la tournée close, /positions
-   * refuse ses points, et le dernier tronçon (souvent fait hors ligne) était perdu
-   * (constats 8 et 16). Lève l'erreur d'un échec passager : l'arrivée doit alors attendre.
+   * Envoie les points en attente, lot après lot, en ignorant la barrière. Appelé avant
+   * « Je suis arrivé » à la DESTINATION de `closingTourId` : une fois la tournée close,
+   * /positions refuse ses points au-delà de sa fin + 2 min, et le dernier tronçon (souvent
+   * fait hors ligne) était perdu (constats 8 et 16). Le reliquat de cette tournée part donc
+   * aussi. Seuls les points d'une AUTRE tournée suivie restent : son « Je pars » attend
+   * peut-être encore dans la file, et envoyés maintenant ils seraient rangés sur la
+   * tournée qu'on clôt. Sans `closingTourId`, tout part. Lève l'erreur d'un échec
+   * passager : l'arrivée doit alors attendre.
    */
-  async drain(): Promise<void> {
-    if (this.queue.length === 0 && !this.sending) return;
-    await this.exclusive(() => this.drainQueue());
+  async drain(closingTourId?: number | null): Promise<void> {
+    if (this.queueOwner !== null && !this.ownsQueue()) return;
+    const tracked = this.state?.tourId ?? null;
+    const held = closingTourId != null && tracked != null && tracked !== closingTourId ? tracked : null;
+    const accept = (t: number | null) => held == null || t !== held;
+    if (!this.queue.some(p => accept(tourOf(p))) && !this.sending) return;
+    await this.exclusive(() => this.drainQueue(accept));
   }
 
   // ────────────────── interne ──────────────────
 
+  /** Reliquat = tout ce qui n'est pas la tournée suivie à cet instant (tout, si rien n'est suivi). */
+  private leftoverFilter(): (tourId: number | null) => boolean {
+    const tracked = this.state ? this.state.tourId : null;
+    return t => tracked == null || t !== tracked;
+  }
+
+  /** La file en mémoire appartient au compte connecté : jamais envoyée avec le jeton d'un autre. */
+  private ownsQueue(): boolean {
+    return this.queueOwner !== null && this.queueOwner === this.auth.currentUserId();
+  }
+
+  /** Charge le reliquat persisté du compte quand aucun suivi ne tourne (après redémarrage). */
+  private async loadLeftovers(userId: string): Promise<void> {
+    if (this.queueOwner === userId) return;          // déjà en mémoire
+    const saved = await this.store.get<QueuedPoint[]>(trackingQueueKey(userId));
+    if (this.state || this.queueOwner === userId) return;   // un départ est passé entre-temps
+    if (!Array.isArray(saved) || saved.length === 0) return;
+    this.queue = saved.slice(-TourTrackingService.MAX_QUEUE);
+    this.queueOwner = userId;
+  }
+
   private async begin(state: TrackingState): Promise<void> {
     this.epoch++;
+    // File déjà en mémoire pour CE compte (reliquat de la tournée qu'on vient de quitter) :
+    // on la garde telle quelle — la copie persistée peut avoir jusqu'à 15 s de retard.
+    // Sinon : celle persistée (déconnexion subie, redémarrage) ; la file d'un autre compte
+    // est déjà écrite sous son nom et sort de la mémoire.
+    const reuse = this.queueOwner === state.userId;
+    if (!reuse) this.queue = [];
     this.state = state;
     this.queueOwner = state.userId;
-    this.queueTourId = state.tourId;
     await this.store.set(trackingStateKey(state.userId), state);
-    // Points laissés par une session de CE compte (déconnexion subie) : ils partent en tête.
-    const saved = await this.store.get<PhonePoint[]>(trackingQueueKey(state.userId));
-    this.queue = Array.isArray(saved) ? saved.slice(-TourTrackingService.MAX_QUEUE) : [];
+    if (!reuse) {
+      const saved = await this.store.get<QueuedPoint[]>(trackingQueueKey(state.userId));
+      // En tête ; derrière, d'éventuels points mesurés pendant ces lectures.
+      if (Array.isArray(saved)) this.queue = [...saved, ...this.queue];
+    }
+    // Points sans tournée (file écrite par une version antérieure) : ceux de la tournée
+    // reprise, comme avant — ils partaient au nom de la tournée suivie.
+    this.queue = this.queue
+      .slice(-TourTrackingService.MAX_QUEUE)
+      .map(p => (p.tourId == null ? { ...p, tourId: state.tourId } : p));
     this.lastEnqueuedAt = this.queue.reduce((m, p) => Math.max(m, new Date(p.recordedAt).getTime() || 0), 0);
     this.lastAccepted = null;
     this.lastFix = null;
@@ -391,8 +506,20 @@ export class TourTrackingService {
     this.zone.run(() => this.state$.next(state));
   }
 
-  private async halt(options: { flush?: boolean; keep?: boolean; keepSensor?: boolean }): Promise<void> {
+  /**
+   * Arrêt du suivi.
+   *  - `keep` : état et file persistés tels quels (session perdue, voir stop()).
+   *  - `flush` : dernier envoi de TOUT ce qui attend, chaque lot au nom de sa tournée.
+   *  - `discard` : ensuite, tout est supprimé, reliquat compris — réservé à la déconnexion
+   *    volontaire, aux 12 h et au 403 (plus de fiche chauffeur : rien ne passera plus).
+   *    Sans lui, ce qui n'a pas pu partir RESTE en file (fin de tournée ou passage à la
+   *    suivante sans réseau) et part au premier envoi réussi.
+   *  - ni `flush` ni `discard` (« Je pars » refusé) : seuls les points de la tournée
+   *    arrêtée sont jetés.
+   */
+  private async halt(options: { flush?: boolean; keep?: boolean; keepSensor?: boolean; discard?: boolean }): Promise<void> {
     const wasActive = this.state !== null;
+    const haltedTourId = this.state?.tourId ?? null;
     const owner = this.state?.userId ?? this.queueOwner;
     this.epoch++;
     this.clearTimers();
@@ -402,22 +529,34 @@ export class TourTrackingService {
     if (options.keep && owner) {
       await this.settleSending();
       await this.persistQueueNow();       // l'état persisté reste tel quel pour resume()
+      this.queue = [];
+      this.queueOwner = null;
     } else {
       if (this.persistTimer) { clearTimeout(this.persistTimer); this.persistTimer = null; }
       if (owner) await this.store.remove(trackingStateKey(owner));
-      if (wasActive && options.flush) {
+      // Jamais avec le jeton d'un autre compte : ses points iraient sur ses tournées.
+      if (options.flush && this.queue.length > 0 && owner && owner === this.auth.currentUserId()) {
         try {
-          await this.exclusive(() => this.drainQueue());
-        } catch { /* meilleur effort : le serveur est injoignable */ }
+          await this.exclusive(() => this.drainQueue(() => true));
+        } catch { /* serveur injoignable : voir ci-dessous ce qui reste */ }
       } else {
         await this.settleSending();
       }
-      this.queue = [];
-      if (owner) await this.store.remove(trackingQueueKey(owner));
+      if (options.discard) {
+        this.queue = [];
+      } else if (!options.flush) {
+        this.queue = this.queue.filter(p => tourOf(p) !== haltedTourId);
+      }
+      // Ce qui reste est un reliquat : écrit tout de suite (le processus peut être tué),
+      // gardé en mémoire pour le prochain envoi.
+      if (owner) {
+        try {
+          if (this.queue.length === 0) await this.store.remove(trackingQueueKey(owner));
+          else await this.store.set(trackingQueueKey(owner), this.queue);
+        } catch { /* la file reste en mémoire */ }
+      }
+      this.queueOwner = this.queue.length > 0 ? owner : null;
     }
-    this.queue = [];
-    this.queueOwner = null;
-    this.queueTourId = null;
     this.lastFix = null;
     this.lastAccepted = null;
     this.lastEnqueuedAt = 0;
@@ -482,7 +621,9 @@ export class TourTrackingService {
     const remaining = this.state
       ? Math.max(0, this.state.startedAt + TourTrackingService.MAX_DURATION_MS - Date.now())
       : 0;
-    this.maxDurationTimer = setTimeout(() => { this.halt({ flush: true }); }, remaining);
+    // 12 h : le serveur n'accepte plus rien au-delà (DriverTourRules.MaxTrackingDuration),
+    // ce qui ne part pas au dernier envoi est supprimé.
+    this.maxDurationTimer = setTimeout(() => { this.halt({ flush: true, discard: true }); }, remaining);
   }
 
   private clearTimers(): void {
@@ -534,6 +675,7 @@ export class TourTrackingService {
 
   /** Met un point en file (bornée), daté de SA mesure ; relance le battement ; persistance différée. */
   private enqueue(fix: PhoneFix): void {
+    if (!this.state) return;
     const measuredAt = fix.time || Date.now();
     this.queue.push({
       recordedAt: new Date(measuredAt).toISOString(),
@@ -542,7 +684,8 @@ export class TourTrackingService {
       accuracyM: fix.accuracyM,
       speedKph: fix.speedKph,
       heading: fix.heading,
-      isMocked: fix.isMocked
+      isMocked: fix.isMocked,
+      tourId: this.state.tourId
     });
     this.lastEnqueuedAt = Math.max(this.lastEnqueuedAt, measuredAt);
     while (this.queue.length > TourTrackingService.MAX_QUEUE) this.queue.shift();
@@ -591,30 +734,51 @@ export class TourTrackingService {
     }
   }
 
-  /** Envoie la file entière ; s'arrête dès que le serveur n'a plus aucune tournée en cours. */
-  private async drainQueue(): Promise<TrackingVerdict | null> {
-    let last: TrackingVerdict | null = null;
-    const maxRounds = Math.ceil(TourTrackingService.MAX_QUEUE / TourTrackingService.MAX_BATCH) + 1;
-    for (let i = 0; i < maxRounds && this.queue.length > 0; i++) {
-      last = await this.sendBatch();
-      if (last && !last.tracking && last.activeTourId == null) break;   // il refusera tout le reste
+  /**
+   * Envoie, lot après lot et dans l'ordre de la file, les points des tournées acceptées
+   * par `accept` (verdicts non appliqués). Une tournée pour laquelle le serveur n'a plus
+   * rien (tracking:false sans activeTourId : annulée, retirée, hors fenêtre, et aucune
+   * autre en cours) refuserait tout le reste de ses points : ils sont retirés, et les
+   * autres tournées continuent. Lève l'erreur d'un échec passager (rien n'est perdu).
+   */
+  private async drainQueue(accept: (tourId: number | null) => boolean): Promise<void> {
+    const tours = new Set(this.queue.map(tourOf)).size;
+    const maxRounds = Math.ceil(TourTrackingService.MAX_QUEUE / TourTrackingService.MAX_BATCH) + tours + 1;
+    for (let i = 0; i < maxRounds; i++) {
+      const next = this.queue.find(p => accept(tourOf(p)));
+      if (!next) return;
+      const tourId = tourOf(next);
+      const verdict = await this.sendBatch(tourId);
+      if (verdict && !verdict.tracking && verdict.activeTourId == null) {
+        this.queue = this.queue.filter(p => tourOf(p) !== tourId);
+        await this.persistQueueNow();
+      }
     }
-    return last;
   }
 
-  /** Envoie au plus 200 points ; retire ceux que le serveur a reçus ; rend son verdict. */
-  private async sendBatch(): Promise<TrackingVerdict | null> {
-    const batch = this.queue.slice(0, TourTrackingService.MAX_BATCH);
+  /**
+   * Envoie au plus 200 points de `tourId` (les plus anciens) ; retire ceux que le serveur a
+   * reçus ; rend son verdict. Un lot ne mélange jamais deux tournées.
+   */
+  private async sendBatch(tourId: number | null): Promise<TrackingVerdict | null> {
+    const batch: QueuedPoint[] = [];
+    for (const p of this.queue) {
+      if (tourOf(p) !== tourId) continue;
+      batch.push(p);
+      if (batch.length >= TourTrackingService.MAX_BATCH) break;
+    }
     const batteryLevel = await this.location.getBatteryLevel();
     const res = await firstValueFrom(this.api.postDriverPositions({
-      points: batch,
+      points: batch.map(toPhonePoint),
       sentAt: new Date().toISOString(),
       batteryLevel,
-      // La tournée de CES points (y compris au dernier envoi, après l'arrêt) : un « Démarrer »
-      // du gestionnaire sur une autre tournée ne doit pas détourner la trace.
-      activeTourId: this.queueTourId
+      // La tournée de CES points (y compris au dernier envoi, après l'arrêt, et pour le
+      // reliquat d'une tournée quittée) : un « Démarrer » du gestionnaire sur une autre
+      // tournée ne doit pas détourner la trace.
+      activeTourId: tourId
     }));
-    this.lastSendAt = Date.now();
+    // Cadence du lot vide des 5 min : seuls comptent les envois de la tournée suivie.
+    if (this.state && this.state.tourId === tourId) this.lastSendAt = Date.now();
     // Retirer exactement les points envoyés : d'autres ont pu arriver pendant l'appel,
     // et la borne de 2 000 a pu en faire tomber en tête.
     const sent = new Set(batch);

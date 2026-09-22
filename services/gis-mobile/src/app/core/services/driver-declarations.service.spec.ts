@@ -46,6 +46,8 @@ class FakeTracking {
   activeTourId: number | null = null;
   gate: FlushGate | null = null;
   drainError: any = null;
+  /** Tournée passée à chaque drain() (celle que l'arrivée va clore). */
+  drainedFor: (number | null | undefined)[] = [];
   verdicts: { verdict: TrackingVerdict; tourId?: number | null }[] = [];
 
   setFlushGate(g: FlushGate | null) { this.gate = g; }
@@ -53,7 +55,11 @@ class FakeTracking {
   async stop() { log.push('stop'); this.activeTourId = null; }
   async applyVerdict(verdict: TrackingVerdict, tourId?: number | null) { log.push(`verdict:${tourId}`); this.verdicts.push({ verdict, tourId }); }
   async flush() { log.push('flush'); }
-  async drain() { log.push('drain'); if (this.drainError) throw this.drainError; }
+  async drain(tourId?: number | null) {
+    log.push('drain');
+    this.drainedFor.push(tourId);
+    if (this.drainError) throw this.drainError;
+  }
 }
 
 describe('DriverDeclarationsService (file hors ligne des déclarations)', () => {
@@ -457,6 +463,30 @@ describe('DriverDeclarationsService (file hors ligne des déclarations)', () => 
     log = [];
     await service.replay();
     expect(log.slice(0, 2)).toEqual(['drain', 'api:arrive:99']);
+    expect(service.pendingCount).toBe(0);
+  });
+
+  it('arrivée à destination : le vidage nomme la tournée qu\'on clôt (son reliquat part, pas les points d\'une autre)', async () => {
+    tracking.activeTourId = 8;                // le téléphone suit déjà Y
+    tracking.drainError = new HttpErrorResponse({ status: 0 });
+    const service = create();
+    await service.declare(7, 99, 'arrive', { closesTour: true });   // X (7), hors ligne
+    tracking.drainError = null;
+    await service.replay();
+    expect(tracking.drainedFor).toEqual([7, 7]);   // en ligne, puis au rejeu
+  });
+
+  it('arrivée à destination confirmée hors ligne : la déclaration en file porte le consentement, rejoué tel quel', async () => {
+    api.online = false;
+    const service = create();
+    const outcome = await service.declare(7, 99, 'arrive', { closesTour: true, confirmSkipPending: true });
+    expect(outcome).toEqual({ sent: false, queued: true });
+    expect(queued()[0].body.confirmSkipPending).toBeTrue();
+
+    api.online = true;
+    const offlineCalls = api.calls.length;
+    await service.replay();
+    expect(api.calls[offlineCalls].body.confirmSkipPending).toBeTrue();   // pas de PENDING_STOPS au rejeu
     expect(service.pendingCount).toBe(0);
   });
 

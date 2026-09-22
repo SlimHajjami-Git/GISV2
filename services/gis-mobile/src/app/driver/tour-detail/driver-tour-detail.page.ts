@@ -16,10 +16,13 @@ import {
   DRIVER_ERR_PENDING_STOPS, DRIVER_ERR_TOO_FAR, DriverTourDetail, DriverWaypoint
 } from '../../core/models/driver-app.types';
 import { decodePolyline6 } from '../../core/util/polyline';
-import { isOverdue, nextExpected, stepActionFor } from '../../core/util/tour-steps';
+import { isOverdue, nextExpected, pendingStopsBefore, stepActionFor } from '../../core/util/tour-steps';
 import { TOUR_STATUS_LABELS } from '../tours/driver-tours.page';
 
 const TOUR_CACHE_PREFIX = 'driver_tour_cache_';
+
+/** Texte du serveur pour PENDING_STOPS (DriverAppController.Arrive), repris hors ligne. */
+const PENDING_STOPS_MESSAGE = 'Des étapes n\'ont pas été signalées. Confirmer l\'arrivée les marquera comme non visitées.';
 
 /** Fiche mise en cache pour le hors ligne, rattachée au compte qui l'a ouverte. */
 interface CachedTour {
@@ -342,12 +345,19 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
   /**
    * « Je suis arrivé ici » sur une étape plus loin que la prochaine attendue : on fait
    * confirmer (un toucher sur la mauvaise carte validerait une étape où il n'est pas).
-   * Destination : le serveur répond PENDING_STOPS et le dialogue habituel prend le relais.
+   * Destination : le dialogue « Étapes non signalées » s'ouvre ICI, avant tout envoi, et
+   * l'arrivée confirmée porte confirmSkipPending (voir confirmSkipPending).
    */
   async arriveAhead(wp: DriverWaypoint) {
     if (this.busy || !this.tour) return;
     if (wp.type === 'destination') {
-      await this.arrive(wp);
+      const pending = pendingStopsBefore(this.tour.waypoints, wp);
+      // Seules des étapes « en retard » la précèdent : le serveur ne demande rien de plus.
+      if (pending.length === 0) {
+        await this.arrive(wp);
+        return;
+      }
+      await this.confirmSkipPending(wp, pending.map(w => w.name || w.address || this.typeLabel(w.type)));
       return;
     }
     const skipped = this.tour.waypoints
@@ -402,21 +412,34 @@ export class DriverTourDetailPage implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Dialogue « Étapes non signalées » ; confirmer envoie l'arrivée avec confirmSkipPending.
+   * Pour la destination atteinte en sautant une étape, il s'ouvre AVANT l'envoi : hors
+   * ligne, la déclaration part en file avec le consentement du chauffeur. Demandé seulement
+   * par le serveur, il arrivait trop tard : au rejeu, PENDING_STOPS est un refus métier —
+   * l'arrivée était abandonnée, la tournée restait en cours et le téléphone continuait de
+   * suivre le chauffeur après son service (relecture du 22/09/2026). Il sert aussi pour un
+   * PENDING_STOPS reçu en ligne (fiche affichée périmée).
+   */
+  private async confirmSkipPending(wp: DriverWaypoint, names: string[], message?: string | null) {
+    const alert = await this.alertCtrl.create({
+      header: 'Étapes non signalées',
+      message: (message || PENDING_STOPS_MESSAGE) +
+        (names.length ? `\n\n${names.map(n => '• ' + n).join('\n')}` : ''),
+      cssClass: 'driver-alert-multiline',
+      buttons: [
+        { text: 'Annuler', role: 'cancel' },
+        { text: 'Confirmer l\'arrivée', handler: () => { this.arrive(wp, true); } }
+      ]
+    });
+    await alert.present();
+  }
+
   private async handleDeclarationError(err: any, wp: DriverWaypoint, kind: DeclarationKind) {
     const code = err?.error?.code;
     if (err?.status === 409 && code === DRIVER_ERR_PENDING_STOPS) {
       const names: string[] = (err.error.pending || []).map((p: any) => p.name);
-      const alert = await this.alertCtrl.create({
-        header: 'Étapes non signalées',
-        message: `${err.error.message || 'Des étapes n\'ont pas été signalées.'}` +
-          (names.length ? `\n\n${names.map(n => '• ' + n).join('\n')}` : ''),
-        cssClass: 'driver-alert-multiline',
-        buttons: [
-          { text: 'Annuler', role: 'cancel' },
-          { text: 'Confirmer l\'arrivée', handler: () => { this.arrive(wp, true); } }
-        ]
-      });
-      await alert.present();
+      await this.confirmSkipPending(wp, names, err.error.message);
       return;
     }
     if (err?.status === 409 && code === DRIVER_ERR_TOO_FAR) {

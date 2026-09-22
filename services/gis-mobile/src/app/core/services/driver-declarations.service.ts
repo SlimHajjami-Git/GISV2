@@ -220,7 +220,7 @@ export class DriverDeclarationsService implements OnDestroy {
       if (this.queue.length > 0) return await this.queueOffline(item);
 
       try {
-        if (closesTour) await this.drainBeforeClosing();
+        if (closesTour) await this.drainBeforeClosing(tourId);
         const response = await this.send(item);
         this.tourStartInFlight = false;
         await this.tracking.applyVerdict(response, tourId);
@@ -298,7 +298,7 @@ export class DriverDeclarationsService implements OnDestroy {
       if (this.auth.currentUserId() !== me) return;   // compte changé pendant le rejeu
       const item = this.queue[0];
       try {
-        if (item.closesTour) await this.drainBeforeClosing();
+        if (item.closesTour) await this.drainBeforeClosing(item.tourId);
         const response = await this.send(item);
         this.queue.shift();
         await this.persist(me);
@@ -323,15 +323,16 @@ export class DriverDeclarationsService implements OnDestroy {
   }
 
   /**
-   * Avant « Je suis arrivé » à la destination : toutes les positions en attente partent
-   * d'abord — une fois la tournée close, /positions les refuse, et le dernier tronçon
-   * (souvent fait hors ligne) était perdu (constats 8 et 16). Un échec PASSAGER remonte :
-   * l'arrivée attend alors avec les points plutôt que de les condamner. Un refus métier
-   * des positions (403) n'empêche pas l'arrivée : elle aura sa propre réponse.
+   * Avant « Je suis arrivé » à la destination : les positions en attente de CETTE tournée
+   * partent d'abord, reliquat compris quand le téléphone suit déjà la suivante — une fois
+   * la tournée close, /positions les refuse au-delà de sa fin + 2 min, et le dernier
+   * tronçon (souvent fait hors ligne) était perdu (constats 8 et 16). Un échec PASSAGER
+   * remonte : l'arrivée attend alors avec les points plutôt que de les condamner. Un refus
+   * métier des positions (403) n'empêche pas l'arrivée : elle aura sa propre réponse.
    */
-  private async drainBeforeClosing(): Promise<void> {
+  private async drainBeforeClosing(tourId: number): Promise<void> {
     try {
-      await this.tracking.drain();
+      await this.tracking.drain(tourId);
     } catch (err: any) {
       if (!isBusinessRefusal(err)) throw err;
     }
