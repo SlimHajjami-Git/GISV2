@@ -33,7 +33,7 @@
         <!-- Template Selector with Icons -->
         <div class="sidebar-row">
           <label class="field-label">Type de rapport</label>
-          <div class="template-dropdown" [class.open]="showTemplateDropdown">
+          <div class="template-dropdown" [class.open]="showTemplateDropdown" data-guide="rapports-type">
             <button class="dropdown-trigger" (click)="toggleTemplateDropdown($event)">
               <span class="selected-template" *ngIf="selectedTemplate">
                 <span class="template-icon">{{ selectedTemplate.icon }}</span>

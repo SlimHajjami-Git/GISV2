@@ -214,6 +214,11 @@ export const routes: Routes = [
   
   // Profile (always accessible when logged in)
   { path: 'profile', component: ProfileComponent, canActivate: [AuthGuard] },
+
+  // Aide integree — accessible a tout utilisateur connecte, quel que soit son
+  // abonnement : le contenu est filtre article par article selon les modules.
+  { path: 'aide', loadComponent: () => import('./components/help-center.component').then(m => m.HelpCenterComponent), canActivate: [AuthGuard] },
+  { path: 'help', redirectTo: 'aide', pathMatch: 'full' },
   
   // Settings module
   { path: 'settings', component: SettingsComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'settings' } },

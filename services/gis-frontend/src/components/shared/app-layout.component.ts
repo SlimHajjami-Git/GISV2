@@ -16,6 +16,8 @@ import { SubscriptionStatusService, SubscriptionBanner } from '../../services/su
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
+import { GuidedHelpComponent } from './guided-help.component';
+import { HelpService } from '../../services/help.service';
 import * as L from 'leaflet';
 
 // Bell threading (Calypso 7) ─ catégories utilisées pour ranger les
@@ -41,7 +43,7 @@ type NotifBucket = Notification | NotifThreadGroup;
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent, GuidedHelpComponent],
   template: `
     <div class="app-container">
       <!-- Bandeau nouvelle version : un déploiement a eu lieu, l'onglet tourne sur un vieux bundle -->
@@ -152,7 +154,7 @@ type NotifBucket = Notification | NotifThreadGroup;
             le blocage rapporté par le premier inscrit.
           -->
           <div class="nav-group" *ngIf="hasModule('vehicles') || hasModule('employees') || hasModule('tours') || hasModule('geofences')">
-            <button class="nav-group-btn" [class.active]="openNavGroup === 'exploitation'" (click)="toggleNavGroup('exploitation', $event)">
+            <button class="nav-group-btn" [class.active]="openNavGroup === 'exploitation'" (click)="toggleNavGroup('exploitation', $event)" data-guide="menu-flotte">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/><path d="M5 17h-2v-6l2-5h9l4 5h1a2 2 0 0 1 2 2v4h-2m-4 0h-6m-6 -6h15m-6 0v-5"/>
               </svg>
@@ -257,6 +259,7 @@ type NotifBucket = Notification | NotifThreadGroup;
             <span>Rapports</span>
           </a>
 
+
           <!-- Abonnement & paiement.
                L'écran existait mais n'était accessible par AUCUN lien : il fallait
                taper l'URL à la main. Un client ne peut pas régler ce qu'il ne
@@ -279,6 +282,17 @@ type NotifBucket = Notification | NotifThreadGroup;
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
               <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </button>
+
+          <!-- Aide : tutoriels et visite guidee, juste a gauche du theme.
+               Toujours visible, quel que soit l'abonnement — c'est le CONTENU
+               qui est filtre, article par article, selon les droits du client. -->
+          <button class="nav-icon-btn" (click)="onHelpClick()" title="Aide et tutoriels" data-guide="menu-aide">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
               <line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
           </button>
@@ -537,6 +551,9 @@ type NotifBucket = Notification | NotifThreadGroup;
 
       <!-- Chat Widget -->
       <app-chat></app-chat>
+
+      <!-- Visite guidee de premiere connexion (voir HelpService) -->
+      <app-guided-help></app-guided-help>
 
       <!-- Strictly-blocking accident decision modal.
            Subscribes to SignalR 'accident_detected' notifications with
@@ -1620,6 +1637,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     private offlineVehiclesService: OfflineVehiclesService,
     public versionCheck: VersionCheckService,
     public subStatus: SubscriptionStatusService,
+    private help: HelpService,
     private cdr: ChangeDetectorRef
   ) {}
 
@@ -1660,9 +1678,17 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.themeService.toggleTheme();
   }
 
+
   ngOnInit() {
     // Start SignalR globally so real-time notifications work on all pages
     this.signalR.startConnection();
+
+    // Premiere connexion : on propose la visite guidee une fois l'interface
+    // posee (le menu doit exister pour que la premiere bulle ait une cible).
+    // Une seule fois par utilisateur ; "Passer" vaut definitivement non.
+    if (this.help.doitProposerLeGuide()) {
+      setTimeout(() => this.help.ouvrirGuide(), 1200);
+    }
 
     this.loadNotifications();
     this.notificationService.loadUnreadCount();
@@ -2029,7 +2055,10 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
 
   onHelpClick() {
     this.showUserMenu = false;
-    window.open('https://docs.calypso.ma', '_blank');
+    // Pointait vers le site externe docs.calypso.ma. Les tutoriels vivent
+    // maintenant DANS l'application (/aide), filtres selon l'abonnement et les
+    // droits du client : plus de lien qui sort de l'outil.
+    this.router.navigate(['/aide']);
   }
 
   toggleNotifications(event: Event) {
