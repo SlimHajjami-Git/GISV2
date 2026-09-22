@@ -276,8 +276,13 @@ public class UpdateRepairCommandHandler : IRequestHandler<UpdateRepairCommand, b
         repair.Notes = request.Notes;
         repair.UpdatedAt = DateTime.UtcNow;
 
-        // Même règle qu'à la création : le relevé fait avancer la fiche véhicule.
-        VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
+        // Même règle qu'à la création : le relevé fait avancer la fiche véhicule. Sauf
+        // pour une réparation ANNULÉE, comme à l'import (RepairImportRow.AdvancesMileage)
+        // et dans OdometerReadings : elle ne décrit aucun passage à l'atelier, et son
+        // kilométrage, que plus personne ne relit, poussait un compteur qui ne recule
+        // jamais — et avec lui les échéances d'entretien d'un véhicule sans boîtier.
+        if (!RepairInputRules.HasStatus(status, RepairInputRules.Cancelled))
+            VehicleMileage.Advance(repairVehicle, request.MileageAtRepair);
 
         // Remove old parts
         _context.RepairParts.RemoveRange(repair.Parts);

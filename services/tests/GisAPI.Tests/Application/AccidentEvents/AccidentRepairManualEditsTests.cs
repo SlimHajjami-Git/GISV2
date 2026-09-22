@@ -153,6 +153,74 @@ public class AccidentRepairManualEditsTests
         (await context.Repairs.AsNoTracking().SingleAsync()).Status.Should().Be("Cancelled");
     }
 
+    // ── Relecture du 22/09/2026 : le statut annulé conservé se tait ─────────────
+    // « Annulée » est de nouveau proposée dans l'écran Réparations. Le coût réel saisi
+    // ensuite en phase 5 était écrit sur la ligne annulée — donc compté nulle part —
+    // alors que le dossier l'affiche, sans un mot à l'écran.
+
+    [Fact]
+    public async Task CoutReelSurUneReparationAnnulee_EstSignaleALEcran()
+    {
+        using var context = Contexte();
+        await Phase5(context);
+        context.ChangeTracker.Clear();
+
+        var reparation = await context.Repairs.SingleAsync();
+        reparation.Status = RepairInputRules.Cancelled;
+        await context.SaveChangesAsync();
+        var reference = reparation.Reference;
+        context.ChangeTracker.Clear();
+
+        var result = await Handler(context).Handle(
+            new RegisterRepairCommand(AccidentId, Debut, Fin, 2000m), CancellationToken.None);
+        context.ChangeTracker.Clear();
+
+        var apres = await context.Repairs.AsNoTracking().SingleAsync();
+        apres.Status.Should().Be(RepairInputRules.Cancelled, "le statut choisi à l'écran reste le sien");
+        apres.TotalCost.Should().Be(2000m);
+        result.Synced.Should().BeTrue();
+        result.Warning.Should().Contain(reference).And.Contain("annulée")
+            .And.Contain("aucun coût", "l'utilisateur doit savoir que ce montant n'est compté nulle part");
+    }
+
+    [Fact]
+    public async Task ReparationAnnulee_LaDepenseDuDossierAnterieurNEstPasRetiree()
+    {
+        using var context = Contexte();
+        await Phase5(context);
+        context.ChangeTracker.Clear();
+
+        var reparation = await context.Repairs.SingleAsync();
+        reparation.Status = RepairInputRules.Cancelled;
+        // Dépense « repair » d'un dossier antérieur à la migration 049, encore liée.
+        context.VehicleCosts.Add(new VehicleCost
+        {
+            VehicleId = VehiculeExistant, CompanyId = CompanyId, AccidentEventId = AccidentId,
+            Type = "repair", Description = "Réparation accident — ACC-2026-014", Amount = 1200m, Date = Fin,
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        await Phase5(context, 2000m);
+        context.ChangeTracker.Clear();
+
+        (await context.VehicleCosts.AsNoTracking().CountAsync(c => c.AccidentEventId == AccidentId))
+            .Should().Be(1, "la réparation annulée ne compte nulle part : retirer la dépense effaçait le montant des coûts");
+    }
+
+    [Fact]
+    public async Task ReparationNonAnnulee_AucunAvertissementDeStatut()
+    {
+        using var context = Contexte();
+        await Phase5(context);
+        context.ChangeTracker.Clear();
+
+        var result = await Handler(context).Handle(
+            new RegisterRepairCommand(AccidentId, Debut, Fin, 1500m), CancellationToken.None);
+
+        result.Warning.Should().BeNull();
+    }
+
     [Fact]
     public async Task ReparationNonAnnulee_SuitToujoursLaDateDeFinDeLaPhase()
     {

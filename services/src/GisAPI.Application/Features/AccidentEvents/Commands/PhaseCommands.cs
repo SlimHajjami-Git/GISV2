@@ -227,13 +227,17 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
             result = await EnsureVehicleAsync(ev, "la réparation", ct);
             if (result.Synced)
             {
-                avertissements.AddRange(
-                    await UpsertAccidentRepairAsync(ev, request.ActualCost.Value, dateDejaPosee, ct));
+                var (avertissementsReparation, reparationAnnulee) =
+                    await UpsertAccidentRepairAsync(ev, request.ActualCost.Value, dateDejaPosee, ct);
+                avertissements.AddRange(avertissementsReparation);
                 // La dépense « repair » d'un dossier antérieur laisse la place à la ligne
                 // de réparation : sans ce retrait le même montant serait compté deux fois.
                 // APRÈS l'écriture de la réparation : retirée d'abord, elle disparaissait
-                // des coûts sans que rien ne la remplace.
-                avertissements.AddRange(await RetirerDepenseDeReparationAsync(ev, ct));
+                // des coûts sans que rien ne la remplace. Pas du tout quand la réparation
+                // est ANNULÉE : elle ne compte dans aucun coût, la dépense retirée était
+                // alors la seule ligne comptée et le montant disparaissait des coûts.
+                if (!reparationAnnulee)
+                    avertissements.AddRange(await RetirerDepenseDeReparationAsync(ev, ct));
             }
         }
         else
@@ -269,8 +273,10 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
     /// vit aussi dans l'écran Réparations, où l'utilisateur la précise.</para>
     /// </summary>
     /// <param name="dateDejaPosee">Date que la phase avait posée avant cet enregistrement.</param>
-    /// <returns>Avertissements destinés à l'écran (liste vide si tout s'est bien passé).</returns>
-    private async Task<List<string>> UpsertAccidentRepairAsync(AccidentEvent ev, decimal amount, DateTime dateDejaPosee, CancellationToken ct)
+    /// <returns>Avertissements destinés à l'écran (liste vide si tout s'est bien passé), et
+    /// si la réparation est restée ANNULÉE — son montant n'est alors compté nulle part.</returns>
+    private async Task<(List<string> Avertissements, bool Annulee)> UpsertAccidentRepairAsync(
+        AccidentEvent ev, decimal amount, DateTime dateDejaPosee, CancellationToken ct)
     {
         var avertissements = new List<string>();
         var repair = await Context.Repairs
@@ -375,6 +381,20 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
         // montant revenait dans les coûts.
         if (creation || EstStatutDeLaPhase(repair.Status))
             repair.Status = ev.RepairCompletedAt.HasValue ? RepairInputRules.Completed : RepairInputRules.InProgress;
+        // Conservée ANNULÉE, la ligne sort de tous les coûts (tableau de bord, rapports,
+        // Dépenses, assistant) alors que le dossier affiche le coût réel qu'on vient de
+        // saisir, et l'écran du sinistre ne montre pas le statut de la réparation : on le
+        // dit, sans trancher à la place de l'utilisateur.
+        var annulee = !creation && RepairInputRules.HasStatus(repair.Status, RepairInputRules.Cancelled);
+        if (annulee)
+        {
+            Logger.LogWarning(
+                "Sinistre {Accident} : coût réel {Amount} porté sur la réparation {Reference}, annulée — compté dans aucun coût",
+                ev.Id, amount, repair.Reference);
+            avertissements.Add(
+                $"La réparation {repair.Reference} est annulée dans Réparations : ce coût réel n'est compté " +
+                "dans aucun coût. Repassez-la à « Terminée » si la réparation a eu lieu.");
+        }
         // Le garage du dossier est un nom libre (phase 4), pas un fournisseur de la
         // base : il va dans les notes, supplier_id resterait faux — et comme la phase
         // n'écrit jamais supplier_id, un fournisseur choisi à l'écran survit.
@@ -386,7 +406,7 @@ public class RegisterRepairCommandHandler : PhaseCommandHandlerBase, IRequestHan
                 ? null
                 : Truncate($"{PrefixeNoteGarage}{ev.MechanicName.Trim()}", 1000);
 
-        return avertissements;
+        return (avertissements, annulee);
     }
 
     /// <summary>Début de la note posée par la phase 5 à partir du garage de la phase 4.</summary>

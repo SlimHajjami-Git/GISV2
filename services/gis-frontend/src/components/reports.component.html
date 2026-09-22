@@ -2538,9 +2538,11 @@
                           <td class="time-cell">{{ row.date }}</td>
                           <td class="description-cell">{{ row.description }}</td>
                           <td class="supplier-cell">{{ row.supplierName }}</td>
-                          <td class="amount-cell num">{{ row.laborCostFormatted }}</td>
-                          <td class="amount-cell num">{{ row.partsCostFormatted }}</td>
-                          <td class="amount-cell num total-cost">{{ row.totalCostFormatted }}</td>
+                          <!-- Montants d'une réparation annulée barrés : ils restent
+                               lisibles, mais hors du TOTAL ci-dessous. -->
+                          <td class="amount-cell num" [class.montant-annule]="estReparationAnnulee(row)">{{ row.laborCostFormatted }}</td>
+                          <td class="amount-cell num" [class.montant-annule]="estReparationAnnulee(row)">{{ row.partsCostFormatted }}</td>
+                          <td class="amount-cell num total-cost" [class.montant-annule]="estReparationAnnulee(row)">{{ row.totalCostFormatted }}</td>
                         } @else if (selectedTemplate?.type === 'maintenance') {
                           <td class="vehicle-cell">{{ row.vehicleName }}</td>
                           <td class="time-cell">{{ row.date }}</td>
@@ -2566,7 +2568,7 @@
                   @if (selectedTemplate?.type === 'costs' && itemCount > 0) {
                     <tfoot>
                       <tr class="dept-total-row">
-                        <td colspan="4">TOTAL — {{ itemCount }} ligne(s)</td>
+                        <td colspan="4">TOTAL — {{ itemCount }} ligne(s)@if (nbReparationsAnnulees() > 0) { dont {{ nbReparationsAnnulees() }} annulée(s), hors total}</td>
                         <td class="num">{{ montantCellule(totauxCouts().laborCost) }}</td>
                         <td class="num">{{ montantCellule(totauxCouts().partsCost) }}</td>
                         <td class="num total-cost">{{ montantCellule(totauxCouts().totalCost) }}</td>

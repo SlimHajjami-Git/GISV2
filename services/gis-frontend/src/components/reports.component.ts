@@ -75,6 +75,10 @@ export function partsCamembert<T extends { amount: number }>(parts: T[]): (T & {
   return affichees.map(p => ({ ...p, percent: (Number(p.amount) || 0) / base * 100 }));
 }
 
+/** Mention ajoutée à la description d'une réparation annulée du rapport
+ *  « Réparations véhicules », à l'écran comme dans le PDF, l'Excel et le CSV. */
+export const MENTION_REPARATION_ANNULEE = '(annulée, hors coûts)';
+
 @Component({
   selector: 'app-reports',
   standalone: true,
@@ -7811,8 +7815,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Sort by date descending
     repairs.sort((a, b) => new Date(b.repairDate).getTime() - new Date(a.repairDate).getTime());
 
-    // Réparations annulées : listées avec leur statut, mais hors des montants et des
-    // graphes, comme dans les rapports calculés par le serveur. Elles étaient
+    // Réparations annulées : listées, marquées « (annulée, hors coûts) », mais hors
+    // des montants, des graphes et de la ligne de TOTAL, comme dans les rapports
+    // calculés par le serveur. Elles étaient
     // additionnées au coût total. Statut comparé sans casse partout : une valeur
     // ancienne (« Completed ») n'entrait dans aucun compteur.
     const statusOf = (r: any) => String(r.status ?? '').trim().toLowerCase();
@@ -7829,6 +7834,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Process table data
     this.tableData = repairs.map(repair => {
       const vehicleName = repair.vehiclePlate || vehicleMap.get(repair.vehicleId) || repair.vehicleName || `Véhicule ${repair.vehicleId}`;
+      // Le rapport n'a pas de colonne Statut, ni à l'écran ni dans les exports :
+      // une ligne annulée avait donc exactement l'air d'une dépense réelle, alors
+      // que la carte « Coût total » l'écarte. On le dit dans la description, la
+      // colonne que l'écran, le PDF, l'Excel et le CSV ont en commun.
+      const annulee = statusOf(repair) === 'cancelled';
+      const description = repair.description || '-';
       return {
         vehicleName: vehicleName,
         vehicleId: repair.vehicleId,
@@ -7837,7 +7848,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         // qu'une date, stockee a 00:00 UTC, que le fuseau reaffichait « 01:00 ».
         date: this.formatDate(repair.repairDate),
         reference: repair.reference || '-',
-        description: repair.description || '-',
+        description: annulee ? `${description} ${MENTION_REPARATION_ANNULEE}` : description,
         supplierName: repair.supplierName || '-',
         laborCost: repair.laborCost || 0,
         laborCostFormatted: this.formatCurrency(repair.laborCost || 0),
@@ -8370,7 +8381,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
    * elle reste donc lisible pendant qu'on défile.
    */
   totauxCouts(): { laborCost: number; partsCost: number; totalCost: number } {
-    return this.lignesDeDonnees().reduce(
+    // Une réparation annulée reste listée mais n'entre dans AUCUN coût (carte
+    // « Coût total », tableau de bord, Dépenses) : cette ligne l'additionnait et
+    // affichait 1 800 là où la carte, juste au-dessus, annonçait 800.
+    return this.lignesDeDonnees().filter(r => !this.estReparationAnnulee(r)).reduce(
       (acc, r: any) => ({
         laborCost: acc.laborCost + (Number(r.laborCost) || 0),
         partsCost: acc.partsCost + (Number(r.partsCost) || 0),
@@ -8378,6 +8392,17 @@ export class ReportsComponent implements OnInit, OnDestroy {
       }),
       { laborCost: 0, partsCost: 0, totalCost: 0 }
     );
+  }
+
+  /** Ligne du rapport « Coûts » dont la réparation est annulée. Statut comparé
+   *  sans casse, comme dans processRepairsReport (« Cancelled » d'une saisie ancienne). */
+  estReparationAnnulee(r: any): boolean {
+    return String(r?.statusKey ?? '').trim().toLowerCase() === 'cancelled';
+  }
+
+  /** Lignes annulées du rapport « Coûts », annoncées sur la ligne de TOTAL. */
+  nbReparationsAnnulees(): number {
+    return this.lignesDeDonnees().filter(r => this.estReparationAnnulee(r)).length;
   }
 
   /** Total du rapport « Entretiens ». Les échéances PLANIFIÉES portent un coût

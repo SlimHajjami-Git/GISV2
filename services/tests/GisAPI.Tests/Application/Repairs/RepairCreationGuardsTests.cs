@@ -113,6 +113,37 @@ public class RepairCreationGuardsTests
         (await ctx.Vehicles.AsNoTracking().FirstAsync(v => v.Id == 1)).Mileage.Should().Be(12_500);
     }
 
+    // ── Relecture du 22/09/2026 : « Annulée » est de nouveau proposée à l'écran ──
+
+    [Fact]
+    public async Task Passer_une_reparation_a_Annulee_ne_fait_pas_avancer_le_compteur()
+    {
+        using var ctx = Seed();
+        var id = await CreateHandler(ctx).Handle(Creation(1), CancellationToken.None);
+
+        // Même saisie qu'à l'écran : statut « Annulée » et kilométrage corrigé dans le
+        // même enregistrement. L'import et OdometerReadings écartent déjà une annulée.
+        var ok = await new UpdateRepairCommandHandler(ctx, Tenant()).Handle(
+            Modification(id, 1) with { Status = "Cancelled", MileageAtRepair = 180_000 }, CancellationToken.None);
+
+        ok.Should().BeTrue();
+        (await ctx.Repairs.AsNoTracking().FirstAsync(r => r.Id == id)).Status.Should().Be("cancelled");
+        (await ctx.Vehicles.AsNoTracking().FirstAsync(v => v.Id == 1)).Mileage
+            .Should().Be(10_000, "une réparation annulée ne décrit aucun passage à l'atelier");
+    }
+
+    [Fact]
+    public async Task Modifier_une_reparation_terminee_fait_toujours_avancer_le_compteur()
+    {
+        using var ctx = Seed();
+        var id = await CreateHandler(ctx).Handle(Creation(1), CancellationToken.None);
+
+        await new UpdateRepairCommandHandler(ctx, Tenant()).Handle(
+            Modification(id, 1) with { MileageAtRepair = 12_000 }, CancellationToken.None);
+
+        (await ctx.Vehicles.AsNoTracking().FirstAsync(v => v.Id == 1)).Mileage.Should().Be(12_000);
+    }
+
     // ── DEF-020 : la référence ne se déduit pas d'un comptage ──────────────────
 
     [Fact]

@@ -264,6 +264,55 @@ describe('Rapports génériques — ergonomie', () => {
       expect(composant.totauxCouts()).toEqual({ laborCost: 2370, partsCost: 1980, totalCost: 4350 });
     });
 
+    // Relecture du 22/09/2026 : « Annulée » est de nouveau proposée dans l'écran
+    // Réparations. La carte « Coût total » écartait la ligne annulée (800), la
+    // ligne de TOTAL l'additionnait (1 800), et rien ne la distinguait d'une
+    // dépense réelle, ni à l'écran ni dans le PDF, l'Excel ou le CSV.
+    describe('réparation annulée', () => {
+      const reparations = () => [
+        { id: 1, vehicleId: 7, vehiclePlate: 'GD-421-NV', repairDate: '2026-09-18', description: 'Embrayage',
+          supplierName: 'Garage Nord', laborCost: 200, partsCost: 300, totalCost: 500, status: 'completed', repairType: 'mecanique' },
+        { id: 2, vehicleId: 7, vehiclePlate: 'GD-421-NV', repairDate: '2026-09-15', description: 'Plaquettes',
+          supplierName: 'Garage Nord', laborCost: 100, partsCost: 200, totalCost: 300, status: 'completed', repairType: 'freinage' },
+        { id: 3, vehicleId: 8, vehiclePlate: 'GB-587-TM', repairDate: '2026-09-10', description: 'Boîte de vitesses',
+          supplierName: 'Garage Sud', laborCost: 400, partsCost: 600, totalCost: 1000, status: 'Cancelled', repairType: 'mecanique' },
+      ];
+
+      it('reste listée, mais n\'entre pas dans la ligne de TOTAL — même chiffre que la carte', () => {
+        composant.processRepairsReport(reparations());
+        expect(composant.tableData.length).toBe(3);
+        expect(composant.totauxCouts()).toEqual({ laborCost: 300, partsCost: 500, totalCost: 800 });
+        expect(composant.statisticsData['Coût total']).toBe(composant.formatCurrency(800));
+      });
+
+      it('se signale dans la description, à l\'écran comme dans les exports', () => {
+        composant.processRepairsReport(reparations());
+        const annulee = composant.tableData.find((r: any) => r.reference !== undefined && r.totalCost === 1000);
+        expect(annulee.description).toBe('Boîte de vitesses (annulée, hors coûts)');
+        expect(composant.tableData.filter((r: any) => /annulée/.test(r.description)).length).toBe(1);
+
+        composant.selectedTemplate = composant.templates.find(t => t.type === 'costs')!;
+        const config = (composant as any).buildExportConfig('costs', 'Tous les véhicules', 'septembre 2026');
+        const exportee = config.data.find((r: any) => r.totalCost === 1000);
+        expect(exportee.description).toContain('(annulée, hors coûts)');
+        expect(config.columns.map((c: any) => c.dataKey)).toContain('description');
+      });
+
+      it('barre ses montants et annonce l\'exclusion sur la ligne de TOTAL', () => {
+        composant.processRepairsReport(reparations());
+        afficher('costs', composant.tableData);
+        const lignes = [...fixture.nativeElement.querySelectorAll('.table-section tbody tr')] as HTMLElement[];
+        const barrees = lignes.filter(tr => tr.querySelectorAll('td.montant-annule').length === 3);
+        expect(barrees.length).toBe(1);
+        expect(barrees[0].textContent).toContain('Boîte de vitesses (annulée, hors coûts)');
+
+        const pied = fixture.nativeElement.querySelector('.table-section tfoot .dept-total-row');
+        const cellules = [...pied.querySelectorAll('td')].map((td: any) => td.textContent.replace(/\s+/g, ' ').trim());
+        expect(cellules[0]).toContain('dont 1 annulée(s), hors total');
+        expect(cellules[3]).toBe('800,00 €');
+      });
+    });
+
     it('épingle une ligne de total au rapport « Coûts », montants à droite', () => {
       afficher('costs', couts);
       const pied = fixture.nativeElement.querySelector('.table-section tfoot .dept-total-row');

@@ -54,11 +54,35 @@ export interface HelpArticle {
   etapes?: string[];
   /** Explications libres, un paragraphe par entree. */
   paragraphes?: string[];
+  /**
+   * Paragraphes qui ne valent que si l'un des rapports cites est ouvert a ce
+   * client (cles de PermissionService.hasReportAccess, celles de l'ecran
+   * Rapports). Ajoutes a la suite de `paragraphes`, dans l'ordre ; une entree
+   * sans `rapports` est toujours affichee.
+   *
+   * Le filtre par module ne suffit pas : l'offre GPA ouvre le module Rapports
+   * mais ferme un a un les rapports GPS (trajets, arrets, vitesse...). L'aide
+   * envoyait ce client chercher un « Rapport de trajets » absent de sa liste.
+   */
+  paragraphesConditionnels?: HelpParagrapheConditionnel[];
+  /**
+   * Type de societe requis (AuthUser.companyType). L'ecran « Emprunts » n'existe
+   * que chez les loueurs (LocationCompanyGuard) : l'aide ne doit pas le promettre
+   * a une societe de transport.
+   */
+  typeSociete?: 'location';
   /** Encadre "A retenir" en fin d'article. */
   aRetenir?: string;
   /** Captures d'ecran, affichees entre la marche a suivre et les explications. */
   captures?: HelpCapture[];
   video?: HelpVideo;
+}
+
+/** Paragraphe d'article reserve aux clients qui ont acces a l'un des rapports cites. */
+export interface HelpParagrapheConditionnel {
+  texte: string;
+  /** Cles de rapport (hasReportAccess) ; absent = paragraphe toujours affiche. */
+  rapports?: string[];
 }
 
 /** Regroupement affiche dans le sommaire de l'ecran Aide. */

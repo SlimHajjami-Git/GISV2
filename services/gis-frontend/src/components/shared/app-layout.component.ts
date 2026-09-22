@@ -16,7 +16,6 @@ import { SubscriptionStatusService, SubscriptionBanner } from '../../services/su
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
-import { GuidedHelpComponent } from './guided-help.component';
 import { HelpService } from '../../services/help.service';
 import * as L from 'leaflet';
 
@@ -43,7 +42,7 @@ type NotifBucket = Notification | NotifThreadGroup;
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent, GuidedHelpComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
   template: `
     <div class="app-container">
       <!-- Bandeau nouvelle version : un déploiement a eu lieu, l'onglet tourne sur un vieux bundle -->
@@ -552,8 +551,8 @@ type NotifBucket = Notification | NotifThreadGroup;
       <!-- Chat Widget -->
       <app-chat></app-chat>
 
-      <!-- Visite guidee de premiere connexion (voir HelpService) -->
-      <app-guided-help></app-guided-help>
+      <!-- La visite guidee de premiere connexion est montee dans le composant
+           racine (main.ts), pas ici : cette app-layout est recreee a chaque page. -->
 
       <!-- Strictly-blocking accident decision modal.
            Subscribes to SignalR 'accident_detected' notifications with
@@ -1595,6 +1594,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   openNavGroup: string | null = null;
   unreadCount = 0;
   private subs: Subscription[] = [];
+  /** Proposition différée de la visite guidée, annulée si la page est quittée avant. */
+  private minuteurGuide?: ReturnType<typeof setTimeout>;
 
   // Bell tabs + threading state (Calypso 7)
   activeNotifTab: NotifTabKey = 'all';
@@ -1686,8 +1687,12 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     // Premiere connexion : on propose la visite guidee une fois l'interface
     // posee (le menu doit exister pour que la premiere bulle ait une cible).
     // Une seule fois par utilisateur ; "Passer" vaut definitivement non.
+    // Cette app-layout est recreee a CHAQUE page : proposerLeGuide() ne fait
+    // rien si la visite a deja ete montree dans la session, et le minuteur est
+    // annule dans ngOnDestroy — une navigation rapide les empilait, et ils
+    // s'executaient apres la destruction de la page.
     if (this.help.doitProposerLeGuide()) {
-      setTimeout(() => this.help.ouvrirGuide(), 1200);
+      this.minuteurGuide = setTimeout(() => this.help.proposerLeGuide(), 1200);
     }
 
     this.loadNotifications();
@@ -1724,6 +1729,7 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    if (this.minuteurGuide) clearTimeout(this.minuteurGuide);
     this.subs.forEach(s => s.unsubscribe());
     this.offlineVehiclesService.stop();
     this.signalR.stopConnection();

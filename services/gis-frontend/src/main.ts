@@ -5,13 +5,17 @@ import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { routes } from './app.routes';
 import { authInterceptor } from './services/auth.interceptor';
 import { ToastContainerComponent } from './components/shared/toast-container.component';
+import { GuidedHelpComponent } from './components/shared/guided-help.component';
 import { NotificationToastService } from './services/notification-toast.service';
 
+// La visite guidee vit ICI, une seule fois, et non dans <app-layout> : chaque
+// page porte sa propre app-layout, et la visite, qui change de page d'une etape a
+// l'autre, etait detruite puis relancee a l'etape 1 a chaque « Suivant ».
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, ToastContainerComponent],
-  template: `<router-outlet></router-outlet><app-toast-container></app-toast-container>`,
+  imports: [RouterOutlet, ToastContainerComponent, GuidedHelpComponent],
+  template: `<router-outlet></router-outlet><app-toast-container></app-toast-container><app-guided-help></app-guided-help>`,
 })
 export class App implements OnInit, OnDestroy {
   constructor(private notificationToast: NotificationToastService) {}

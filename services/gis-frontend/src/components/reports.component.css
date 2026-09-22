@@ -1051,6 +1051,14 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
   white-space: nowrap;
 }
 
+/* Montants d'une réparation ANNULÉE (rapport « Réparations véhicules ») : barrés
+   et estompés, parce qu'ils ne comptent ni dans la carte « Coût total » ni dans la
+   ligne de TOTAL. Sans cela la ligne avait l'air d'une dépense réelle. */
+.data-table td.montant-annule {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
 /* MONTANTS — classe DÉDIÉE. .data-table td sert les douze rapports : y poser
    un text-align ou un max-width régresserait Carburant, Journalier,
    Kilométrage, Trajets, Arrêts, Vitesse, Infractions et Comportement, dont les

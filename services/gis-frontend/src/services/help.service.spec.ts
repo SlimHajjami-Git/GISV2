@@ -11,8 +11,14 @@ import { PermissionService } from './permission.service';
 describe('HelpService', () => {
   let service: HelpService;
   let modulesAutorises: string[];
+  /** Rapports fermés à ce client (tous ouverts par défaut). */
+  let rapportsFermes: string[];
+  /** Compte connecté vu par l'aide (type de société compris). */
+  let compte: any;
 
   beforeEach(() => {
+    rapportsFermes = [];
+    compte = { id: 'u1', companyType: 'transport' };
     // Abonnement complet par defaut : les tests de filtrage restreignent
     // ensuite cette liste au cas par cas.
     modulesAutorises = [
@@ -25,14 +31,30 @@ describe('HelpService', () => {
     TestBed.configureTestingModule({
       providers: [
         HelpService,
-        { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id: 'u1' }) } },
-        { provide: PermissionService, useValue: { hasModuleAccess: (m: string) => modulesAutorises.includes(m) } }
+        { provide: AuthService, useValue: { getCurrentUserSync: () => compte } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => modulesAutorises.includes(m),
+          hasReportAccess: (r: string) => !rapportsFermes.includes(r)
+        } }
       ]
     });
 
     service = TestBed.inject(HelpService);
     localStorage.clear();
   });
+
+  /** Nouvelle ouverture de l'application : nouvelle instance du service, même localStorage. */
+  const nouvelleSession = (id = 'u1'): HelpService => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        HelpService,
+        { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id }) } },
+        { provide: PermissionService, useValue: { hasModuleAccess: () => true, hasReportAccess: () => true } }
+      ]
+    });
+    return TestBed.inject(HelpService);
+  };
 
   describe('recherche par mot-cle', () => {
     it('trouve sans accent ce qui est ecrit avec accent', () => {
@@ -146,8 +168,82 @@ describe('HelpService', () => {
 
     it('« Revoir la visite guidee » la represente', () => {
       service.fermerGuide(true);
+      const ouvertures: boolean[] = [];
+      service.guideOuvert$.subscribe(o => ouvertures.push(o));
       service.reinitialiserGuide();
+      // Ouverte tout de suite…
+      expect(ouvertures[ouvertures.length - 1]).toBe(true);
+      // …et, si le client la quitte par Echap, reproposee a la prochaine ouverture
+      // de l'application : le « Passer » d'avant est bien efface.
+      service.fermerGuide(false);
+      expect(nouvelleSession().doitProposerLeGuide()).toBe(true);
+    });
+
+    // Relecture du 22/09/2026 : <app-layout> est recreee a CHAQUE page et propose
+    // la visite dans son ngOnInit. Echap puis un clic dans le menu, et la visite
+    // repartait de l'etape 1 en ramenant de force au tableau de bord.
+    it('Echap : pas de nouvelle proposition a la page suivante, mais a la prochaine session', () => {
       expect(service.doitProposerLeGuide()).toBe(true);
+      service.proposerLeGuide();
+      service.fermerGuide(false); // Echap
+      expect(service.doitProposerLeGuide()).toBe(false);
+
+      const ouvertures: boolean[] = [];
+      service.guideOuvert$.subscribe(o => ouvertures.push(o));
+      service.proposerLeGuide(); // ngOnInit de l'app-layout de la page suivante
+      expect(ouvertures).toEqual([false]);
+
+      expect(nouvelleSession().doitProposerLeGuide()).toBe(true);
+    });
+
+    it('une visite en cours n\'est pas reproposee par la page suivante', () => {
+      service.proposerLeGuide();
+      expect(service.doitProposerLeGuide()).toBe(false);
+    });
+
+    it('« Passer » tient pour la session meme si localStorage refuse l\'ecriture', () => {
+      const setItem = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+      try {
+        service.proposerLeGuide();
+        service.fermerGuide(true);
+        expect(service.doitProposerLeGuide()).toBe(false);
+      } finally {
+        setItem.mockRestore();
+      }
+    });
+
+    it('un collegue sur le meme poste garde sa propre proposition dans la session', () => {
+      service.proposerLeGuide();
+      compte = { id: 'u2' };
+      expect(service.doitProposerLeGuide()).toBe(true);
+    });
+  });
+
+  describe('filtrage plus fin que le module', () => {
+    it('un paragraphe lie a un rapport ferme disparait, de l\'article comme de la recherche', () => {
+      rapportsFermes = ['trips', 'stops', 'daily', 'speed', 'speed_infraction', 'driving_behavior'];
+      const article = service.articleParId('choisir-rapport')!;
+      const texte = (article.paragraphes || []).join(' ');
+      expect(texte).not.toContain('Rapport de trajets');
+      expect(texte).not.toContain('Infractions vitesse');
+      expect(texte).toContain('Réparations véhicules');
+      expect(service.rechercher('vitesse').some(a => a.id === 'choisir-rapport')).toBe(false);
+    });
+
+    it('le meme paragraphe revient des que le rapport est ouvert', () => {
+      const texte = (service.articleParId('choisir-rapport')!.paragraphes || []).join(' ');
+      expect(texte).toContain('Rapport de trajets');
+      expect(service.rechercher('vitesse').some(a => a.id === 'choisir-rapport')).toBe(true);
+    });
+
+    it('« Emprunts » n\'est montre qu\'aux societes de location', () => {
+      compte = { id: 'u1', companyType: 'transport' };
+      expect(service.articleParId('emprunter-vehicule')).toBeUndefined();
+      expect(service.rechercher('emprunt')).toEqual([]);
+      compte = { id: 'u1', companyType: 'location' };
+      expect(service.articleParId('emprunter-vehicule')).toBeDefined();
     });
   });
 

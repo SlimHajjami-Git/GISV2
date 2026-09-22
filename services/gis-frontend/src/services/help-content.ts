@@ -118,7 +118,8 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Kilométrage ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
       "Préférez le bouton « Corriger » dès qu'il s'agit de rattraper une erreur : la correction est horodatée et conservée avec son motif et le nom de son auteur. Ce journal n'est pas consultable depuis l'application — il sert en cas de litige ou de contrôle, et notre support peut le retrouver.",
       "Le bouton « Corriger » n'apparaît que pour les véhicules sans boîtier GPS. Quand un boîtier remonte le kilométrage, c'est lui qui fait foi, et la ligne affiche alors une petite antenne à la place du bouton.",
-      "Par les deux chemins, un compteur ne recule jamais tout seul : une valeur inférieure à l'actuelle est refusée, avec le message « Un compteur ne recule pas : vérifiez la valeur. » C'est une protection contre les fautes de frappe."
+      "Le bouton « Modifier » refuse une valeur inférieure au compteur actuel, avec le message « Un compteur ne recule pas : vérifiez la valeur. » C'est une protection contre les fautes de frappe.",
+      "« Corriger » est le seul moyen de faire baisser un compteur trop haut — après un import erroné, par exemple. Il exige un motif et garde l'ancienne et la nouvelle valeur."
     ],
     aRetenir: "Écrivez un motif utile — « faute de frappe à l'import du 03/09 » — plutôt que « erreur ». C'est ce texte qui expliquera l'écart si la question se pose plus tard."
   },
@@ -200,13 +201,16 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     ],
     etapes: [
       "Ouvrez « Rapports » dans le menu.",
-      "Dans « Type de rapport », choisissez par exemple « Rapport de trajets ».",
+      // Exemple commun à TOUTES les offres (report_costs ouvert sur les cinq
+      // plans) : « Rapport de trajets » n'existe pas sans boîtier GPS.
+      "Dans « Type de rapport », choisissez par exemple « Réparations véhicules ».",
       "Sélectionnez le véhicule, ou cochez « Département » pour raisonner par service.",
       "Choisissez la période : « Aujourd'hui », « Semaine », « Mois » ou « Personnalisé » avec « Date début » et « Date fin ».",
       "Cliquez sur « Exécuter ».",
       "Une fois le résultat affiché, exportez-le avec « Excel », « PDF » ou « CSV »."
     ],
     paragraphes: [
+      "La liste « Type de rapport » ne propose que les rapports compris dans votre abonnement et autorisés par votre profil.",
       "Les trois boutons d'export restent grisés tant que le rapport n'a pas été généré : c'est normal, lancez d'abord « Exécuter ».",
       "Si un avertissement « Sélectionnez un type de rapport » ou « Sélectionnez un véhicule » s'affiche, c'est qu'il manque un critère obligatoire.",
       "Le bouton « Effacer » remet tous les critères à zéro sans toucher aux données."
@@ -218,14 +222,31 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'choisir-rapport',
     titre: 'Quel rapport choisir ?',
     module: 'reports',
-    motsCles: ['quel rapport', 'liste', 'cout', 'consommation', 'vitesse', 'arret', 'kilometrage', 'comportement'],
+    // Les mots « vitesse », « arrêt », « comportement » ne sont PAS des mots-clés :
+    // ils ne valent que pour les offres avec boîtier, et le texte qui les porte
+    // n'est rendu qu'à ceux qui ont ces rapports (paragraphesConditionnels).
+    motsCles: ['quel rapport', 'liste', 'cout', 'rapports disponibles', 'choisir'],
     resume: "Repères pour s'orienter parmi les rapports disponibles.",
-    paragraphes: [
-      "Pour savoir où un véhicule est passé : « Rapport de trajets », « Rapport des arrêts » ou « Rapport journalier ».",
-      "Pour le kilométrage : « Rapport kilométrique » au jour le jour, « Kilométrage par période » pour agréger par heure, par jour ou par mois.",
-      "Pour la conduite : « Rapport de vitesse », « Infractions vitesse » (dépassements de la limite que vous fixez) et « Comportement conduite » (freinages et accélérations brusques).",
-      "Pour l'argent : « Consommation carburant », « Coûts maintenance », « Réparations véhicules », « Coût d'exploitation réel » (tout cumulé, ramené au kilomètre), « Évolution des coûts » pour un véhicule mois par mois et « Véhicules les plus coûteux » pour le palmarès du parc.",
-      "Deux libellés se ressemblent : « Consommation carburant » analyse la consommation, « Consommation carburant mensuel » donne les litres par département."
+    // Un repère par rapport, montré seulement si CE rapport est ouvert à ce
+    // client : l'offre GPA ouvre le module Rapports mais ferme les rapports GPS
+    // un à un (relecture du 22/09/2026).
+    paragraphesConditionnels: [
+      { texte: "La liste « Type de rapport » ne montre que les rapports compris dans votre abonnement et autorisés par votre profil. Ceux qui vous sont ouverts :" },
+      { rapports: ['trips'], texte: "« Rapport de trajets » : où un véhicule est passé, trajet par trajet." },
+      { rapports: ['stops'], texte: "« Rapport des arrêts » : où et combien de temps un véhicule s'est arrêté." },
+      { rapports: ['daily'], texte: "« Rapport journalier » : l'activité d'un véhicule, jour par jour." },
+      { rapports: ['mileage'], texte: "« Rapport kilométrique » : les kilomètres parcourus, au jour le jour." },
+      { rapports: ['mileage_period'], texte: "« Kilométrage par période » : les kilomètres agrégés par heure, par jour ou par mois." },
+      { rapports: ['speed'], texte: "« Rapport de vitesse » : les vitesses relevées par le boîtier." },
+      { rapports: ['speed_infraction'], texte: "« Infractions vitesse » : les dépassements de la limite que vous fixez." },
+      { rapports: ['driving_behavior'], texte: "« Comportement conduite » : freinages et accélérations brusques." },
+      { rapports: ['fuel'], texte: "« Consommation carburant » : l'analyse de la consommation de chaque véhicule." },
+      { rapports: ['monthly_fuel'], texte: "« Consommation carburant mensuel » : les litres par département, mois par mois." },
+      { rapports: ['maintenance'], texte: "« Coûts maintenance » : les entretiens réalisés et leur coût." },
+      { rapports: ['costs'], texte: "« Réparations véhicules » : les réparations, avec la main-d'œuvre et les pièces." },
+      { rapports: ['operating_cost'], texte: "« Coût d'exploitation réel » : toutes les dépenses cumulées, ramenées au kilomètre." },
+      { rapports: ['cost_evolution'], texte: "« Évolution des coûts » : les dépenses d'un véhicule, mois par mois." },
+      { rapports: ['cost_ranking'], texte: "« Véhicules les plus coûteux » : le palmarès du parc." }
     ],
     aRetenir: "« Coûts maintenance » ne contient que les entretiens. Les réparations sont dans « Réparations véhicules ». Voir l'article sur la différence entre les deux."
   },
@@ -254,7 +275,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       { fichier: 'entretien-modele.png', legende: "Le modèle d'entretien : intervalle en kilomètres, en mois, et seuils d'alerte." },
     ],
     etapes: [
-      "Ouvrez « Entretien programmable » dans le menu Maintenance.",
+      "Ouvrez « Maintenance » > « Entretiens » dans le menu.",
       "Cliquez sur « Nouveau modele ».",
       "Donnez un « Nom » (par exemple « Vidange moteur ») et une « Categorie » — les deux sont obligatoires.",
       "Renseignez l'« Intervalle (km) », l'« Intervalle (mois) », ou les deux.",
@@ -277,7 +298,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     motsCles: ['entretien', 'fait', 'realise', 'vidange', 'facture', 'garage', 'effectue', 'marquer'],
     resume: "Déclarer l'entretien effectué pour recaler la prochaine échéance.",
     etapes: [
-      "Dans « Entretien programmable », repérez la ligne du véhicule et cliquez sur « Marquer fait ».",
+      "Dans l'écran « Entretiens » (menu « Maintenance »), repérez la ligne du véhicule et cliquez sur « Marquer fait ».",
       "Saisissez la « Date » et le « Kilometrage » — les deux sont obligatoires.",
       "Choisissez le « Fournisseur / Garage » si vous le suivez.",
       "Détaillez la facture ligne par ligne, puis cliquez sur « Confirmer »."
@@ -294,7 +315,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'saisir-reparation',
     titre: 'Enregistrer une réparation',
     module: 'maintenance',
-    motsCles: ['reparation', 'panne', 'garage', 'piece', 'main oeuvre', 'facture', 'reparer', 'casse'],
+    motsCles: ['reparation', 'panne', 'garage', 'piece', 'main oeuvre', 'facture', 'reparer', 'casse', 'annuler', 'annulee', 'statut'],
     resume: "Saisir une intervention curative, avec ses pièces et sa main-d'œuvre.",
     captures: [
       { fichier: 'reparation-formulaire.png', legende: "Les pièces détachées se saisissent ligne par ligne, sous la description." },
@@ -309,8 +330,8 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     ],
     paragraphes: [
       "Les types d'intervention sont « Électrique », « Mécanique », « Freinage », « Pneumatique », « Carrosserie » et « Autres ». Laissé sur « Non précisé », le type est déduit de la description.",
-      "Le statut suit l'avancement : « En attente », « En cours », « Terminée ». Il n'est modifiable qu'après la création.",
-      "Le kilométrage est facultatif ici : il documente l'état du véhicule au moment de la panne, il ne pilote aucune échéance.",
+      "Une réparation est enregistrée « Terminée ». En modification, le « Statut » peut passer à « En attente », « En cours » ou « Annulée ». Une réparation annulée reste dans la liste, mais n'est plus comptée dans les coûts — ni tableau de bord, ni rapports, ni Dépenses : c'est la bonne façon d'écarter une facture non due sans perdre son historique.",
+      "Le « Kilometrage » est facultatif et pré-rempli avec le compteur actuel du véhicule. S'il est saisi, il fait avancer le compteur du véhicule, et donc les échéances d'entretien au kilométrage : relisez-le, une faute de frappe ne se rattrape qu'avec « Corriger » dans « Véhicules ». Une réparation annulée ne fait pas avancer le compteur.",
       "Une réparation issue d'un dossier de sinistre porte le badge « Sinistre » et ne se supprime pas depuis cet écran : elle se retire depuis le dossier."
     ],
     aRetenir: "Comme pour les entretiens, il n'y a pas de champ pour joindre la facture : le lien du document scanné est rangé dans les « Notes ».",
@@ -328,7 +349,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       { fichier: 'carburant-saisie.png', legende: "L'onglet « Saisie Manuelle » et ses champs obligatoires." },
     ],
     etapes: [
-      "Ouvrez « Carburant », onglet « Saisie Manuelle ».",
+      "Ouvrez « Maintenance » > « Carburants » dans le menu, onglet « Saisie Manuelle ».",
       "Choisissez le « Matricule Véhicule » et le « Type Carburant ».",
       "Indiquez la « Date Facture ».",
       "Saisissez soit le volume et le prix par litre, soit directement le « Montant Total ».",
@@ -340,7 +361,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Le bouton « Scanner un ticket » lit le document et pré-remplit les champs. Relisez toujours : quand la plaque ou le type de carburant n'a pas pu être lu avec certitude, l'écran vous le signale et vous demande de choisir.",
       "L'onglet « Import Excel » permet de charger des factures en lot, avec une correspondance de colonnes à régler une fois."
     ],
-    aRetenir: "Le kilométrage au compteur est ce qui rend la consommation calculable. Sans boîtier GPS, c'est même la seule source qui met à jour le compteur du véhicule.",
+    aRetenir: "Le kilométrage au compteur est ce qui rend la consommation calculable. Sans boîtier GPS, ce sont vos saisies — pleins, entretiens, réparations, import — qui font avancer le compteur du véhicule.",
     video: { titre: 'Saisir un plein', url: '' }
   },
   {
@@ -350,10 +371,13 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     motsCles: ['consommation', 'litres', 'moyenne', 'cout au km', 'surconsommation', 'l 100'],
     resume: "Lire les litres aux 100 km et repérer les saisies qui faussent le calcul.",
     paragraphes: [
-      "L'onglet « Consommation » de l'écran Carburant donne, par véhicule, le nombre de pleins, la distance, les litres, les litres aux 100 km et le coût au kilomètre.",
+      "L'onglet « Consommation » de l'écran « Carburants » donne, par véhicule, le nombre de pleins, la distance, les litres, les litres aux 100 km et le coût au kilomètre.",
       "Le calcul est simple et assumé : litres achetés divisés par les kilomètres relevés entre le premier et le dernier plein de la période. Avec peu de pleins, la lecture est donc légèrement majorée.",
-      "Deux avertissements peuvent apparaître. « Relevés compteur incohérents ignorés » signale une faute de frappe probable sur un kilométrage : corrigez-la dans l'onglet « Historique ». « Pleins sans relevé compteur » signale des pleins saisis sans kilométrage, donc inexploitables.",
-      "Le rapport « Carburant réel vs GPS » superpose vos pleins et la courbe de niveau remontée par le boîtier : c'est là que se voient les écarts anormaux."
+      "Deux avertissements peuvent apparaître. « Relevés compteur incohérents ignorés » signale une faute de frappe probable sur un kilométrage : corrigez-la dans l'onglet « Historique ». « Pleins sans relevé compteur » signale des pleins saisis sans kilométrage, donc inexploitables."
+    ],
+    // Rapport bâti sur la jauge du boîtier (report_fuel) : fermé sans GPS.
+    paragraphesConditionnels: [
+      { rapports: ['fuel_comparison'], texte: "Le rapport « Carburant réel vs GPS » superpose vos pleins et la courbe de niveau remontée par le boîtier : c'est là que se voient les écarts anormaux." }
     ],
     aRetenir: "Un mois de saisie oublié rend la consommation de ce mois inutilisable. La régularité compte plus que la précision."
   },
@@ -387,7 +411,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'scanner-facture',
     titre: 'Scanner une facture',
     module: 'costs',
-    motsCles: ['scanner', 'scan', 'facture', 'photo', 'ocr', 'lire', 'automatique', 'ia', 'saisir', 'ticket'],
+    motsCles: ['scanner', 'scan', 'facture', 'photo', 'ocr', 'lire', 'automatique', 'ia', 'saisir', 'ticket', 'credit', 'jetons', 'quota'],
     resume: "Laisser Calypso lire la facture, puis vérifier avant d'enregistrer.",
     etapes: [
       "Dans « Dépenses », cliquez sur « Scanner une facture ».",
@@ -398,10 +422,25 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     ],
     paragraphes: [
       "Le scan propose aussi le détail ligne par ligne de la facture. Si la somme des lignes ne correspond pas au total, l'écran le signale — c'est souvent une ligne oubliée ou une remise.",
-      "Le compteur affiché à côté du bouton indique votre consommation de scans du mois.",
+      "La barre « Crédit IA » à côté du bouton montre la part du crédit IA du mois déjà utilisée par toute votre société : scans, assistant, rapports IA. À 100 %, le bouton de scan est grisé jusqu'à la recharge du 1er du mois ; survolez la barre pour connaître le nombre de scans restants.",
       "Une facture d'avoir n'est pas une dépense : enregistrez-la en catégorie « Avoir fournisseur », sinon elle s'ajoute à vos coûts au lieu de les diminuer."
     ],
     aRetenir: "Le scan fait gagner du temps, il ne dispense pas de relire. Vérifiez systématiquement le véhicule et le montant avant d'enregistrer."
+  },
+  {
+    id: 'credit-ia',
+    titre: 'Comprendre la barre « Crédit IA »',
+    module: 'general',
+    motsCles: ['credit', 'ia', 'jetons', 'quota', 'intelligence artificielle', 'assistant', 'scan', 'epuise', 'grise', 'recharge', 'pourcentage'],
+    resume: "Ce que mesure la barre « Crédit IA », et pourquoi un bouton d'IA peut être grisé.",
+    paragraphes: [
+      "Les fonctions d'intelligence artificielle de Calypso — scan des factures, assistant, rapport IA de la flotte, explications de consommation — puisent toutes dans un même crédit mensuel, commun à toute votre société.",
+      "La barre « Crédit IA », posée à côté des boutons qui appellent l'IA, montre en pourcentage la part de ce crédit déjà utilisée ce mois-ci. Elle est verte, passe à l'orange à 70 % et au rouge à 90 %.",
+      "Survolez la barre pour le détail : le pourcentage utilisé, les jetons consommés sur le crédit du mois, la date de recharge et, à côté du bouton de scan, une estimation des scans restants.",
+      "À 100 %, les boutons d'IA sont grisés jusqu'à la recharge, le 1er du mois suivant.",
+      "« IA désactivée » à la place de la barre signifie que l'IA n'est pas ouverte pour votre société."
+    ],
+    aRetenir: "Le crédit est partagé : la barre ne compte pas seulement vos scans, mais tout ce que votre société a demandé à l'IA ce mois-ci. Quelques scans et beaucoup de questions à l'assistant peuvent suffire à l'épuiser."
   },
 
   // --------------------------------------------------------------- Fournisseurs
@@ -430,13 +469,13 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'creer-geofence',
     titre: 'Créer une zone (géofence)',
     module: 'geofences',
-    motsCles: ['zone', 'geofence', 'perimetre', 'alerte', 'entree', 'sortie', 'chantier', 'depot'],
+    motsCles: ['zone', 'geofence', 'geofencing', 'perimetre', 'alerte', 'entree', 'sortie', 'chantier', 'depot'],
     resume: "Délimiter un lieu et être alerté aux entrées et sorties.",
     captures: [
       { fichier: 'geofence-carte.png', legende: "Le tracé d'une zone sur la carte, avec sa marge autour du lieu réel." },
     ],
     etapes: [
-      "Ouvrez « Géofences » dans le menu.",
+      "Ouvrez « Exploitation » > « Géofencing » dans le menu.",
       "Créez une zone et dessinez-la sur la carte autour du lieu voulu.",
       "Nommez-la clairement (« Dépôt Tunis », « Chantier Sfax »).",
       "Choisissez les véhicules concernés et enregistrez."
@@ -545,7 +584,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'ajouter-chauffeur',
     titre: 'Ajouter un chauffeur',
     module: 'employees',
-    motsCles: ['chauffeur', 'conducteur', 'employe', 'salarie', 'ajouter', 'creer', 'permis', 'affecter'],
+    motsCles: ['chauffeur', 'conducteur', 'employe', 'salarie', 'ajouter', 'creer', 'permis', 'affecter', 'compte', 'application'],
     resume: "Créer la fiche d'un chauffeur et l'affecter à un véhicule.",
     captures: [
       { fichier: 'chauffeur-formulaire.png', legende: "Seuls le prénom et le nom sont obligatoires ; la date d'expiration du permis déclenche les alertes." },
@@ -561,7 +600,8 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     paragraphes: [
       "La rubrique s'appelle « Chauffeurs », pas « Conducteurs » ni « Employés ».",
       "La catégorie de permis propose « B - Véhicule léger », « C - Poids lourd », « D - Transport en commun », « CE - Super poids lourd » et « DE - Transport + remorque ».",
-      "Le champ « Statut » (« Actif » ou « Inactif ») n'apparaît qu'en modification : un chauffeur créé est actif d'office."
+      "Le champ « Statut » (« Actif » ou « Inactif ») n'apparaît qu'en modification : un chauffeur créé est actif d'office.",
+      "La fiche chauffeur ne donne pas accès à l'application mobile. Pour qu'il reçoive ses tournées sur son téléphone, cliquez sur « Créer son compte » dans sa ligne : le formulaire Utilisateurs s'ouvre pré-rempli, case « 🚚 Chauffeur (application mobile) » cochée. La ligne affiche ensuite « Application : active »."
     ],
     aRetenir: "La recherche de cet écran ne porte que sur le nom et l'e-mail. Chercher une plaque ou un numéro de permis ne donnera rien.",
     video: { titre: 'Ajouter un chauffeur', url: '' }
@@ -586,19 +626,20 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'planifier-tournee',
     titre: 'Planifier une tournée',
     module: 'tours',
-    motsCles: ['tournee', 'livraison', 'itineraire', 'planifier', 'trajet prevu', 'etape', 'arret', 'circuit'],
+    motsCles: ['tournee', 'livraison', 'itineraire', 'planifier', 'trajet prevu', 'etape', 'arret', 'circuit', 'envoyer', 'chauffeur'],
     resume: "Préparer un itinéraire avec ses arrêts, puis le comparer au trajet réellement effectué.",
     etapes: [
-      "Ouvrez « Tournees » dans le menu Exploitation.",
+      "Ouvrez « Exploitation » > « Tournées » dans le menu.",
       "Cliquez sur « Nouvelle tournee ».",
-      "Étape « Informations » : donnez un « Nom » et choisissez le « Vehicule ». Le chauffeur rattaché au véhicule est proposé automatiquement.",
+      "Étape « Informations » : donnez un « Nom » et choisissez le « Vehicule ». Le chauffeur rattaché au véhicule est proposé automatiquement dans « Chauffeur » ; vous pouvez en choisir un autre.",
       "Étape « Itineraire » : saisissez l'adresse de départ, puis la destination. Ajoutez des arrêts intermédiaires avec « + Arret », ou cliquez directement sur la carte.",
       "Étape « Estimation » : cliquez sur « Calculer l'itineraire » pour obtenir la distance, la durée et le carburant prévus.",
-      "Cliquez sur « Creer la tournee »."
+      "Cliquez sur « Creer la tournee » — ou sur « 📱 Enregistrer et envoyer » pour l'envoyer aussitôt sur le téléphone du chauffeur."
     ],
     paragraphes: [
       "Les libellés de cet écran sont écrits sans accents (« Tournees », « Vehicule », « Duree ») : c'est normal, ce n'est pas un défaut d'affichage.",
       "Une tournée exige au minimum deux points de passage, un départ et une destination. Avec un seul point, le bouton de création reste sans effet et aucun message ne l'explique : ajoutez la destination.",
+      "« 📱 Enregistrer et envoyer » n'apparaît que si le chauffeur choisi a un compte de l'application : sous « Chauffeur », « 📱 Ce chauffeur a l'application » le confirme, « Pas de compte application — créez-le dans Utilisateurs » dit ce qui manque. Voir l'article « Envoyer une tournée au chauffeur ».",
       "Pour une tournée qui revient chaque semaine, choisissez la récurrence « Hebdomadaire » et cochez les jours concernés.",
       "Chaque arrêt accepte une durée de pause et une marge de retard tolérée, qui servent à juger si la tournée est en avance ou en retard."
     ],
@@ -609,15 +650,38 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'suivre-tournee',
     titre: 'Suivre une tournée et comparer au prévu',
     module: 'tours',
-    motsCles: ['tournee', 'suivi', 'retard', 'replay', 'rapport', 'ecart', 'reel', 'estime'],
+    motsCles: ['tournee', 'suivi', 'retard', 'replay', 'rapport', 'ecart', 'reel', 'estime', 'telephone', 'boitier'],
     resume: "Voir où en est une tournée, puis mesurer l'écart entre le prévu et le réalisé.",
     paragraphes: [
       "Les compteurs du haut filtrent la liste : « Total », « Planifiees », « En cours », « Terminees ».",
-      "Sur une tournée en cours, la fiche affiche le suivi en direct et le prochain point à atteindre.",
+      "La colonne « Envoi » dit où en est la tournée sur le téléphone du chauffeur : « Non envoyée », « Envoyée », « Ouverte », puis « Partie ».",
+      "Sur une tournée en cours, la fiche affiche le suivi en direct et le prochain point à atteindre. Le bandeau de suivi dit d'où viennent les positions : « Suivi par boîtier » tant que le boîtier du véhicule émet, « Suivi par téléphone » quand le téléphone du chauffeur prend le relais, « Suivi interrompu depuis … » quand aucun des deux n'émet.",
       "Sur une tournée terminée, le bouton « ▶ Replay » rejoue le trajet sur la carte, et « 📄 Rapport » produit un PDF comparant le réel à l'estimé.",
       "Le tableau « Comparaison Estime vs Reel » donne trois colonnes : « Estime », « Reel » et « Ecart ». Sur la carte, le tracé « Calculé » est l'itinéraire théorique, le tracé « Réel » la trace GPS."
     ],
     aRetenir: "S'il manque des positions GPS sur la période, le replay affiche « Pas assez de positions GPS sur la fenêtre de cette tournée » : le boîtier n'a pas communiqué, la tournée a bien eu lieu."
+  },
+  {
+    id: 'envoyer-tournee-chauffeur',
+    titre: 'Envoyer une tournée au chauffeur',
+    module: 'tours',
+    motsCles: ['envoyer', 'renvoyer', 'telephone', 'application', 'mobile', 'chauffeur', 'tournee', 'smartphone', 'je pars', 'notification'],
+    resume: "Faire arriver la tournée sur le téléphone du chauffeur, puis la suivre par le boîtier ou par son téléphone.",
+    etapes: [
+      "Vérifiez que le chauffeur a un compte de l'application : dans « Chauffeurs », sa ligne affiche « Application : active ». Sinon, créez-le d'abord (article « Créer le compte application d'un chauffeur »).",
+      "À la création de la tournée, choisissez ce chauffeur dans « Chauffeur », puis cliquez sur « 📱 Enregistrer et envoyer ».",
+      "Pour une tournée déjà créée, ouvrez-la et cliquez sur « 📱 Envoyer au chauffeur » — « Renvoyer au chauffeur » si elle a déjà été envoyée.",
+      "Le message « Tournée envoyée » confirme l'envoi."
+    ],
+    paragraphes: [
+      "Le bouton d'envoi n'existe que pour une tournée « Planifiee » ou « En cours ». Il reste grisé tant qu'aucun chauffeur n'est choisi, ou si le chauffeur n'a pas de compte application actif : son infobulle en donne la raison.",
+      "« Envoyée, mais le chauffeur n'a pas encore ouvert l'application sur son téléphone » : la tournée est bien enregistrée, il la verra en ouvrant l'application.",
+      "La colonne « Envoi » de la liste suit la tournée : « Non envoyée », « Envoyée », « Ouverte » (le chauffeur l'a ouverte dans l'application), puis « Partie ». Le détail de la tournée donne les heures : « Envoyée au chauffeur », « Ouverte sur le téléphone », « Départ signalé par le chauffeur ».",
+      "Le chauffeur démarre la tournée depuis l'application avec « Je pars ».",
+      "Pendant la tournée, le bandeau de suivi indique la source des positions : « Suivi par boîtier » tant que le boîtier du véhicule émet, « 📱 Suivi par téléphone » quand le téléphone du chauffeur prend le relais, avec la batterie du téléphone.",
+      "Le chauffeur se connecte à l'application Calypso version 1.2 ou plus récente, avec l'e-mail et le mot de passe de son compte."
+    ],
+    aRetenir: "Un compte chauffeur ne donne aucun accès au site : le chauffeur ne voit que ses tournées, dans l'application."
   },
 
   // ---------------------------------------------------------- Gestion de flotte
@@ -654,10 +718,13 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'emprunter-vehicule',
     titre: 'Prêter un véhicule à un collaborateur',
     module: 'fleet_management',
+    // L'écran /emprunts n'existe que chez les loueurs (LocationCompanyGuard) :
+    // une société de transport ne doit pas trouver cet article.
+    typeSociete: 'location',
     motsCles: ['emprunt', 'preter', 'location', 'louer', 'rendre', 'retour', 'mise a disposition'],
     resume: "Enregistrer la sortie d'un véhicule et son retour, avec le kilométrage parcouru.",
     etapes: [
-      "Ouvrez « Emprunts Véhicules ».",
+      "Cliquez sur votre nom en haut à droite, puis sur « Emprunts ». L'écran s'intitule « Emprunts Véhicules ».",
       "Cliquez sur « Nouvel Emprunt ».",
       "Choisissez le « Véhicule » — seul champ obligatoire — puis l'employé, le motif et la destination.",
       "Validez avec « Confirmer » : l'écran bascule sur l'onglet « En cours ».",
@@ -690,6 +757,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Cliquez sur « Créer »."
     ],
     paragraphes: [
+      "Pour un chauffeur qui n'utilisera que l'application mobile, cochez « 🚚 Chauffeur (application mobile) » à l'étape « 1 Général » : les étapes « Permissions » et « Véhicules » disparaissent. Voir l'article « Créer le compte application d'un chauffeur ».",
       "La case « 👑 Administrateur de la société » donne tout : tous les véhicules et toutes les fonctionnalités. À réserver au responsable.",
       "Le tableau de bord reste toujours accessible, même sans aucune case cochée.",
       "Si vous cochez « 📊 Rapports », un sous-bloc « Types de rapports autorisés » apparaît : vous choisissez rapport par rapport ce que la personne peut éditer.",
@@ -698,6 +766,26 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     ],
     aRetenir: "Un départ dans l'équipe ? Passez son statut à « Inactif » le jour même. C'est plus sûr et ça conserve l'historique de ses actions.",
     video: { titre: 'Créer un utilisateur et ses droits', url: '' }
+  },
+  {
+    id: 'compte-chauffeur',
+    titre: "Créer le compte application d'un chauffeur",
+    module: 'users',
+    motsCles: ['chauffeur', 'compte', 'application', 'mobile', 'telephone', 'tournee', 'smartphone', 'connexion', 'acces'],
+    resume: "Donner à un chauffeur l'accès à l'application mobile, pour qu'il reçoive ses tournées sur son téléphone.",
+    etapes: [
+      "Depuis « Chauffeurs », cliquez sur « Créer son compte » dans la ligne du chauffeur : le formulaire Utilisateurs s'ouvre pré-rempli, case « 🚚 Chauffeur (application mobile) » déjà cochée.",
+      "Ou, depuis « Gestion des Utilisateurs », cliquez sur « Nouvel Utilisateur » et cochez vous-même « 🚚 Chauffeur (application mobile) » à l'étape « 1 Général ».",
+      "Renseignez « Prénom », « Nom », « Email » et « Mot de passe », et vérifiez la « Fiche chauffeur à relier ».",
+      "Cliquez sur « Créer », puis communiquez au chauffeur son e-mail et son mot de passe."
+    ],
+    paragraphes: [
+      "Un compte chauffeur n'a que l'étape « Général » : ni permissions ni véhicules à régler. Il n'a aucun accès au site et ne compte pas dans le quota d'utilisateurs de votre abonnement.",
+      "La fiche reliée est celle que vous choisissez dans « Fiche chauffeur à relier » ; à défaut, celle qui porte le même e-mail, sinon une fiche neuve. Reliez la bonne : c'est elle qui porte le véhicule, le permis et les tournées.",
+      "Le chauffeur se connecte avec l'application Calypso version 1.2 ou plus récente, avec l'e-mail et le mot de passe de ce compte. Il n'y voit que ses tournées.",
+      "Dans « Chauffeurs », sa ligne affiche ensuite « Application : active »."
+    ],
+    aRetenir: "La case n'est pas proposée sur votre propre compte : devenu compte chauffeur, il perdrait aussitôt l'accès au site."
   },
   {
     id: 'alertes-email',
@@ -791,7 +879,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     resume: "Retrouver les alertes passées et faire le ménage.",
     paragraphes: [
       "La cloche donne les dernières alertes ; l'écran « Notifications » donne tout l'historique.",
-      "Des filtres trient les alertes par famille. Vous ne voyez que les familles correspondant aux modules de votre abonnement.",
+      "Des boutons filtrent l'historique par famille d'alerte, et « Toutes » les réunit. Ils sont les mêmes pour toutes les offres : une famille qui ne concerne pas la vôtre reste simplement vide — sans boîtier GPS, par exemple, aucune alerte issue du boîtier n'arrive.",
       "La case « Non lues uniquement » isole ce que vous n'avez pas encore traité, et « Tout marquer lu » remet le compteur à zéro.",
       "Chaque ligne peut être marquée comme lue ou supprimée individuellement."
     ]
@@ -841,7 +929,10 @@ export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'bienvenue',
     titre: 'Bienvenue dans Calypso',
-    texte: "Quelques étapes pour être autonome. Tout votre parc se trouve dans le menu « Exploitation » : véhicules, chauffeurs et tournées. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    // Étape jouée pour TOUTES les offres : elle ne cite donc que ce que tout
+    // client a dans « Exploitation ». « tournées » était promis au client GPA,
+    // qui n'a pas ce module.
+    texte: "Quelques étapes pour être autonome. Votre parc se trouve dans le menu « Exploitation » : vos véhicules et vos chauffeurs. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
     route: '/dashboard'
   },

@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { HelpService } from '../../services/help.service';
+import { AuthService } from '../../services/auth.service';
 import { GuideEtape } from '../../services/help-content.model';
 
 /**
@@ -15,6 +16,14 @@ import { GuideEtape } from '../../services/help-content.model';
  *
  * Le composant ne connait aucun ecran : il vise des elements portant un
  * attribut data-guide="...". Si la cible n'existe pas, l'etape est sautee.
+ *
+ * Monte UNE SEULE FOIS, dans le composant racine (main.ts), jamais dans
+ * <app-layout> : chaque page porte sa propre app-layout, et la visite, qui
+ * change de page d'une etape a l'autre, etait detruite a chaque « Suivant ».
+ * La nouvelle instance repartait de l'etape 1 et renvoyait au tableau de bord,
+ * pendant que l'ancienne, detruite, continuait de naviguer (relecture du
+ * 22/09/2026). Monte a la racine, le composant survit aussi a la deconnexion :
+ * il se ferme donc de lui-meme quand l'utilisateur n'est plus connecte.
  */
 @Component({
   selector: 'app-guided-help',
@@ -106,6 +115,7 @@ import { GuideEtape } from '../../services/help-content.model';
 })
 export class GuidedHelpComponent implements OnInit, OnDestroy {
   private help = inject(HelpService);
+  private auth = inject(AuthService);
   private router = inject(Router);
   private cdr = inject(ChangeDetectorRef);
 
@@ -118,33 +128,61 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   bulle = { top: 0, left: 0 };
   flecheEnHaut = false;
 
-  private abonnement?: Subscription;
+  private abonnements: Subscription[] = [];
   private attente?: number;
+  /** Pose dans ngOnDestroy : plus aucune navigation ni boucle d'attente ensuite. */
+  private detruit = false;
+  /**
+   * Numero de l'etape en cours de recherche. Une navigation terminee ou une
+   * boucle d'attente lancee pour une etape PRECEDENTE (« Suivant » clique deux
+   * fois, visite fermee pendant la navigation) ne doit plus rien faire.
+   */
+  private generation = 0;
 
   ngOnInit(): void {
-    this.abonnement = this.help.guideOuvert$.subscribe(ouvert => {
-      if (ouvert) { this.demarrer(); } else { this.actif = false; }
+    this.abonnements.push(this.help.guideOuvert$.subscribe(ouvert => {
+      // Une visite deja en cours n'est jamais relancee a l'etape 1 : c'est ce
+      // retour force au debut qui bloquait le client sur la premiere bulle.
+      if (ouvert) { if (!this.actif) { this.demarrer(); } } else { this.arreter(); }
       this.cdr.detectChanges();
-    });
+    }));
+    // Deconnexion (volontaire ou jeton expire) : la visite ne doit pas rester
+    // posee sur l'ecran de connexion. Elle n'est pas marquee comme vue.
+    this.abonnements.push(this.auth.getCurrentUser().subscribe(utilisateur => {
+      if (!utilisateur && this.actif) { this.help.fermerGuide(false); }
+    }));
   }
 
   ngOnDestroy(): void {
-    this.abonnement?.unsubscribe();
-    if (this.attente) { cancelAnimationFrame(this.attente); }
+    this.detruit = true;
+    this.abonnements.forEach(a => a.unsubscribe());
+    this.annulerAttente();
   }
 
   @HostListener('window:resize') auRedimensionnement(): void { if (this.actif) { this.placer(); } }
   /**
    * Echap ferme la visite pour l'instant, mais ne la marque PAS comme vue :
-   * elle sera reproposee a la prochaine connexion. Seuls "Passer" et "Terminer",
-   * qui sont des gestes deliberes, valent definitivement non.
+   * elle sera reproposee au prochain chargement de l'application (pas a la page
+   * suivante, voir HelpService.dejaProposee). Seuls "Passer" et "Terminer", qui
+   * sont des gestes deliberes, valent definitivement non.
    */
   @HostListener('window:keydown.escape') auEchap(): void {
     if (!this.actif) { return; }
-    this.actif = false;
-    this.etape = null;
+    this.arreter();
     this.help.fermerGuide(false);
     this.cdr.detectChanges();
+  }
+
+  /** Masque la visite et coupe toute recherche de cible encore en cours. */
+  private arreter(): void {
+    this.actif = false;
+    this.etape = null;
+    this.generation++;
+    this.annulerAttente();
+  }
+
+  private annulerAttente(): void {
+    if (this.attente) { cancelAnimationFrame(this.attente); this.attente = undefined; }
   }
 
   private demarrer(): void {
@@ -165,17 +203,21 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   passer(): void { this.terminer(); }
 
   private terminer(): void {
-    this.actif = false;
-    this.etape = null;
+    this.arreter();
     this.help.fermerGuide(true);
     this.cdr.detectChanges();
   }
 
   private allerA(index: number): void {
+    this.annulerAttente();
+    const generation = ++this.generation;
     this.index = index;
     this.etape = this.etapes[index];
     const etape = this.etape;
-    const aller = () => this.attendreCible(etape, 0);
+    const aller = () => {
+      if (this.detruit || generation !== this.generation) { return; }
+      this.attendreCible(etape, 0, generation);
+    };
 
     // Certaines etapes vivent sur une autre page (ajout d'un vehicule, carte,
     // rapports) : on y navigue avant de chercher l'element.
@@ -191,18 +233,20 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * laisse jusqu'a ~3 s a l'element pour apparaitre, puis on saute l'etape
    * plutot que de pointer une zone vide.
    */
-  private attendreCible(etape: GuideEtape, essais: number): void {
+  private attendreCible(etape: GuideEtape, essais: number, generation: number): void {
+    this.attente = undefined;
+    if (this.detruit || generation !== this.generation) { return; }
     const cible = document.querySelector('[data-guide="' + etape.cible + '"]') as HTMLElement | null;
 
     if (cible) {
-      cible.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
       this.placer(cible);
       this.cdr.detectChanges();
       return;
     }
 
     if (essais > 180) { this.sauter(); return; }
-    this.attente = requestAnimationFrame(() => this.attendreCible(etape, essais + 1));
+    this.attente = requestAnimationFrame(() => this.attendreCible(etape, essais + 1, generation));
   }
 
   /** Cible introuvable : on avance sans bloquer le client sur un ecran fige. */

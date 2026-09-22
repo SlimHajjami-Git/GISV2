@@ -56,14 +56,41 @@ export class HelpService {
       .trim();
   }
 
-  /** Articles auxquels ce client a droit, selon les modules de son abonnement. */
+  /**
+   * Articles auxquels ce client a droit : module de l'abonnement et du profil,
+   * type de societe, et rapports reellement ouverts. Les paragraphes lies a un
+   * rapport ferme sont retires de la copie rendue : la recherche ne les trouve
+   * donc pas non plus.
+   */
   articlesVisibles(): HelpArticle[] {
-    return ARTICLES_AIDE.filter(a => this.moduleAutorise(a.module));
+    return ARTICLES_AIDE
+      .filter(a => this.moduleAutorise(a.module) && this.typeSocieteAutorise(a))
+      .map(a => this.adapter(a));
   }
 
   private moduleAutorise(module: HelpModule): boolean {
     if (module === 'general') return true;
     return this.permissions.hasModuleAccess(module as ModuleKey);
+  }
+
+  private typeSocieteAutorise(article: HelpArticle): boolean {
+    if (!article.typeSociete) return true;
+    return this.auth.getCurrentUserSync()?.companyType === article.typeSociete;
+  }
+
+  /** Au moins un des rapports cites est-il ouvert (abonnement ET droits de l'utilisateur) ? */
+  private unRapportOuvert(rapports: string[]): boolean {
+    return rapports.some(r => this.permissions.hasReportAccess(r));
+  }
+
+  /** Copie de l'article ou ne restent que les paragraphes conditionnels qui le concernent. */
+  private adapter(article: HelpArticle): HelpArticle {
+    const { paragraphesConditionnels, ...reste } = article;
+    if (!paragraphesConditionnels?.length) return article;
+    const retenus = paragraphesConditionnels
+      .filter(p => !p.rapports?.length || this.unRapportOuvert(p.rapports))
+      .map(p => p.texte);
+    return { ...reste, paragraphes: [...(article.paragraphes || []), ...retenus] };
   }
 
   /**
@@ -143,24 +170,57 @@ export class HelpService {
   }
 
   /**
+   * Utilisateurs a qui la visite a deja ete montree depuis le chargement de
+   * l'application. <app-layout> est recreee a CHAQUE page et propose la visite
+   * dans son ngOnInit : sans cette memoire, chaque changement de page la
+   * reproposait tant qu'elle n'etait ni terminee ni passee. Echap, puis un clic
+   * sur « Vehicules », et la visite repartait de l'etape 1 en ramenant de force
+   * au tableau de bord (relecture du 22/09/2026).
+   */
+  private dejaProposee = new Set<string>();
+
+  /**
+   * « Passer » et « Terminer » retenus aussi en memoire : quand localStorage
+   * refuse l'ecriture (quota plein, stockage bloque), le non du client valait
+   * pour rien et la visite revenait a chaque page.
+   */
+  private termineeEnMemoire = new Set<string>();
+
+  /**
    * Faut-il proposer la visite ? Oui tant que l'utilisateur ne l'a ni terminee
-   * ni passee. L'etat est garde par utilisateur : sur un poste partage, le
-   * collegue suivant a droit a sa propre visite.
+   * ni passee, et au plus une fois par ouverture de l'application. L'etat est
+   * garde par utilisateur : sur un poste partage, le collegue suivant a droit a
+   * sa propre visite.
    */
   doitProposerLeGuide(): boolean {
-    return !this.lireEtat().guideTermine;
+    const cle = this.cleUtilisateur();
+    return !this.dejaProposee.has(cle)
+      && !this.termineeEnMemoire.has(cle)
+      && !this.lireEtat().guideTermine;
   }
 
-  ouvrirGuide(): void { this.guideOuvertSource.next(true); }
+  /** Proposition automatique de premiere connexion : sans effet si elle n'a plus lieu d'etre. */
+  proposerLeGuide(): void {
+    if (this.doitProposerLeGuide()) this.ouvrirGuide();
+  }
+
+  ouvrirGuide(): void {
+    this.dejaProposee.add(this.cleUtilisateur());
+    this.guideOuvertSource.next(true);
+  }
 
   /** Appele a la fin de la visite comme sur "Passer" : dans les deux cas on n'insiste plus. */
   fermerGuide(termine: boolean): void {
     this.guideOuvertSource.next(false);
-    if (termine) this.ecrireEtat({ guideTermine: true, dateFin: new Date().toISOString() });
+    if (termine) {
+      this.termineeEnMemoire.add(this.cleUtilisateur());
+      this.ecrireEtat({ guideTermine: true, dateFin: new Date().toISOString() });
+    }
   }
 
   /** Permet au client de refaire la visite depuis le bouton "?". */
   reinitialiserGuide(): void {
+    this.termineeEnMemoire.delete(this.cleUtilisateur());
     this.ecrireEtat({});
     this.ouvrirGuide();
   }
@@ -188,8 +248,9 @@ export class HelpService {
       parTout[this.cleUtilisateur()] = etat;
       localStorage.setItem(CLE_ETAT, JSON.stringify(parTout));
     } catch {
-      // Navigation privee ou stockage plein : l'aide reste utilisable,
-      // la visite se represente a la prochaine connexion. Pas de quoi planter.
+      // Navigation privee ou stockage plein : l'aide reste utilisable. Le
+      // choix du client tient pour la session (termineeEnMemoire) ; la visite
+      // se representera au prochain chargement de l'application. Pas de quoi planter.
     }
   }
 
