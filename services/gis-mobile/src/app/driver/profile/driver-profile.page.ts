@@ -10,7 +10,7 @@ import { DriverDeclarationsService } from '../../core/services/driver-declaratio
 import { DriverMe } from '../../core/models/driver-app.types';
 import { environment } from '../../../environments/environment';
 
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.2.1';
 
 @Component({
   selector: 'app-driver-profile',

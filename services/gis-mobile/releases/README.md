@@ -6,9 +6,19 @@ App Bundles (AAB) signés prêts à être uploadés sur Google Play Console.
 
 | Fichier | Version | versionCode | Date | Signature |
 |---|---|---|---|---|
-| `calypso-v1.2.0-release.aab` | 1.2.0 | 14 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) |
+| `calypso-v1.2.1-release.aab` | 1.2.1 | 15 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) |
+| `calypso-v1.2.0-release.aab` | 1.2.0 | 14 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) — remplacé par la 1.2.1, jamais envoyé |
 | `calypso-v1.1.0-release.aab` | 1.1.0 | 12 | 2026-07-23 | `calypso` keystore (SHA-1: `8D:93:06:90:97:39:7E:0D:37:D8:DB:77:C1:A6:89:E7:F3:FB:02:8D`) |
 | `calypso-v1.0.9-release.aab` | 1.0.9 | 11 | 2026-04-22 | `calypso` keystore (SHA-1: `8D:93:06:90:97:39:7E:0D:37:D8:DB:77:C1:A6:89:E7:F3:FB:02:8D`) |
+
+### Nouveautés v1.2.1 (versionCode 15)
+
+- **Partager la position d'un véhicule** en un toucher : WhatsApp, Messenger, SMS ou
+  « Plus » (menu de partage Android), sur la carte (Suivi) et dans la fiche véhicule.
+  Le message complet (plaque, adresse, date de la position, lien Google Maps) part
+  directement dans WhatsApp ou Messenger ; si l'application manque, le menu de partage
+  s'ouvre. À vérifier sur téléphone : WhatsApp, WhatsApp Business, Messenger, SMS.
+- Contient tout le contenu de la 1.2.0 ci-dessous (même liste Play Console à faire).
 
 ### Nouveautés v1.2.0 (versionCode 14)
 

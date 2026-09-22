@@ -1,13 +1,15 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
+import {
+  PositionShareService, ShareChannel, SharedPosition, hasKnownPosition
+} from '../../core/services/position-share.service';
 import { isFresh } from '../../core/vehicle-state.util';
 import { Vehicle } from '../../core/models/types';
 import { AlertController, ToastController } from '@ionic/angular';
-import { Share } from '@capacitor/share';
 
 @Component({
   selector: 'app-vehicles',
@@ -141,10 +143,9 @@ import { Share } from '@capacitor/share';
               Playback
             </ion-button>
           </div>
-          <ion-button expand="block" fill="outline" shape="round" class="share-position-btn" (click)="sharePosition(selectedVehicle)">
-            <ion-icon name="share-social-outline" slot="start"></ion-icon>
-            Partager la position
-          </ion-button>
+          <app-position-share-bar
+            [disabled]="!canSharePosition(selectedVehicle)"
+            (share)="sharePosition(selectedVehicle, $event)"></app-position-share-bar>
 
           <!-- Immobilization -->
           <div class="immo-section" *ngIf="canImmobilize && selectedVehicle.gpsDeviceId">
@@ -212,7 +213,10 @@ import { Share } from '@capacitor/share';
       border-radius: 20px 20px 0 0;
       padding: 12px 20px 32px;
       width: 100%;
-      max-height: 70vh; overflow-y: auto;
+      /* 85vh (au lieu de 70vh) : avec la rangée de partage, un chauffeur affecté et le
+         bloc d'immobilisation, 70vh obligeait à défiler pour atteindre le partage sur
+         un écran de 640 px de haut. */
+      max-height: 85vh; overflow-y: auto;
     }
     .sheet-handle {
       width: 40px; height: 4px; background: var(--ion-color-light-shade);
@@ -248,7 +252,6 @@ import { Share } from '@capacitor/share';
     }
     .detail-actions { display: flex; gap: 8px; }
     .detail-actions ion-button { flex: 1; }
-    .share-position-btn { margin-top: 8px; }
     .immo-section { margin-top: 16px; border-top: 1px solid var(--ion-color-light-shade); padding-top: 16px; }
     .immo-status {
       display: flex; align-items: center; gap: 8px;
@@ -274,9 +277,17 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   canImmobilize = false;
   immoStates = new Map<string, any>();
+  /** Les dernières positions REST sont arrivées : un véhicule encore sans position n'en a pas. */
+  positionsLoaded = false;
 
   private subs: Subscription[] = [];
   private positionMap = new Map<number, PositionUpdate>();
+  /**
+   * Adresse de la dernière position REST, AVEC le point qu'elle décrit. Les trames SignalR
+   * n'ont pas d'adresse : dès que le véhicule a bougé, l'adresse gardée ne correspond plus
+   * au lien partagé et ne doit plus figurer dans le message.
+   */
+  private restAddresses = new Map<string, { lat: number; lng: number; address: string }>();
 
   constructor(
     private api: ApiService,
@@ -285,7 +296,8 @@ export class VehiclesPage implements OnInit, OnDestroy {
     private router: Router,
     private route: ActivatedRoute,
     private alertCtrl: AlertController,
-    private toastCtrl: ToastController
+    private toastCtrl: ToastController,
+    private positionShare: PositionShareService
   ) {}
 
   ngOnInit() {
@@ -346,6 +358,9 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   loadVehicles() {
     this.loading = true;
+    // Les véhicules rechargés n'ont pas encore de position : ne pas griser le partage
+    // avant que les dernières positions REST soient revenues.
+    this.positionsLoaded = false;
     this.api.getVehicles().subscribe({
       next: (vehicles) => {
         // Backend returns the GPS device as a nested object:
@@ -389,8 +404,10 @@ export class VehiclesPage implements OnInit, OnDestroy {
                 // véhicule était pourtant compté parmi les connectés.
                 v.isOnline = isFresh(p.lastPosition.recordedAt);
                 v.lastRecordedAt = p.lastPosition.recordedAt || v.lastRecordedAt;
+                this.rememberAddress(v, p.lastPosition);
               }
             });
+            this.positionsLoaded = true;
             this.updateCounts();
             this.filterVehicles();
           },
@@ -507,61 +524,83 @@ export class VehiclesPage implements OnInit, OnDestroy {
     });
   }
 
-  /** Partage la dernière position connue via la feuille de partage native
-   *  (WhatsApp, Messenger, SMS…). Même stratégie de repli que Localiser :
-   *  position en mémoire sinon un dernier fetch REST. */
-  async sharePosition(v: Vehicle) {
-    if (v.currentLocation) {
-      await this.doSharePosition(v, v.currentLocation.lat, v.currentLocation.lng);
-      return;
-    }
-    this.api.getLastPositions().subscribe({
-      next: async (positions) => {
-        const list = Array.isArray(positions) ? positions : [];
-        const found = list.find((p: any) => String(p.vehicleId) === String(v.id) && p.lastPosition);
-        if (found) {
-          const lp = found.lastPosition;
-          v.currentLocation = { lat: lp.latitude, lng: lp.longitude };
-          v.lastRecordedAt = lp.recordedAt || v.lastRecordedAt;
-          await this.doSharePosition(v, lp.latitude, lp.longitude);
-        } else {
-          const toast = await this.toastCtrl.create({
-            message: `Aucune position connue pour ${v.name}.`,
-            duration: 3000,
-            color: 'warning',
-            position: 'bottom'
-          });
-          await toast.present();
-        }
-      },
-      error: async () => {
-        const toast = await this.toastCtrl.create({
-          message: 'Impossible de récupérer la position du véhicule.',
-          duration: 2500,
-          color: 'danger'
-        });
-        await toast.present();
-      }
-    });
+  /**
+   * Boutons de partage actifs si la position est en mémoire, ou tant que les dernières
+   * positions REST ne sont pas arrivées (ou ont échoué) : le repli REST au toucher peut
+   * encore en trouver une. Grisés seulement quand on SAIT qu'il n'y en a aucune.
+   */
+  canSharePosition(v: Vehicle | null): boolean {
+    if (!v) return false;
+    if (v.currentLocation && hasKnownPosition(v.currentLocation.lat, v.currentLocation.lng)) return true;
+    return !this.positionsLoaded;
   }
 
-  private async doSharePosition(v: Vehicle, lat: number, lng: number) {
-    const label = v.plate || v.name || 'véhicule';
-    const mapsUrl = `https://www.google.com/maps?q=${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
-    const lines = [`Position du véhicule ${label}`];
-    if (v.lastAddress) lines.push(v.lastAddress);
-    // Dater la position: une dernière position connue peut être ancienne,
-    // le destinataire ne doit pas la croire "temps réel".
-    const recMs = v.lastRecordedAt ? Date.parse(v.lastRecordedAt) : NaN;
-    if (!isNaN(recMs)) lines.push(`Position du ${new Date(recMs).toLocaleString('fr-FR')}`);
-    lines.push(mapsUrl);
+  /** Partage la dernière position connue (WhatsApp, Messenger, SMS ou feuille de
+   *  partage). Même stratégie de repli que Localiser : position en mémoire, sinon
+   *  un dernier fetch REST. Message et liens : PositionShareService. */
+  async sharePosition(v: Vehicle, channel: ShareChannel) {
+    const pos = await this.resolveSharedPosition(v);
+    if (pos) await this.positionShare.share(channel, pos);
+  }
+
+  private async resolveSharedPosition(v: Vehicle): Promise<SharedPosition | null> {
+    if (v.currentLocation && hasKnownPosition(v.currentLocation.lat, v.currentLocation.lng)) {
+      return {
+        label: v.plate || v.name,
+        latitude: v.currentLocation.lat,
+        longitude: v.currentLocation.lng,
+        // Jamais v.lastAddress : rien ne la relie au point courant (les trames SignalR
+        // déplacent currentLocation sans toucher à l'adresse).
+        address: this.addressAt(v, v.currentLocation.lat, v.currentLocation.lng),
+        recordedAt: v.lastRecordedAt
+      };
+    }
+    let list: any[];
     try {
-      await Share.share({
-        title: `Position ${label}`,
-        text: lines.join('\n'),
-        dialogTitle: 'Partager la position'
-      });
-    } catch { /* partage annulé par l'utilisateur */ }
+      const positions = await firstValueFrom(this.api.getLastPositions());
+      list = Array.isArray(positions) ? positions : [];
+    } catch {
+      await this.showToast('Impossible de récupérer la position du véhicule.', 'danger', 2500);
+      return null;
+    }
+    const found = list.find((p: any) => String(p.vehicleId) === String(v.id) && p.lastPosition);
+    const lp = found?.lastPosition;
+    if (!lp || !hasKnownPosition(lp.latitude, lp.longitude)) {
+      await this.showToast(`Aucune position connue pour ${v.name}.`, 'warning', 3000);
+      return null;
+    }
+    v.currentLocation = { lat: lp.latitude, lng: lp.longitude };
+    v.lastRecordedAt = lp.recordedAt || v.lastRecordedAt;
+    this.rememberAddress(v, lp);
+    return {
+      label: v.plate || v.name,
+      latitude: lp.latitude,
+      longitude: lp.longitude,
+      // L'adresse de CETTE position seulement, pas une adresse gardée d'avant.
+      address: this.addressAt(v, lp.latitude, lp.longitude),
+      // La date de CETTE position, pas celle d'une trame précédente : sans elle le
+      // message dit « date inconnue » plutôt que de dater faussement.
+      recordedAt: lp.recordedAt
+    };
+  }
+
+  /** Mémorise l'adresse d'une position REST avec ses coordonnées (ou l'oublie s'il n'y en a pas). */
+  private rememberAddress(v: Vehicle, lp: { latitude: number; longitude: number; address?: string | null }) {
+    const address = (lp.address || '').trim();
+    if (address) this.restAddresses.set(String(v.id), { lat: lp.latitude, lng: lp.longitude, address });
+    else this.restAddresses.delete(String(v.id));
+  }
+
+  /** L'adresse connue pour CE point (au 1e-6 près, la précision du lien), sinon aucune. */
+  private addressAt(v: Vehicle, lat: number, lng: number): string | null {
+    const known = this.restAddresses.get(String(v.id));
+    const same = (a: number, b: number) => Number(a).toFixed(6) === Number(b).toFixed(6);
+    return known && same(known.lat, lat) && same(known.lng, lng) ? known.address : null;
+  }
+
+  private async showToast(message: string, color: 'warning' | 'danger', duration: number) {
+    const toast = await this.toastCtrl.create({ message, duration, color, position: 'bottom' });
+    await toast.present();
   }
 
   openPlayback(v: Vehicle) {

@@ -1,9 +1,9 @@
 import { Component, OnInit, OnDestroy, NgZone, ChangeDetectorRef } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, interval } from 'rxjs';
-import { Share } from '@capacitor/share';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate, ConnectionState } from '../../core/services/signalr.service';
+import { PositionShareService, ShareChannel, hasKnownPosition } from '../../core/services/position-share.service';
 import { motionState } from '../../core/vehicle-state.util';
 import * as L from 'leaflet';
 
@@ -93,10 +93,9 @@ import * as L from 'leaflet';
             <ion-icon name="locate-outline" slot="start"></ion-icon>
             Localiser sur la carte
           </ion-button>
-          <ion-button expand="block" size="small" class="share-btn" (click)="shareSelectedPosition()">
-            <ion-icon name="share-social-outline" slot="start"></ion-icon>
-            Partager la position
-          </ion-button>
+          <app-position-share-bar
+            [disabled]="!canShareSelected()"
+            (share)="shareSelectedPosition($event)"></app-position-share-bar>
         </div>
       </div>
     </ion-content>
@@ -201,7 +200,6 @@ import * as L from 'leaflet';
     .sheet-row ion-icon { font-size: 16px; color: var(--ion-color-medium); flex: none; }
     .sheet-row span { line-height: 1.35; }
     .locate-btn { margin-top: 14px; }
-    .share-btn { margin-top: 6px; }
   `]
 })
 export class MonitoringPage implements OnInit, OnDestroy {
@@ -282,7 +280,8 @@ export class MonitoringPage implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private router: Router,
     private zone: NgZone,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private positionShare: PositionShareService
   ) {}
 
   /**
@@ -649,27 +648,24 @@ export class MonitoringPage implements OnInit, OnDestroy {
     }
   }
 
-  /** Partage la position du véhicule sélectionné via la feuille de partage
-   *  native (WhatsApp, Messenger, SMS…). Le lien est un Google Maps
-   *  universel, ouvrable par n'importe quel destinataire. */
-  async shareSelectedPosition() {
+  /** Les boutons de partage ne sont actifs qu'avec une position exploitable. */
+  canShareSelected(): boolean {
     const v = this.selectedVehicle;
-    if (!v || v.latitude == null || v.longitude == null) return;
-    const label = v.plate || v.vehicleName || 'véhicule';
-    const mapsUrl = `https://www.google.com/maps?q=${Number(v.latitude).toFixed(6)},${Number(v.longitude).toFixed(6)}`;
-    const lines = [`Position du véhicule ${label}`];
-    if (v.address) lines.push(v.address);
-    // Dater la position: une dernière position connue peut être ancienne,
-    // le destinataire ne doit pas la croire "temps réel".
-    const recMs = v.recordedAt ? Date.parse(v.recordedAt) : NaN;
-    if (!isNaN(recMs)) lines.push(`Position du ${new Date(recMs).toLocaleString('fr-FR')}`);
-    lines.push(mapsUrl);
-    try {
-      await Share.share({
-        title: `Position ${label}`,
-        text: lines.join('\n'),
-        dialogTitle: 'Partager la position'
-      });
-    } catch { /* partage annulé par l'utilisateur */ }
+    return !!v && hasKnownPosition(v.latitude, v.longitude);
+  }
+
+  /** Partage la position du véhicule sélectionné (WhatsApp, Messenger, SMS ou
+   *  feuille de partage). Message et liens : PositionShareService, commun à la
+   *  fiche véhicule. */
+  async shareSelectedPosition(channel: ShareChannel) {
+    const v = this.selectedVehicle;
+    if (!v || !this.canShareSelected()) return;
+    await this.positionShare.share(channel, {
+      label: v.plate || v.vehicleName,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      address: v.address,
+      recordedAt: v.recordedAt
+    });
   }
 }
