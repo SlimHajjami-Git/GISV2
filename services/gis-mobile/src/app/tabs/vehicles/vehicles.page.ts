@@ -1,15 +1,24 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { Router, ActivatedRoute } from '@angular/router';
-import { Subscription, firstValueFrom } from 'rxjs';
+import { Subscription, firstValueFrom, interval } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { AuthService } from '../../core/services/auth.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
 import {
   PositionShareService, ShareChannel, SharedPosition, hasKnownPosition
 } from '../../core/services/position-share.service';
-import { isFresh } from '../../core/vehicle-state.util';
+import {
+  NO_DEVICE_STYLE, NoDeviceStyle, STATE_TEXT_ON_COLOR, VEHICLE_STATES, VEHICLE_STATE_ORDER, VehicleMotionState,
+  VehicleStateStyle, countByState, isFresh, motionState, stateStyle
+} from '../../core/vehicle-state.util';
 import { Vehicle } from '../../core/models/types';
 import { AlertController, ToastController } from '@ionic/angular';
+
+/** Ce que montre la pastille d'une ligne : un des quatre états, ou « sans boîtier » (pas un état). */
+export type VehicleRowState = VehicleMotionState | 'no-device';
+
+/** Recalcul périodique des états : un boîtier muet n'envoie plus rien qui déclencherait le passage au gris. */
+export const STATE_REFRESH_MS = 30000;
 
 @Component({
   selector: 'app-vehicles',
@@ -39,33 +48,33 @@ import { AlertController, ToastController } from '@ionic/angular';
         <ion-refresher-content pullingText="Tirer pour rafraîchir"></ion-refresher-content>
       </ion-refresher>
 
-      <!-- Filter chips -->
-      <div class="filter-chips" *ngIf="showFilter">
-        <ion-chip [color]="activeFilter === 'all' ? 'primary' : 'medium'" (click)="setFilter('all')">
+      <!-- Filter chips : une puce par état, pastille à la couleur de l'état + libellé + compteur.
+           La puce sélectionnée prend la couleur de l'application (pas celle d'un état). -->
+      <div class="filter-chips" *ngIf="showFilter" role="group" aria-label="Filtrer par état">
+        <ion-chip class="filter-chip" data-filter="all" [color]="activeFilter === 'all' ? 'primary' : 'medium'"
+                  [attr.aria-pressed]="activeFilter === 'all'" (click)="setFilter('all')">
           <ion-label>Tous ({{ vehicles.length }})</ion-label>
         </ion-chip>
-        <ion-chip [color]="activeFilter === 'moving' ? 'success' : 'medium'" (click)="setFilter('moving')">
-          <ion-icon name="navigate"></ion-icon>
-          <ion-label>En mouvement ({{ movingCount }})</ion-label>
-        </ion-chip>
-        <ion-chip [color]="activeFilter === 'stopped' ? 'warning' : 'medium'" (click)="setFilter('stopped')">
-          <ion-icon name="stop-circle"></ion-icon>
-          <ion-label>À l'arrêt ({{ stoppedCount }})</ion-label>
-        </ion-chip>
-        <ion-chip [color]="activeFilter === 'offline' ? 'danger' : 'medium'" (click)="setFilter('offline')">
-          <ion-icon name="cloud-offline"></ion-icon>
-          <ion-label>Hors ligne ({{ offlineCount }})</ion-label>
+        <ion-chip *ngFor="let s of stateStyles" class="filter-chip" [attr.data-filter]="s.state"
+                  [color]="activeFilter === s.state ? 'primary' : 'medium'"
+                  [attr.aria-pressed]="activeFilter === s.state" (click)="setFilter(s.state)">
+          <span class="chip-dot" [style.background]="s.color" aria-hidden="true"></span>
+          <ion-label>{{ s.label }} ({{ counts[s.state] }})</ion-label>
         </ion-chip>
       </div>
 
       <!-- Vehicle list -->
       <ion-list>
         <ion-item *ngFor="let v of filteredVehicles; trackBy: trackById" detail (click)="selectVehicle(v)">
-          <div slot="start" class="vehicle-status-dot" [ngClass]="getStatusClass(v)"></div>
+          <div slot="start" class="vehicle-status-dot" [ngClass]="stateOf(v)"
+               [style.background]="styleOf(v).tint" [style.color]="styleOf(v).color">
+            <ion-icon [name]="styleOf(v).icon" aria-hidden="true"></ion-icon>
+          </div>
           <ion-label>
             <h2 class="vehicle-name">{{ v.name }}</h2>
             <p class="vehicle-info">
-              <span>{{ v.plate }}</span>
+              <span class="vehicle-state-label">{{ styleOf(v).label }}</span>
+              <span> &middot; {{ v.plate }}</span>
               <span *ngIf="v.brand"> &middot; {{ v.brand }} {{ v.model }}</span>
             </p>
             <p class="vehicle-location" *ngIf="v.lastAddress">
@@ -73,7 +82,9 @@ import { AlertController, ToastController } from '@ionic/angular';
               {{ v.lastAddress }}
             </p>
           </ion-label>
-          <div slot="end" class="vehicle-speed" *ngIf="v.currentSpeed !== undefined && v.currentSpeed !== null">
+          <!-- Pas de vitesse sous « Déconnecté » : celle d'une trame vieille de plusieurs jours
+               contredisait la pastille grise (vitesse fantôme). -->
+          <div slot="end" class="vehicle-speed" *ngIf="showsSpeed(v)">
             <span class="speed-value">{{ v.currentSpeed | number:'1.0-0' }}</span>
             <span class="speed-unit">km/h</span>
           </div>
@@ -93,12 +104,15 @@ import { AlertController, ToastController } from '@ionic/angular';
           <div class="sheet-handle"></div>
 
           <div class="detail-header">
-            <div class="detail-status" [ngClass]="getStatusClass(selectedVehicle)">
-              <ion-icon [name]="getStatusIcon(selectedVehicle)"></ion-icon>
+            <div class="detail-status" [ngClass]="stateOf(selectedVehicle)"
+                 [style.background]="styleOf(selectedVehicle).tint" [style.color]="styleOf(selectedVehicle).color">
+              <ion-icon [name]="styleOf(selectedVehicle).icon" aria-hidden="true"></ion-icon>
             </div>
             <div class="detail-title">
               <h2>{{ selectedVehicle.name }}</h2>
               <p>{{ selectedVehicle.plate }} &middot; {{ selectedVehicle.brand }} {{ selectedVehicle.model }}</p>
+              <span class="status-pill" [ngClass]="stateOf(selectedVehicle)"
+                    [style.background]="pillBackground(selectedVehicle)" [style.color]="pillText(selectedVehicle)">{{ styleOf(selectedVehicle).label }}</span>
             </div>
             <ion-button fill="clear" (click)="selectedVehicle = null">
               <ion-icon name="close" slot="icon-only"></ion-icon>
@@ -108,16 +122,20 @@ import { AlertController, ToastController } from '@ionic/angular';
           <div class="detail-grid">
             <div class="detail-item">
               <ion-icon name="speedometer-outline" color="primary"></ion-icon>
-              <span class="detail-value">{{ selectedVehicle.currentSpeed || 0 }} km/h</span>
+              <span class="detail-value" *ngIf="showsSpeed(selectedVehicle); else noSpeed">{{ selectedVehicle.currentSpeed | number:'1.0-0' }} km/h</span>
+              <ng-template #noSpeed><span class="detail-value no-speed">—</span></ng-template>
               <span class="detail-label">Vitesse</span>
             </div>
             <div class="detail-item">
-              <ion-icon name="navigate-outline" color="success"></ion-icon>
+              <!-- Ni flèche ni vert : c'était l'icône « En route », même sur un véhicule garé. -->
+              <ion-icon name="trail-sign-outline" color="primary"></ion-icon>
               <span class="detail-value">{{ selectedVehicle.mileage | number:'1.0-0' }} km</span>
               <span class="detail-label">Kilométrage</span>
             </div>
             <div class="detail-item">
-              <ion-icon name="flash-outline" [color]="selectedVehicle.ignitionOn ? 'success' : 'medium'"></ion-icon>
+              <!-- Contact mis = couleur de l'application, pas le vert « En route » : au ralenti,
+                   la fiche montrait une pastille orange à côté d'un éclair vert. -->
+              <ion-icon name="flash-outline" [color]="selectedVehicle.ignitionOn ? 'primary' : 'medium'"></ion-icon>
               <span class="detail-value">{{ selectedVehicle.ignitionOn ? 'ON' : 'OFF' }}</span>
               <span class="detail-label">Contact</span>
             </div>
@@ -184,17 +202,25 @@ import { AlertController, ToastController } from '@ionic/angular';
       display: flex; gap: 6px; padding: 8px 12px;
       overflow-x: auto; white-space: nowrap;
     }
-    .filter-chips ion-chip { font-size: 12px; }
+    .filter-chips ion-chip { font-size: 12px; flex: none; }
+    .chip-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex: none;
+      margin-right: 6px; box-shadow: 0 0 0 1.5px #fff;
+    }
+    /* Couleurs d'état liées depuis vehicle-state.util : aucune n'est recodée ici. */
     .vehicle-status-dot {
-      width: 12px; height: 12px; border-radius: 50%;
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
       margin-right: 4px; flex-shrink: 0;
     }
-    .vehicle-status-dot.moving { background: #10b981; }
-    .vehicle-status-dot.stopped { background: #f59e0b; }
-    .vehicle-status-dot.offline { background: #ef4444; }
-    .vehicle-status-dot.available { background: #6b7280; }
+    .vehicle-status-dot ion-icon { font-size: 18px; }
+    /* Sans boîtier : contour pointillé et non un disque teinté, pour ne se lire comme aucun état. */
+    .vehicle-status-dot.no-device, .detail-status.no-device, .status-pill.no-device {
+      box-sizing: border-box; border: 1.5px dashed currentColor;
+    }
     .vehicle-name { font-weight: 600; font-size: 15px; }
     .vehicle-info { font-size: 13px; }
+    .vehicle-state-label { font-weight: 600; color: var(--ion-text-color); }
     .vehicle-location { font-size: 12px; color: var(--ion-color-medium); display: flex; align-items: center; gap: 2px; }
     .inline-icon { font-size: 12px; }
     .vehicle-speed { text-align: center; }
@@ -227,14 +253,15 @@ import { AlertController, ToastController } from '@ionic/angular';
       width: 48px; height: 48px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
     }
-    .detail-status.moving { background: rgba(16,185,129,0.15); color: #10b981; }
-    .detail-status.stopped { background: rgba(245,158,11,0.15); color: #f59e0b; }
-    .detail-status.offline { background: rgba(239,68,68,0.15); color: #ef4444; }
-    .detail-status.available { background: rgba(107,114,128,0.15); color: #6b7280; }
     .detail-status ion-icon { font-size: 24px; }
-    .detail-title { flex: 1; }
+    .detail-title { flex: 1; min-width: 0; }
     .detail-title h2 { margin: 0; font-size: 18px; font-weight: 700; }
     .detail-title p { margin: 2px 0 0; font-size: 13px; color: var(--ion-color-medium); }
+    .status-pill {
+      display: inline-block; margin-top: 6px;
+      font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 12px;
+      white-space: nowrap;
+    }
     .detail-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;
     }
@@ -270,10 +297,13 @@ export class VehiclesPage implements OnInit, OnDestroy {
   searchTerm = '';
   showSearch = true;
   showFilter = false;
-  activeFilter = 'all';
-  movingCount = 0;
-  stoppedCount = 0;
-  offlineCount = 0;
+  activeFilter: 'all' | VehicleMotionState = 'all';
+  /** Compteurs des puces de filtre, un par état (vehicle-state.util). */
+  counts: Record<VehicleMotionState, number> = countByState([]);
+  /** Puces « En route / Au ralenti / À l'arrêt / Déconnecté », dans l'ordre de la légende. */
+  readonly stateStyles: VehicleStateStyle[] = VEHICLE_STATE_ORDER.map(s => VEHICLE_STATES[s]);
+  /** Texte sur la couleur d'un état : lisible sur les quatre couleurs (contraste >= 4,5:1). */
+  readonly textOnState = STATE_TEXT_ON_COLOR;
 
   canImmobilize = false;
   immoStates = new Map<string, any>();
@@ -282,6 +312,14 @@ export class VehiclesPage implements OnInit, OnDestroy {
 
   private subs: Subscription[] = [];
   private positionMap = new Map<number, PositionUpdate>();
+  /**
+   * Horodatage qui juge la fraîcheur de chaque véhicule : celui de sa dernière trame, ou
+   * l'instant de réception d'une trame live qui n'en porte pas (« bénéfice du direct »).
+   * Séparé de lastRecordedAt, qui date la position PARTAGÉE et ne doit pas être inventé.
+   */
+  private freshnessAt = new Map<string, string>();
+  /** État calculé au dernier recomptage : pastilles, puces et filtre lisent le même instantané. */
+  private states = new Map<string, VehicleMotionState>();
   /**
    * Adresse de la dernière position REST, AVEC le point qu'elle décrit. Les trames SignalR
    * n'ont pas d'adresse : dès que le véhicule a bougé, l'adresse gardée ne correspond plus
@@ -297,7 +335,8 @@ export class VehiclesPage implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private alertCtrl: AlertController,
     private toastCtrl: ToastController,
-    private positionShare: PositionShareService
+    private positionShare: PositionShareService,
+    private zone: NgZone
   ) {}
 
   ngOnInit() {
@@ -342,14 +381,35 @@ export class VehiclesPage implements OnInit, OnDestroy {
             // on accorde le bénéfice du direct.
             v.isOnline = pos.recordedAt ? isFresh(pos.recordedAt) : true;
             v.lastRecordedAt = pos.recordedAt || v.lastRecordedAt;
+            this.freshnessAt.set(String(v.id), pos.recordedAt || new Date().toISOString());
             touched = true;
           }
         }
-        // updateCounts() does several full-fleet filter passes — run it once
-        // per batch instead of once per device frame.
-        if (touched) this.updateCounts();
+        // updateCounts() does a full-fleet pass — run it once per batch instead
+        // of once per device frame. Un filtre d'état actif est réappliqué : sinon
+        // un véhicule passé de « Au ralenti » à « En route » resterait listé sous
+        // la mauvaise puce, avec une pastille qui la contredit.
+        if (touched) {
+          this.updateCounts();
+          if (this.activeFilter !== 'all') this.filterVehicles();
+        }
       })
     );
+
+    // Un boîtier qui se tait n'envoie plus rien : l'état mis en cache dans `states` n'était
+    // recalculé qu'au lot SignalR suivant d'un AUTRE véhicule. Recalcul périodique pour qu'un
+    // véhicule muet depuis plus de 30 min passe au gris « Déconnecté » (même cadence que le
+    // repli de la carte). Désabonné avec les autres dans ngOnDestroy. L'horloge tourne HORS
+    // de la zone Angular (une minuterie permanente dans la zone empêche l'application d'être
+    // jamais « stable ») ; seul le recalcul y rentre, pour rafraîchir l'affichage.
+    this.zone.runOutsideAngular(() => {
+      this.subs.push(
+        interval(STATE_REFRESH_MS).subscribe(() => this.zone.run(() => {
+          this.updateCounts();
+          if (this.activeFilter !== 'all') this.filterVehicles();
+        }))
+      );
+    });
   }
 
   ngOnDestroy() {
@@ -361,6 +421,10 @@ export class VehiclesPage implements OnInit, OnDestroy {
     // Les véhicules rechargés n'ont pas encore de position : ne pas griser le partage
     // avant que les dernières positions REST soient revenues.
     this.positionsLoaded = false;
+    // Les véhicules rechargés repartent sans vitesse ni contact : garder leurs anciens
+    // horodatages les peindrait « À l'arrêt » (frais, contact inconnu) le temps que les
+    // positions reviennent. Sans horodatage, ils attendent en « Déconnecté ».
+    this.freshnessAt.clear();
     this.api.getVehicles().subscribe({
       next: (vehicles) => {
         // Backend returns the GPS device as a nested object:
@@ -404,6 +468,7 @@ export class VehiclesPage implements OnInit, OnDestroy {
                 // véhicule était pourtant compté parmi les connectés.
                 v.isOnline = isFresh(p.lastPosition.recordedAt);
                 v.lastRecordedAt = p.lastPosition.recordedAt || v.lastRecordedAt;
+                if (p.lastPosition.recordedAt) this.freshnessAt.set(String(v.id), p.lastPosition.recordedAt);
                 this.rememberAddress(v, p.lastPosition);
               }
             });
@@ -420,10 +485,21 @@ export class VehiclesPage implements OnInit, OnDestroy {
     });
   }
 
-  updateCounts() {
-    this.movingCount = this.vehicles.filter(v => v.isOnline && (v.currentSpeed || 0) > 3).length;
-    this.stoppedCount = this.vehicles.filter(v => v.isOnline && (v.currentSpeed || 0) <= 3).length;
-    this.offlineCount = this.vehicles.filter(v => !v.isOnline).length;
+  /**
+   * Recalcule l'état de chaque véhicule (motionState : fraîcheur d'abord, puis vitesse, puis
+   * contact) et les compteurs des puces. L'ancienne version ne lisait que la vitesse : un
+   * véhicule arrêté moteur tournant et un véhicule garé contact coupé tombaient tous deux dans
+   * « À l'arrêt » en orange, alors que la carte les montrait orange et rouge.
+   */
+  updateCounts(nowMs: number = Date.now()) {
+    const states = new Map<string, VehicleMotionState>();
+    // Un véhicule sans boîtier n'a pas d'état : il n'entre que dans « Tous », comme au
+    // tableau de bord, qui ne compte que la flotte équipée.
+    for (const v of this.vehicles) {
+      if (this.isEquipped(v)) states.set(String(v.id), this.computeState(v, nowMs));
+    }
+    this.states = states;
+    this.counts = countByState(states.values());
   }
 
   filterVehicles() {
@@ -438,22 +514,15 @@ export class VehiclesPage implements OnInit, OnDestroy {
       );
     }
 
-    switch (this.activeFilter) {
-      case 'moving':
-        result = result.filter(v => v.isOnline && (v.currentSpeed || 0) > 3);
-        break;
-      case 'stopped':
-        result = result.filter(v => v.isOnline && (v.currentSpeed || 0) <= 3);
-        break;
-      case 'offline':
-        result = result.filter(v => !v.isOnline);
-        break;
+    if (this.activeFilter !== 'all') {
+      const wanted = this.activeFilter;
+      result = result.filter(v => this.stateOf(v) === wanted);
     }
 
     this.filteredVehicles = result;
   }
 
-  setFilter(filter: string) {
+  setFilter(filter: 'all' | VehicleMotionState) {
     this.activeFilter = filter;
     this.filterVehicles();
   }
@@ -615,17 +684,56 @@ export class VehiclesPage implements OnInit, OnDestroy {
     setTimeout(() => event.target.complete(), 1500);
   }
 
-  getStatusClass(v: Vehicle): string {
-    if (v.isOnline && (v.currentSpeed || 0) > 3) return 'moving';
-    if (v.isOnline) return 'stopped';
-    if (v.status === 'maintenance') return 'offline';
-    return 'available';
+  /**
+   * État affiché d'un véhicule — même règle que la carte (motionState). Un véhicule équipé
+   * qui n'a jamais transmis, ou muet depuis plus de 30 min, est « Déconnecté » ; un véhicule
+   * sans boîtier n'a pas d'état (« Sans boîtier », pastille neutre).
+   */
+  stateOf(v: Vehicle): VehicleRowState {
+    if (!this.isEquipped(v)) return 'no-device';
+    return this.states.get(String(v.id)) ?? this.computeState(v, Date.now());
   }
 
-  getStatusIcon(v: Vehicle): string {
-    if (v.isOnline && (v.currentSpeed || 0) > 3) return 'navigate';
-    if (v.isOnline) return 'stop-circle';
-    return 'cloud-offline';
+  /** Couleur, libellé et icône de l'état (vehicle-state.util, jamais recodés ici). */
+  styleOf(v: Vehicle): VehicleStateStyle | NoDeviceStyle {
+    const s = this.stateOf(v);
+    return s === 'no-device' ? NO_DEVICE_STYLE : stateStyle(s);
+  }
+
+  /** Fond de la pastille de la fiche : couleur pleine de l'état, transparent sans boîtier. */
+  pillBackground(v: Vehicle): string {
+    const s = this.styleOf(v);
+    return s.state === 'no-device' ? 'transparent' : s.color;
+  }
+
+  /** Texte de la pastille : foncé sur la couleur d'un état, couleur de l'application sans boîtier. */
+  pillText(v: Vehicle): string {
+    return this.stateOf(v) === 'no-device' ? NO_DEVICE_STYLE.color : this.textOnState;
+  }
+
+  /**
+   * La vitesse n'est affichée que si elle décrit le présent : sous « Déconnecté », c'est
+   * celle de la dernière trame (38 km/h il y a 11 jours) et elle contredit la pastille.
+   */
+  showsSpeed(v: Vehicle): boolean {
+    const s = this.stateOf(v);
+    return s !== 'offline' && s !== 'no-device' && v.currentSpeed != null;
+  }
+
+  /**
+   * Équipé = a un boîtier, ou a déjà transmis (boîtier posé après le chargement de la liste :
+   * ses trames arrivent par SignalR avant le prochain rechargement).
+   */
+  private isEquipped(v: Vehicle): boolean {
+    return !!v.gpsDeviceId || !!v.lastRecordedAt || this.freshnessAt.has(String(v.id));
+  }
+
+  private computeState(v: Vehicle, nowMs: number): VehicleMotionState {
+    return motionState({
+      speedKph: v.currentSpeed,
+      ignitionOn: v.ignitionOn,
+      recordedAt: this.freshnessAt.get(String(v.id)) ?? v.lastRecordedAt
+    }, nowMs);
   }
 
   trackById(_: number, v: Vehicle) {

@@ -4,8 +4,14 @@ import { Subscription, interval } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate, ConnectionState } from '../../core/services/signalr.service';
 import { PositionShareService, ShareChannel, hasKnownPosition } from '../../core/services/position-share.service';
-import { motionState } from '../../core/vehicle-state.util';
+import {
+  VEHICLE_STATE_ORDER, VehicleMotionState, VehicleStateStyle, STATE_TEXT_ON_COLOR,
+  motionState, stateMarkerHtml, stateStyle
+} from '../../core/vehicle-state.util';
 import * as L from 'leaflet';
+
+/** Taille des marqueurs de véhicule (bordure blanche comprise). */
+const MARKER_SIZE = 32;
 
 @Component({
   selector: 'app-monitoring',
@@ -44,6 +50,9 @@ import * as L from 'leaflet';
         <span *ngIf="lastUpdateAt" class="last-update">· {{ lastUpdateLabel }}</span>
       </div>
 
+      <!-- Légende des couleurs d'état (masquée quand la fiche d'un véhicule s'ouvre) -->
+      <app-vehicle-state-legend class="map-legend" *ngIf="!selectedVehicle"></app-vehicle-state-legend>
+
       <!-- Backdrop: tap outside to close -->
       <div class="sheet-backdrop" *ngIf="selectedVehicle" (click)="closeSheet()"></div>
 
@@ -52,22 +61,27 @@ import * as L from 'leaflet';
         <div class="sheet-handle" (click)="closeSheet()"></div>
         <div class="sheet-content">
           <div class="sheet-header">
-            <div class="sheet-avatar" [ngClass]="vehicleState(selectedVehicle)">
-              <ion-icon [name]="vehicleStateIcon(selectedVehicle)"></ion-icon>
+            <div class="sheet-avatar" [ngClass]="vehicleState(selectedVehicle)"
+                 [style.background]="stateOf(selectedVehicle).tint" [style.color]="stateOf(selectedVehicle).color">
+              <ion-icon [name]="vehicleStateIcon(selectedVehicle)" aria-hidden="true"></ion-icon>
             </div>
             <div class="sheet-title">
               <h3>{{ selectedVehicle.vehicleName }}</h3>
               <p>{{ selectedVehicle.plate || '—' }}</p>
             </div>
-            <span class="status-pill" [ngClass]="vehicleState(selectedVehicle)">{{ stateLabel(selectedVehicle) }}</span>
+            <span class="status-pill" [ngClass]="vehicleState(selectedVehicle)"
+                  [style.background]="stateOf(selectedVehicle).color" [style.color]="textOnState">{{ stateLabel(selectedVehicle) }}</span>
           </div>
           <div class="sheet-stats">
-            <div class="sheet-stat">
+            <div class="sheet-stat speed-stat">
               <ion-icon name="speedometer-outline" color="primary"></ion-icon>
-              <span>{{ selectedVehicle.speedKph | number:'1.0-0' }} km/h</span>
+              <!-- Sous « Déconnecté », la vitesse est celle de la dernière trame (parfois vieille de
+                   plusieurs jours) : l'afficher contredisait la pastille grise. -->
+              <span>{{ vehicleState(selectedVehicle) === 'offline' ? '—' : (selectedVehicle.speedKph | number:'1.0-0') + ' km/h' }}</span>
             </div>
             <div class="sheet-stat">
-              <ion-icon [name]="selectedVehicle.ignitionOn ? 'flash' : 'flash-off'" [color]="selectedVehicle.ignitionOn ? 'success' : 'medium'"></ion-icon>
+              <!-- Contact mis en couleur de l'application : le vert est réservé à « En route ». -->
+              <ion-icon [name]="selectedVehicle.ignitionOn ? 'flash' : 'flash-off'" [color]="selectedVehicle.ignitionOn ? 'primary' : 'medium'"></ion-icon>
               <span>{{ selectedVehicle.ignitionOn ? 'Contact ON' : 'Contact OFF' }}</span>
             </div>
             <div class="sheet-stat">
@@ -136,8 +150,11 @@ import * as L from 'leaflet';
       color: #fff;
       min-height: 34px;
     }
-    .conn-badge.connected { background: #10b981; }
-    .conn-badge.disconnected { background: #9ca3af; }
+    /* Connexion de l'APPLICATION, pas un état de véhicule : couleur de l'application et
+       gris foncé, pour ne pas se lire « en route » (vert) ou « déconnecté » (gris clair)
+       à côté des marqueurs — et un texte blanc enfin lisible (contraste >= 4,5:1). */
+    .conn-badge.connected { background: var(--ion-color-primary, #1a56db); }
+    .conn-badge.disconnected { background: #4b5563; }
     .conn-badge ion-icon { font-size: 14px; }
     .conn-badge .last-update { font-weight: 400; opacity: 0.85; font-size: 11px; }
     .conn-badge { cursor: pointer; }
@@ -162,9 +179,15 @@ import * as L from 'leaflet';
       width: 44px; height: 44px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
     }
-    .sheet-avatar.moving { background: rgba(16,185,129,0.15); color: #10b981; }
-    .sheet-avatar.stopped { background: rgba(156,163,175,0.15); color: #9ca3af; }
     .sheet-avatar ion-icon { font-size: 22px; }
+    /* En bas à gauche, sous les badges du haut : ne recouvre ni la barre d'outils ni la fiche. */
+    .map-legend {
+      position: absolute;
+      left: 12px;
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+      z-index: 1000;
+      max-width: calc(100% - 24px);
+    }
     .sheet-header h3 { margin: 0; font-size: 16px; font-weight: 600; }
     .sheet-header p { margin: 2px 0 0; font-size: 13px; color: var(--ion-color-medium); }
     .sheet-stats { display: flex; gap: 16px; }
@@ -181,17 +204,11 @@ import * as L from 'leaflet';
     .sheet-handle { cursor: pointer; }
     .sheet-title { flex: 1; min-width: 0; }
     .sheet-title h3 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .sheet-avatar.idling { background: rgba(245,158,11,0.15); color: #f59e0b; }
-    .sheet-avatar.parked { background: rgba(239,68,68,0.15); color: #ef4444; }
-    .sheet-avatar.offline { background: rgba(156,163,175,0.15); color: #9ca3af; }
+    /* Couleurs d'état liées depuis vehicle-state.util (aucune couleur d'état recodée ici). */
     .status-pill {
       font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 12px;
-      white-space: nowrap; color: #fff;
+      white-space: nowrap;
     }
-    .status-pill.moving { background: #10b981; }
-    .status-pill.idling { background: #f59e0b; }
-    .status-pill.parked { background: #ef4444; }
-    .status-pill.offline { background: #9ca3af; }
     .sheet-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
     .sheet-row {
       display: flex; align-items: center; gap: 8px;
@@ -209,6 +226,8 @@ export class MonitoringPage implements OnInit, OnDestroy {
   private pollSub: Subscription | null = null;
   private clockSub: Subscription | null = null;
   vehicleCount = 0;
+  /** Texte sur la couleur d'un état : le blanc y était illisible (contraste < 3:1). */
+  readonly textOnState = STATE_TEXT_ON_COLOR;
   selectedVehicle: PositionUpdate | null = null;
   connState: ConnectionState = 'Disconnected';
   lastUpdateAt: Date | null = null;
@@ -219,44 +238,22 @@ export class MonitoringPage implements OnInit, OnDestroy {
    *  fitBounds flotte entière de loadPositions() d'écraser le zoom cible. */
   private suppressAutoCenter = false;
 
-  // Custom icons — four states:
-  //   moving  (green)   = speed > 3 km/h (lenient; the server's 10 km/h
-  //                       threshold is too strict for city traffic)
-  //   idling  (orange)  = ignition ON but not moving (engine running,
-  //                       driver waiting / stopped at traffic light)
-  //   parked  (red)     = ignition OFF but still transmitting recently
-  //                       (<30 min) — vehicle parked with engine off
-  //   offline (gray)    = no recent data, device offline / out of coverage
-  private movingIcon = L.divIcon({
-    className: 'vehicle-marker moving-marker',
-    html: '<div style="background:#10b981;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
-  });
-
-  private idlingIcon = L.divIcon({
-    className: 'vehicle-marker idling-marker',
-    html: '<div style="background:#f59e0b;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><svg width="14" height="14" viewBox="0 0 24 24" fill="white"><circle cx="12" cy="12" r="4"/></svg></div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
-  });
-
-  // Red: ignition OFF but the device is still transmitting recently —
-  // i.e. the vehicle is parked with the engine off (online but stopped).
-  private parkedIcon = L.divIcon({
-    className: 'vehicle-marker parked-marker',
-    html: '<div style="background:#ef4444;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
-  });
-
-  // Gray: no recent data — device is offline / out of coverage.
-  private stoppedIcon = L.divIcon({
-    className: 'vehicle-marker stopped-marker',
-    html: '<div style="background:#9ca3af;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);"><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M1 11.27L12.01 5 23 11.27v1.46L12.01 19 1 12.73zm2 .73l9 5.09 9-5.09-9-5.09z"/></svg></div>',
-    iconSize: [28, 28],
-    iconAnchor: [14, 14]
-  });
+  /**
+   * Un marqueur par état — vert en route, orange au ralenti, rouge à l'arrêt,
+   * gris déconnecté — fabriqué par vehicle-state.util : la légende, la liste
+   * des véhicules et le replay montrent ainsi exactement les mêmes pastilles.
+   * Chaque état a aussi sa FORME (flèche, pause, carré, nuage barré) pour qui
+   * distingue mal les couleurs.
+   */
+  private readonly stateIcons: Record<VehicleMotionState, L.DivIcon> = VEHICLE_STATE_ORDER.reduce((acc, state) => {
+    acc[state] = L.divIcon({
+      className: `vehicle-marker ${state}-marker`,
+      html: stateMarkerHtml(state, { size: MARKER_SIZE }),
+      iconSize: [MARKER_SIZE, MARKER_SIZE],
+      iconAnchor: [MARKER_SIZE / 2, MARKER_SIZE / 2]
+    });
+    return acc;
+  }, {} as Record<VehicleMotionState, L.DivIcon>);
 
   /**
    * Icône du marqueur — délégué à motionState, qui teste la FRAÎCHEUR AVANT la
@@ -265,13 +262,25 @@ export class MonitoringPage implements OnInit, OnDestroy {
    * donc affiché vert « en mouvement » avec sa vitesse fantôme, alors même que
    * la fiche indiquait « Dernière comm. : il y a 11 j ».
    */
-  private pickIcon(pos: PositionUpdate): L.DivIcon {
-    switch (motionState(pos)) {
-      case 'moving': return this.movingIcon;
-      case 'idling': return this.idlingIcon;
-      case 'parked': return this.parkedIcon;
-      default: return this.stoppedIcon;
-    }
+  private pickIcon(pos: PositionUpdate, nowMs: number = Date.now()): L.DivIcon {
+    return this.stateIcons[motionState(pos, nowMs)];
+  }
+
+  /**
+   * Repasse chaque marqueur à l'état de sa dernière trame À L'INSTANT PRÉSENT. L'icône
+   * n'était recalculée qu'à l'arrivée d'une trame de CE véhicule, et le repli REST de 30 s
+   * ne tourne que hors connexion : un boîtier qui se taisait en roulant restait vert
+   * « En route » indéfiniment, alors que la fiche (recalculée chaque seconde) affichait déjà
+   * « Déconnecté ». Les DivIcon étant partagés par état, on ne touche au DOM que si l'état
+   * a changé.
+   */
+  refreshMarkerStates(nowMs: number = Date.now()): void {
+    this.markers.forEach(marker => {
+      const pos: PositionUpdate | undefined = (marker as any)._posData;
+      if (!pos) return;
+      const icon = this.pickIcon(pos, nowMs);
+      if (marker.options.icon !== icon) marker.setIcon(icon);
+    });
   }
 
   constructor(
@@ -447,13 +456,18 @@ export class MonitoringPage implements OnInit, OnDestroy {
       });
     }
 
+    // Retour sur l'onglet après une absence : les marqueurs ont pu vieillir sans trame.
+    this.refreshMarkerStates();
+
     // Tick the "last update" label every 1 s while visible. detectChanges()
     // forces the DOM to reflect the new label even when Zone.js change
     // detection doesn't auto-fire in the Capacitor WebView.
+    // Même horloge pour les marqueurs : ils passent au gris à la même seconde que la fiche.
     if (!this.clockSub) {
       this.clockSub = interval(1000).subscribe(() => {
         this.zone.run(() => {
           this.refreshLastUpdateLabel();
+          this.refreshMarkerStates();
           this.tickUI();
         });
       });
@@ -604,27 +618,22 @@ export class MonitoringPage implements OnInit, OnDestroy {
   }
 
   /** État affiché (pastille du panneau) — même source que les marqueurs. */
-  vehicleState(pos: PositionUpdate | null): 'moving' | 'idling' | 'parked' | 'offline' {
+  vehicleState(pos: PositionUpdate | null): VehicleMotionState {
     if (!pos) return 'offline';
     return motionState(pos);
   }
 
+  /** Couleur, libellé et icône de l'état : jamais recodés ici (vehicle-state.util). */
+  stateOf(pos: PositionUpdate | null): VehicleStateStyle {
+    return stateStyle(this.vehicleState(pos));
+  }
+
   stateLabel(pos: PositionUpdate | null): string {
-    switch (this.vehicleState(pos)) {
-      case 'moving': return 'En mouvement';
-      case 'idling': return 'Au ralenti';
-      case 'parked': return 'Stationné';
-      default: return 'Hors ligne';
-    }
+    return this.stateOf(pos).label;
   }
 
   vehicleStateIcon(pos: PositionUpdate | null): string {
-    switch (this.vehicleState(pos)) {
-      case 'moving': return 'navigate';
-      case 'idling': return 'time';
-      case 'parked': return 'stop-circle';
-      default: return 'cloud-offline';
-    }
+    return this.stateOf(pos).icon;
   }
 
   /** Relative "last communication" label for the selected vehicle. */

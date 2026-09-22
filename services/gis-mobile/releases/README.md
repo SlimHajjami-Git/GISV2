@@ -6,10 +6,20 @@ App Bundles (AAB) signés prêts à être uploadés sur Google Play Console.
 
 | Fichier | Version | versionCode | Date | Signature |
 |---|---|---|---|---|
-| `calypso-v1.2.1-release.aab` | 1.2.1 | 15 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) |
+| `calypso-v1.2.2-release.aab` | 1.2.2 | 16 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) |
+| `calypso-v1.2.1-release.aab` | 1.2.1 | 15 | 2026-09-22 | `calypso` keystore — remplacé par la 1.2.2, jamais envoyé |
 | `calypso-v1.2.0-release.aab` | 1.2.0 | 14 | 2026-09-22 | `calypso` keystore (SHA-256 `C8:B1:B3:E7:…:3A:73:E0`) — remplacé par la 1.2.1, jamais envoyé |
 | `calypso-v1.1.0-release.aab` | 1.1.0 | 12 | 2026-07-23 | `calypso` keystore (SHA-1: `8D:93:06:90:97:39:7E:0D:37:D8:DB:77:C1:A6:89:E7:F3:FB:02:8D`) |
 | `calypso-v1.0.9-release.aab` | 1.0.9 | 11 | 2026-04-22 | `calypso` keystore (SHA-1: `8D:93:06:90:97:39:7E:0D:37:D8:DB:77:C1:A6:89:E7:F3:FB:02:8D`) |
+
+### Nouveautés v1.2.2 (versionCode 16)
+
+- **Un seul code couleur des véhicules sur tous les écrans** (carte, liste, tableau de
+  bord, replay, rapports) : vert = en route, orange = au ralenti (moteur tournant à
+  l'arrêt), rouge = à l'arrêt (contact coupé), gris = déconnecté (silence > 30 min).
+  Légende sur la carte, filtres par état dans Véhicules, carte « État de la flotte » sur
+  le tableau de bord ; un véhicule sans boîtier est « Sans boîtier » (neutre).
+- Contient tout le contenu des 1.2.1 et 1.2.0 ci-dessous.
 
 ### Nouveautés v1.2.1 (versionCode 15)
 

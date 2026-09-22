@@ -3,9 +3,12 @@ import { ActivatedRoute } from '@angular/router';
 import { ActionSheetController } from '@ionic/angular';
 import { ApiService } from '../../core/services/api.service';
 import { Vehicle } from '../../core/models/types';
+import {
+  FrameMotionState, STATE_TEXT_ON_COLOR, VehicleStateStyle, frameState, stateMarkerHtml, stateStyle
+} from '../../core/vehicle-state.util';
 import * as L from 'leaflet';
 
-interface PlaybackPoint {
+export interface PlaybackPoint {
   lat: number;
   lng: number;
   speed: number;
@@ -13,6 +16,75 @@ interface PlaybackPoint {
   ignition: boolean;
   time: Date;
   address?: string;
+}
+
+/**
+ * État d'un point du trajet — la règle de la carte (vehicle-state.util), sans le test
+ * de fraîcheur : un point d'hier n'est pas « déconnecté ». En route vert, ralenti orange,
+ * contact coupé rouge (l'ancien replay peignait la conduite en BLEU et le contact
+ * coupé en gris, qui veut dire « déconnecté » partout ailleurs).
+ */
+export function pointState(p: Pick<PlaybackPoint, 'speed' | 'ignition'>): FrameMotionState {
+  return frameState({ speedKph: p.speed, ignitionOn: p.ignition });
+}
+
+export interface PlaybackStop {
+  /** Premier point de l'arrêt. */
+  index: number;
+  durationMin: number;
+  /** Contact coupé à un moment de l'arrêt = à l'arrêt (rouge), sinon au ralenti (orange). */
+  state: 'idling' | 'parked';
+}
+
+/**
+ * Arrêts d'au moins `minMinutes` : suite de points qui ne roulent pas (<= 3 km/h, même
+ * seuil que le rapport d'activité de l'API). Un arrêt où le contact a été coupé est
+ * « À l'arrêt » — même règle que l'API (HasIgnitionOff) ; moteur tournant tout du long,
+ * c'est « Au ralenti ». L'ancien replay les marquait tous d'un point orange.
+ */
+export function findStops(points: PlaybackPoint[], minMinutes = 2): PlaybackStop[] {
+  const stops: PlaybackStop[] = [];
+  let stopStart: number | null = null;
+  for (let i = 0; i < points.length; i++) {
+    if (pointState(points[i]) !== 'moving') {
+      if (stopStart === null) stopStart = i;
+      continue;
+    }
+    if (stopStart !== null) {
+      const durMin = (points[i].time.getTime() - points[stopStart].time.getTime()) / 60000;
+      if (durMin >= minMinutes) {
+        const stopped = points.slice(stopStart, i);
+        stops.push({ index: stopStart, durationMin: durMin, state: stopped.some(p => !p.ignition) ? 'parked' : 'idling' });
+      }
+      stopStart = null;
+    }
+  }
+  return stops;
+}
+
+/**
+ * Marqueurs de DÉPART et d'ARRIVÉE : ni vert ni rouge. Une pastille verte au départ et
+ * rouge à l'arrivée se lisaient « en route » / « à l'arrêt » ; ils portent désormais un
+ * drapeau (bleu) et un drapeau à damier (sombre), couleurs qui ne sont celles d'aucun état.
+ */
+export const TRACK_START_COLOR = '#2563eb';
+export const TRACK_END_COLOR = '#111827';
+const TRACK_FLAG_STYLE = 'box-sizing:border-box;width:26px;height:26px;border-radius:50%;border:2px solid #fff;'
+  + 'box-shadow:0 1px 4px rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;';
+export const TRACK_START_HTML = `<div class="track-flag track-start" style="${TRACK_FLAG_STYLE}background:${TRACK_START_COLOR}">`
+  + '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">'
+  + '<rect x="4" y="2" width="2.5" height="20" rx="1" fill="#fff"/>'
+  + '<path d="M6.5 3h13l-3.5 5 3.5 5h-13z" fill="#fff"/></svg></div>';
+export const TRACK_END_HTML = `<div class="track-flag track-end" style="${TRACK_FLAG_STYLE}background:${TRACK_END_COLOR}">`
+  + '<svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">'
+  + '<rect x="3" y="2" width="2.5" height="20" rx="1" fill="#fff"/>'
+  + '<rect x="5.5" y="3" width="15" height="10" fill="#fff"/>'
+  + `<path d="M5.5 3h3.75v3.33H5.5zM13 3h3.75v3.33H13zM9.25 6.33H13v3.34H9.25zM16.75 6.33h3.75v3.34h-3.75zM5.5 9.67h3.75V13H5.5zM13 9.67h3.75V13H13z" fill="${TRACK_END_COLOR}"/>`
+  + '</svg></div>';
+
+/** Marqueur du véhicule rejoué : pastille de l'état du point, flèche orientée seulement en route. */
+export function playbackMarkerHtml(p: PlaybackPoint): string {
+  return stateMarkerHtml(pointState(p), { size: 28, rotateDeg: p.heading });
 }
 
 @Component({
@@ -94,13 +166,24 @@ interface PlaybackPoint {
             <ion-icon name="navigate-outline" color="tertiary"></ion-icon>
             <span class="info-val">{{ currentPoint?.heading || 0 | number:'1.0-0' }}°</span>
           </div>
-          <div class="info-item" [class.on]="currentPoint?.ignition" [class.off]="!currentPoint?.ignition">
-            <ion-icon [name]="currentPoint?.ignition ? 'flash' : 'flash-off'" 
-                      [color]="currentPoint?.ignition ? 'success' : 'danger'"></ion-icon>
-            <span class="info-val">{{ currentPoint?.ignition ? 'ON' : 'OFF' }}</span>
+          <!-- État du point courant, même pastille que la carte : couleur + icône + libellé. -->
+          <div class="info-item state-item" *ngIf="currentStyle as st" [attr.data-state]="st.state">
+            <span class="state-chip" [style.background]="st.color" [style.color]="textOnState">
+              <ion-icon [name]="st.icon" aria-hidden="true"></ion-icon>
+              {{ st.label }}
+            </span>
+          </div>
+          <!-- Le contact reste affiché À CÔTÉ de l'état : « En route » ne dit rien du contact
+               (véhicule remorqué ou poussé contact coupé). Couleur de l'application ou neutre,
+               comme sur la carte et la fiche véhicule : plus le vert/rouge d'autrefois, qui
+               contredisait le ralenti orange. -->
+          <div class="info-item contact-item" [attr.data-ignition]="currentPoint?.ignition ? 'on' : 'off'">
+            <ion-icon [name]="currentPoint?.ignition ? 'flash' : 'flash-off'"
+                      [color]="currentPoint?.ignition ? 'primary' : 'medium'" aria-hidden="true"></ion-icon>
+            <span class="info-val"><span class="sr-only">Contact </span>{{ currentPoint?.ignition ? 'ON' : 'OFF' }}</span>
           </div>
           <div class="info-item">
-            <ion-icon name="time-outline" color="warning"></ion-icon>
+            <ion-icon name="time-outline" color="medium"></ion-icon>
             <span class="info-val">{{ currentPoint?.time | date:'HH:mm:ss' }}</span>
           </div>
         </div>
@@ -192,13 +275,25 @@ interface PlaybackPoint {
       background: #fff; padding: 8px 12px;
       border-bottom: 1px solid rgba(0,0,0,0.06);
     }
-    .info-row { display: flex; justify-content: space-around; }
+    /* Cinq éléments (vitesse, cap, état, contact, heure) : retour à la ligne plutôt qu'un
+       débordement sur un écran de 360 px. */
+    .info-row { display: flex; flex-wrap: wrap; justify-content: space-around; gap: 4px 8px; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
     .info-item {
       display: flex; align-items: center; gap: 4px; font-size: 13px;
     }
     .info-item ion-icon { font-size: 16px; }
     .info-val { font-weight: 700; }
     .info-unit { font-size: 10px; color: var(--ion-color-medium); }
+    .state-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px; border-radius: 12px;
+      font-size: 11px; font-weight: 700; white-space: nowrap;
+    }
+    .state-chip ion-icon { font-size: 13px; }
     .stats-bar {
       display: flex; justify-content: space-around; padding: 8px;
       background: #fff; border-bottom: 1px solid rgba(0,0,0,0.06);
@@ -275,6 +370,15 @@ export class PlaybackPage implements OnInit, OnDestroy {
   get currentPoint(): PlaybackPoint | null {
     return this.points[this.currentIndex] || null;
   }
+
+  /** Couleur, libellé et icône de l'état du point courant (vehicle-state.util). */
+  get currentStyle(): VehicleStateStyle | null {
+    const p = this.currentPoint;
+    return p ? stateStyle(pointState(p)) : null;
+  }
+
+  /** Texte sur la couleur d'un état : lisible sur les quatre couleurs (contraste >= 4,5:1). */
+  readonly textOnState = STATE_TEXT_ON_COLOR;
 
   constructor(
     private api: ApiService,
@@ -482,48 +586,48 @@ export class PlaybackPage implements OnInit, OnDestroy {
 
     const latlngs: L.LatLngExpression[] = this.points.map(p => [p.lat, p.lng]);
 
-    // Full track (grey) — smoothFactor for mobile perf
+    // Trajet complet en bleu pâle (le gris est réservé à « Déconnecté ») — smoothFactor for mobile perf
     this.trackLine = L.polyline(latlngs, {
-      color: '#94a3b8',
+      color: '#93c5fd',
       weight: 3,
-      opacity: 0.6,
+      opacity: 0.8,
       smoothFactor: 1.5
     }).addTo(this.map);
 
-    // Progress line (colored)
+    // Progress line (bleu foncé : le chemin parcouru, pas un état)
     this.progressLine = L.polyline([], {
       color: '#1a56db',
       weight: 4,
       opacity: 0.9
     }).addTo(this.map);
 
-    // Start marker (green)
+    // Départ : drapeau bleu (et non plus une pastille verte, lue « en route »)
     const startIcon = L.divIcon({
       className: 'custom-marker',
-      html: '<div style="width:14px;height:14px;border-radius:50%;background:#10b981;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+      html: TRACK_START_HTML,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
     });
     this.startMarker = L.marker([this.points[0].lat, this.points[0].lng], { icon: startIcon })
       .bindTooltip('Départ ' + this.points[0].time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
       .addTo(this.map);
 
-    // End marker (red)
+    // Arrivée : drapeau à damier sombre (et non plus une pastille rouge, lue « à l'arrêt »)
     const endIcon = L.divIcon({
       className: 'custom-marker',
-      html: '<div style="width:14px;height:14px;border-radius:50%;background:#ef4444;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>',
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+      html: TRACK_END_HTML,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13]
     });
     const lastPt = this.points[this.points.length - 1];
     this.endMarker = L.marker([lastPt.lat, lastPt.lng], { icon: endIcon })
       .bindTooltip('Arrivée ' + lastPt.time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }))
       .addTo(this.map);
 
-    // Stop markers (yellow dots where ignition off for >2 min)
+    // Arrêts de plus de 2 min : rouge contact coupé, orange au ralenti
     this.detectStops();
 
-    // Vehicle marker (blue arrow)
+    // Vehicle marker (pastille de l'état du point)
     this.createVehicleMarker();
 
     // Fit bounds
@@ -533,31 +637,17 @@ export class PlaybackPage implements OnInit, OnDestroy {
   private detectStops() {
     if (!this.stopMarkers || this.points.length < 3) return;
 
-    const stopIcon = L.divIcon({
-      className: 'custom-marker',
-      html: '<div style="width:10px;height:10px;border-radius:50%;background:#f59e0b;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,0.3)"></div>',
-      iconSize: [10, 10],
-      iconAnchor: [5, 5]
-    });
+    const icons = {
+      idling: L.divIcon({ className: 'custom-marker', html: stateMarkerHtml('idling', { size: 18, border: 2 }), iconSize: [18, 18], iconAnchor: [9, 9] }),
+      parked: L.divIcon({ className: 'custom-marker', html: stateMarkerHtml('parked', { size: 18, border: 2 }), iconSize: [18, 18], iconAnchor: [9, 9] })
+    };
 
-    let stopStart: number | null = null;
-
-    for (let i = 0; i < this.points.length; i++) {
-      const p = this.points[i];
-      if (p.speed < 2) {
-        if (stopStart === null) stopStart = i;
-      } else {
-        if (stopStart !== null) {
-          const durMin = (this.points[i].time.getTime() - this.points[stopStart].time.getTime()) / 60000;
-          if (durMin >= 2) {
-            const sp = this.points[stopStart];
-            L.marker([sp.lat, sp.lng], { icon: stopIcon })
-              .bindTooltip(`Arrêt ${Math.round(durMin)} min (${sp.time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })})`)
-              .addTo(this.stopMarkers!);
-          }
-          stopStart = null;
-        }
-      }
+    for (const stop of findStops(this.points)) {
+      const sp = this.points[stop.index];
+      const at = sp.time.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      L.marker([sp.lat, sp.lng], { icon: icons[stop.state] })
+        .bindTooltip(`${stateStyle(stop.state).label} · ${Math.round(stop.durationMin)} min (${at})`)
+        .addTo(this.stopMarkers);
     }
   }
 
@@ -567,16 +657,9 @@ export class PlaybackPage implements OnInit, OnDestroy {
     const p = this.points[0];
     const icon = L.divIcon({
       className: 'vehicle-marker',
-      html: `<div style="
-        width:24px;height:24px;border-radius:50%;
-        background:${p.ignition ? '#1a56db' : '#6b7280'};
-        border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);
-        display:flex;align-items:center;justify-content:center;
-        transform:rotate(${p.heading}deg);
-        transition:transform 0.3s ease;
-      "><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12]
+      html: playbackMarkerHtml(p),
+      iconSize: [28, 28],
+      iconAnchor: [14, 14]
     });
 
     this.vehicleMarker = L.marker([p.lat, p.lng], { icon, zIndexOffset: 1000 }).addTo(this.map);
@@ -592,15 +675,9 @@ export class PlaybackPage implements OnInit, OnDestroy {
       this.vehicleMarker.setLatLng([p.lat, p.lng]);
       const icon = L.divIcon({
         className: 'vehicle-marker',
-        html: `<div style="
-          width:24px;height:24px;border-radius:50%;
-          background:${p.ignition ? (p.speed > 3 ? '#1a56db' : '#f59e0b') : '#6b7280'};
-          border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);
-          display:flex;align-items:center;justify-content:center;
-          transform:rotate(${p.heading}deg);
-        "><svg width="12" height="12" viewBox="0 0 24 24" fill="white"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg></div>`,
-        iconSize: [24, 24],
-        iconAnchor: [12, 12]
+        html: playbackMarkerHtml(p),
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
       });
       this.vehicleMarker.setIcon(icon);
     }

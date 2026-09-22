@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { ApiService } from '../../core/services/api.service';
 import { Vehicle } from '../../core/models/types';
+import { VehicleMotionState, stateStyle } from '../../core/vehicle-state.util';
 import { ActionSheetController, LoadingController } from '@ionic/angular';
 
 @Component({
@@ -92,33 +93,33 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
               </div>
               <div class="kpi-item">
                 <span class="kpi-value">{{ formatDuration(r.totalDriveDurationMinutes || r.driveDurationMinutes) }}</span>
-                <span class="kpi-label">conduite</span>
+                <span class="kpi-label"><span class="kpi-dot" [style.background]="stateColor('moving')" aria-hidden="true"></span>conduite</span>
               </div>
               <div class="kpi-item">
                 <span class="kpi-value">{{ formatDuration(r.totalStopDurationMinutes || r.stopDurationMinutes) }}</span>
-                <span class="kpi-label">arrêt</span>
+                <span class="kpi-label"><span class="kpi-dot" [style.background]="stateColor('parked')" aria-hidden="true"></span>arrêt</span>
               </div>
               <div class="kpi-item" *ngIf="r.totalIdleDurationMinutes || r.idleDurationMinutes">
                 <span class="kpi-value">{{ formatDuration(r.totalIdleDurationMinutes || r.idleDurationMinutes) }}</span>
-                <span class="kpi-label">ralenti</span>
+                <span class="kpi-label"><span class="kpi-dot" [style.background]="stateColor('idling')" aria-hidden="true"></span>ralenti</span>
               </div>
             </div>
 
-            <!-- Timeline events -->
-            <div class="timeline" *ngIf="r.events?.length || r.segments?.length">
+            <!-- Timeline events : conduite vert, ralenti orange, arrêt rouge (vehicle-state.util) -->
+            <div class="timeline" *ngIf="timelineOf(r).length">
               <div class="timeline-title">
                 <ion-icon name="time-outline"></ion-icon>
-                Chronologie ({{ (r.events || r.segments)?.length }} événements)
+                Chronologie ({{ timelineOf(r).length }} événements)
               </div>
-              <div class="timeline-event" *ngFor="let e of (r.events || r.segments)?.slice(0, 8)">
-                <div class="event-dot" [ngClass]="getEventClass(e)"></div>
+              <div class="timeline-event" *ngFor="let e of timelineOf(r).slice(0, 8)" [attr.data-kind]="getEventClass(e)">
+                <div class="event-dot" [ngClass]="getEventClass(e)" [style.background]="eventColor(e)"></div>
                 <div class="event-content">
                   <span class="event-time">{{ formatEventTime(e.startTime || e.timestamp) }}</span>
                   <span class="event-label">{{ getEventLabel(e) }}</span>
                 </div>
               </div>
-              <div class="timeline-more" *ngIf="(r.events || r.segments)?.length > 8">
-                +{{ (r.events || r.segments).length - 8 }} autres événements
+              <div class="timeline-more" *ngIf="timelineOf(r).length > 8">
+                +{{ timelineOf(r).length - 8 }} autres événements
               </div>
             </div>
           </ion-card-content>
@@ -289,11 +290,11 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
                 </div>
                 <div class="kpi-item">
                   <span class="kpi-value">{{ formatDuration(monthlyReport.utilization.totalDriveHours * 60) }}</span>
-                  <span class="kpi-label">conduite</span>
+                  <span class="kpi-label"><span class="kpi-dot" [style.background]="stateColor('moving')" aria-hidden="true"></span>conduite</span>
                 </div>
                 <div class="kpi-item">
                   <span class="kpi-value">{{ formatDuration(monthlyReport.utilization.totalIdleHours * 60) }}</span>
-                  <span class="kpi-label">ralenti</span>
+                  <span class="kpi-label"><span class="kpi-dot" [style.background]="stateColor('idling')" aria-hidden="true"></span>ralenti</span>
                 </div>
                 <div class="kpi-item">
                   <span class="kpi-value">{{ monthlyReport.utilization.averageTripsPerDay | number:'1.0-0' }}</span>
@@ -456,10 +457,17 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
       position: absolute; left: -5px;
       width: 8px; height: 8px; border-radius: 50%;
     }
-    .event-dot.drive { background: #10b981; }
-    .event-dot.stop { background: #f59e0b; }
-    .event-dot.idle { background: #9ca3af; }
-    .event-dot.default { background: #6b7280; }
+    /* Conduite / ralenti / arrêt : couleur liée depuis vehicle-state.util. Un autre
+       événement (contact ON/OFF…) n'est pas un état : anneau creux aux couleurs de
+       l'application, ni vert, ni orange, ni rouge, ni gris. */
+    .event-dot.default {
+      box-sizing: border-box; background: transparent;
+      border: 2px solid var(--ion-color-primary, #1a56db);
+    }
+    .kpi-dot {
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      margin-right: 4px; vertical-align: middle;
+    }
     .event-content { display: flex; gap: 8px; font-size: 12px; }
     .event-time { font-weight: 600; color: var(--ion-text-color); white-space: nowrap; }
     .event-label { color: var(--ion-color-medium); }
@@ -651,25 +659,59 @@ export class ReportsPage implements OnInit {
     return Math.max(2, (value / max) * 100);
   }
 
-  getEventClass(e: any): string {
-    const type = (e.type || e.eventType || '').toLowerCase();
-    if (type.includes('drive') || type.includes('moving')) return 'drive';
-    if (type.includes('stop')) return 'stop';
-    if (type.includes('idle')) return 'idle';
+  /**
+   * Événements de la chronologie. L'API renvoie `activities` (DailyActivityReportDto) ;
+   * l'écran ne lisait que `events` / `segments`, si bien que la chronologie ne
+   * s'affichait jamais. Les anciens noms restent lus en repli.
+   */
+  timelineOf(r: any): any[] {
+    const list = r?.activities || r?.events || r?.segments;
+    return Array.isArray(list) ? list : [];
+  }
+
+  /**
+   * Nature d'un événement, rangée sur les états de véhicule de la carte : conduite =
+   * « en route » (vert), ralenti = orange, arrêt = « à l'arrêt » (rouge). L'ancien code
+   * peignait l'arrêt en orange et le ralenti en gris (couleur de « déconnecté »).
+   * Le ralenti est testé AVANT l'arrêt : un type « idle_stop » est un ralenti.
+   *
+   * Un « stop » moteur tournant tout du long (hasIgnitionOff === false) est un ralenti :
+   * même règle que les arrêts du Replay, sinon la même attente de 20 min chez un client
+   * serait orange dans le Replay et rouge ici. ATTENTION : l'API ne sérialise pas encore
+   * ce champ (ActivitySegmentDto.HasIgnitionOff est [JsonIgnore]) ; tant qu'il est absent,
+   * tout arrêt reste rouge. En l'exposant, l'API devra aussi le renseigner sur les arrêts
+   * reconstitués entre deux trajets (aujourd'hui laissés à false), sinon ils passeraient
+   * à tort au ralenti.
+   */
+  getEventClass(e: any): 'moving' | 'idling' | 'parked' | 'default' {
+    const type = (e?.type || e?.eventType || '').toLowerCase();
+    if (type.includes('drive') || type.includes('moving')) return 'moving';
+    if (type.includes('idle')) return 'idling';
+    if (type.includes('stop')) return e?.hasIgnitionOff === false ? 'idling' : 'parked';
     return 'default';
+  }
+
+  /** Couleur de la pastille d'un événement ; null (anneau creux) s'il n'est pas un état. */
+  eventColor(e: any): string | null {
+    const kind = this.getEventClass(e);
+    return kind === 'default' ? null : stateStyle(kind).color;
+  }
+
+  stateColor(state: VehicleMotionState): string {
+    return stateStyle(state).color;
   }
 
   getEventLabel(e: any): string {
     const type = (e.type || e.eventType || '').toLowerCase();
+    const minutes = e.durationMinutes ?? (e.durationSeconds != null ? e.durationSeconds / 60 : null);
+    const dur = minutes ? ` — ${this.formatDuration(minutes)}` : '';
     if (type.includes('drive') || type.includes('moving')) {
       const dist = e.distanceKm ? ` — ${e.distanceKm.toFixed(1)} km` : '';
       return `Conduite${dist}`;
     }
-    if (type.includes('stop')) {
-      const dur = e.durationMinutes ? ` — ${this.formatDuration(e.durationMinutes)}` : '';
-      return `Arrêt${dur}`;
-    }
-    if (type.includes('idle')) return 'Ralenti';
+    if (type.includes('idle')) return `Ralenti${dur}`;
+    // Libellé aligné sur la couleur : un arrêt moteur tournant se lit « Ralenti ».
+    if (type.includes('stop')) return this.getEventClass(e) === 'idling' ? `Ralenti${dur}` : `Arrêt${dur}`;
     if (type.includes('ignition_on')) return 'Contact ON';
     if (type.includes('ignition_off')) return 'Contact OFF';
     return e.type || 'Événement';

@@ -1,8 +1,13 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
-import { Subscription } from 'rxjs';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
+import { Subscription, interval } from 'rxjs';
 import { ApiService } from '../../core/services/api.service';
 import { SignalRService, PositionUpdate } from '../../core/services/signalr.service';
-import { motionState } from '../../core/vehicle-state.util';
+import {
+  VehicleMotionState, VehicleStateStyle, countByState, motionState, stateStyle
+} from '../../core/vehicle-state.util';
+
+/** Ce qu'il faut d'une position pour classer un véhicule (motionState). */
+type StateInput = { speedKph?: number | null; ignitionOn?: boolean | null; recordedAt?: string | null };
 import { AuthService } from '../../core/services/auth.service';
 import { Router } from '@angular/router';
 
@@ -46,17 +51,21 @@ import { Router } from '@angular/router';
           <div class="stat-label">Véhicules</div>
         </div>
 
-        <div class="stat-card" (click)="goToTab('monitoring')">
-          <div class="stat-icon" style="background: rgba(16,185,129,0.15);">
-            <ion-icon name="navigate" style="color: #10b981;"></ion-icon>
+        <!-- Les tuiles qui ne sont PAS des états de véhicule évitent le vert, l'orange et le
+             gris (réservés à En route / Au ralenti / Déconnecté) : la distance passe en indigo,
+             la maintenance (autrefois orange, lue « au ralenti ») en violet. Seules les alertes
+             gardent le rouge d'usage, porté par leur triangle et leur libellé. -->
+        <div class="stat-card">
+          <div class="stat-icon" style="background: rgba(99,102,241,0.15);">
+            <ion-icon name="speedometer-outline" style="color: #6366f1;"></ion-icon>
           </div>
-          <div class="stat-value">{{ activeVehicles }}</div>
-          <div class="stat-label">En mouvement</div>
+          <div class="stat-value">{{ distanceToday | number:'1.0-0' }} <span class="stat-unit">km</span></div>
+          <div class="stat-label">Distance aujourd'hui</div>
         </div>
 
         <div class="stat-card">
-          <div class="stat-icon" style="background: rgba(245,158,11,0.15);">
-            <ion-icon name="build" style="color: #f59e0b;"></ion-icon>
+          <div class="stat-icon" style="background: rgba(139,92,246,0.15);">
+            <ion-icon name="build" style="color: #8b5cf6;"></ion-icon>
           </div>
           <div class="stat-value">{{ inMaintenance }}</div>
           <div class="stat-label">En maintenance</div>
@@ -71,25 +80,10 @@ import { Router } from '@angular/router';
         </div>
       </div>
 
-      <!-- Distance today -->
-      <ion-card class="info-card">
+      <!-- État de la flotte : les quatre états, aux couleurs et libellés de la carte -->
+      <ion-card class="info-card fleet-card" (click)="goToTab('monitoring')">
         <ion-card-content>
-          <div class="info-row">
-            <div class="info-item">
-              <ion-icon name="speedometer-outline" color="primary"></ion-icon>
-              <div>
-                <span class="info-value">{{ distanceToday | number:'1.0-0' }} km</span>
-                <span class="info-label">Distance aujourd'hui</span>
-              </div>
-            </div>
-            <div class="info-item">
-              <ion-icon name="time-outline" color="tertiary"></ion-icon>
-              <div>
-                <span class="info-value">{{ stoppedVehicles }}</span>
-                <span class="info-label">À l'arrêt</span>
-              </div>
-            </div>
-          </div>
+          <app-fleet-state-summary [counts]="stateCounts"></app-fleet-state-summary>
         </ion-card-content>
       </ion-card>
 
@@ -104,15 +98,18 @@ import { Router } from '@angular/router';
 
       <ion-list *ngIf="recentPositions.length > 0">
         <ion-item *ngFor="let pos of recentPositions; trackBy: trackByVehicleId" detail (click)="goToVehicle(pos.vehicleId)">
-          <div class="vehicle-avatar" slot="start" [class.moving]="pos.isMoving" [class.stopped]="!pos.isMoving">
-            <ion-icon [name]="pos.isMoving ? 'navigate' : 'stop-circle'"></ion-icon>
+          <div class="vehicle-avatar" slot="start" [ngClass]="stateOf(pos)"
+               [style.background]="styleOf(pos).tint" [style.color]="styleOf(pos).color">
+            <ion-icon [name]="styleOf(pos).icon" aria-hidden="true"></ion-icon>
           </div>
           <ion-label>
             <h2>{{ pos.vehicleName }}</h2>
-            <p>{{ pos.plate }} &middot; {{ pos.speedKph | number:'1.0-0' }} km/h</p>
+            <!-- Pas de vitesse sous « Déconnecté » : celle de la dernière trame contredirait la pastille. -->
+            <p><span class="state-label">{{ styleOf(pos).label }}</span> &middot; {{ pos.plate }}<span class="recent-speed" *ngIf="stateOf(pos) !== 'offline'"> &middot; {{ pos.speedKph | number:'1.0-0' }} km/h</span></p>
           </ion-label>
           <ion-note slot="end" color="medium">
-            <ion-icon [name]="pos.ignitionOn ? 'flash' : 'flash-off'" [color]="pos.ignitionOn ? 'success' : 'medium'"></ion-icon>
+            <!-- Contact mis en couleur de l'application : le vert est réservé à « En route ». -->
+            <ion-icon [name]="pos.ignitionOn ? 'flash' : 'flash-off'" [color]="pos.ignitionOn ? 'primary' : 'medium'"></ion-icon>
           </ion-note>
         </ion-item>
       </ion-list>
@@ -144,8 +141,11 @@ import { Router } from '@angular/router';
       font-size: 12px;
       font-weight: 500;
     }
-    .connection-badge.connected { background: rgba(16,185,129,0.3); }
-    .connection-badge.disconnected { background: rgba(239,68,68,0.3); }
+    /* Connexion de l'APPLICATION, pas un état de véhicule : ni le vert « En route » ni le
+       rouge « À l'arrêt » (juste au-dessus de « État de la flotte »), mêmes teintes neutres
+       que le badge de la carte. Texte blanc lisible sur les deux (>= 4,5:1). */
+    .connection-badge.connected { background: rgba(255,255,255,0.2); }
+    .connection-badge.disconnected { background: #4b5563; }
     .stats-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -168,14 +168,10 @@ import { Router } from '@angular/router';
     .stat-icon ion-icon { font-size: 20px; }
     .stat-value { font-size: 24px; font-weight: 700; color: var(--ion-text-color); }
     .stat-label { font-size: 12px; color: var(--ion-color-medium); margin-top: 2px; }
+    .stat-unit { font-size: 13px; font-weight: 600; color: var(--ion-color-medium); }
     .info-card { margin: 0 16px; border-radius: 16px; }
-    .info-row { display: flex; gap: 20px; }
-    .info-item {
-      display: flex; align-items: center; gap: 10px; flex: 1;
-    }
-    .info-item ion-icon { font-size: 24px; }
-    .info-value { display: block; font-weight: 600; font-size: 16px; }
-    .info-label { display: block; font-size: 11px; color: var(--ion-color-medium); }
+    .fleet-card { cursor: pointer; }
+    .state-label { font-weight: 600; color: var(--ion-text-color); }
     .section-header {
       display: flex; justify-content: space-between; align-items: center;
       padding: 16px 16px 4px;
@@ -185,8 +181,6 @@ import { Router } from '@angular/router';
       width: 36px; height: 36px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
     }
-    .vehicle-avatar.moving { background: rgba(16,185,129,0.15); color: #10b981; }
-    .vehicle-avatar.stopped { background: rgba(156,163,175,0.15); color: #9ca3af; }
     .vehicle-avatar ion-icon { font-size: 18px; }
     .empty-state {
       text-align: center; padding: 40px 20px; color: var(--ion-color-medium);
@@ -202,20 +196,29 @@ export class DashboardPage implements OnInit, OnDestroy {
   loading = true;
 
   totalVehicles = 0;
-  activeVehicles = 0;
   inMaintenance = 0;
   alertCount = 0;
   distanceToday = 0;
-  stoppedVehicles = 0;
+
+  /**
+   * Compteurs par état sur TOUTE la flotte équipée d'un boîtier. Avant, « En mouvement »
+   * affichait le nombre de véhicules EN LIGNE renvoyé par l'API (un véhicule garé mais
+   * connecté y comptait), puis était recalculé sur les 10 lignes de « Activité récente »
+   * seulement ; « À l'arrêt » mélangeait ralenti, contact coupé et déconnectés.
+   */
+  stateCounts: Record<VehicleMotionState, number> = countByState([]);
 
   recentPositions: PositionUpdate[] = [];
+  /** Dernière position connue de chaque véhicule équipé (REST puis SignalR). */
+  private fleet = new Map<number, StateInput>();
   private subs: Subscription[] = [];
 
   constructor(
     private api: ApiService,
     private signalr: SignalRService,
     private authService: AuthService,
-    private router: Router
+    private router: Router,
+    private zone: NgZone
   ) {}
 
   ngOnInit() {
@@ -234,6 +237,7 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.subs.push(
       this.signalr.positionBatch$.subscribe(batch => {
         for (const pos of batch) {
+          this.fleet.set(pos.vehicleId, pos);
           const idx = this.recentPositions.findIndex(p => p.vehicleId === pos.vehicleId);
           if (idx >= 0) {
             this.recentPositions[idx] = pos;
@@ -246,8 +250,7 @@ export class DashboardPage implements OnInit, OnDestroy {
         // motionState teste la fraîcheur AVANT la vitesse : sans cela, un boîtier
         // muet dont la dernière trame portait 8 km/h comptait « en mouvement »
         // pour toujours et gonflait ce compteur.
-        this.activeVehicles = this.recentPositions.filter(p => motionState(p) === 'moving').length;
-        this.stoppedVehicles = this.recentPositions.filter(p => motionState(p) !== 'moving').length;
+        this.recount();
       })
     );
 
@@ -256,6 +259,14 @@ export class DashboardPage implements OnInit, OnDestroy {
         this.alertCount++;
       })
     );
+
+    // Un boîtier qui se tait n'envoie plus de lot qui déclencherait le recomptage : sans
+    // horloge, il restait compté « En route » tant qu'aucun autre véhicule ne transmettait.
+    // Horloge hors de la zone Angular (sinon l'application n'est jamais « stable ») ; seul
+    // le recomptage y rentre, pour rafraîchir l'affichage.
+    this.zone.runOutsideAngular(() => {
+      this.subs.push(interval(30000).subscribe(() => this.zone.run(() => this.recount())));
+    });
 
     this.loadData();
     // SignalR is already started by AppComponent on the authenticated user —
@@ -272,11 +283,9 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.api.getDashboardStats().subscribe({
       next: (data: any) => {
         this.totalVehicles = data.vehicles?.total || 0;
-        this.activeVehicles = data.vehicles?.online || 0;
         this.inMaintenance = data.maintenance?.upcoming || 0;
         this.alertCount = data.alerts?.unresolved || 0;
         this.distanceToday = data.trips?.distanceToday || 0;
-        this.stoppedVehicles = (data.vehicles?.withGps || 0) - (data.vehicles?.online || 0);
         this.loading = false;
       },
       error: () => {
@@ -287,6 +296,17 @@ export class DashboardPage implements OnInit, OnDestroy {
     this.api.getLastPositions().subscribe({
       next: (positions) => {
         const list = Array.isArray(positions) ? positions : [];
+        // Toute la flotte équipée compte, y compris un boîtier qui n'a jamais
+        // transmis (sans position = « Déconnecté »).
+        this.fleet.clear();
+        for (const p of list) {
+          if (p?.vehicleId == null) continue;
+          const lp = p.lastPosition;
+          this.fleet.set(p.vehicleId, lp
+            ? { speedKph: lp.speedKph, ignitionOn: lp.ignitionOn, recordedAt: lp.recordedAt }
+            : { recordedAt: null });
+        }
+        this.recount();
         this.recentPositions = list
           .filter((p: any) => p.lastPosition)
           .slice(0, 10)
@@ -319,6 +339,20 @@ export class DashboardPage implements OnInit, OnDestroy {
   async onRefresh(event: any) {
     this.loadData();
     setTimeout(() => event.target.complete(), 1500);
+  }
+
+  /** Recompte les quatre états sur la flotte connue (même règle que la carte). */
+  recount(nowMs: number = Date.now()) {
+    this.stateCounts = countByState(Array.from(this.fleet.values(), p => motionState(p, nowMs)));
+  }
+
+  stateOf(pos: PositionUpdate): VehicleMotionState {
+    return motionState(pos);
+  }
+
+  /** Couleur, libellé et icône de l'état (vehicle-state.util, jamais recodés ici). */
+  styleOf(pos: PositionUpdate): VehicleStateStyle {
+    return stateStyle(this.stateOf(pos));
   }
 
   goToProfile() {
