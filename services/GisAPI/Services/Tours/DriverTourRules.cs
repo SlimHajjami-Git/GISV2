@@ -107,14 +107,15 @@ public static class DriverTourRules
 
     /// <summary>
     /// Borne basse de l'heure d'un « Je pars » qui DÉMARRE une tournée planifiée : le plus
-    /// ancien de son envoi (SentAt) et de son ouverture sur le téléphone (OpenedAt) — le
-    /// chauffeur ne peut pas avoir touché « Je pars » avant d'avoir reçu la tournée.
+    /// ancien de son PREMIER envoi (FirstSentAt), de son dernier envoi (SentAt) et de son
+    /// ouverture sur le téléphone (OpenedAt) — le chauffeur ne peut pas avoir touché
+    /// « Je pars » avant d'avoir reçu la tournée.
     ///
-    /// Depuis que le renvoi remet OpenedAt à null (ToursController.SendToDriver, relecture
-    /// du 21/09/2026 — sans cela l'écran ne voyait jamais la réouverture), OpenedAt n'est
-    /// plus antérieur au dernier envoi : après un renvoi, la borne est ce renvoi. Limite
-    /// connue : un « Je pars » touché hors ligne plus de 5 min AVANT un renvoi, et rejoué
-    /// après, est daté de sa réception.
+    /// FirstSentAt (relecture finale du 22/09/2026) : le renvoi remet OpenedAt à null (sans
+    /// cela l'écran ne voyait jamais la réouverture) et avance SentAt. Sans le premier envoi,
+    /// l'enchaînement que l'écran provoque — « Tournée non démarrée » puis « Renvoyer » —
+    /// redatait au rejeu un « Je pars » fait hors ligne avant le renvoi, et rejetait toute la
+    /// trace du téléphone jusque-là (seule source pour un véhicule sans boîtier).
     ///
     /// Relecture du 21/09/2026 (Wc18) : la borne était l'heure PRÉVUE. Un départ anticipé
     /// hors ligne (07:40 pour 08:00) rejoué à 08:30 était daté de 08:30 : estimations
@@ -123,8 +124,9 @@ public static class DriverTourRules
     /// </summary>
     public static DateTime DepartureReference(Tour tour)
     {
-        DateTime? reference = tour.SentAt;
-        if (tour.OpenedAt is DateTime ouverte && (reference == null || ouverte < reference)) reference = ouverte;
+        DateTime? reference = null;
+        foreach (var t in new[] { tour.FirstSentAt, tour.SentAt, tour.OpenedAt })
+            if (t is DateTime d && (reference == null || d < reference)) reference = d;
         return reference ?? tour.ScheduledStartTime;
     }
 

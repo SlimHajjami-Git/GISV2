@@ -179,6 +179,26 @@ public class SuiviDeuxSourcesTests
         DriverTourRules.DepartureReference(renvoyee).Should().Be(Now.AddMinutes(-120));
     }
 
+    [Fact]
+    public void Un_renvoi_ne_fait_pas_perdre_la_borne_du_premier_envoi()
+    {
+        // Relecture finale du 22/09 : envoyée à 06:50, ouverte à 07:00, « Je pars » hors ligne
+        // à 07:58, « Tournée non démarrée » puis RENVOI à 08:17 (SentAt avancé, OpenedAt remis
+        // à null), rejeu à 08:40. Sans le premier envoi, le départ était daté de 08:40.
+        var rejeu = Now;
+        var tour = new Tour
+        {
+            ScheduledStartTime = rejeu.AddMinutes(-40),
+            FirstSentAt = rejeu.AddMinutes(-110),
+            SentAt = rejeu.AddMinutes(-23),
+            OpenedAt = null
+        };
+
+        DriverTourRules.DepartureReference(tour).Should().Be(rejeu.AddMinutes(-110));
+        DriverTourRules.ReadDeclarationTime(rejeu.AddMinutes(-42), rejeu, rejeu, DriverTourRules.DepartureReference(tour)).DeclaredAt
+            .Should().Be(rejeu.AddMinutes(-42), "le « Je pars » de 07:58 garde son heure malgré le renvoi");
+    }
+
     [Theory]
     [InlineData(-4 * 60, -4 * 60)]   // 4 min de retard : corrigé
     [InlineData(-20, 0)]             // 20 s : le réseau, pas une horloge fausse

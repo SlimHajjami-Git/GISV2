@@ -420,6 +420,7 @@ public class ToursController : ControllerBase
             if (tour.SentAt.HasValue) ficheRetiree = tour.DriverId;
             tour.DriverId = request.DriverId;
             tour.SentAt = null;
+            tour.FirstSentAt = null;
             tour.SentByUserId = null;
             tour.OpenedAt = null;
         }
@@ -766,6 +767,8 @@ public class ToursController : ControllerBase
         var now = DateTime.UtcNow;
         var renvoi = tour.SentAt.HasValue;
         tour.SentAt = now;
+        // Le premier envoi reste la borne d'un « Je pars » rejoué hors ligne, renvoi ou non.
+        tour.FirstSentAt ??= now;
         tour.SentByUserId = _tenant.UserId;
         // Un renvoi repart de « Envoyée, pas encore ouverte » (relecture du 21/09/2026) :
         // /api/driver-app/tours/{id}/opened n'écrit et ne diffuse TourOpened que si OpenedAt

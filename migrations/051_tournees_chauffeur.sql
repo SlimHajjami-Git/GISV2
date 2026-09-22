@@ -10,6 +10,8 @@
 --   • tours."SentAt" / "SentByUserId" / "OpenedAt" : l'envoi (notification push au
 --     compte du chauffeur) et la première ouverture sur le téléphone ; le gestionnaire
 --     lit « Envoyée 06:50 · Ouverte 07:12 » et sait à qui il l'a envoyée.
+--     "FirstSentAt" garde le PREMIER envoi (un renvoi avance "SentAt" et remet "OpenedAt"
+--     à NULL) : c'est la borne basse d'un « Je pars » touché hors ligne puis rejoué.
 --     "SentByUserId" porte une clé étrangère vers users, ON DELETE SET NULL : sans elle,
 --     supprimer le compte de l'expéditeur laissait l'id pendu (UserDeletionHelper ne
 --     détache que les colonnes qu'il trouve au catalogue des clés étrangères), et la
@@ -47,6 +49,7 @@
 
 -- tours -------------------------------------------------------------------------
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "SentAt" timestamp without time zone;
+ALTER TABLE tours ADD COLUMN IF NOT EXISTS "FirstSentAt" timestamp without time zone;
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "SentByUserId" integer;
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "OpenedAt" timestamp without time zone;
 ALTER TABLE tours ADD COLUMN IF NOT EXISTS "TrackingSource" varchar(8);

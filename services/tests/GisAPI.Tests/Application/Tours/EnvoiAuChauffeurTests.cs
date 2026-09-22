@@ -213,6 +213,28 @@ public class EnvoiAuChauffeurTests
         ctx.ChangeTracker.Clear();
         var tour = await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10);
         (tour.DriverId, tour.SentAt, tour.SentByUserId).Should().Be((FicheSansCompte, (DateTime?)null, (int?)null));
+        tour.FirstSentAt.Should().BeNull("le nouveau chauffeur n'a encore rien reçu");
+    }
+
+    [Fact]
+    public async Task Un_renvoi_garde_l_heure_du_premier_envoi()
+    {
+        // Relecture finale du 22/09 : le premier envoi borne un « Je pars » rejoué hors ligne ;
+        // le renvoi (après « Tournée non démarrée ») ne doit pas l'avancer.
+        using var ctx = await ParcAsync();
+        var (c, _) = Controleur(ctx);
+        await c.SendToDriver(10);
+        ctx.ChangeTracker.Clear();
+        var premier = (await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10)).FirstSentAt;
+        premier.Should().NotBeNull();
+
+        await Task.Delay(20);
+        await c.SendToDriver(10);
+
+        ctx.ChangeTracker.Clear();
+        var tour = await ctx.Tours.AsNoTracking().SingleAsync(t => t.Id == 10);
+        tour.FirstSentAt.Should().Be(premier);
+        tour.SentAt.Should().BeAfter(premier!.Value);
     }
 
     // ── Relecture du 21/09/2026 (F10) : l'ancien chauffeur est prévenu ─────────

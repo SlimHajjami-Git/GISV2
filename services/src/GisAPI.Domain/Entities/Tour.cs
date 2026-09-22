@@ -30,6 +30,9 @@ public class Tour : TenantEntity
     // ── Envoi au chauffeur et suivi (migration 051) ──
     /// <summary>Dernier envoi au compte du chauffeur (push) ; remis à NULL si le chauffeur change.</summary>
     public DateTime? SentAt { get; set; }
+    /// <summary>PREMIER envoi à ce chauffeur (un renvoi ne le change pas) ; remis à NULL si le
+    /// chauffeur change. Borne basse d'un « Je pars » rejoué hors ligne.</summary>
+    public DateTime? FirstSentAt { get; set; }
     public int? SentByUserId { get; set; }
     /// <summary>Première ouverture de la fiche dans l'application mobile.</summary>
     public DateTime? OpenedAt { get; set; }
