@@ -119,6 +119,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Invoice scan quota
     public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
 
+    // Crédit IA mensuel : appels à l'IA hors scan (migration 052)
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+
     // Towing
     public DbSet<TowEvent> TowEvents => Set<TowEvent>();
 

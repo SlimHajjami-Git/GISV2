@@ -1,10 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Globalization;
 using System.Security.Claims;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Application.Features.Costs;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
@@ -103,8 +103,8 @@ public class CostsController : ControllerBase
     // SCAN DE FACTURE IA — deux actions qui ne relèvent PAS du module Dépenses
     //
     // Décision de Karim du 19/09/2026 : le scan est une fonction d'IA commandée par
-    // le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons depuis le 22/09/2026, voir
-    // InvoiceScanCredit ; 0 = désactivé), pas par l'abonnement aux Dépenses. Il est
+    // le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons depuis le 22/09/2026, commun à toute
+    // l'IA de la société, voir AiCredit ; 0 = désactivé), pas par l'abonnement aux Dépenses. Il est
     // ouvert à tout utilisateur AUTHENTIFIÉ de la société : c'est l'écran qui l'appelle
     // (Carburant, Entretien effectué, Nouvelle réparation, Échéances, Dépenses) qui reste
     // gardé par SON propre droit,
@@ -118,43 +118,19 @@ public class CostsController : ControllerBase
     // ════════════════════════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Crédit IA du MOIS CIVIL en cours, en jetons (22/09/2026 — avant : un nombre de
-    /// scans). Il se recharge le 1er de chaque mois (minuit UTC) ; <c>ResetsAt</c> est cette
-    /// prochaine recharge, que l'écran affiche (recette du 11/09/2026 : sans date, le client
-    /// croyait sa consommation cumulée sans fin).
-    ///
-    /// <para>Tout est compté PAR SOCIÉTÉ : le budget est lu sur la société de l'appelant et
-    /// la consommation ne somme que les scans journalisés sous cette même société. Société
-    /// introuvable = crédit nul (voir <see cref="InvoiceScanCredit.LoadAsync"/>).</para>
+    /// Crédit IA du mois de la société de l'appelant — alimente la barre « Crédit IA »
+    /// affichée à côté du bouton « Scanner une facture », sur les cinq écrans qui le portent.
+    /// Même objet que GET /api/ai-credit (AiCreditStatus, ventilation par fonction comprise) :
+    /// depuis le 22/09/2026 le crédit couvre TOUTE l'IA de la société, pas seulement le scan.
+    /// Il se recharge le 1er de chaque mois (minuit UTC) ; <c>resetsAt</c> est cette prochaine
+    /// recharge (recette du 11/09/2026 : sans date, le client croyait sa consommation cumulée
+    /// sans fin). Société introuvable = crédit nul (voir <see cref="AiCredit.LoadAsync"/>).
     /// </summary>
-    private Task<InvoiceScanCreditStatus> GetScanCreditAsync(int companyId, CancellationToken ct) =>
-        InvoiceScanCredit.LoadAsync(_context, companyId, DateTime.UtcNow, ct);
-
-    /// <summary>
-    /// Forme JSON du crédit, identique pour GET scan-quota, pour l'objet « quota » d'un scan
-    /// réussi et pour les refus 403/429. Noms écrits en camelCase ici plutôt que confiés à
-    /// la politique de sérialisation : c'est le contrat lu par la barre des cinq écrans.
-    /// </summary>
-    private static object CreditBody(InvoiceScanCreditStatus c) => new
-    {
-        enabled = c.Enabled,
-        budgetTokens = c.BudgetTokens,
-        usedTokens = c.UsedTokens,
-        remainingTokens = c.RemainingTokens,
-        percentUsed = c.PercentUsed,
-        scansThisMonth = c.ScansThisMonth,
-        estimatedScansLeft = c.EstimatedScansLeft,
-        resetsAt = c.ResetsAt
-    };
-
-    /// <summary>Crédit IA du mois de la société de l'appelant — alimente la barre « Crédit
-    /// IA » affichée à côté du bouton « Scanner une facture », sur les cinq écrans qui le
-    /// portent.</summary>
     [HttpGet("scan-quota")]
     public async Task<ActionResult> GetScanQuota(CancellationToken ct)
     {
-        var credit = await GetScanCreditAsync(GetCompanyId(), ct);
-        return Ok(CreditBody(credit));
+        var credit = await AiCredit.LoadAsync(_context, GetCompanyId(), DateTime.UtcNow, ct);
+        return Ok(credit);
     }
 
     /// <summary>
@@ -176,28 +152,14 @@ public class CostsController : ControllerBase
             return BadRequest(new { message = "Format non supporté. Envoyez une image (JPG/PNG) ou un PDF." });
 
         // Crédit IA mensuel de la société : c'est LE contrôle d'accès de la fonction, et il
-        // passe AVANT tout stockage de fichier comme avant tout appel payant à Groq.
+        // passe AVANT tout stockage de fichier comme avant tout appel payant à Groq. Refus
+        // levé par AiCredit (403 AI_CREDIT_DISABLED, 429 AI_CREDIT_EXHAUSTED, crédit joint),
+        // rendu par ExceptionHandlingMiddleware — le même pour toute l'IA de la société.
         // Seuls les scans réussis consomment du crédit. Le dernier scan peut dépasser le
         // budget de quelques milliers de jetons (on ne connaît son coût qu'après l'appel) :
-        // la barre plafonne alors à 100 % et le scan suivant est refusé.
+        // la barre plafonne alors à 100 % et l'appel suivant est refusé.
         var companyId = GetCompanyId();
-        var credit = await GetScanCreditAsync(companyId, ct);
-        if (!credit.Enabled)
-            return StatusCode(StatusCodes.Status403Forbidden, new
-            {
-                message = "Le scan de factures IA n'est pas activé pour votre société.",
-                quota = CreditBody(credit)
-            });
-        if (credit.RemainingTokens <= 0)
-            return StatusCode(StatusCodes.Status429TooManyRequests, new
-            {
-                // Date écrite en culture invariante : « / » dans un format .NET est le
-                // séparateur de la culture du serveur, pas forcément une barre oblique.
-                message = "Crédit IA du mois épuisé (100 %). Il se recharge le "
-                    + credit.ResetsAt.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture)
-                    + " ; votre administrateur peut l'augmenter.",
-                quota = CreditBody(credit)
-            });
+        await AiCredit.EnsureAvailableAsync(_context, companyId, ct);
 
         byte[] bytes;
         using (var ms = new MemoryStream())
@@ -217,25 +179,20 @@ public class CostsController : ControllerBase
         {
             var result = await _invoiceExtraction.ExtractAsync(bytes, file.ContentType ?? "", file.FileName, ct);
 
-            // Le scan consomme le crédit du mois : ses jetons réels sont journalisés, et
-            // c'est leur somme que lisent le contrôle ci-dessus, la barre et la fiche admin.
-            _context.InvoiceScanLogs.Add(new InvoiceScanLog
-            {
-                CompanyId = companyId,
-                UserId = GetUserId(),
-                TokensUsed = result.TokensUsed
-            });
-            await _context.SaveChangesAsync(ct);
+            // Le scan consomme le crédit du mois : ses jetons réels sont journalisés (dans
+            // invoice_scan_logs, comme avant) puis le crédit est RELU — la barre reçoit
+            // exactement ce que le prochain contrôle appliquera (appels simultanés compris).
+            var after = await AiCredit.RecordUsageAsync(
+                _context, companyId, GetUserId(), AiFeatures.InvoiceScan, result.TokensUsed, ct);
 
-            // Crédit RELU après l'écriture plutôt que recalculé à la main : la barre reçoit
-            // exactement ce que le prochain contrôle appliquera (scans simultanés compris).
-            var after = await GetScanCreditAsync(companyId, ct);
-
+            // « credit » : nom commun à toutes les réponses d'IA. « quota » : même objet, lu
+            // par la brique de scan d'avant le 22/09/2026 (onglet resté ouvert au déploiement).
             return Ok(new
             {
                 extraction = result.Extraction,
                 receiptUrl,
-                quota = CreditBody(after)
+                quota = after,
+                credit = after
             });
         }
         catch (InvalidOperationException ex)

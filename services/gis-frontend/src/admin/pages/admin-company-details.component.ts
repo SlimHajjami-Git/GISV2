@@ -9,7 +9,7 @@ import { CompanyResetResult } from '../services/admin.service';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
 import { aideSaisieCredit, creditDepuisFiche, parseScanCreditInput, saisieInitialeCredit, SCAN_CREDIT_DEFAULT, SCAN_CREDIT_MAX } from './scan-quota.helpers';
 import { CreditIaBarComponent } from '../../components/shared/credit-ia-bar.component';
-import { CreditIa, formatJetons, libelleRecharge } from '../../components/shared/credit-ia.helpers';
+import { CreditIa, formatJetons, libelleRecharge, LigneVentilation, ventilationCredit } from '../../components/shared/credit-ia.helpers';
 import { driverAccountsPreviewText, driverAccountsResultText, keptUsersText } from './company-reset.helpers';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
@@ -160,7 +160,7 @@ type CompanyRole = Role & { userCount?: number };
               </svg>
             </div>
             <div class="scan-quota-txt">
-              <h3>Crédit IA — scan de factures</h3>
+              <h3>Crédit IA — scans, assistant, rapports IA</h3>
               <div class="scan-credit-etat" *ngIf="scanCredit as c; else creditIndisponible">
                 <app-credit-ia-bar [credit]="c" [largeur]="160" libelle=""></app-credit-ia-bar>
                 <span *ngIf="c.enabled">{{ formatJetons(c.usedTokens) }} / {{ formatJetons(c.budgetTokens) }} jetons ce mois
@@ -170,10 +170,19 @@ type CompanyRole = Role & { userCount?: number };
                       title="Ancien réglage en nombre de scans, converti à 3 000 jetons par scan. Enregistrer le remplace.">ancien quota : {{ scanCreditLegacy }} scans</span>
               </div>
               <ng-template #creditIndisponible><p>Consommation du mois indisponible.</p></ng-template>
+              <!-- Ventilation du mois par fonction (22/09/2026 : le crédit couvre toute l'IA). -->
+              <ul class="credit-ventilation" *ngIf="ventilation.length > 0" aria-label="Consommation du mois par fonction">
+                <li *ngFor="let l of ventilation">
+                  <span class="credit-ventilation-libelle">{{ l.libelle }}</span>
+                  <strong>{{ formatJetons(l.jetons) }}</strong>
+                  <span class="credit-ventilation-part">{{ l.part }} %</span>
+                </li>
+              </ul>
+              <p class="credit-ventilation-vide" *ngIf="scanCredit?.byFeature && ventilation.length === 0">Aucune consommation d'IA ce mois-ci.</p>
             </div>
           </div>
           <div class="scan-quota-form">
-            <label class="scan-credit-label" for="scan-credit-input">Crédit IA mensuel (jetons)</label>
+            <label class="scan-credit-label" for="scan-credit-input">Crédit IA mensuel (jetons) — scans, assistant, rapports IA</label>
             <!-- type="text" et non "number" : sur un champ number le navigateur ne transmet pas
                  le texte tapé — « 150 000 » arrivait null (enregistré comme « défaut ») et
                  « 150.000 » comme 150 jetons. inputmode garde le pavé numérique sur mobile. -->
@@ -184,7 +193,7 @@ type CompanyRole = Role & { userCount?: number };
             </button>
           </div>
           <p class="scan-quota-hint scan-credit-equivalence">{{ aideSaisie }}</p>
-          <p class="scan-quota-hint">Vide = défaut plateforme ({{ formatJetons(SCAN_CREDIT_DEFAULT) }} jetons ≈ 20 scans) • 0 = désactiver • le crédit se recharge le 1er de chaque mois</p>
+          <p class="scan-quota-hint">Vide = défaut plateforme ({{ formatJetons(SCAN_CREDIT_DEFAULT) }} jetons ≈ 20 scans ou ≈ 24 réponses de l'assistant) • 0 = désactiver toute l'IA de la société • le crédit se recharge le 1er de chaque mois</p>
           <p class="scan-quota-msg" *ngIf="scanQuotaMsg">{{ scanQuotaMsg }}</p>
         </div>
 
@@ -2410,6 +2419,16 @@ type CompanyRole = Role & { userCount?: number };
     .scan-credit-etat > span:not(.scan-quota-default-tag) { opacity: .75; }
     .scan-credit-label { font-size: 12.5px; font-weight: 600; opacity: .8; white-space: nowrap; }
     .scan-credit-equivalence { opacity: .8; font-weight: 600; }
+    /* Ventilation du crédit IA du mois par fonction */
+    .credit-ventilation {
+      list-style: none; margin: 8px 0 0; padding: 0;
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px;
+      font-size: 12px;
+    }
+    .credit-ventilation li { display: flex; align-items: baseline; gap: 6px; }
+    .credit-ventilation-libelle { flex: 1 1 auto; opacity: .75; }
+    .credit-ventilation-part { min-width: 38px; text-align: right; opacity: .6; font-variant-numeric: tabular-nums; }
+    .credit-ventilation-vide { margin: 6px 0 0; font-size: 12px; opacity: .6; }
     .scan-quota-msg { flex-basis: 100%; margin: 0; font-size: 12px; font-weight: 600; color: #6d28d9; }
   `]
 })
@@ -2532,7 +2551,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
     });
   }
 
-  // ── Crédit IA mensuel du scan de factures (jetons, 22/09/2026) ─────────────
+  // ── Crédit IA mensuel de la société (jetons, 22/09/2026) — toute l'IA ─────────
   /** Crédit du mois (budget effectif, consommation, recharge) pour la barre ; null = inconnu. */
   scanCredit: CreditIa | null = null;
   /** Réglage enregistré en jetons (null = défaut plateforme ou ancien quota). */
@@ -2551,6 +2570,11 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   /** Sous le champ : « ≈ N scans par mois » pour la saisie en cours, ou le motif du refus. */
   get aideSaisie(): string {
     return aideSaisieCredit(this.scanQuotaInput);
+  }
+
+  /** Consommation du mois par fonction (scans, assistant, rapports IA…), plus grosse d'abord. */
+  get ventilation(): LigneVentilation[] {
+    return ventilationCredit(this.scanCredit);
   }
 
   loadScanQuota() {
@@ -2706,7 +2730,8 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
           invoiceScanUsedTokens: res?.usedTokens,
           invoiceScanPercentUsed: res?.percentUsed,
           invoiceScanUsedThisMonth: res?.scansThisMonth,
-          invoiceScanResetsAt: res?.resetsAt
+          invoiceScanResetsAt: res?.resetsAt,
+          aiCreditByFeature: res?.byFeature
         }) ?? this.scanCredit;
         this.scanQuotaMsg = 'Crédit IA enregistré.';
         this.cdr.detectChanges();

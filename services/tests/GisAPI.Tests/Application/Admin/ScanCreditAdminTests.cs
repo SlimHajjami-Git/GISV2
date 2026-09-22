@@ -34,7 +34,7 @@ public class ScanCreditAdminTests
         return ctx;
     }
 
-    private static Task<GisAPI.Application.Features.Costs.InvoiceScanCreditStatus> Regler(TestGisDbContext ctx, int? tokens) =>
+    private static Task<GisAPI.Application.Features.AiCredits.AiCreditStatus> Regler(TestGisDbContext ctx, int? tokens) =>
         new SetSocieteScanQuotaCommandHandler(ctx).Handle(new SetSocieteScanQuotaCommand(CompanyId, tokens), CancellationToken.None);
 
     // ── Commande de réglage ───────────────────────────────────────────────────
@@ -209,5 +209,40 @@ public class ScanCreditAdminTests
         dto.InvoiceScanBudgetTokens.Should().Be(60_000);
         dto.InvoiceScanUsedTokens.Should().Be(0);
         dto.InvoiceScanPercentUsed.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task La_fiche_ventile_le_mois_par_fonction_scans_assistant_et_rapports_compris()
+    {
+        // 22/09/2026 : le crédit couvre toute l'IA. La fiche montre d'où vient la consommation.
+        using var ctx = await SeedAsync(null, null, (Now, 3_000));
+        ctx.AiUsageLogs.AddRange(
+            new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = "assistant_chat", TokensUsed = 2_400, CreatedAt = Now },
+            new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = "fleet_report", TokensUsed = 0, CreatedAt = Now },
+            new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = "fleet_report", TokensUsed = 4_100, CreatedAt = MonthStart.AddDays(-2) });
+        await ctx.SaveChangesAsync();
+
+        var dto = await new GetSocieteByIdQueryHandler(ctx).Handle(new GetSocieteByIdQuery(CompanyId), CancellationToken.None);
+
+        dto.InvoiceScanUsedTokens.Should().Be(3_000 + 2_400 + 5_000, "rapport flotte muet = estimation 5 000 ; celui du mois dernier ne compte pas");
+        dto.AiCreditByFeature.Should().NotBeNull();
+        dto.AiCreditByFeature!["invoice_scan"].Should().Be(3_000);
+        dto.AiCreditByFeature["assistant_chat"].Should().Be(2_400);
+        dto.AiCreditByFeature["fleet_report"].Should().Be(5_000);
+        dto.AiCreditByFeature["consumption_explain"].Should().Be(0);
+        dto.AiCreditByFeature.Values.Sum().Should().Be(dto.InvoiceScanUsedTokens);
+    }
+
+    [Fact]
+    public async Task Le_reglage_rend_aussi_la_ventilation_du_mois()
+    {
+        using var ctx = await SeedAsync(null, null);
+        ctx.AiUsageLogs.Add(new AiUsageLog { CompanyId = CompanyId, Feature = "accident_narrative", TokensUsed = 1_800, CreatedAt = Now });
+        await ctx.SaveChangesAsync();
+
+        var credit = await Regler(ctx, 90_000);
+
+        credit.UsedTokens.Should().Be(1_800);
+        credit.ByFeature["accident_narrative"].Should().Be(1_800);
     }
 }

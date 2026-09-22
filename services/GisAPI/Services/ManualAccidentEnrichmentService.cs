@@ -190,8 +190,9 @@ public class ManualAccidentEnrichmentService : IManualAccidentEnricher
                 ev.LocationCommune, ev.LocationGovernorate, ev.LocationRoadType);
             var vehicleLabel = ev.VehicleLabel ?? $"Véhicule #{ev.VehicleId}";
 
+            // Société de l'accident : le récit consomme son crédit IA (jamais bloqué).
             var llm = await narrativeService.TryGenerateAsync(
-                context, candidate, vehicleLabel, location, ct);
+                context, candidate, vehicleLabel, location, ev.CompanyId, ct);
 
             if (llm != null)
             {

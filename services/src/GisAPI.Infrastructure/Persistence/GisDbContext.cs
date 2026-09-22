@@ -153,6 +153,9 @@ public class GisDbContext : DbContext, IGisDbContext
     // Invoice scan quota (one row per successful AI scan)
     public DbSet<InvoiceScanLog> InvoiceScanLogs => Set<InvoiceScanLog>();
 
+    // Crédit IA mensuel (migration 052) : un appel à l'IA réussi, hors scan de facture
+    public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -281,6 +284,26 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AlertEmail>().ToTable("alert_emails");
         modelBuilder.Entity<InvoiceScanLog>().ToTable("invoice_scan_logs");
         modelBuilder.Entity<InvoiceScanLog>().HasIndex(l => new { l.CompanyId, l.CreatedAt });
+
+        // Journal des appels à l'IA hors scan (migration 052) : table écrite à la main, en
+        // snake_case — noms de colonnes EXPLICITES, la convention EF aurait cherché
+        // « CompanyId » (42703 à la première lecture du crédit). Lue par AiCredit seulement,
+        // toujours avec company_id explicite. PAS de filtre de société, comme
+        // invoice_scan_logs lue dans la même somme : la fiche société de l'admin système doit
+        // voir la consommation de la société consultée, et le récit d'accident l'écrit depuis
+        // une tâche de fond, sans société courante.
+        modelBuilder.Entity<AiUsageLog>(b =>
+        {
+            b.ToTable("ai_usage_logs");
+            b.HasKey(l => l.Id);
+            b.Property(l => l.Id).HasColumnName("id");
+            b.Property(l => l.CompanyId).HasColumnName("company_id");
+            b.Property(l => l.UserId).HasColumnName("user_id");
+            b.Property(l => l.Feature).HasColumnName("feature").HasMaxLength(32).IsRequired();
+            b.Property(l => l.TokensUsed).HasColumnName("tokens_used");
+            b.Property(l => l.CreatedAt).HasColumnName("created_at");
+            b.HasIndex(l => new { l.CompanyId, l.CreatedAt }).HasDatabaseName("ix_ai_usage_logs_company_id_created_at");
+        });
 
         // UserDeviceToken — FCM push notification targeting (one row per (user, device))
         modelBuilder.Entity<UserDeviceToken>().ToTable("user_device_tokens");

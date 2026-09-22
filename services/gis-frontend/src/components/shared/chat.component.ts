@@ -4,6 +4,8 @@ import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { SignalRService } from '../../services/signalr.service';
+import { CreditIaBarComponent } from './credit-ia-bar.component';
+import { CreditIa, creditBloque, creditDepuisReponse, lireCreditIa, lireRefusCreditIa, messageCreditBloque } from './credit-ia.helpers';
 
 interface ChatUser {
   id: number;
@@ -47,7 +49,7 @@ interface AiMessage {
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CreditIaBarComponent],
   template: `
     <!-- Floating Chat Button -->
     <button class="chat-fab" (click)="toggleChat()" [class.has-unread]="totalUnread > 0">
@@ -114,6 +116,11 @@ interface AiMessage {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a4 4 0 0 1-8 0v-1H7a3 3 0 0 1-3-3v-1a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/></svg>
             Llama 3
           </div>
+        </div>
+        <!-- Crédit IA du mois (22/09/2026) : l'assistant consomme le même crédit que les
+             scans et les rapports IA de la société. -->
+        <div class="ai-credit-strip" *ngIf="aiCredit">
+          <app-credit-ia-bar [credit]="aiCredit"></app-credit-ia-bar>
         </div>
         <div class="ai-intro">
           <p>Selectionnez un vehicule pour demarrer un diagnostic intelligent.</p>
@@ -198,12 +205,16 @@ interface AiMessage {
               <span class="conv-user-status ai-status">{{ aiActiveVehicle.brand }} {{ aiActiveVehicle.model }} · {{ aiActiveVehicle.mileage | number }} km</span>
             </div>
           </div>
-          <button class="report-btn" (click)="generateReport()" [disabled]="aiReportLoading" title="Generer rapport diagnostic">
+          <button class="report-btn" (click)="generateReport()" [disabled]="aiReportLoading || aiCreditBloque"
+                  [title]="aiCreditBloque ? aiCreditRaison : 'Generer rapport diagnostic'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
           </button>
           <button class="clear-btn" (click)="clearAiHistory()" title="Effacer l'historique">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
           </button>
+        </div>
+        <div class="ai-credit-strip" *ngIf="aiCredit">
+          <app-credit-ia-bar [credit]="aiCredit"></app-credit-ia-bar>
         </div>
         <div class="messages-area" #aiMessagesArea>
           <!-- Welcome message -->
@@ -214,10 +225,10 @@ interface AiMessage {
             <p class="ai-welcome-title">Diagnostic IA - {{ aiActiveVehicle.name }}</p>
             <p class="ai-welcome-sub">Posez vos questions sur ce vehicule. J'ai acces a son historique complet.</p>
             <div class="ai-suggestions">
-              <button class="ai-suggestion" (click)="sendAiSuggestion('Fais un diagnostic complet de ce vehicule')">Diagnostic complet</button>
-              <button class="ai-suggestion" (click)="sendAiSuggestion('Quels sont les prochains entretiens a prevoir ?')">Entretiens a prevoir</button>
-              <button class="ai-suggestion" (click)="sendAiSuggestion('Analyse la consommation de carburant')">Consommation carburant</button>
-              <button class="ai-suggestion" (click)="sendAiSuggestion('Y a-t-il des problemes potentiels a anticiper ?')">Problemes potentiels</button>
+              <button class="ai-suggestion" [disabled]="aiCreditBloque" (click)="sendAiSuggestion('Fais un diagnostic complet de ce vehicule')">Diagnostic complet</button>
+              <button class="ai-suggestion" [disabled]="aiCreditBloque" (click)="sendAiSuggestion('Quels sont les prochains entretiens a prevoir ?')">Entretiens a prevoir</button>
+              <button class="ai-suggestion" [disabled]="aiCreditBloque" (click)="sendAiSuggestion('Analyse la consommation de carburant')">Consommation carburant</button>
+              <button class="ai-suggestion" [disabled]="aiCreditBloque" (click)="sendAiSuggestion('Y a-t-il des problemes potentiels a anticiper ?')">Problemes potentiels</button>
             </div>
           </div>
           <!-- AI Messages -->
@@ -240,9 +251,12 @@ interface AiMessage {
             <p>{{ aiError }}</p>
           </div>
         </div>
+        <!-- Crédit épuisé ou IA coupée : envoi grisé, et on dit pourquoi et jusqu'à quand. -->
+        <div class="ai-credit-blocked" *ngIf="aiCreditBloque">{{ aiCreditRaison }}</div>
         <div class="message-input">
-          <input type="text" placeholder="Posez une question sur ce vehicule..." [(ngModel)]="aiNewMessage" (keydown.enter)="sendAiMessage()" [disabled]="aiLoading">
-          <button class="send-btn ai-send" (click)="sendAiMessage()" [disabled]="!aiNewMessage.trim() || aiLoading">
+          <input type="text" placeholder="Posez une question sur ce vehicule..." [(ngModel)]="aiNewMessage" (keydown.enter)="sendAiMessage()" [disabled]="aiLoading || aiCreditBloque">
+          <button class="send-btn ai-send" (click)="sendAiMessage()" [disabled]="!aiNewMessage.trim() || aiLoading || aiCreditBloque"
+                  [title]="aiCreditBloque ? aiCreditRaison : 'Envoyer'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -465,6 +479,15 @@ interface AiMessage {
     .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
     @keyframes typingBounce { 0%,80%,100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
 
+    /* Crédit IA (22/09/2026) */
+    .ai-credit-strip { padding: 6px 16px; background: #faf5ff; border-bottom: 1px solid #f3e8ff; }
+    .ai-credit-blocked {
+      padding: 8px 12px; font-size: 11px; line-height: 1.4; color: #b91c1c;
+      background: #fef2f2; border-top: 1px solid #fecaca;
+    }
+    .ai-suggestion:disabled { opacity: .5; cursor: not-allowed; }
+    .report-btn:disabled { opacity: .5; cursor: not-allowed; }
+
     /* AI Error */
     .ai-error { padding: 8px 12px; background: #fef2f2; border-radius: 8px; border: 1px solid #fecaca; align-self: center; }
     .ai-error p { margin: 0; font-size: 11px; color: #dc2626; }
@@ -544,6 +567,8 @@ export class ChatComponent implements OnInit, OnDestroy {
   aiLoadingVehicles = false;
   aiReportLoading = false;
   aiError = '';
+  /** Crédit IA du mois de la société (null tant qu'il n'est pas lu, ou API ancienne). */
+  aiCredit: CreditIa | null = null;
   healthScores: Record<number, { score: number; level: string }> = {};
 
   private currentUserId = 0;
@@ -697,11 +722,44 @@ export class ChatComponent implements OnInit, OnDestroy {
 
   // ═══════ AI CHAT METHODS ═══════
 
+  /**
+   * Crédit épuisé (tant que la date de recharge n'est pas passée) ou IA coupée pour la
+   * société : envoi, suggestions et rapport grisés — le serveur refuserait l'appel.
+   */
+  get aiCreditBloque(): boolean {
+    return !!this.aiCredit && creditBloque(this.aiCredit, Date.now());
+  }
+
+  /** Pourquoi c'est grisé, et jusqu'à quand. */
+  get aiCreditRaison(): string {
+    return messageCreditBloque(this.aiCredit, Date.now());
+  }
+
+  /** Crédit IA du mois (22/09/2026) : partagé par l'assistant, les scans et les rapports IA. */
+  private loadAiCredit() {
+    this.apiService.getAiCredit().subscribe({
+      next: (c) => {
+        this.ngZone.run(() => {
+          // lireCreditIa rend null sur une API ancienne : pas de barre, envoi actif, le serveur tranche.
+          this.aiCredit = lireCreditIa(c);
+          this.cdr.detectChanges();
+        });
+      },
+      error: () => { /* crédit indisponible : l'envoi reste possible, le serveur tranche */ }
+    });
+  }
+
+  /** Crédit joint à une réponse ou à un refus : la barre suit chaque appel. */
+  private majCreditDepuis(credit: CreditIa | null) {
+    if (credit) this.aiCredit = credit;
+  }
+
   switchToAi() {
     this.activeTab = 'ai';
     if (this.aiVehicles.length === 0) {
       this.loadAiVehicles();
     }
+    this.loadAiCredit();
   }
 
   private loadAiVehicles() {
@@ -754,6 +812,9 @@ export class ChatComponent implements OnInit, OnDestroy {
     this.aiMessages = [];
     this.aiError = '';
     this.cdr.detectChanges();
+    // Relu à chaque conversation : un autre utilisateur, un scan ou un rapport a pu consommer
+    // le crédit commun depuis l'ouverture de l'onglet.
+    this.loadAiCredit();
 
     this.apiService.getAiChatHistory(vehicle.id).subscribe({
       next: (msgs: any[]) => {
@@ -777,14 +838,13 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   sendAiMessage() {
-    if (!this.aiNewMessage.trim() || !this.aiActiveVehicle || this.aiLoading) return;
+    if (!this.aiNewMessage.trim() || !this.aiActiveVehicle || this.aiLoading || this.aiCreditBloque) return;
     const content = this.aiNewMessage.trim();
     this.aiNewMessage = '';
     this.aiError = '';
 
-    this.aiMessages.push({
-      id: 'user_' + Date.now(), role: 'user', content, timestamp: new Date()
-    });
+    const envoi: AiMessage = { id: 'user_' + Date.now(), role: 'user', content, timestamp: new Date() };
+    this.aiMessages.push(envoi);
     this.aiLoading = true;
     this.cdr.detectChanges();
     this.scrollAiToBottom();
@@ -797,6 +857,7 @@ export class ChatComponent implements OnInit, OnDestroy {
             role: 'assistant', content: res.message,
             timestamp: new Date(), tokensUsed: res.tokensUsed
           });
+          this.majCreditDepuis(creditDepuisReponse(res));
           this.aiLoading = false;
           this.cdr.detectChanges();
           this.scrollAiToBottom();
@@ -805,7 +866,17 @@ export class ChatComponent implements OnInit, OnDestroy {
       error: (err: any) => {
         this.ngZone.run(() => {
           this.aiLoading = false;
-          this.aiError = err.error?.message || 'Erreur lors de la communication avec l\'IA';
+          const refus = lireRefusCreditIa(err);
+          if (refus) {
+            // Refus de crédit : le serveur n'a PAS enregistré la question. On la retire du
+            // fil et on la rend au champ de saisie, avec le message du serveur (date de recharge).
+            this.majCreditDepuis(refus.credit);
+            this.aiMessages = this.aiMessages.filter(m => m !== envoi);
+            this.aiNewMessage = content;
+            this.aiError = refus.message;
+          } else {
+            this.aiError = err.error?.message || 'Erreur lors de la communication avec l\'IA';
+          }
           this.cdr.detectChanges();
           this.scrollAiToBottom();
         });
@@ -826,13 +897,14 @@ export class ChatComponent implements OnInit, OnDestroy {
   }
 
   generateReport() {
-    if (!this.aiActiveVehicle || this.aiReportLoading) return;
+    if (!this.aiActiveVehicle || this.aiReportLoading || this.aiCreditBloque) return;
     this.aiReportLoading = true;
     this.aiError = '';
-    this.aiMessages.push({
+    const demande: AiMessage = {
       id: 'user_report_' + Date.now(), role: 'user',
       content: 'Genere un rapport diagnostic complet pour ce vehicule.', timestamp: new Date()
-    });
+    };
+    this.aiMessages.push(demande);
     this.aiLoading = true;
     this.cdr.detectChanges();
     this.scrollAiToBottom();
@@ -844,6 +916,7 @@ export class ChatComponent implements OnInit, OnDestroy {
             id: 'report_' + Date.now(), role: 'assistant',
             content: res.report, timestamp: new Date(), tokensUsed: res.tokensUsed
           });
+          this.majCreditDepuis(creditDepuisReponse(res));
           this.aiLoading = false;
           this.aiReportLoading = false;
           this.cdr.detectChanges();
@@ -854,7 +927,13 @@ export class ChatComponent implements OnInit, OnDestroy {
         this.ngZone.run(() => {
           this.aiLoading = false;
           this.aiReportLoading = false;
-          this.aiError = err.error?.message || 'Erreur lors de la generation du rapport';
+          const refus = lireRefusCreditIa(err);
+          if (refus) {
+            this.majCreditDepuis(refus.credit);
+            this.aiMessages = this.aiMessages.filter(m => m !== demande);
+          }
+          // Message du SERVEUR : pour un refus de crédit, il donne la date de recharge.
+          this.aiError = refus?.message || err.error?.message || 'Erreur lors de la generation du rapport';
           this.cdr.detectChanges();
         });
       }

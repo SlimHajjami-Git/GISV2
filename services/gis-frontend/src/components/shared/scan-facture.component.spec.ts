@@ -11,7 +11,8 @@ import { AuthService } from '../../services/auth.service';
  * et le fichier stocké malgré une panne de l'IA.
  *
  * Depuis le 22/09/2026, la pastille « 12/20 ce mois » est remplacée par une barre
- * « Crédit IA » (jetons consommés sur le crédit gratuit du mois).
+ * « Crédit IA » (jetons consommés sur le crédit gratuit du mois) — crédit commun à toute
+ * l'IA de la société (scans, assistant, rapports IA).
  */
 describe('ScanFactureComponent — brique partagée', () => {
   /** Crédit tel que le renvoie GET /api/costs/scan-quota. */
@@ -215,7 +216,7 @@ describe('ScanFactureComponent — brique partagée', () => {
     const fixture = creer(true, credit({ enabled: false, budgetTokens: 0, usedTokens: 0, remainingTokens: 0, percentUsed: 100, estimatedScansLeft: 0 }));
 
     expect(bouton(fixture).disabled).toBe(true);
-    expect(bouton(fixture).title).toBe("Le scan de factures IA n'est pas activé pour votre société.");
+    expect(bouton(fixture).title).toBe("Les fonctions d'IA ne sont pas activées pour votre société.");
     expect(barre(fixture)).toBeNull();
     expect(fixture.nativeElement.textContent).toContain('IA désactivée');
   });
@@ -308,6 +309,57 @@ describe('ScanFactureComponent — brique partagée', () => {
     expect(echecs[0].receiptUrl).toBe('');
     expect(barre(fixture)!.getAttribute('aria-valuenow')).toBe('100');
     expect(bouton(fixture).disabled).toBe(true);
+  });
+
+  it('scan réussi, réponse au contrat commun à toute l’IA (« credit ») : la barre suit', async () => {
+    const fixture = creer();
+    const c = fixture.componentInstance;
+    const apres = credit({ usedTokens: 33000, remainingTokens: 27000, percentUsed: 55, estimatedScansLeft: 9, byFeature: { invoice_scan: 9000, assistant_chat: 24000 } });
+    api.scanInvoice.mockReturnValue(of({ extraction: reponse.extraction, receiptUrl: '/uploads/invoices/7/x.jpg', credit: apres }));
+
+    await c.onFichier({ target: { files: [pdf()], value: '' } });
+    fixture.detectChanges();
+
+    expect(c.quota!.usedTokens).toBe(33000);
+    expect(c.quota!.byFeature).toEqual({ invoice_scan: 9000, assistant_chat: 24000 });
+    expect(barre(fixture)!.getAttribute('aria-valuenow')).toBe('55');
+  });
+
+  it('refus 429 AI_CREDIT_EXHAUSTED (crédit consommé par l’assistant) : message du serveur, barre à 100 %, bouton grisé', async () => {
+    const fixture = creer();
+    const c = fixture.componentInstance;
+    const message = 'Crédit IA du mois épuisé (100 %). Il se recharge le 01/10/2026 ; votre administrateur peut l\'augmenter.';
+    api.scanInvoice.mockReturnValue(throwError(() => ({
+      status: 429,
+      error: { code: 'AI_CREDIT_EXHAUSTED', message, credit: credit({ usedTokens: 61000, remainingTokens: 0, percentUsed: 100, estimatedScansLeft: 0 }) }
+    })));
+    const echecs: any[] = [];
+    c.echec.subscribe(e => echecs.push(e));
+
+    await c.onFichier({ target: { files: [pdf()], value: '' } });
+    fixture.detectChanges();
+
+    expect(window.alert).toHaveBeenCalledWith(message);
+    expect(echecs[0].message).toBe(message);
+    expect(barre(fixture)!.getAttribute('aria-valuenow')).toBe('100');
+    expect(bouton(fixture).disabled).toBe(true);
+  });
+
+  it('refus 403 AI_CREDIT_DISABLED : message du serveur, bouton verrouillé', async () => {
+    const fixture = creer();
+    const c = fixture.componentInstance;
+    const message = "Les fonctions d'IA ne sont pas activées pour votre société.";
+    api.scanInvoice.mockReturnValue(throwError(() => ({
+      status: 403,
+      error: { code: 'AI_CREDIT_DISABLED', message, credit: credit({ enabled: false, budgetTokens: 0, usedTokens: 0, remainingTokens: 0, percentUsed: 100, estimatedScansLeft: 0 }) }
+    })));
+
+    await c.onFichier({ target: { files: [pdf()], value: '' } });
+    fixture.detectChanges();
+
+    expect(window.alert).toHaveBeenCalledWith(message);
+    expect(bouton(fixture).disabled).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('IA désactivée');
   });
 
   it('aucun fichier choisi : rien ne part au serveur', async () => {

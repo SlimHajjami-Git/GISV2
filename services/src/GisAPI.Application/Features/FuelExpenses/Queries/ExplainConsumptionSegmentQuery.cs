@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -32,7 +33,12 @@ public record ExplainConsumptionSegmentQuery(
     decimal? PeriodMinLPer100Km,
     decimal? PeriodMaxLPer100Km) : IRequest<ExplainSegmentResultDto>;
 
-public record ExplainSegmentResultDto(string Explanation, bool FromCache);
+/// <summary>
+/// Explication rendue à l'écran. <paramref name="Credit"/> : crédit IA du mois après l'appel
+/// (22/09/2026, le crédit couvre toute l'IA) ; null quand aucun appel payant n'a eu lieu
+/// (réponse en cache, véhicule sans boîtier).
+/// </summary>
+public record ExplainSegmentResultDto(string Explanation, bool FromCache, AiCreditStatus? Credit = null);
 
 public class ExplainConsumptionSegmentQueryHandler
     : IRequestHandler<ExplainConsumptionSegmentQuery, ExplainSegmentResultDto>
@@ -76,6 +82,14 @@ public class ExplainConsumptionSegmentQueryHandler
         var cacheKey = $"{vehicle.Id}|{request.StartTime.Ticks}|{request.EndTime.Ticks}|{request.TonnageT}|{request.LPer100Km}";
         if (Cache.TryGetValue(cacheKey, out var hit) && DateTime.UtcNow - hit.At < CacheTtl)
             return new ExplainSegmentResultDto(hit.Text, true);
+
+        // Crédit IA du mois (22/09/2026 : il couvre toute l'IA de la société) : contrôlé ici,
+        // APRÈS le cache — une explication déjà payée se relit gratuitement, même crédit
+        // épuisé — et AVANT la lecture des trames et l'appel payant. Le refus est une
+        // exception (AiCreditException), rendue 403/429 { code, message, credit } par
+        // ExceptionHandlingMiddleware : un résultat « Analyse indisponible » l'aurait noyé
+        // dans les pannes, sans dire au client pourquoi ni jusqu'à quand.
+        await AiCredit.EnsureAvailableAsync(_context, companyId, ct);
 
         // ── Profil de conduite de la tranche depuis les trames brutes ──
         var frames = await _context.GpsPositions
@@ -157,24 +171,31 @@ public class ExplainConsumptionSegmentQueryHandler
             "statistiques — sans jamais parler de capteur ou GPS défaillant. Maximum 130 mots. Pas de titre, pas de gras.";
 
         string explanation;
+        LlmResponse response;
         try
         {
-            var response = await _llm.ChatAsync(system, new List<LlmMessage> { new("user", sb.ToString()) }, 500, ct);
-            explanation = response.Content?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(explanation))
-                return new ExplainSegmentResultDto("Analyse IA momentanément indisponible.", false);
+            response = await _llm.ChatAsync(system, new List<LlmMessage> { new("user", sb.ToString()) }, 500, ct);
         }
         catch
         {
-            // Clé absente / quota / réseau : le rapport reste utilisable sans IA.
+            // Clé absente / quota / réseau : le rapport reste utilisable sans IA. Rien n'est
+            // décompté : seul un appel réussi consomme le crédit.
             return new ExplainSegmentResultDto("Analyse IA momentanément indisponible.", false);
         }
+
+        // L'appel a abouti : ses jetons sont dus, même si le texte rendu est vide.
+        var credit = await AiCredit.RecordUsageAsync(
+            _context, companyId, _tenantService.UserId, AiFeatures.ConsumptionExplain, response.TokensUsed, ct);
+
+        explanation = response.Content?.Trim() ?? "";
+        if (string.IsNullOrWhiteSpace(explanation))
+            return new ExplainSegmentResultDto("Analyse IA momentanément indisponible.", false, credit);
 
         // Purge opportuniste puis insertion.
         foreach (var kv in Cache.Where(kv => DateTime.UtcNow - kv.Value.At > CacheTtl).ToList())
             Cache.TryRemove(kv.Key, out _);
         Cache[cacheKey] = (DateTime.UtcNow, explanation);
 
-        return new ExplainSegmentResultDto(explanation, false);
+        return new ExplainSegmentResultDto(explanation, false, credit);
     }
 }

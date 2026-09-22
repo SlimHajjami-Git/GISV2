@@ -4,7 +4,8 @@ import { CreditIa } from './credit-ia.helpers';
 
 /**
  * Barre « Crédit IA » (22/09/2026) : rendu, couleurs par seuil, accessibilité et
- * infobulle — la même barre sert à côté du bouton de scan et sur la fiche admin.
+ * infobulle — la même barre sert à côté du bouton de scan, dans l'assistant IA, dans le
+ * rapport IA flotte et sur la fiche admin (crédit commun à toute l'IA de la société).
  */
 describe('CreditIaBarComponent', () => {
   const credit = (patch: Partial<CreditIa> = {}): CreditIa => ({
@@ -13,7 +14,7 @@ describe('CreditIaBarComponent', () => {
     ...patch
   });
 
-  function rendre(c: CreditIa, entrees: Partial<Pick<CreditIaBarComponent, 'largeur' | 'libelle' | 'infobulle'>> = {}) {
+  function rendre(c: CreditIa, entrees: Partial<Pick<CreditIaBarComponent, 'largeur' | 'libelle' | 'infobulle' | 'avecScans'>> = {}) {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ imports: [CreditIaBarComponent] });
     const fixture = TestBed.createComponent(CreditIaBarComponent);
@@ -78,9 +79,15 @@ describe('CreditIaBarComponent', () => {
     expect(piste(rendre(credit({ percentUsed: -5 }))).getAttribute('aria-valuenow')).toBe('0');
   });
 
-  it('infobulle standard, ou celle fournie par l’écran', () => {
+  it('infobulle standard GÉNÉRIQUE (le crédit couvre toute l’IA), ou celle fournie par l’écran', () => {
     const standard = rendre(credit());
     expect((standard.querySelector('.credit-ia') as HTMLElement).title).toBe(
+      '42 % du crédit IA gratuit du mois utilisé (25 200 / 60 000 jetons). Se recharge le 1er octobre.'
+    );
+
+    // À côté du bouton de scan seulement : « environ N scans restants ».
+    const scan = rendre(credit(), { avecScans: true });
+    expect((scan.querySelector('.credit-ia') as HTMLElement).title).toBe(
       '42 % du crédit IA gratuit du mois utilisé (25 200 / 60 000 jetons, environ 11 scans restants). Se recharge le 1er octobre.'
     );
 
@@ -93,6 +100,9 @@ describe('CreditIaBarComponent', () => {
     const el = rendre(credit({ usedTokens: 60000, remainingTokens: 0, percentUsed: 100, estimatedScansLeft: 0 }));
 
     expect((el.querySelector('.credit-ia') as HTMLElement).title)
+      .toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau utiliser l'IA.");
+    const scan = rendre(credit({ usedTokens: 60000, remainingTokens: 0, percentUsed: 100, estimatedScansLeft: 0 }), { avecScans: true });
+    expect((scan.querySelector('.credit-ia') as HTMLElement).title)
       .toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau scanner.");
   });
 

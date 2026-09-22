@@ -71,8 +71,8 @@ public class PermissionMiddleware
         // PAS du module Dépenses. Elles n'enregistrent rien — elles rendent les champs LUS sur
         // un document, que l'écran appelant (Carburant, Entretien effectué, Nouvelle réparation,
         // Échéances, Dépenses) remplit ensuite à sa façon, sous SON propre droit. Ce qui gouverne
-        // le scan est le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons, InvoiceScanCredit ;
-        // 0 = désactivé), contrôlé dans CostsController. Sans ces deux clés, le préfixe « /api/costs » ci-dessous
+        // le scan est le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons, AiCredit ; 0 = désactivé),
+        // contrôlé dans CostsController. Sans ces deux clés, le préfixe « /api/costs » ci-dessous
         // imposait CanCosts ET ModuleCosts : un client abonné à Carburant mais pas à Dépenses, ou
         // un utilisateur sans la case Dépenses, voyait le bouton sur ces quatre écrans et se
         // faisait refuser avec un message parlant d'un AUTRE module. Clés PLUS LONGUES que
@@ -198,6 +198,12 @@ public class PermissionMiddleware
         { "/api/vehicles", sub => sub.ModuleVehicles },
         { "/api/vehicleassignments", sub => sub.ModuleVehicles },
     };
+
+    // « /api/ai-credit » (crédit IA du mois, 22/09/2026 — AiCreditController) n'a AUCUNE clé,
+    // volontairement : aucun préfixe ne le couvre (« /api/ai-chat » n'en est pas un), il passe
+    // donc les contrôles de société (utilisateur supprimé → 401) sans exiger de case de module,
+    // comme scan-quota. Il n'est PAS dans _skipRoutes, qui rendrait la main avant ce chargement.
+    // Un compte chauffeur reste refusé par la garde du haut (IsDriverAppRoute).
 
     // Routes that skip all permission/subscription checks (always accessible when authenticated)
     // /api/brands n'y porte plus que des lectures (référentiel global) : ses mutations sont

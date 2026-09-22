@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json;
 using FluentValidation;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Exceptions;
 
 namespace GisAPI.Middleware;
@@ -30,6 +31,24 @@ public class ExceptionHandlingMiddleware
 
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
+        // Crédit IA refusé (22/09/2026) : ni une erreur ni un simple 400. L'écran lit le
+        // code (AI_CREDIT_DISABLED / AI_CREDIT_EXHAUSTED), affiche le message et redessine sa
+        // barre avec le crédit joint — contrat { code, message, credit } en 403 ou 429.
+        // Journalisé en Information : un crédit épuisé est un fonctionnement normal.
+        if (exception is AiCreditException aiCredit)
+        {
+            _logger.LogInformation("Crédit IA refusé ({Code}) : {Message}", aiCredit.Code, aiCredit.Message);
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = aiCredit.StatusCode;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+            {
+                code = aiCredit.Code,
+                message = aiCredit.Message,
+                credit = aiCredit.Credit
+            }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+            return;
+        }
+
         var (statusCode, message, errors) = exception switch
         {
             ValidationException validationEx => (

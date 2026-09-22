@@ -4,9 +4,11 @@ namespace GisAPI.Domain.Entities;
 
 /// <summary>
 /// One successful AI invoice scan (« Scanner une facture »). La somme de ses
-/// <see cref="TokensUsed"/> sur le mois civil est la consommation du crédit IA mensuel
-/// de la société (<see cref="Societe.InvoiceScanMonthlyTokens"/>, 22/09/2026) ; sert aussi
-/// à auditer la consommation Groq réelle par société et par utilisateur.
+/// <see cref="TokensUsed"/> sur le mois civil est la part « scans » de la consommation du
+/// crédit IA mensuel de la société (<see cref="Societe.InvoiceScanMonthlyTokens"/>,
+/// 22/09/2026) ; les autres appels à l'IA sont dans <see cref="AiUsageLog"/>, jamais les deux
+/// pour un même appel. Sert aussi à auditer la consommation Groq réelle par société et
+/// par utilisateur.
 /// </summary>
 public class InvoiceScanLog
 {

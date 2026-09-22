@@ -707,9 +707,10 @@ export class ApiService {
    *
    * Le chemin reste sous /costs/ pour des raisons serveur (plafond de débit reconnu
    * au chemin), mais la route N'EXIGE PLUS le module Dépenses depuis le 19/09/2026 :
-   * elle est ouverte à tout utilisateur authentifié et c'est le quota mensuel de la
-   * société qui l'ouvre ou la ferme (403 « pas activé », 429 « quota atteint »).
-   * Les cinq écrans qui portent le bouton peuvent donc l'appeler sans canCosts.
+   * elle est ouverte à tout utilisateur authentifié et c'est le crédit IA mensuel de la
+   * société qui l'ouvre ou la ferme (403 AI_CREDIT_DISABLED, 429 AI_CREDIT_EXHAUSTED).
+   * Les cinq écrans qui portent le bouton peuvent donc l'appeler sans canCosts. Réponse :
+   * { extraction, receiptUrl, credit } (« quota » = même objet, ancien nom).
    */
   scanInvoice(file: File): Observable<any> {
     const formData = new FormData();
@@ -722,13 +723,25 @@ export class ApiService {
   /**
    * Crédit IA MENSUEL de la société, en jetons (22/09/2026 — avant : un nombre de scans) :
    * { enabled, budgetTokens, usedTokens, remainingTokens, percentUsed, scansThisMonth,
-   *   estimatedScansLeft, resetsAt }. Alimente la barre « Crédit IA » des cinq écrans qui
+   *   estimatedScansLeft, resetsAt, byFeature }. Même objet que getAiCredit — le crédit
+   * couvre toute l'IA de la société. Alimente la barre « Crédit IA » des cinq écrans qui
    * portent le bouton « Scanner une facture » ; lire la réponse par lireCreditIa, qui
    * tolère une API pas encore redéployée. Comme scanInvoice, la route n'exige pas le
-   * module Dépenses (19/09/2026) ; `enabled: false` = scan désactivé pour la société.
+   * module Dépenses (19/09/2026) ; `enabled: false` = IA désactivée pour la société.
    */
   getScanQuota(): Observable<CreditIa> {
     return this.http.get<CreditIa>(`${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Crédit IA du mois de la société (22/09/2026, « le quota inclut l'utilisation de l'IA ») :
+   * même objet que getScanQuota, ventilation par fonction comprise. Lu par l'assistant IA et
+   * par le rapport IA flotte pour leur barre ; ouvert à tout utilisateur de la société.
+   * Chaque réponse d'IA porte ensuite le crédit à jour (« credit »), et un refus
+   * 403 AI_CREDIT_DISABLED / 429 AI_CREDIT_EXHAUSTED aussi (voir lireRefusCreditIa).
+   */
+  getAiCredit(): Observable<CreditIa> {
+    return this.http.get<CreditIa>(`${this.API_URL}/ai-credit`, { headers: this.getHeaders() });
   }
 
   updateCost(id: number, cost: any): Observable<void> {
@@ -4548,6 +4561,8 @@ export interface FuelConsumptionComparisonReport {
 export interface ExplainSegmentResult {
   explanation: string;
   fromCache: boolean;
+  /** Crédit IA du mois après l'appel ; null quand aucun appel payant n'a eu lieu (cache). */
+  credit?: CreditIa | null;
 }
 
 export interface VehicleFuelExpenseDto {

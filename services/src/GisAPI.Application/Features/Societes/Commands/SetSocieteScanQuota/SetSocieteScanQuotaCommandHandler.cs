@@ -1,12 +1,12 @@
 using GisAPI.Application.Common.Interfaces;
-using GisAPI.Application.Features.Costs;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Societes.Commands.SetSocieteScanQuota;
 
-public class SetSocieteScanQuotaCommandHandler : IRequestHandler<SetSocieteScanQuotaCommand, InvoiceScanCreditStatus>
+public class SetSocieteScanQuotaCommandHandler : IRequestHandler<SetSocieteScanQuotaCommand, AiCreditStatus>
 {
     private readonly IGisDbContext _context;
 
@@ -19,12 +19,12 @@ public class SetSocieteScanQuotaCommandHandler : IRequestHandler<SetSocieteScanQ
         _context = context;
     }
 
-    public async Task<InvoiceScanCreditStatus> Handle(SetSocieteScanQuotaCommand request, CancellationToken ct)
+    public async Task<AiCreditStatus> Handle(SetSocieteScanQuotaCommand request, CancellationToken ct)
     {
         // DomainException (400 + message affiché par la fiche) et non ArgumentException :
         // ExceptionHandlingMiddleware ne connaît pas cette dernière et répondait 500
         // « An unexpected error occurred » à une simple valeur hors bornes.
-        if (request.MonthlyTokens is < 0 or > InvoiceScanCredit.MaxMonthlyTokens)
+        if (request.MonthlyTokens is < 0 or > AiCredit.MaxMonthlyTokens)
             throw new DomainException(InvalidTokensMessage);
 
         var societe = await _context.Societes
@@ -39,10 +39,10 @@ public class SetSocieteScanQuotaCommandHandler : IRequestHandler<SetSocieteScanQ
         // équivalent en scans (0 reste 0) — jamais relu ici, mais c'est tout ce que lit
         // l'ancien pod après un retour arrière : l'effacer rouvrait le scan à une société
         // désactivée.
-        societe.InvoiceScanMonthlyLimit = InvoiceScanCredit.LegacyScanLimitShadow(request.MonthlyTokens);
+        societe.InvoiceScanMonthlyLimit = AiCredit.LegacyScanLimitShadow(request.MonthlyTokens);
         societe.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
 
-        return await InvoiceScanCredit.LoadAsync(_context, societe.Id, DateTime.UtcNow, ct);
+        return await AiCredit.LoadAsync(_context, societe.Id, DateTime.UtcNow, ct);
     }
 }

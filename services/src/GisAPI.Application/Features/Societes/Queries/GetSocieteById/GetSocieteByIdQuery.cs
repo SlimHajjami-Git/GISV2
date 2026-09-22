@@ -45,7 +45,7 @@ public record SocieteDetailDto(
     // Suspension automatique à l'expiration (grâce 7 j). false = jamais
     // bloquée automatiquement, seule la suspension manuelle coupe.
     bool AutoSuspendEnabled = true,
-    // ── Crédit IA mensuel du scan de factures, en jetons (22/09/2026) ──────────
+    // ── Crédit IA mensuel de la société, en jetons (22/09/2026) — toute l'IA ────
     // Réglage brut : null = défaut plateforme (60 000), 0 = désactivé.
     int? InvoiceScanMonthlyTokens = null,
     // Budget EFFECTIF du mois (réglage, ou ancien quota converti, ou défaut).
@@ -54,7 +54,10 @@ public record SocieteDetailDto(
     int InvoiceScanUsedTokens = 0,
     int InvoiceScanPercentUsed = 0,
     // Prochaine recharge (1er du mois suivant, UTC) — null hors lecture GET.
-    DateTime? InvoiceScanResetsAt = null
+    DateTime? InvoiceScanResetsAt = null,
+    // Ventilation du mois par fonction (scans, assistant, rapports IA…), en jetons :
+    // le crédit couvre toute l'IA de la société depuis le 22/09/2026. null hors lecture GET.
+    IReadOnlyDictionary<string, int>? AiCreditByFeature = null
 );
 
 public record SocieteSettingsDto(

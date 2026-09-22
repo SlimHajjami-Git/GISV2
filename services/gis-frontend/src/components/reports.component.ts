@@ -15,6 +15,8 @@ import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui'
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { libellePerimetreParc } from './dashboard-gpa.helpers';
+import { CreditIaBarComponent } from './shared/credit-ia-bar.component';
+import { CreditIa, creditBloque, creditDepuisReponse, lireCreditIa, lireRefusCreditIa, messageCreditBloque } from './shared/credit-ia.helpers';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { marked } from 'marked';
@@ -76,7 +78,7 @@ export function partsCamembert<T extends { amount: number }>(parts: T[]): (T & {
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, ButtonComponent, CardComponent, DataTableComponent, CreditIaBarComponent, ...USER_PREF_PIPES],
   templateUrl: './reports.component.html',
   styleUrls: ['./reports.component.css']
 })
@@ -524,6 +526,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
   aiFleetQaMessages: { role: string; text: string; html: SafeHtml }[] = [];
   aiFleetQuestionInput = '';
   aiFleetAskLoading = false;
+  /** Crédit IA du mois de la société (22/09/2026 : commun aux scans, à l'assistant et aux
+   *  rapports IA) ; null tant qu'il n'est pas lu, ou API ancienne. */
+  aiFleetCredit: CreditIa | null = null;
   aiFleetSuggestions = [
     'Quel véhicule devrait être remplacé en priorité ?',
     'Quelles pièces sont à surveiller sur mes véhicules ?',
@@ -906,6 +911,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.destroyAllCharts();
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
+    this.chargerCreditIaSiRapportIa();
     this.reportGenerated = false;
     this.tableData = [];
     this.chartData = [];
@@ -916,6 +922,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   onTemplateChange() {
     this.destroyAllCharts();
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+    this.chargerCreditIaSiRapportIa();
     // Fuel comparison / segment analysis are meaningless on "today" (fuel and km accrue over time) -> default to month.
     if (this.selectedTemplate?.type === 'fuel-comparison' || this.selectedTemplate?.type === 'consumption-analysis') this.selectStandardPeriod('month');
     this.reportGenerated = false;
@@ -936,6 +943,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.selectedTemplate = template;
     this.selectedTemplateId = template.id;
     this.showTemplateDropdown = false;
+    this.chargerCreditIaSiRapportIa();
     if (template?.type === 'fuel-comparison' || template?.type === 'consumption-analysis') this.selectStandardPeriod('month');
     this.reportGenerated = false;
     this.tableData = [];
@@ -1182,6 +1190,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     if (!this.selectedTemplate) {
       console.warn('No template selected');
+      return;
+    }
+
+    // Rapport IA flotte et crédit IA bloqué : sortir AVANT « loading = true ». Les relances
+    // automatiques (pastille, véhicule) passent par ici sans le bouton grisé ; sortir plus
+    // loin laissait « loading » à true et figeait tout l'écran Rapports jusqu'au F5.
+    if (this.executionBloqueeParCreditIa) {
       return;
     }
 
@@ -7000,8 +7015,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
         this.aiLoading = false;
         this.cdr.detectChanges();
       }),
-      error: () => this.ngZone.run(() => {
-        this.aiExplanation = 'Analyse IA momentanément indisponible.';
+      error: (err: any) => this.ngZone.run(() => {
+        // Crédit IA épuisé ou IA coupée (22/09/2026) : le message du serveur dit pourquoi
+        // et jusqu'à quand, au lieu d'une panne anonyme.
+        this.aiExplanation = lireRefusCreditIa(err)?.message || 'Analyse IA momentanément indisponible.';
         this.aiLoading = false;
         this.cdr.detectChanges();
       })
@@ -8075,18 +8092,64 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
   // ==================== AI FLEET REPORT ====================
 
+  /**
+   * Crédit épuisé (tant que la date de recharge n'est pas passée) ou IA coupée pour la
+   * société : « Exécuter » et les questions de suivi sont grisés — le serveur refuserait.
+   */
+  get aiFleetCreditBloque(): boolean {
+    return !!this.aiFleetCredit && creditBloque(this.aiFleetCredit, Date.now());
+  }
+
+  /** Pourquoi c'est grisé, et jusqu'à quand. */
+  get aiFleetCreditRaison(): string {
+    return messageCreditBloque(this.aiFleetCredit, Date.now());
+  }
+
+  /** « Exécuter » grisé : rapport IA flotte choisi et crédit bloqué. */
+  get executionBloqueeParCreditIa(): boolean {
+    return this.selectedTemplate?.type === 'ai-fleet' && this.aiFleetCreditBloque;
+  }
+
+  /** Crédit IA du mois, lu dès que le rapport IA flotte est choisi : la barre s'affiche avant « Exécuter ». */
+  private chargerCreditIaSiRapportIa() {
+    if (this.selectedTemplate?.type !== 'ai-fleet') return;
+    this.apiService.getAiCredit().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (c) => this.ngZone.run(() => {
+        this.aiFleetCredit = lireCreditIa(c);
+        this.cdr.detectChanges();
+      }),
+      error: () => { /* crédit indisponible : « Exécuter » reste actif, le serveur tranche */ }
+    });
+  }
+
+  /** Crédit joint à une réponse ou à un refus : la barre suit chaque appel. */
+  private majCreditIaFlotte(credit: CreditIa | null) {
+    if (credit) this.aiFleetCredit = credit;
+  }
+
   executeAiFleetReport() {
+    if (this.aiFleetCreditBloque) {
+      // Jamais d'écran figé en « chargement » : rien n'est parti, rien n'est en cours.
+      this.loading = false;
+      this.aiFleetLoading = false;
+      this.cdr.detectChanges();
+      return;
+    }
     this.loading = true;
     this.aiFleetLoading = true;
-    this.aiFleetReport = null;
-    this.aiFleetQaMessages = [];
-    this.aiFleetQuestionInput = '';
+    // Le rapport déjà affiché (et déjà payé en crédit IA) n'est PAS effacé ici : une relance
+    // refusée (crédit épuisé entre-temps, panne) le laisse à l'écran sous le message d'erreur.
+    // Il n'est remplacé, avec ses questions de suivi, qu'en cas de succès.
+    this.statisticsData = {};
 
     this.apiService.generateFleetReport(this.aiFleetPeriod).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data: any) => {
         this.ngZone.run(() => {
           this.aiFleetReport = data;
+          this.aiFleetQaMessages = [];
+          this.aiFleetQuestionInput = '';
           this.aiFleetAnalysisHtml = this.renderMarkdown(data.aiAnalysis || '');
+          this.majCreditIaFlotte(creditDepuisReponse(data));
           this.reportGenerated = true;
           this.loading = false;
           this.aiFleetLoading = false;
@@ -8096,7 +8159,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       },
       error: (err: any) => {
         this.ngZone.run(() => {
-          this.statisticsData = { 'Erreur': err.error?.message || 'Erreur lors de la génération du rapport IA' };
+          // Refus de crédit (403/429) : message du SERVEUR (date de recharge) et barre à 100 %.
+          const refus = lireRefusCreditIa(err);
+          this.majCreditIaFlotte(refus?.credit ?? null);
+          this.statisticsData = { 'Erreur': refus?.message || err.error?.message || 'Erreur lors de la génération du rapport IA' };
           this.reportGenerated = true;
           this.loading = false;
           this.aiFleetLoading = false;
@@ -8107,7 +8173,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   askAiFleetQuestion(question: string) {
-    if (!question?.trim() || this.aiFleetAskLoading) return;
+    if (!question?.trim() || this.aiFleetAskLoading || this.aiFleetCreditBloque) return;
     this.aiFleetAskLoading = true;
     this.aiFleetQuestionInput = '';
     this.aiFleetQaMessages.push({ role: 'user', text: question, html: question as any });
@@ -8117,6 +8183,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       next: (data: any) => {
         this.ngZone.run(() => {
           this.aiFleetQaMessages.push({ role: 'ai', text: data.answer, html: this.renderMarkdown(data.answer) });
+          this.majCreditIaFlotte(creditDepuisReponse(data));
           this.aiFleetAskLoading = false;
           this.cdr.detectChanges();
           setTimeout(() => {
@@ -8127,7 +8194,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       },
       error: (err: any) => {
         this.ngZone.run(() => {
-          this.aiFleetQaMessages.push({ role: 'ai', text: 'Erreur: ' + (err.error?.message || 'Service indisponible'), html: ('Erreur: ' + (err.error?.message || 'Service indisponible')) as any });
+          const refus = lireRefusCreditIa(err);
+          if (refus) {
+            // Refus de crédit : le message du serveur tel quel (il donne la date de recharge).
+            this.majCreditIaFlotte(refus.credit);
+            this.aiFleetQaMessages.push({ role: 'ai', text: refus.message, html: refus.message as any });
+          } else {
+            this.aiFleetQaMessages.push({ role: 'ai', text: 'Erreur: ' + (err.error?.message || 'Service indisponible'), html: ('Erreur: ' + (err.error?.message || 'Service indisponible')) as any });
+          }
           this.aiFleetAskLoading = false;
           this.cdr.detectChanges();
         });
@@ -9834,6 +9908,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.selectedTemplateId = state.selectedTemplateId;
     this.selectedTemplate = this.templates.find(t => t.id === this.selectedTemplateId) || null;
+    this.chargerCreditIaSiRapportIa();
     this.selectedVehicleId = state.selectedVehicleId;
     this.selectedDriverId = state.selectedDriverId;
     this.selectedDepartmentId = state.selectedDepartmentId;
@@ -9869,8 +9944,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.toDate = this.toDateTime(new Date(this.customEndDate + 'T23:59:59'));
     }
 
-    // Auto re-execute the report if one was previously generated
-    if (state.reportGenerated && this.selectedTemplate) {
+    // Auto re-execute the report if one was previously generated — SAUF le rapport IA flotte
+    // (22/09/2026) : il consomme le crédit IA de la société à chaque génération, et un simple
+    // retour sur l'écran Rapports le relançait sans aucun clic. Il se relance au bouton.
+    if (state.reportGenerated && this.selectedTemplate && this.selectedTemplate.type !== 'ai-fleet') {
       this.cdr.detectChanges();
       // Small delay to let Angular digest the restored bindings
       setTimeout(() => {

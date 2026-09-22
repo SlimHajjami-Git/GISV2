@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Common;
@@ -33,6 +34,18 @@ public class AiChatController : ControllerBase
 
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+    private CancellationToken RequestAborted => HttpContext?.RequestAborted ?? CancellationToken.None;
+
+    // ═══════ CRÉDIT IA ═══════
+    // Chaque action qui appelle le modèle (send, compare, report, fleet-report, fleet-report/ask)
+    // passe par AiCredit (22/09/2026, « le quota inclut l'utilisation de l'IA ») :
+    //  - AVANT l'appel payant, AiCredit.EnsureAvailableAsync lève AiCreditException si l'IA est
+    //    désactivée pour la société (403 AI_CREDIT_DISABLED) ou si le crédit du mois est épuisé
+    //    (429 AI_CREDIT_EXHAUSTED) — rendue { code, message, credit } par
+    //    ExceptionHandlingMiddleware. Placé HORS des try/catch (Exception) qui rendent 503.
+    //  - APRÈS un appel réussi seulement, AiCredit.RecordUsageAsync journalise ses jetons et
+    //    rend le crédit relu, joint à la réponse (« credit ») pour que la barre suive.
+    // Les lectures (historique, véhicules, scores de santé) n'appellent pas le modèle.
     // Même définition que DashboardController et VehicleScope.SeesWholeFleet (rôles du jeton).
     private bool IsAdminUser() => User.IsInRole("company_admin") || User.IsInRole("admin") || User.IsInRole("super_admin") || User.IsInRole("system_admin");
 
@@ -56,6 +69,10 @@ public class AiChatController : ControllerBase
 
         if (vehicle == null)
             return NotFound(new { message = "Véhicule introuvable" });
+
+        // Crédit IA contrôlé AVANT d'enregistrer le message de l'utilisateur : un message
+        // refusé ne doit pas rester dans l'historique sans réponse.
+        await AiCredit.EnsureAvailableAsync(_context, companyId, RequestAborted);
 
         // Build vehicle diagnostic context
         var vehicleContext = await BuildVehicleContext(vehicle, companyId);
@@ -106,11 +123,17 @@ public class AiChatController : ControllerBase
             _context.AiChatMessages.Add(assistantMsg);
             await _context.SaveChangesAsync();
 
+            // Les jetons restent aussi sur le message (historique) ; le crédit, lui, ne lit
+            // que le journal des usages — une seule ligne par appel, pas de double comptage.
+            var credit = await AiCredit.RecordUsageAsync(
+                _context, companyId, userId, AiFeatures.AssistantChat, llmResponse.TokensUsed, RequestAborted);
+
             return Ok(new
             {
                 message = llmResponse.Content,
                 tokensUsed = llmResponse.TokensUsed,
-                messageId = assistantMsg.Id
+                messageId = assistantMsg.Id,
+                credit
             });
         }
         catch (Exception ex)
@@ -241,6 +264,8 @@ public class AiChatController : ControllerBase
         if (vehicles.Count < 2)
             return BadRequest(new { message = "Véhicules introuvables" });
 
+        await AiCredit.EnsureAvailableAsync(_context, companyId, RequestAborted);
+
         var sb = new StringBuilder();
         sb.AppendLine("Tu es un expert en gestion de flotte. Compare les véhicules suivants de manière détaillée.");
         sb.AppendLine("Fournis un tableau comparatif et une recommandation claire sur quel véhicule garder/renouveler.");
@@ -276,7 +301,9 @@ public class AiChatController : ControllerBase
         try
         {
             var llmResponse = await _llmService.ChatAsync(sb.ToString(), messages);
-            return Ok(new { message = llmResponse.Content, tokensUsed = llmResponse.TokensUsed });
+            var credit = await AiCredit.RecordUsageAsync(
+                _context, companyId, userId, AiFeatures.VehicleCompare, llmResponse.TokensUsed, RequestAborted);
+            return Ok(new { message = llmResponse.Content, tokensUsed = llmResponse.TokensUsed, credit });
         }
         catch (Exception ex)
         {
@@ -300,6 +327,8 @@ public class AiChatController : ControllerBase
 
         if (vehicle == null)
             return NotFound(new { message = "Véhicule introuvable" });
+
+        await AiCredit.EnsureAvailableAsync(_context, companyId, RequestAborted);
 
         var vehicleContext = await BuildVehicleContext(vehicle, companyId);
         var healthScore = await _healthService.CalculateScoreAsync(vehicleId, companyId);
@@ -325,6 +354,8 @@ public class AiChatController : ControllerBase
         try
         {
             var llmResponse = await _llmService.ChatAsync(systemPrompt, messages);
+            var credit = await AiCredit.RecordUsageAsync(
+                _context, companyId, GetUserId(), AiFeatures.VehicleReport, llmResponse.TokensUsed, RequestAborted);
             return Ok(new
             {
                 vehicleId,
@@ -332,7 +363,8 @@ public class AiChatController : ControllerBase
                 healthScore = healthScore,
                 report = llmResponse.Content,
                 tokensUsed = llmResponse.TokensUsed,
-                generatedAt = DateTime.UtcNow
+                generatedAt = DateTime.UtcNow,
+                credit
             });
         }
         catch (Exception ex)
@@ -760,6 +792,10 @@ public class AiChatController : ControllerBase
 
         var ct = HttpContext?.RequestAborted ?? CancellationToken.None;
 
+        // Crédit IA contrôlé AVANT les agrégations (trajets, coûts, santé de tout le parc) :
+        // un rapport refusé ne doit rien coûter, ni à Groq ni à la base.
+        await AiCredit.EnsureAvailableAsync(_context, companyId, ct);
+
         // ── Company info ──
         var company = await _context.Societes.AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == companyId);
@@ -1079,6 +1115,8 @@ Calendrier recommandé pour les 3 prochains mois.";
             // max_tokens sous la limite TPM de l'offre (8000/min) : la réponse
             // (2500) + le contexte du prompt doivent tenir dans une minute de budget.
             var llmResponse = await _llmService.ChatAsync(sb.ToString(), new List<LlmMessage> { new("user", userMessage) }, 2500);
+            var credit = await AiCredit.RecordUsageAsync(
+                _context, companyId, GetUserId(), AiFeatures.FleetReport, llmResponse.TokensUsed, ct);
 
             var result = new
             {
@@ -1112,7 +1150,8 @@ Calendrier recommandé pour les 3 prochains mois.";
                 },
                 vehicleDetails,
                 aiAnalysis = llmResponse.Content,
-                tokensUsed = llmResponse.TokensUsed
+                tokensUsed = llmResponse.TokensUsed,
+                credit
             };
 
             return Ok(result);
@@ -1134,6 +1173,8 @@ Calendrier recommandé pour les 3 prochains mois.";
             return BadRequest(new { message = "La question ne peut pas être vide" });
 
         var companyId = GetCompanyId();
+        await AiCredit.EnsureAvailableAsync(_context, companyId, RequestAborted);
+
         var company = await _context.Societes.AsNoTracking().FirstOrDefaultAsync(s => s.Id == companyId);
         // Même portée que le rapport : un employé restreint ne reçoit que ses véhicules.
         var scopeIds = await DashboardService.ScopeIdsAsync(_context, IsAdminUser(), GetUserId(),
@@ -1170,8 +1211,10 @@ Calendrier recommandé pour les 3 prochains mois.";
             // + réponse restent sous la limite TPM de l'offre (8000/min).
             var llmResponse = await _llmService.ChatAsync(sb.ToString(),
                 new List<LlmMessage> { new("user", request.Question) }, 2000);
+            var credit = await AiCredit.RecordUsageAsync(
+                _context, companyId, GetUserId(), AiFeatures.FleetReportAsk, llmResponse.TokensUsed, RequestAborted);
 
-            return Ok(new { answer = llmResponse.Content, tokensUsed = llmResponse.TokensUsed });
+            return Ok(new { answer = llmResponse.Content, tokensUsed = llmResponse.TokensUsed, credit });
         }
         catch (Exception ex)
         {

@@ -93,7 +93,7 @@ describe('équivalence en scans sous le champ', () => {
   });
 
   it('0 = fonction désactivée', () => {
-    expect(equivalenceScans(0)).toBe('Scan de factures IA désactivé pour cette société');
+    expect(equivalenceScans(0)).toBe('IA désactivée pour cette société (scans, assistant, rapports IA)');
   });
 
   it('suit la saisie en cours, ou affiche le motif du refus', () => {

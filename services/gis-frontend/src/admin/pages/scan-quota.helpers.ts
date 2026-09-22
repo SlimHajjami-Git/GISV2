@@ -1,9 +1,10 @@
 import { CreditIa, formatJetons, JETONS_PAR_SCAN } from '../../components/shared/credit-ia.helpers';
 
 /**
- * Crédit IA MENSUEL du scan de factures, en jetons (fiche société admin). Depuis le
- * 22/09/2026 l'administrateur ne règle plus un nombre de scans mais un crédit de jetons
- * (vide = défaut plateforme 60 000 ≈ 20 scans, 0 = désactivé, maximum 10 000 000).
+ * Crédit IA MENSUEL de la société, en jetons (fiche société admin). Depuis le 22/09/2026
+ * l'administrateur ne règle plus un nombre de scans mais un crédit de jetons, commun à
+ * TOUTE l'IA de la société — scans, assistant, rapports IA (vide = défaut plateforme
+ * 60 000 ≈ 20 scans, 0 = IA désactivée, maximum 10 000 000).
  *
  * Pièges réels, corrigés ici après la recette du 17/09/2026 (« ceci ne marche
  * pas » — aucune société n'avait jamais de limite enregistrée en prod), toujours valables :
@@ -74,7 +75,7 @@ export function parseScanCreditInput(raw: unknown): ScanCreditParse {
 /** « ≈ 20 scans par mois » sous le champ : ce que représente la saisie, en scans moyens. */
 export function equivalenceScans(tokens: number | null): string {
   const budget = tokens ?? SCAN_CREDIT_DEFAULT;
-  if (budget <= 0) return 'Scan de factures IA désactivé pour cette société';
+  if (budget <= 0) return 'IA désactivée pour cette société (scans, assistant, rapports IA)';
   const scans = Math.floor(budget / JETONS_PAR_SCAN);
   const libelle = scans < 1 ? "moins d'un scan" : `${scans} scan${scans > 1 ? 's' : ''}`;
   return `≈ ${libelle} par mois` + (tokens === null ? ` (défaut : ${formatJetons(SCAN_CREDIT_DEFAULT)} jetons)` : '');
@@ -103,6 +104,7 @@ export function creditDepuisFiche(s: unknown): CreditIa | null {
     ? (x['invoiceScanPercentUsed'] as number)
     : (budget <= 0 ? 100 : Math.floor((used * 100) / budget));
   const resetsAt = typeof x['invoiceScanResetsAt'] === 'string' ? (x['invoiceScanResetsAt'] as string) : undefined;
+  const byFeature = ventilationDepuisFiche(x['aiCreditByFeature']);
 
   return {
     enabled: budget > 0,
@@ -112,8 +114,19 @@ export function creditDepuisFiche(s: unknown): CreditIa | null {
     percentUsed: Math.min(100, Math.max(0, percent)),
     scansThisMonth: typeof x['invoiceScanUsedThisMonth'] === 'number' ? (x['invoiceScanUsedThisMonth'] as number) : 0,
     estimatedScansLeft: Math.floor(remaining / JETONS_PAR_SCAN),
-    ...(resetsAt ? { resetsAt } : {})
+    ...(resetsAt ? { resetsAt } : {}),
+    ...(byFeature ? { byFeature } : {})
   };
+}
+
+/** Ventilation { fonction: jetons } de la fiche (GET) ou du réglage (PUT « byFeature »). */
+function ventilationDepuisFiche(brut: unknown): Record<string, number> | null {
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const v: Record<string, number> = {};
+  for (const [cle, jetons] of Object.entries(brut as Record<string, unknown>)) {
+    if (typeof jetons === 'number' && Number.isFinite(jetons)) v[cle] = Math.max(0, Math.floor(jetons));
+  }
+  return v;
 }
 
 /**

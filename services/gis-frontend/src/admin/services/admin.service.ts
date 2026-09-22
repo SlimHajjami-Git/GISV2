@@ -354,6 +354,9 @@ export interface Societe {
   invoiceScanPercentUsed?: number;
   /** Prochaine recharge du crédit (1er du mois suivant, UTC). */
   invoiceScanResetsAt?: string | null;
+  /** Jetons du mois par fonction d'IA (invoice_scan, assistant_chat, fleet_report…) :
+   *  le crédit couvre toute l'IA de la société depuis le 22/09/2026. */
+  aiCreditByFeature?: Record<string, number> | null;
 }
 
 /** Réponse de PUT /admin/societes/{id}/scan-quota : réglage enregistré + crédit du mois. */
@@ -365,6 +368,8 @@ export interface ScanCreditSaved {
   percentUsed: number;
   scansThisMonth: number;
   resetsAt: string;
+  /** Jetons du mois par fonction d'IA. */
+  byFeature?: Record<string, number>;
 }
 
 export interface SubscriptionType {
@@ -1173,8 +1178,9 @@ export class AdminService {
     return this.http.put<Societe>(`${this.apiUrl}/admin/societes/${id}`, updates, { headers: this.getHeaders() });
   }
 
-  /** Crédit IA mensuel du scan de factures, en jetons — null = défaut plateforme (60 000),
-   *  0 = désactivé. Le serveur efface l'ancien quota en scans et rend le crédit du mois. */
+  /** Crédit IA mensuel de la société (toute l'IA : scans, assistant, rapports), en jetons —
+   *  null = défaut plateforme (60 000), 0 = IA désactivée. Le serveur remplace l'ancien quota
+   *  en scans par son ombre et rend le crédit du mois, ventilation comprise. */
   setScanQuota(id: number, monthlyTokens: number | null): Observable<ScanCreditSaved> {
     return this.http.put<ScanCreditSaved>(`${this.apiUrl}/admin/societes/${id}/scan-quota`, { monthlyTokens }, { headers: this.getHeaders() });
   }

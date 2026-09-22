@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -30,6 +31,12 @@ namespace GisAPI.Services;
 ///   returns <c>null</c> and the caller keeps the deterministic narrative.</item>
 /// </list>
 /// </para>
+///
+/// <para>Crédit IA (22/09/2026, « le quota inclut l'utilisation de l'IA ») : chaque appel
+/// réussi au modèle est ENREGISTRÉ au crédit du mois de la société (fonction
+/// accident_narrative), mais le récit n'est JAMAIS bloqué par le crédit — c'est une
+/// fonction de sécurité, déclenchée par le système et non par un utilisateur. Société
+/// inconnue (<c>companyId</c> absent) : rien n'est enregistré.</para>
 /// </summary>
 public interface IAccidentNarrativeService
 {
@@ -38,6 +45,7 @@ public interface IAccidentNarrativeService
         AccidentCandidate candidate,
         string vehicleLabel,
         GeocodedLocation? location,
+        int? companyId,
         CancellationToken ct);
 }
 
@@ -96,6 +104,7 @@ public class AccidentNarrativeService : IAccidentNarrativeService
         AccidentCandidate candidate,
         string vehicleLabel,
         GeocodedLocation? location,
+        int? companyId,
         CancellationToken ct)
     {
         try
@@ -120,6 +129,10 @@ public class AccidentNarrativeService : IAccidentNarrativeService
                 new List<LlmMessage> { new("user", user) },
                 maxTokens: 900,
                 ct: cts.Token);
+
+            // L'appel a abouti : ses jetons sont dus, que le récit passe ou non le garde-fou.
+            // Aucun contrôle de crédit AVANT l'appel : un récit d'accident n'est jamais refusé.
+            await RecordUsageAsync(context, companyId, resp.TokensUsed);
 
             var realSpeeds = frames
                 .Select(f => Math.Round(f.SpeedKph))
@@ -154,9 +167,42 @@ public class AccidentNarrativeService : IAccidentNarrativeService
         }
     }
 
+    /// <summary>
+    /// Enregistre la consommation au crédit IA de la société, sans JAMAIS faire échouer le
+    /// récit : une panne d'écriture est journalisée et ignorée (le rapport d'accident passe
+    /// avant le décompte). La ligne refusée ne reste pas dans <paramref name="context"/>
+    /// (AiCredit.LogUsageAsync la retire du suivi) : ce contexte est celui de tout le cycle de
+    /// détection, et la rejouer ferait échouer la sauvegarde du récit puis l'accident suivant.
+    /// Société inconnue : rien n'est écrit, jamais sous la société 0.
+    /// </summary>
+    private async Task RecordUsageAsync(GisDbContext context, int? companyId, int tokensUsed)
+    {
+        if (companyId is not > 0)
+        {
+            _logger.LogInformation(
+                "AccidentNarrativeService: société inconnue — {Tokens} jetons non décomptés du crédit IA", tokensUsed);
+            return;
+        }
+        try
+        {
+            await AiCredit.LogUsageAsync(context, companyId.Value, null, AiFeatures.AccidentNarrative, tokensUsed);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "AccidentNarrativeService: enregistrement au crédit IA impossible (société {CompanyId}, {Tokens} jetons)",
+                companyId, tokensUsed);
+        }
+    }
+
     // ── Evidence extraction ────────────────────────────────────────────────
 
-    private static async Task<List<AccidentFrame>> LoadFramesAsync(
+    /// <summary>
+    /// Relevés autour du choc (SQL PostgreSQL brut). Virtuelle et interne pour que les tests
+    /// fournissent leurs relevés sans base PostgreSQL : c'est l'appel au modèle et son
+    /// décompte au crédit IA qu'ils vérifient, pas cette lecture.
+    /// </summary>
+    internal virtual async Task<List<AccidentFrame>> LoadFramesAsync(
         GisDbContext context, AccidentCandidate c, CancellationToken ct)
     {
         var from = c.RecordedAt.AddMinutes(-6);

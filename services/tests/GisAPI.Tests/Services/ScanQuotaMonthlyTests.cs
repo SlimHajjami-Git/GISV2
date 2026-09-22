@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text.Json;
 using FluentAssertions;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Application.Services;
 using GisAPI.Controllers;
@@ -25,6 +26,11 @@ namespace GisAPI.Tests.Services;
 /// de scans devient une barre de progression d'un crédit en jetons, rechargé le 1er du mois.
 /// Ces tests fixent la règle (mois civil, par société, somme des jetons), les refus avant
 /// tout appel payant, et le contrat JSON que lit la barre des cinq écrans.
+///
+/// <para>Même jour, « le quota inclut l'utilisation de l'IA » : le crédit est commun à toute
+/// l'IA de la société. Les refus sont levés par AiCredit (AiCreditException, rendue
+/// 403/429 { code, message, credit } par ExceptionHandlingMiddleware — voir
+/// AiCreditHttpTests) ; ici on vérifie qu'ils partent AVANT tout appel payant.</para>
 /// </summary>
 public class ScanQuotaMonthlyTests : IDisposable
 {
@@ -124,7 +130,7 @@ public class ScanQuotaMonthlyTests : IDisposable
         body.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(new[]
         {
             "enabled", "budgetTokens", "usedTokens", "remainingTokens",
-            "percentUsed", "scansThisMonth", "estimatedScansLeft", "resetsAt"
+            "percentUsed", "scansThisMonth", "estimatedScansLeft", "resetsAt", "byFeature"
         });
         body.GetProperty("enabled").GetBoolean().Should().BeTrue();
         body.GetProperty("budgetTokens").GetInt32().Should().Be(60_000, "défaut plateforme sans réglage");
@@ -134,6 +140,39 @@ public class ScanQuotaMonthlyTests : IDisposable
         body.GetProperty("scansThisMonth").GetInt32().Should().Be(1);
         body.GetProperty("estimatedScansLeft").GetInt32().Should().Be(11);
         body.GetProperty("resetsAt").GetDateTime().Should().Be(MonthStart.AddMonths(1), "recharge le 1er du mois suivant");
+        body.GetProperty("byFeature").GetProperty("invoice_scan").GetInt32().Should().Be(25_200);
+        body.GetProperty("byFeature").GetProperty("assistant_chat").GetInt32().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Le_credit_du_scan_compte_aussi_le_reste_de_l_IA_de_la_societe()
+    {
+        // « Le quota inclut l'utilisation de l'IA » : un scan à 3 000 + l'assistant à 2 400 +
+        // un rapport flotte muet (0 → 5 000) = 10 400 jetons. Une autre société : jamais.
+        using var ctx = await SeedAsync(null, null, (CompanyId, Now, 3_000));
+        ctx.AiUsageLogs.AddRange(
+            new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = AiFeatures.AssistantChat, TokensUsed = 2_400, CreatedAt = Now },
+            new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = AiFeatures.FleetReport, TokensUsed = 0, CreatedAt = Now },
+            new AiUsageLog { CompanyId = OtherCompanyId, UserId = 9, Feature = AiFeatures.AssistantChat, TokensUsed = 50_000, CreatedAt = Now });
+        await ctx.SaveChangesAsync();
+
+        var body = Body(await Controller(ctx).GetScanQuota(CancellationToken.None));
+
+        body.GetProperty("usedTokens").GetInt32().Should().Be(10_400);
+        body.GetProperty("scansThisMonth").GetInt32().Should().Be(1, "seuls les scans sont des scans");
+        body.GetProperty("byFeature").GetProperty("fleet_report").GetInt32().Should().Be(5_000);
+    }
+
+    [Fact]
+    public async Task Un_credit_consomme_par_l_assistant_refuse_aussi_le_scan()
+    {
+        using var ctx = await SeedAsync(6_000, null);
+        ctx.AiUsageLogs.Add(new AiUsageLog { CompanyId = CompanyId, UserId = 45, Feature = AiFeatures.AssistantChat, TokensUsed = 6_200, CreatedAt = Now });
+        await ctx.SaveChangesAsync();
+
+        var act = () => Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<AiCreditException>()).Which.StatusCode.Should().Be(429);
     }
 
     [Fact]
@@ -219,13 +258,14 @@ public class ScanQuotaMonthlyTests : IDisposable
     {
         using var ctx = await SeedAsync(0, null);
 
-        var result = await Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
+        var act = () => Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
 
-        var refus = result.Should().BeOfType<ObjectResult>().Subject;
+        var refus = (await act.Should().ThrowAsync<AiCreditException>()).Which;
         refus.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
-        var body = Body(result);
-        body.GetProperty("message").GetString().Should().Be("Le scan de factures IA n'est pas activé pour votre société.");
-        body.GetProperty("quota").GetProperty("enabled").GetBoolean().Should().BeFalse();
+        refus.Code.Should().Be("AI_CREDIT_DISABLED");
+        refus.Message.Should().Be("Les fonctions d'IA ne sont pas activées pour votre société.");
+        refus.Credit.Enabled.Should().BeFalse();
+        Directory.Exists(_racine).Should().BeFalse("le refus passe avant tout stockage de fichier");
     }
 
     [Fact]
@@ -233,9 +273,9 @@ public class ScanQuotaMonthlyTests : IDisposable
     {
         using var ctx = await SeedAsync(null, 0);
 
-        var result = await Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
+        var act = () => Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
 
-        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        (await act.Should().ThrowAsync<AiCreditException>()).Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
     }
 
     [Fact]
@@ -244,17 +284,17 @@ public class ScanQuotaMonthlyTests : IDisposable
         using var ctx = await SeedAsync(6_000, null, (CompanyId, Now, 3_500), (CompanyId, Now, 2_500));
 
         // Simulacre STRICT : tout appel à l'extraction ferait échouer le test.
-        var result = await Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
+        var act = () => Controller(ctx).ScanInvoice(Facture(), CancellationToken.None);
 
-        var refus = result.Should().BeOfType<ObjectResult>().Subject;
+        var refus = (await act.Should().ThrowAsync<AiCreditException>()).Which;
         refus.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
-        var body = Body(result);
-        body.GetProperty("message").GetString().Should().Be(
+        refus.Code.Should().Be("AI_CREDIT_EXHAUSTED");
+        refus.Message.Should().Be(
             "Crédit IA du mois épuisé (100 %). Il se recharge le "
             + MonthStart.AddMonths(1).ToString("dd'/'MM'/'yyyy", System.Globalization.CultureInfo.InvariantCulture)
             + " ; votre administrateur peut l'augmenter.");
-        body.GetProperty("quota").GetProperty("percentUsed").GetInt32().Should().Be(100);
-        body.GetProperty("quota").GetProperty("resetsAt").GetDateTime().Should().Be(MonthStart.AddMonths(1));
+        refus.Credit.PercentUsed.Should().Be(100);
+        refus.Credit.ResetsAt.Should().Be(MonthStart.AddMonths(1));
         Directory.Exists(_racine).Should().BeFalse("le refus passe avant tout stockage de fichier");
     }
 
@@ -283,7 +323,12 @@ public class ScanQuotaMonthlyTests : IDisposable
         quota.GetProperty("scansThisMonth").GetInt32().Should().Be(2);
         quota.GetProperty("percentUsed").GetInt32().Should().Be(47);
         quota.GetProperty("estimatedScansLeft").GetInt32().Should().Be(10);
-        ctx.InvoiceScanLogs.Single(l => l.TokensUsed == 3_400).CompanyId.Should().Be(CompanyId);
+        // « credit » : le nom commun à toutes les réponses d'IA, même objet que « quota ».
+        Body(result).GetProperty("credit").GetRawText().Should().Be(quota.GetRawText());
+        var journal = ctx.InvoiceScanLogs.Single(l => l.TokensUsed == 3_400);
+        journal.CompanyId.Should().Be(CompanyId);
+        journal.UserId.Should().Be(45);
+        ctx.AiUsageLogs.Should().BeEmpty("un scan reste dans invoice_scan_logs : jamais compté deux fois");
     }
 
     [Fact]
@@ -299,8 +344,8 @@ public class ScanQuotaMonthlyTests : IDisposable
         quota.GetProperty("percentUsed").GetInt32().Should().Be(100);
         quota.GetProperty("remainingTokens").GetInt32().Should().Be(0);
 
-        var second = await Controller(ctx, extraction: extraction.Object).ScanInvoice(Facture(), CancellationToken.None);
-        second.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        var second = () => Controller(ctx, extraction: extraction.Object).ScanInvoice(Facture(), CancellationToken.None);
+        (await second.Should().ThrowAsync<AiCreditException>()).Which.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
         extraction.Verify(s => s.ExtractAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
@@ -317,8 +362,24 @@ public class ScanQuotaMonthlyTests : IDisposable
         compteur.GetProperty("budgetTokens").GetInt32().Should().Be(0);
         compteur.GetProperty("usedTokens").GetInt32().Should().Be(0);
 
-        var result = await Controller(ctx, companyIdClaim: 4242).ScanInvoice(Facture(), CancellationToken.None);
-        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        var act = () => Controller(ctx, companyIdClaim: 4242).ScanInvoice(Facture(), CancellationToken.None);
+        (await act.Should().ThrowAsync<AiCreditException>()).Which.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        ctx.InvoiceScanLogs.Should().OnlyContain(l => l.CompanyId == CompanyId, "rien n'est journalisé sous une société inexistante");
+    }
+
+    [Fact]
+    public async Task Un_scan_en_echec_ne_consomme_rien()
+    {
+        using var ctx = await SeedAsync(60_000, null);
+        var extraction = new Mock<IInvoiceExtractionService>();
+        extraction.Setup(s => s.ExtractAsync(It.IsAny<byte[]>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Groq indisponible"));
+
+        var result = await Controller(ctx, extraction: extraction.Object).ScanInvoice(Facture(), CancellationToken.None);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status502BadGateway);
+        ctx.InvoiceScanLogs.Should().BeEmpty("seul un appel réussi consomme le crédit");
+        ctx.AiUsageLogs.Should().BeEmpty();
     }
 
     /// <summary>Photo de facture minimale (en-tête JPEG) : le contrôle du crédit passe avant

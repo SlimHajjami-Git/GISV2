@@ -6,7 +6,7 @@ using GisAPI.Application.Features.Societes.Queries.GetSocieteById;
 using GisAPI.Application.Features.Societes.Commands.CreateSociete;
 using GisAPI.Application.Features.Societes.Commands.UpdateSociete;
 using GisAPI.Application.Features.Societes.Commands.DeleteSociete;
-using GisAPI.Application.Features.Costs;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Application.Features.Societes.Commands.SetSocieteScanQuota;
 using GisAPI.Domain.Entities;
 
@@ -105,9 +105,10 @@ public class SocietesController : ControllerBase
     }
 
     /// <summary>
-    /// Fixe le crédit IA MENSUEL du scan de factures de la société, en jetons.
-    /// null = défaut plateforme (60 000), 0 = fonctionnalité désactivée.
-    /// Rend le réglage enregistré et le crédit du mois qui en découle (barre de la fiche).
+    /// Fixe le crédit IA MENSUEL de la société, en jetons — il couvre toute l'IA (scans,
+    /// assistant, rapports IA) depuis le 22/09/2026. null = défaut plateforme (60 000),
+    /// 0 = IA désactivée pour la société. Rend le réglage enregistré et le crédit du mois qui
+    /// en découle, ventilation par fonction comprise (barre et détail de la fiche).
     /// </summary>
     [HttpPut("{id}/scan-quota")]
     public async Task<IActionResult> SetScanQuota(int id, [FromBody] SetScanQuotaRequest request)
@@ -122,7 +123,8 @@ public class SocietesController : ControllerBase
             remainingTokens = credit.RemainingTokens,
             percentUsed = credit.PercentUsed,
             scansThisMonth = credit.ScansThisMonth,
-            resetsAt = credit.ResetsAt
+            resetsAt = credit.ResetsAt,
+            byFeature = credit.ByFeature
         });
     }
 
@@ -190,7 +192,7 @@ public record SetScanQuotaRequest(int? MonthlyTokens = null, int? MonthlyLimit =
     // que lu comme « 0 = désactivé ».
     public int? EffectiveMonthlyTokens() =>
         MonthlyTokens ?? (MonthlyLimit is int scans
-            ? (scans < 0 ? scans : InvoiceScanCredit.EffectiveBudget(null, scans))
+            ? (scans < 0 ? scans : AiCredit.EffectiveBudget(null, scans))
             : null);
 }
 

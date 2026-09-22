@@ -4,7 +4,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { CreditIaBarComponent } from './credit-ia-bar.component';
-import { CreditIa, creditBloque, creditPerime, delaiAvantRecharge, infobulleCredit, lireCreditIa } from './credit-ia.helpers';
+import { CreditIa, creditBloque, creditDepuisReponse, creditPerime, delaiAvantRecharge, infobulleCredit, lireCreditIa, lireRefusCreditIa } from './credit-ia.helpers';
 
 /**
  * Brique « Scanner une facture » — bouton + barre « Crédit IA » + envoi du fichier
@@ -26,8 +26,9 @@ export interface LigneFactureScannee {
 }
 
 /**
- * Crédit IA MENSUEL de la société, en jetons — partagé par tous les écrans. Remplace le
- * quota en nombre de scans le 22/09/2026 (voir credit-ia.helpers.ts).
+ * Crédit IA MENSUEL de la société, en jetons — partagé par tous les écrans et par toute
+ * l'IA (scans, assistant, rapports IA). Remplace le quota en nombre de scans le 22/09/2026
+ * (voir credit-ia.helpers.ts).
  */
 export type QuotaScan = CreditIa;
 
@@ -200,7 +201,7 @@ export function normaliserExtraction(brut: any): ExtractionFacture {
           <!-- Part du crédit IA gratuit du mois déjà consommée (22/09/2026) : remplace la
                pastille « 12/20 ce mois ». HORS du bouton : un bouton rend ses enfants
                présentationnels, le rôle progressbar y serait perdu pour les lecteurs d'écran. -->
-          <app-credit-ia-bar [credit]="quota"></app-credit-ia-bar>
+          <app-credit-ia-bar [credit]="quota" [avecScans]="true"></app-credit-ia-bar>
         }
         <input #fichier type="file" accept="image/*,application/pdf" hidden (change)="onFichier($event)">
       </span>
@@ -278,7 +279,8 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
     if (this.desactive && this.raisonDesactivation) return this.raisonDesactivation;
     const q = this.quota;
     if (!q) return 'Scanner une facture avec l\'IA';
-    return infobulleCredit(q, Date.now());
+    // « environ N scans restants » : seulement ici, à côté du bouton de scan.
+    return infobulleCredit(q, Date.now(), { scans: true });
   }
 
   /** Relecture du crédit prévue à la date de recharge (écran resté ouvert au changement de mois). */
@@ -346,8 +348,8 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
     this.apiService.scanInvoice(prepared).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res: any) => {
         this.analyse = false;
-        // Barre mise à jour par le serveur (crédit relu après le scan).
-        this.definirCredit(lireCreditIa(res?.quota) ?? this.quota);
+        // Barre mise à jour par le serveur (crédit relu après le scan, commun à toute l'IA).
+        this.definirCredit(creditDepuisReponse(res) ?? this.quota);
         this.scanne.emit({
           extraction: normaliserExtraction(res?.extraction),
           receiptUrl: res?.receiptUrl || '',
@@ -359,15 +361,17 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
         this.analyse = false;
         // 413 = refusé par le proxy sur la taille avant d'atteindre l'API : le message
         // générique pousserait l'utilisateur à réessayer le même fichier.
-        // Les autres messages viennent du serveur (400 format, 403 non activé,
-        // 429 crédit IA épuisé, 502 IA indisponible).
+        // Les autres messages viennent du serveur (400 format, 403 IA non activée,
+        // 429 crédit IA du mois épuisé, 502 IA indisponible).
         const message = err?.status === 413
           ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
           : (err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir les informations manuellement.");
-        // Refus 403/429 : le serveur joint le crédit du moment. La barre passe alors à
-        // 100 % et le bouton se grise — sans quoi il restait actif sur une page ouverte
-        // avant l'épuisement (autre utilisateur, autre onglet) et chaque clic était refusé.
-        const credit = lireCreditIa(err?.error?.quota);
+        // Refus 403/429 (AI_CREDIT_DISABLED / AI_CREDIT_EXHAUSTED) : le serveur joint le
+        // crédit du moment. La barre passe alors à 100 % et le bouton se grise — sans quoi il
+        // restait actif sur une page ouverte avant l'épuisement (assistant utilisé dans un
+        // autre onglet, autre utilisateur) et chaque clic était refusé.
+        const refus = lireRefusCreditIa(err);
+        const credit = refus?.credit ?? lireCreditIa(err?.error?.quota);
         if (credit) this.definirCredit(credit);
         alert(message);
         this.echec.emit({ message, receiptUrl: err?.error?.receiptUrl || '' });

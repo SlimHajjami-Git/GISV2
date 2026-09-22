@@ -291,6 +291,8 @@ public class CreditsDeduitsPartoutTests
         sante.Setup(s => s.CalculateScoreAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(new VehicleHealthResult { VehicleId = 1, Score = 80, Level = "good" });
 
+        // Crédit IA de la société (22/09/2026) : sans société connue, l'appel serait refusé.
+        AiCreditTestData.EnsureSocieteAvecCredit(ctx, CompanyId);
         return new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = Admin() } }

@@ -3214,3 +3214,16 @@ input[type="date"].field-input::-webkit-calendar-picker-indicator:hover {
 .oc-workspace .oc-ventilation .vent > b { font-size: 13px; font-weight: 700; color: #1e293b; font-variant-numeric: tabular-nums; }
 /* Un avoir allège le coût : teinte de crédit, la même que la part du camembert. */
 .oc-workspace .oc-ventilation .vent--avoir > b { color: #0d9488; }
+
+/* Crédit IA du mois (22/09/2026) : barre du rapport IA flotte et motif du grisé */
+.ai-credit-sidebar { margin-top: 8px; }
+.ai-credit-qa { margin: 0 0 10px; }
+.ai-credit-blocked { margin: 6px 0 10px; font-size: 12px; line-height: 1.4; color: #b91c1c; }
+/* Génération du rapport IA flotte refusée (crédit épuisé ou coupé, panne) : message du serveur */
+.ai-fleet-erreur-vide { text-align: center; padding: 60px 24px; color: #64748b; }
+.ai-fleet-erreur-vide h3 { margin: 0 auto; max-width: 520px; color: #b91c1c; font-weight: 700; line-height: 1.5; }
+.ai-fleet-erreur-icone { font-size: 44px; margin-bottom: 12px; }
+.ai-fleet-erreur-bandeau {
+  margin: 0 0 12px; padding: 10px 14px; border: 1px solid #fecaca; border-radius: 8px;
+  background: #fef2f2; color: #b91c1c; font-size: 13px; line-height: 1.5;
+}

@@ -464,8 +464,9 @@ ORDER BY device_id, recorded_at;
             var location = new GeocodedLocation(
                 ev.LocationCommune, ev.LocationGovernorate, ev.LocationRoadType);
 
+            // Société de l'accident : le récit consomme son crédit IA (jamais bloqué).
             var narrative = await _narrativeService.TryGenerateAsync(
-                context, candidate, vehicleLabel, location, ct);
+                context, candidate, vehicleLabel, location, ev.CompanyId, ct);
             if (narrative == null) return;
 
             var jsonOpts = new JsonSerializerOptions

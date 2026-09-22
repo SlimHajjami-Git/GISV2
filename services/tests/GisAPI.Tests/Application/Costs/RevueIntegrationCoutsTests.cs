@@ -209,6 +209,8 @@ public class RevueIntegrationCoutsTests
            .Callback<string, List<LlmMessage>, int, CancellationToken>((system, _, _, _) => prompt?.Invoke(system))
            .ReturnsAsync(new LlmResponse("analyse", 1200));
 
+        // Crédit IA de la société (22/09/2026) : sans société connue, le rapport serait refusé.
+        AiCreditTestData.EnsureSocieteAvecCredit(ctx, CompanyId);
         return new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = user } }

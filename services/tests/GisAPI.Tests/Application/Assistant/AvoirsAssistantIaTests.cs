@@ -85,6 +85,8 @@ public class AvoirsAssistantIaTests
         sante.Setup(s => s.CalculateAllScoresAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(new List<VehicleHealthResult>());
 
+        // Crédit IA de la société (22/09/2026) : sans société connue, le rapport serait refusé.
+        AiCreditTestData.EnsureSocieteAvecCredit(ctx, CompanyId);
         var controleur = new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = Admin() } }

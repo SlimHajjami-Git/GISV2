@@ -106,6 +106,9 @@ public interface IGisDbContext
     // Invoice scan quota (one row per successful AI scan)
     DbSet<InvoiceScanLog> InvoiceScanLogs { get; }
 
+    // Crédit IA mensuel (migration 052) : un appel à l'IA réussi, hors scan de facture
+    DbSet<AiUsageLog> AiUsageLogs { get; }
+
     // Audit log (login / logout / activity history)
     DbSet<AuditLog> AuditLogs { get; }
 

@@ -7,11 +7,13 @@ import { ApiService } from '../services/api.service';
 import { marked } from 'marked';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { CreditIaBarComponent } from './shared/credit-ia-bar.component';
+import { CreditIa, creditBloque, creditDepuisReponse, lireCreditIa, lireRefusCreditIa, messageCreditBloque } from './shared/credit-ia.helpers';
 
 @Component({
   selector: 'app-ai-fleet-report',
   standalone: true,
-  imports: [CommonModule, FormsModule, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, CreditIaBarComponent, ...USER_PREF_PIPES],
   template: `
     <div class="report-page">
       <!-- Header -->
@@ -30,7 +32,11 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <option value="quarter">90 derniers jours</option>
             <option value="year">365 derniers jours</option>
           </select>
-          <button class="btn-generate" (click)="generateReport()" [disabled]="loading">
+          <!-- Crédit IA du mois (22/09/2026) : le rapport consomme le crédit commun aux scans
+               et à l'assistant ; grisé à 100 %, avec le motif et la date de recharge. -->
+          <app-credit-ia-bar *ngIf="credit" [credit]="credit"></app-credit-ia-bar>
+          <button class="btn-generate" (click)="generateReport()" [disabled]="loading || creditBloque"
+                  [title]="creditBloque ? creditRaison : ''">
             <span *ngIf="!loading">&#x1F916; Generer le rapport</span>
             <span *ngIf="loading" class="loading-text">
               <span class="spinner"></span> Analyse en cours...
@@ -38,6 +44,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
           </button>
         </div>
       </div>
+      <div class="credit-blocked" *ngIf="creditBloque">{{ creditRaison }}</div>
 
       <!-- Loading state -->
       <div class="loading-overlay" *ngIf="loading">
@@ -248,7 +255,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
           <h3>&#x1F4AC; Questions de suivi</h3>
           <p class="qa-hint">Posez une question sur le rapport. L'IA connait vos vehicules, votre type d'entreprise, et les problemes typiques de chaque marque/modele.</p>
           <div class="qa-suggestions">
-            <button *ngFor="let s of suggestions" class="suggestion-btn" (click)="askQuestion(s)" [disabled]="askLoading">{{ s }}</button>
+            <button *ngFor="let s of suggestions" class="suggestion-btn" (click)="askQuestion(s)" [disabled]="askLoading || creditBloque">{{ s }}</button>
           </div>
           <div class="qa-messages" *ngIf="qaMessages.length > 0">
             <div *ngFor="let msg of qaMessages" class="qa-msg" [class.user]="msg.role === 'user'" [class.ai]="msg.role === 'ai'">
@@ -257,8 +264,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             </div>
           </div>
           <div class="qa-input-row">
-            <input type="text" [(ngModel)]="questionInput" placeholder="Ex: Quel vehicule devrait etre remplace en priorite ?" (keydown.enter)="askQuestion(questionInput)" [disabled]="askLoading" />
-            <button class="btn-ask" (click)="askQuestion(questionInput)" [disabled]="askLoading || !questionInput.trim()">
+            <input type="text" [(ngModel)]="questionInput" placeholder="Ex: Quel vehicule devrait etre remplace en priorite ?" (keydown.enter)="askQuestion(questionInput)" [disabled]="askLoading || creditBloque" />
+            <button class="btn-ask" (click)="askQuestion(questionInput)" [disabled]="askLoading || !questionInput.trim() || creditBloque">
               <span *ngIf="!askLoading">Envoyer</span>
               <span *ngIf="askLoading" class="spinner-sm"></span>
             </button>
@@ -413,6 +420,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
     .qa-input-row input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
     .btn-ask { padding: 10px 20px; background: #6366f1; color: #fff; border: none; border-radius: 10px; font-weight: 600; font-size: 13px; cursor: pointer; }
     .btn-ask:disabled { opacity: 0.5; cursor: not-allowed; }
+    /* Crédit IA épuisé ou IA coupée : pourquoi c'est grisé, et jusqu'à quand */
+    .credit-blocked { margin: 0 0 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; }
 
     /* Empty state */
     .empty-state { text-align: center; padding: 80px 20px; }
@@ -445,6 +454,8 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
   renderedAnalysis: SafeHtml = '';
   questionInput = '';
   qaMessages: { role: string; text: string; html: SafeHtml }[] = [];
+  /** Crédit IA du mois de la société (null tant qu'il n'est pas lu, ou API ancienne). */
+  credit: CreditIa | null = null;
 
   // Chart helpers
   healthItems: { label: string; count: number; pct: number; color: string }[] = [];
@@ -468,7 +479,28 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
     private sanitizer: DomSanitizer
   ) {}
 
-  ngOnInit() {}
+  ngOnInit() {
+    // Crédit IA du mois (22/09/2026) : commun aux scans, à l'assistant et aux rapports IA.
+    this.apiService.getAiCredit().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (c) => { this.credit = lireCreditIa(c); this.cdr.detectChanges(); },
+      error: () => { /* crédit indisponible : le bouton reste actif, le serveur tranche */ }
+    });
+  }
+
+  /** Crédit épuisé (avant la date de recharge) ou IA coupée : génération et questions grisées. */
+  get creditBloque(): boolean {
+    return !!this.credit && creditBloque(this.credit, Date.now());
+  }
+
+  /** Pourquoi c'est grisé, et jusqu'à quand. */
+  get creditRaison(): string {
+    return messageCreditBloque(this.credit, Date.now());
+  }
+
+  /** Crédit joint à une réponse ou à un refus : la barre suit chaque appel. */
+  private majCredit(credit: CreditIa | null) {
+    if (credit) this.credit = credit;
+  }
 
   ngOnDestroy() {
     this.destroy$.next();
@@ -476,6 +508,7 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
   }
 
   generateReport() {
+    if (this.creditBloque) return;
     this.loading = true;
     this.error = '';
     this.qaMessages = [];
@@ -484,12 +517,16 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
       next: (data) => {
         this.reportData = data;
         this.renderedAnalysis = this.renderMarkdown(data.aiAnalysis || '');
+        this.majCredit(creditDepuisReponse(data));
         this.buildChartData();
         this.loading = false;
         this.cdr.detectChanges();
       },
       error: (err) => {
-        this.error = err.error?.message || 'Erreur lors de la generation du rapport';
+        // Refus de crédit (403/429) : message du SERVEUR (date de recharge), barre à 100 %.
+        const refus = lireRefusCreditIa(err);
+        this.majCredit(refus?.credit ?? null);
+        this.error = refus?.message || err.error?.message || 'Erreur lors de la generation du rapport';
         this.loading = false;
         this.cdr.detectChanges();
       }
@@ -497,7 +534,7 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
   }
 
   askQuestion(question: string) {
-    if (!question?.trim() || this.askLoading) return;
+    if (!question?.trim() || this.askLoading || this.creditBloque) return;
     this.askLoading = true;
     this.questionInput = '';
 
@@ -507,6 +544,7 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
     this.apiService.askFleetReport(question, context).pipe(takeUntil(this.destroy$)).subscribe({
       next: (data) => {
         this.qaMessages.push({ role: 'ai', text: data.answer, html: this.renderMarkdown(data.answer) });
+        this.majCredit(creditDepuisReponse(data));
         this.askLoading = false;
         this.cdr.detectChanges();
         // Scroll to bottom
@@ -516,7 +554,13 @@ export class AiFleetReportComponent implements OnInit, OnDestroy {
         }, 100);
       },
       error: (err) => {
-        this.qaMessages.push({ role: 'ai', text: 'Erreur: ' + (err.error?.message || 'Service indisponible'), html: 'Erreur: ' + (err.error?.message || 'Service indisponible') });
+        const refus = lireRefusCreditIa(err);
+        if (refus) {
+          this.majCredit(refus.credit);
+          this.qaMessages.push({ role: 'ai', text: refus.message, html: refus.message });
+        } else {
+          this.qaMessages.push({ role: 'ai', text: 'Erreur: ' + (err.error?.message || 'Service indisponible'), html: 'Erreur: ' + (err.error?.message || 'Service indisponible') });
+        }
         this.askLoading = false;
         this.cdr.detectChanges();
       }

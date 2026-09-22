@@ -3,13 +3,15 @@ import { CreditIa, infobulleCredit, niveauCredit, NiveauCredit } from './credit-
 
 /**
  * Barre compacte « Crédit IA » : part du crédit IA gratuit du mois déjà consommée par
- * les scans de factures (22/09/2026, remplace la pastille « 12/20 ce mois »).
+ * TOUTE l'IA de la société — scans, assistant, rapports IA (22/09/2026, remplace la
+ * pastille « 12/20 ce mois » du scan).
  *
- * Posée À CÔTÉ du bouton « Scanner une facture », jamais dedans : un bouton rend ses
- * enfants purement présentationnels pour les lecteurs d'écran, le rôle progressbar y
- * aurait été perdu. Réutilisée plus large sur la fiche société de l'admin.
+ * Posée À CÔTÉ du bouton qui appelle l'IA (« Scanner une facture », envoi à l'assistant,
+ * « Générer le rapport »), jamais dedans : un bouton rend ses enfants purement
+ * présentationnels pour les lecteurs d'écran, le rôle progressbar y aurait été perdu.
+ * Réutilisée plus large sur la fiche société de l'admin.
  *
- * Fonction désactivée (budget 0) : pas de barre — une barre rouge à 100 % se lirait
+ * IA désactivée (budget 0) : pas de barre — une barre rouge à 100 % se lirait
  * « crédit épuisé », alors que la fonction est fermée.
  */
 @Component({
@@ -75,8 +77,11 @@ export class CreditIaBarComponent {
   /** Libellé avant la piste ('' pour aucun). */
   @Input() libelle = 'Crédit IA';
 
-  /** Infobulle ; par défaut le texte standard (pourcentage, jetons, scans restants, recharge). */
+  /** Infobulle ; par défaut le texte standard (pourcentage, jetons, recharge). */
   @Input() infobulle: string | null = null;
+
+  /** À côté du bouton de scan : l'infobulle ajoute « environ N scans restants ». */
+  @Input() avecScans = false;
 
   get pourcentage(): number {
     const p = Math.floor(Number(this.credit?.percentUsed) || 0);
@@ -89,6 +94,6 @@ export class CreditIaBarComponent {
 
   get titre(): string {
     // L'heure du poste : passé la date de recharge, l'infobulle ne l'annonce plus au futur.
-    return this.infobulle || infobulleCredit(this.credit, Date.now());
+    return this.infobulle || infobulleCredit(this.credit, Date.now(), { scans: this.avecScans });
   }
 }

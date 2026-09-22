@@ -1,12 +1,14 @@
 import {
-  CreditIa, creditBloque, creditEpuise, creditPerime, DELAI_MAX_MINUTERIE, delaiAvantRecharge, formatJetons,
-  infobulleCredit, libelleRecharge, libelleScansRestants, lireCreditIa, MARGE_APRES_RECHARGE_MS, niveauCredit
+  CreditIa, creditBloque, creditDepuisReponse, creditEpuise, creditPerime, DELAI_MAX_MINUTERIE, delaiAvantRecharge, formatJetons,
+  infobulleCredit, libelleRecharge, libelleScansRestants, lireCreditIa, lireRefusCreditIa, MARGE_APRES_RECHARGE_MS,
+  messageCreditBloque, niveauCredit, ventilationCredit
 } from './credit-ia.helpers';
 
 /**
- * Crédit IA mensuel du scan de factures (22/09/2026) : ce que la barre « Crédit IA »
- * affiche, avec quelle couleur et quelle infobulle — partagé par les cinq écrans du
- * bouton « Scanner une facture » et par la fiche société de l'admin.
+ * Crédit IA mensuel de la société (22/09/2026) : ce que la barre « Crédit IA » affiche,
+ * avec quelle couleur et quelle infobulle — partagé par les cinq écrans du bouton
+ * « Scanner une facture », l'assistant IA, le rapport IA flotte et la fiche société de
+ * l'admin. Le crédit couvre TOUTE l'IA de la société (« le quota inclut l'utilisation de l'IA »).
  */
 const credit = (patch: Partial<CreditIa> = {}): CreditIa => ({
   enabled: true, budgetTokens: 60000, usedTokens: 25200, remainingTokens: 34800,
@@ -120,8 +122,9 @@ describe('changement de mois sur un écran resté ouvert', () => {
     expect(infobulleCredit(epuise, avant)).toBe(
       "Crédit IA du mois épuisé (100 %) — il se recharge le 1er octobre. Votre administrateur peut l'augmenter."
     );
-    expect(infobulleCredit(epuise, apres)).toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau scanner.");
-    expect(infobulleCredit(credit(), apres)).toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau scanner.");
+    expect(infobulleCredit(epuise, apres)).toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau utiliser l'IA.");
+    expect(infobulleCredit(credit(), apres)).toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau utiliser l'IA.");
+    expect(infobulleCredit(epuise, apres, { scans: true })).toBe("Le crédit IA s'est rechargé le 1er octobre : vous pouvez de nouveau scanner.");
   });
 });
 
@@ -151,8 +154,14 @@ describe('libellés', () => {
 });
 
 describe('infobulleCredit', () => {
-  it('texte demandé : part utilisée, jetons, scans restants, date de recharge', () => {
+  it('texte demandé, générique (toute l’IA) : part utilisée, jetons, date de recharge', () => {
     expect(infobulleCredit(credit())).toBe(
+      '42 % du crédit IA gratuit du mois utilisé (25 200 / 60 000 jetons). Se recharge le 1er octobre.'
+    );
+  });
+
+  it('à côté du bouton de scan seulement : « environ N scans restants » en plus', () => {
+    expect(infobulleCredit(credit(), undefined, { scans: true })).toBe(
       '42 % du crédit IA gratuit du mois utilisé (25 200 / 60 000 jetons, environ 11 scans restants). Se recharge le 1er octobre.'
     );
   });
@@ -165,6 +174,71 @@ describe('infobulleCredit', () => {
 
   it('fonction désactivée : le dit, sans parler d’épuisement', () => {
     expect(infobulleCredit(credit({ enabled: false, budgetTokens: 0, usedTokens: 0, remainingTokens: 0, percentUsed: 100 })))
-      .toBe("Le scan de factures IA n'est pas activé pour votre société.");
+      .toBe("Les fonctions d'IA ne sont pas activées pour votre société.");
+  });
+});
+
+describe('toute l’IA : ventilation, réponses et refus du serveur', () => {
+  it('lireCreditIa reprend la ventilation par fonction (entiers positifs)', () => {
+    const c = lireCreditIa({ ...credit(), byFeature: { invoice_scan: 3000, assistant_chat: 22200.7, fleet_report: -4, bidon: 'x' } })!;
+    expect(c.byFeature).toEqual({ invoice_scan: 3000, assistant_chat: 22200, fleet_report: 0 });
+    expect(lireCreditIa(credit())!.byFeature).toBeUndefined();
+  });
+
+  it('creditDepuisReponse : « credit » des réponses d’IA, « quota » de l’ancien scan, sinon null', () => {
+    expect(creditDepuisReponse({ answer: 'ok', credit: credit({ usedTokens: 30000 }) })!.usedTokens).toBe(30000);
+    expect(creditDepuisReponse({ quota: credit({ usedTokens: 31000 }) })!.usedTokens).toBe(31000);
+    expect(creditDepuisReponse({ answer: 'ok' })).toBeNull();
+    expect(creditDepuisReponse(null)).toBeNull();
+  });
+
+  it('lireRefusCreditIa : 429 AI_CREDIT_EXHAUSTED avec le message du serveur et le crédit joint', () => {
+    const message = "Crédit IA du mois épuisé (100 %). Il se recharge le 01/10/2026 ; votre administrateur peut l'augmenter.";
+    const refus = lireRefusCreditIa({ status: 429, error: { code: 'AI_CREDIT_EXHAUSTED', message, credit: credit({ remainingTokens: 0, percentUsed: 100 }) } })!;
+
+    expect(refus.code).toBe('AI_CREDIT_EXHAUSTED');
+    expect(refus.message).toBe(message);
+    expect(refus.credit!.percentUsed).toBe(100);
+  });
+
+  it('lireRefusCreditIa : 403 AI_CREDIT_DISABLED, message de repli si le serveur n’en donne pas', () => {
+    const refus = lireRefusCreditIa({ status: 403, error: { code: 'AI_CREDIT_DISABLED' } })!;
+    expect(refus.message).toBe("Les fonctions d'IA ne sont pas activées pour votre société.");
+    expect(refus.credit).toBeNull();
+  });
+
+  it('lireRefusCreditIa : toute autre erreur n’est pas un refus de crédit', () => {
+    expect(lireRefusCreditIa({ status: 503, error: { message: 'Groq indisponible' } })).toBeNull();
+    expect(lireRefusCreditIa({ status: 403, error: { code: 'USER_PERMISSION_DENIED', message: 'Vous n\'avez pas accès à ce module' } })).toBeNull();
+    expect(lireRefusCreditIa({ status: 0 })).toBeNull();
+    expect(lireRefusCreditIa(null)).toBeNull();
+  });
+
+  it('messageCreditBloque : pourquoi un bouton d’IA est grisé, rien sinon', () => {
+    const maintenant = Date.parse('2026-09-22T10:00:00Z');
+    expect(messageCreditBloque(credit({ remainingTokens: 0, percentUsed: 100 }), maintenant))
+      .toBe("Crédit IA du mois épuisé (100 %) — il se recharge le 1er octobre. Votre administrateur peut l'augmenter.");
+    expect(messageCreditBloque(credit({ enabled: false, budgetTokens: 0, remainingTokens: 0 }), maintenant))
+      .toBe("Les fonctions d'IA ne sont pas activées pour votre société.");
+    expect(messageCreditBloque(credit(), maintenant)).toBe('');
+    expect(messageCreditBloque(null, maintenant)).toBe('');
+    // Passé la date de recharge, un crédit épuisé ne bloque plus (le serveur l'a remis à zéro).
+    expect(messageCreditBloque(credit({ remainingTokens: 0, percentUsed: 100 }), Date.parse('2026-10-01T08:00:00Z'))).toBe('');
+  });
+
+  it('ventilationCredit : libellés français, plus gros consommateur d’abord, fonctions à 0 écartées', () => {
+    const lignes = ventilationCredit(credit({
+      usedTokens: 30000,
+      byFeature: { invoice_scan: 6000, assistant_chat: 18000, fleet_report: 6000, consumption_explain: 0, fonction_future: 0 }
+    }));
+
+    expect(lignes).toEqual([
+      { cle: 'assistant_chat', libelle: 'Assistant IA', jetons: 18000, part: 60 },
+      { cle: 'invoice_scan', libelle: 'Scans de factures', jetons: 6000, part: 20 },
+      { cle: 'fleet_report', libelle: 'Rapports IA flotte', jetons: 6000, part: 20 }
+    ]);
+    expect(ventilationCredit(credit())).toEqual([]);
+    expect(ventilationCredit(null)).toEqual([]);
+    expect(ventilationCredit(credit({ byFeature: { nouvelle_fonction: 500 } }))[0].libelle).toBe('nouvelle_fonction');
   });
 });

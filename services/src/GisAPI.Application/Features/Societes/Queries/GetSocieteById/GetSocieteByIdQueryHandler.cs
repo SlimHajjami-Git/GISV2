@@ -1,5 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
-using GisAPI.Application.Features.Costs;
+using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -28,9 +28,9 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             ?? throw new NotFoundException("Societe", request.Id);
 
         // Crédit IA du mois calendaire en cours (UTC) : même calcul que le contrôle avant
-        // scan et que la barre de l'écran client — la fiche ne doit jamais montrer un
+        // chaque appel à l'IA et que la barre de l'écran client — la fiche ne doit jamais montrer un
         // chiffre que le serveur n'applique pas.
-        var credit = await InvoiceScanCredit.LoadAsync(_context, societe.Id, DateTime.UtcNow, ct);
+        var credit = await AiCredit.LoadAsync(_context, societe.Id, DateTime.UtcNow, ct);
 
         return new SocieteDetailDto(
             societe.Id,
@@ -78,7 +78,8 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             credit.BudgetTokens,
             credit.UsedTokens,
             credit.PercentUsed,
-            credit.ResetsAt
+            credit.ResetsAt,
+            credit.ByFeature
         );
     }
 }

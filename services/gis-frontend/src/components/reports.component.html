@@ -98,6 +98,14 @@
             <option value="quarter">90 derniers jours</option>
             <option value="year">365 derniers jours</option>
           </select>
+          <!-- Crédit IA du mois (22/09/2026) : le rapport consomme le crédit commun aux scans
+               et à l'assistant. Grisé à 100 %, avec le motif et la date de recharge. -->
+          @if (aiFleetCredit) {
+            <div class="ai-credit-sidebar"><app-credit-ia-bar [credit]="aiFleetCredit"></app-credit-ia-bar></div>
+          }
+          @if (aiFleetCreditBloque) {
+            <div class="validation-hint ai-credit-blocked">{{ aiFleetCreditRaison }}</div>
+          }
         </div>
 
         <!-- Filter Type Checkboxes (Évolution des coûts : véhicule obligatoire, pas de case à décocher) -->
@@ -215,7 +223,9 @@
 
         <!-- ===== GPS REPORTS: Standard period buttons ===== -->
         <!-- trips, stops, speed, speed-infraction, driving-behavior, fuel, fuel-estimation, mileage -->
-        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'monthly-costs' && selectedTemplate.type !== 'monthly-fuel' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()">
+        <!-- Pas le rapport IA flotte : sa période est « Période d'analyse » ; ces pastilles ne le
+             changeaient pas mais le relançaient à chaque clic (≈ 5 000 jetons de crédit IA). -->
+        <div class="period-row" *ngIf="selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'monthly-costs' && selectedTemplate.type !== 'monthly-fuel' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && selectedTemplate.type !== 'ai-fleet' && !isCostReportType()">
           <button *ngFor="let p of standardPeriods"
             [class.active]="selectedStandardPeriod === p.value"
             (click)="onStandardPeriodChange(p.value)">{{ p.label }}</button>
@@ -236,11 +246,11 @@
         </div>
 
         <!-- ===== CUSTOM DATE RANGE (when Personnalisé selected) ===== -->
-        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && selectedTemplate.type !== 'ai-fleet' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
           <label class="field-label">Date début</label>
           <input type="date" class="field-input" [(ngModel)]="customStartDate" [max]="customEndDate || todayStr">
         </div>
-        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
+        <div class="sidebar-row" *ngIf="(selectedStandardPeriod === 'custom' && selectedTemplate && selectedTemplate.type !== 'monthly' && selectedTemplate.type !== 'mileage-period' && selectedTemplate.type !== 'daily' && selectedTemplate.type !== 'costs' && selectedTemplate.type !== 'maintenance' && selectedTemplate.type !== 'ai-fleet' && !isCostReportType()) || (selectedCostPeriod === 'custom' && (selectedTemplate?.type === 'costs' || selectedTemplate?.type === 'maintenance' || isCostPeriodReport())) || (selectedEvolutionPeriod === 'custom' && selectedTemplate?.type === 'cost-evolution')">
           <label class="field-label">Date fin</label>
           <input type="date" class="field-input" [(ngModel)]="customEndDate" [min]="customStartDate" [max]="todayStr">
         </div>
@@ -254,7 +264,8 @@
         <!-- Action Buttons -->
         <div class="action-row">
           <button class="btn-clear" (click)="clearFilters()">Effacer</button>
-          <button class="btn-execute" (click)="executeReport()" [disabled]="loading || !selectedTemplateId">
+          <button class="btn-execute" (click)="executeReport()" [disabled]="loading || !selectedTemplateId || executionBloqueeParCreditIa"
+                  [title]="executionBloqueeParCreditIa ? aiFleetCreditRaison : ''">
             @if (loading) {
               <span class="spinner"></span>
             }
@@ -789,6 +800,10 @@
                 <div class="ai-progress-bar"><div class="ai-progress-fill"></div></div>
               </div>
             } @else if (aiFleetReport) {
+              @if (statisticsData['Erreur']) {
+                <!-- Relance refusée : le rapport précédent (déjà payé) reste affiché sous le message du serveur. -->
+                <div class="ai-fleet-erreur ai-fleet-erreur-bandeau" role="alert">⚠️ {{ statisticsData['Erreur'] }}</div>
+              }
               <!-- KPI Summary -->
             <div class="report-toolbar-export"><ng-container *ngTemplateOutlet="exportButtons"></ng-container></div>
               <div class="ai-kpi-row">
@@ -928,8 +943,14 @@
               <div class="ai-qa-card">
                 <h3>💬 Questions de suivi</h3>
                 <p class="ai-qa-hint">Posez une question — l'IA connaît vos véhicules et les problèmes typiques de chaque marque/modèle.</p>
+                @if (aiFleetCredit) {
+                  <div class="ai-credit-qa"><app-credit-ia-bar [credit]="aiFleetCredit"></app-credit-ia-bar></div>
+                }
+                @if (aiFleetCreditBloque) {
+                  <div class="ai-credit-blocked">{{ aiFleetCreditRaison }}</div>
+                }
                 <div class="ai-qa-suggestions">
-                  <button *ngFor="let s of aiFleetSuggestions" class="ai-suggestion-btn" (click)="askAiFleetQuestion(s)" [disabled]="aiFleetAskLoading">{{ s }}</button>
+                  <button *ngFor="let s of aiFleetSuggestions" class="ai-suggestion-btn" (click)="askAiFleetQuestion(s)" [disabled]="aiFleetAskLoading || aiFleetCreditBloque">{{ s }}</button>
                 </div>
                 <div class="ai-qa-messages" *ngIf="aiFleetQaMessages.length > 0">
                   <div *ngFor="let msg of aiFleetQaMessages" class="ai-qa-msg" [class.user]="msg.role === 'user'" [class.ai]="msg.role === 'ai'">
@@ -938,12 +959,19 @@
                   </div>
                 </div>
                 <div class="ai-qa-input-row">
-                  <input type="text" [(ngModel)]="aiFleetQuestionInput" placeholder="Ex: Quel véhicule devrait être remplacé ?" (keydown.enter)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading" />
-                  <button class="btn-execute" (click)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading || !aiFleetQuestionInput.trim()">
+                  <input type="text" [(ngModel)]="aiFleetQuestionInput" placeholder="Ex: Quel véhicule devrait être remplacé ?" (keydown.enter)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading || aiFleetCreditBloque" />
+                  <button class="btn-execute" (click)="askAiFleetQuestion(aiFleetQuestionInput)" [disabled]="aiFleetAskLoading || !aiFleetQuestionInput.trim() || aiFleetCreditBloque">
                     @if (aiFleetAskLoading) { <span class="spinner"></span> }
                     Envoyer
                   </button>
                 </div>
+              </div>
+            } @else if (statisticsData['Erreur']) {
+              <!-- Génération refusée sans rapport à l'écran (crédit IA épuisé ou coupé, panne) :
+                   le message du SERVEUR, qui donne la date de recharge — la zone restait vide. -->
+              <div class="report-empty-state ai-fleet-erreur ai-fleet-erreur-vide" role="alert">
+                <div class="ai-fleet-erreur-icone">⚠️</div>
+                <h3>{{ statisticsData['Erreur'] }}</h3>
               </div>
             }
           </div>
