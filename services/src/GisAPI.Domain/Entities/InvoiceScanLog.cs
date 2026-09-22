@@ -3,9 +3,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace GisAPI.Domain.Entities;
 
 /// <summary>
-/// One successful AI invoice scan (Dépenses → « Scanner une facture »). Used to
-/// enforce the per-société monthly quota (<see cref="Societe.InvoiceScanMonthlyLimit"/>)
-/// and to audit real Groq token consumption per company/user.
+/// One successful AI invoice scan (« Scanner une facture »). La somme de ses
+/// <see cref="TokensUsed"/> sur le mois civil est la consommation du crédit IA mensuel
+/// de la société (<see cref="Societe.InvoiceScanMonthlyTokens"/>, 22/09/2026) ; sert aussi
+/// à auditer la consommation Groq réelle par société et par utilisateur.
 /// </summary>
 public class InvoiceScanLog
 {

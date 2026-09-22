@@ -36,14 +36,25 @@ public record SocieteDetailDto(
     int RolesCount,
     DateTime CreatedAt,
     DateTime UpdatedAt,
-    // Quota mensuel de scans de factures IA — null = défaut plateforme (20),
-    // 0 = désactivé. Paramètres avec défauts : les handlers Create/Update
+    // ANCIEN quota de scans IA, en nombre de scans (lu seulement si le crédit en jetons
+    // n'est pas réglé). Paramètres avec défauts : les handlers Create/Update
     // construisent ce DTO sans ces infos, l'admin UI recharge via GET.
     int? InvoiceScanMonthlyLimit = null,
+    // Nombre de scans réussis ce mois-ci (information, ne limite plus rien).
     int InvoiceScanUsedThisMonth = 0,
     // Suspension automatique à l'expiration (grâce 7 j). false = jamais
     // bloquée automatiquement, seule la suspension manuelle coupe.
-    bool AutoSuspendEnabled = true
+    bool AutoSuspendEnabled = true,
+    // ── Crédit IA mensuel du scan de factures, en jetons (22/09/2026) ──────────
+    // Réglage brut : null = défaut plateforme (60 000), 0 = désactivé.
+    int? InvoiceScanMonthlyTokens = null,
+    // Budget EFFECTIF du mois (réglage, ou ancien quota converti, ou défaut).
+    int InvoiceScanBudgetTokens = 0,
+    // Jetons consommés depuis le 1er du mois, et part du budget (0-100, arrondi bas).
+    int InvoiceScanUsedTokens = 0,
+    int InvoiceScanPercentUsed = 0,
+    // Prochaine recharge (1er du mois suivant, UTC) — null hors lecture GET.
+    DateTime? InvoiceScanResetsAt = null
 );
 
 public record SocieteSettingsDto(

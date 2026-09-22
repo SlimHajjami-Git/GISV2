@@ -59,7 +59,7 @@ describe('DocumentRenewalPopupComponent — scan de la quittance', () => {
   }
 
   /** Ouvre la modale sur un document, comme le fait l'écran Échéances. */
-  async function ouvrir(doc: VehicleDocument = document(), quota = { used: 3, limit: 20, remaining: 17 }) {
+  async function ouvrir(doc: VehicleDocument = document(), quota = { enabled: true, budgetTokens: 60000, usedTokens: 9000, remainingTokens: 51000, percentUsed: 15, scansThisMonth: 3, estimatedScansLeft: 17 }) {
     api = {
       getSuppliers: jest.fn(() => of({
         items: [{ id: 3, name: 'STAR ASSURANCES', type: 'insurance', city: 'Tunis' }],
@@ -263,12 +263,12 @@ describe('DocumentRenewalPopupComponent — scan de la quittance', () => {
     expect(composant.newSupplier.name).toBe('MAGHREBIA');
   });
 
-  it('quota atteint : le bouton est verrouillé mais le formulaire reste utilisable', async () => {
-    await ouvrir(document(), { used: 20, limit: 20, remaining: 0 });
+  it('crédit IA épuisé : le bouton est verrouillé mais le formulaire reste utilisable', async () => {
+    await ouvrir(document(), { enabled: true, budgetTokens: 60000, usedTokens: 60000, remainingTokens: 0, percentUsed: 100, scansThisMonth: 20, estimatedScansLeft: 0 });
 
     const bouton = fixture.nativeElement.querySelector('.btn-scan') as HTMLButtonElement;
     expect(bouton.disabled).toBe(true);
-    expect(bouton.getAttribute('title')).toContain('Quota mensuel atteint');
+    expect(bouton.getAttribute('title')).toContain('Crédit IA du mois épuisé');
 
     // Saisie à la main puis enregistrement : rien n'est bloqué.
     expect((fixture.nativeElement.querySelector('#amount') as HTMLInputElement).disabled).toBe(false);

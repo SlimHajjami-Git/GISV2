@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Costs;
 using GisAPI.Domain.Exceptions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -26,12 +27,10 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             .FirstOrDefaultAsync(s => s.Id == request.Id, ct)
             ?? throw new NotFoundException("Societe", request.Id);
 
-        // Consommation du quota de scans IA sur le mois calendaire en cours (UTC).
-        var now = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var scansThisMonth = await _context.InvoiceScanLogs
-            .AsNoTracking()
-            .CountAsync(l => l.CompanyId == societe.Id && l.CreatedAt >= monthStart, ct);
+        // Crédit IA du mois calendaire en cours (UTC) : même calcul que le contrôle avant
+        // scan et que la barre de l'écran client — la fiche ne doit jamais montrer un
+        // chiffre que le serveur n'applique pas.
+        var credit = await InvoiceScanCredit.LoadAsync(_context, societe.Id, DateTime.UtcNow, ct);
 
         return new SocieteDetailDto(
             societe.Id,
@@ -73,8 +72,13 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             societe.CreatedAt,
             societe.UpdatedAt,
             societe.InvoiceScanMonthlyLimit,
-            scansThisMonth,
-            societe.AutoSuspendEnabled
+            credit.ScansThisMonth,
+            societe.AutoSuspendEnabled,
+            societe.InvoiceScanMonthlyTokens,
+            credit.BudgetTokens,
+            credit.UsedTokens,
+            credit.PercentUsed,
+            credit.ResetsAt
         );
     }
 }

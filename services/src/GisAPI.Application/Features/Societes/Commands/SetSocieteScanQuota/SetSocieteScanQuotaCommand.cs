@@ -1,10 +1,14 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Features.Costs;
 
 namespace GisAPI.Application.Features.Societes.Commands.SetSocieteScanQuota;
 
 /// <summary>
-/// Fixe le quota mensuel de scans de factures IA d'une société (sys admin).
-/// <paramref name="MonthlyLimit"/> : null = revenir au défaut plateforme (20),
-/// 0 = désactiver la fonctionnalité, sinon 1..100000.
+/// Fixe le crédit IA MENSUEL du scan de factures d'une société, en jetons (sys admin).
+/// <paramref name="MonthlyTokens"/> : null = revenir au défaut plateforme
+/// (<see cref="InvoiceScanCredit.DefaultMonthlyTokens"/>), 0 = désactiver la
+/// fonctionnalité, sinon 1..<see cref="InvoiceScanCredit.MaxMonthlyTokens"/>.
+/// Rend le crédit du mois tel qu'il s'applique désormais (budget, consommation, recharge),
+/// pour que la fiche redessine sa barre sans relire toute la société.
 /// </summary>
-public record SetSocieteScanQuotaCommand(int Id, int? MonthlyLimit) : ICommand<bool>;
+public record SetSocieteScanQuotaCommand(int Id, int? MonthlyTokens) : ICommand<InvoiceScanCreditStatus>;

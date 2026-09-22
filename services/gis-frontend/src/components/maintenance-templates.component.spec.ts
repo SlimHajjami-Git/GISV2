@@ -54,7 +54,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
         ...surcharge
       },
       receiptUrl: '/uploads/invoices/7/facture.jpg',
-      quota: { used: 5, limit: 20, remaining: 15 }
+      quota: { enabled: true, budgetTokens: 60000, usedTokens: 15000, remainingTokens: 45000, percentUsed: 25, scansThisMonth: 5, estimatedScansLeft: 15 }
     };
   }
 
@@ -329,12 +329,12 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     expect(component.scanLu!.avoir).toBe(true);
   });
 
-  it('quota mensuel atteint : message déjà montré, formulaire toujours utilisable', () => {
+  it('crédit IA épuisé : message déjà montré, formulaire toujours utilisable', () => {
     ouvrirEntretien();
     component.markData.invoiceLines[0].price = 150;
 
     component.onEchecScan({
-      message: 'Quota mensuel de scans atteint (20/20). Nouveau quota le 1er octobre.',
+      message: 'Crédit IA du mois épuisé (100 %). Il se recharge le 01/10/2026 ; votre administrateur peut l’augmenter.',
       receiptUrl: ''
     });
 

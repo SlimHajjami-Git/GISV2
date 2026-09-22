@@ -57,10 +57,10 @@ describe('CarburantComponent — scan d’un ticket de station', () => {
       ...patch
     },
     receiptUrl,
-    quota: { used: 3, limit: 20, remaining: 17 }
+    quota: { enabled: true, budgetTokens: 60000, usedTokens: 9000, remainingTokens: 51000, percentUsed: 15, scansThisMonth: 3, estimatedScansLeft: 17 }
   });
 
-  const preparer = async (quota = { used: 3, limit: 20, remaining: 17 }) => {
+  const preparer = async (quota = { enabled: true, budgetTokens: 60000, usedTokens: 9000, remainingTokens: 51000, percentUsed: 15, scansThisMonth: 3, estimatedScansLeft: 17 }) => {
     // La barre de l'écran injecte le service d'export PDF, qui précharge le logo
     // par fetch() — absent de jsdom. L'échec de préchargement est déjà prévu.
     (globalThis as any).fetch = jest.fn(() => Promise.resolve({ ok: false }));
@@ -373,15 +373,15 @@ describe('CarburantComponent — scan d’un ticket de station', () => {
     expect(envoye.notes).toContain('/uploads/invoices/7/ticket.jpg');
   });
 
-  it('quota mensuel atteint : bouton verrouillé, formulaire toujours utilisable', async () => {
+  it('crédit IA du mois épuisé : bouton verrouillé, formulaire toujours utilisable', async () => {
     TestBed.resetTestingModule();
-    await preparer({ used: 20, limit: 20, remaining: 0 });
+    await preparer({ enabled: true, budgetTokens: 60000, usedTokens: 60000, remainingTokens: 0, percentUsed: 100, scansThisMonth: 20, estimatedScansLeft: 0 });
     fixture.detectChanges();
 
     const bouton: HTMLButtonElement = fixture.nativeElement.querySelector('button.btn-scan');
     expect(bouton).toBeTruthy();
     expect(bouton.disabled).toBe(true);
-    expect(bouton.getAttribute('title')).toContain('Quota mensuel atteint');
+    expect(bouton.getAttribute('title')).toContain('Crédit IA du mois épuisé');
 
     // La saisie à la main ne dépend pas du scan.
     component.manualEntry.vehiclePlate = 'AB-123-CD';

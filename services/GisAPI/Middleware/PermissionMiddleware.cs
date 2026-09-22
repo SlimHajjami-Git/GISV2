@@ -71,8 +71,8 @@ public class PermissionMiddleware
         // PAS du module Dépenses. Elles n'enregistrent rien — elles rendent les champs LUS sur
         // un document, que l'écran appelant (Carburant, Entretien effectué, Nouvelle réparation,
         // Échéances, Dépenses) remplit ensuite à sa façon, sous SON propre droit. Ce qui gouverne
-        // le scan est le QUOTA DE LA SOCIÉTÉ (societes.InvoiceScanMonthlyLimit, 0 = désactivé),
-        // contrôlé dans CostsController. Sans ces deux clés, le préfixe « /api/costs » ci-dessous
+        // le scan est le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons, InvoiceScanCredit ;
+        // 0 = désactivé), contrôlé dans CostsController. Sans ces deux clés, le préfixe « /api/costs » ci-dessous
         // imposait CanCosts ET ModuleCosts : un client abonné à Carburant mais pas à Dépenses, ou
         // un utilisateur sans la case Dépenses, voyait le bouton sur ces quatre écrans et se
         // faisait refuser avec un message parlant d'un AUTRE module. Clés PLUS LONGUES que

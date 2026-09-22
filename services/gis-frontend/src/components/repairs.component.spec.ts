@@ -164,7 +164,7 @@ describe('RepairsComponent — scan de facture', () => {
   const resultat = (modif: any = {}) => ({
     extraction: { ...extraction(), ...modif },
     receiptUrl: '/uploads/invoices/7/facture-42.jpg',
-    quota: { used: 5, limit: 20, remaining: 15 }
+    quota: { enabled: true, budgetTokens: 60000, usedTokens: 15000, remainingTokens: 45000, percentUsed: 25, scansThisMonth: 5, estimatedScansLeft: 15 }
   });
 
   beforeEach(async () => {
@@ -187,19 +187,21 @@ describe('RepairsComponent — scan de facture', () => {
       of({ items: [{ id: 9, name: 'Garage El Amen', type: 'garage' }], totalCount: 1, page: 1, pageSize: 200 }) as any
     );
     jest.spyOn(api, 'getRepairs').mockReturnValue(of({ items: [], totalCount: 0, page: 1, pageSize: 100 }) as any);
-    jest.spyOn(api, 'getScanQuota').mockReturnValue(of({ used: 5, limit: 20, remaining: 15 }) as any);
+    jest.spyOn(api, 'getScanQuota').mockReturnValue(of({ enabled: true, budgetTokens: 60000, usedTokens: 15000, remainingTokens: 45000, percentUsed: 25, scansThisMonth: 5, estimatedScansLeft: 15 }) as any);
     // La brique n'affiche son bouton qu'à un utilisateur connecté.
     jest.spyOn(auth, 'getCurrentUserSync').mockReturnValue({ id: '1', name: 'Test' } as any);
 
     fixture.detectChanges();   // ngOnInit : véhicules et fournisseurs chargés
   });
 
-  it('le bouton du scan et le compteur de quota sont dans la barre d’actions', () => {
+  it('le bouton du scan et sa barre « Crédit IA » sont dans la barre d’actions', () => {
     const bouton: HTMLButtonElement = fixture.nativeElement.querySelector('app-scan-facture .btn-scan');
 
     expect(bouton).toBeTruthy();
     expect(bouton.textContent).toContain('Scanner une facture');
-    expect(bouton.textContent).toContain('5/20 ce mois');
+    expect(bouton.textContent).not.toContain('ce mois');
+    const barre = fixture.nativeElement.querySelector('app-scan-facture app-credit-ia-bar [role="progressbar"]') as HTMLElement;
+    expect(barre.getAttribute('aria-valuenow')).toBe('25');
   });
 
   it('scan réussi : véhicule, fournisseur, date, n° de facture, description et lignes pré-remplis', () => {
@@ -280,8 +282,8 @@ describe('RepairsComponent — scan de facture', () => {
     expect(fixture.nativeElement.querySelector('.scan-banner').textContent).toContain('Avoir fournisseur');
   });
 
-  it('quota mensuel atteint : rien ne s’ouvre, la saisie à la main reste entière', () => {
-    component.onEchecScan({ message: 'Quota mensuel de scans atteint (20/20).', receiptUrl: '' });
+  it('crédit IA épuisé : rien ne s’ouvre, la saisie à la main reste entière', () => {
+    component.onEchecScan({ message: 'Crédit IA du mois épuisé (100 %). Il se recharge le 01/10/2026 ; votre administrateur peut l’augmenter.', receiptUrl: '' });
 
     expect(component.isPanelOpen).toBe(false);
     expect(component.scanInfo).toBeNull();
@@ -528,7 +530,7 @@ describe('RepairsComponent — une fenêtre ouverte verrouille l’arrière-plan
     jest.spyOn(api, 'getRepairs').mockReturnValue(
       of({ items: [reparationSimple, reparationSinistre], totalCount: 2, page: 1, pageSize: 100 }) as any
     );
-    jest.spyOn(api, 'getScanQuota').mockReturnValue(of({ used: 5, limit: 20, remaining: 15 }) as any);
+    jest.spyOn(api, 'getScanQuota').mockReturnValue(of({ enabled: true, budgetTokens: 60000, usedTokens: 15000, remainingTokens: 45000, percentUsed: 25, scansThisMonth: 5, estimatedScansLeft: 15 }) as any);
     jest.spyOn(auth, 'getCurrentUserSync').mockReturnValue({ id: '1', name: 'Test' } as any);
 
     fixture.detectChanges();

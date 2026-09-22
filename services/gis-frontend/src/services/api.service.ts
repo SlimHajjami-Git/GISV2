@@ -3,6 +3,7 @@ import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
 import { Observable, BehaviorSubject, tap, of, map } from 'rxjs';
 import { MockDataService } from './mock-data.service';
 import { environment } from '../environments/environment';
+import type { CreditIa } from '../components/shared/credit-ia.helpers';
 
 export interface LoginRequest {
   email: string;
@@ -719,16 +720,15 @@ export class ApiService {
   }
 
   /**
-   * Quota MENSUEL de scans IA de la société — { used, limit, remaining, resetsAt }.
-   * resetsAt (1er du mois prochain) faisait partie de la réponse mais manquait au
-   * type de la requête : le compteur des écrans le perdait silencieusement.
-   * Partagé par les cinq écrans qui portent le bouton « Scanner une facture ».
-   * Comme scanInvoice, la route n'exige plus le module Dépenses (19/09/2026) ;
-   * `limit: 0` veut dire « scan désactivé pour cette société ».
+   * Crédit IA MENSUEL de la société, en jetons (22/09/2026 — avant : un nombre de scans) :
+   * { enabled, budgetTokens, usedTokens, remainingTokens, percentUsed, scansThisMonth,
+   *   estimatedScansLeft, resetsAt }. Alimente la barre « Crédit IA » des cinq écrans qui
+   * portent le bouton « Scanner une facture » ; lire la réponse par lireCreditIa, qui
+   * tolère une API pas encore redéployée. Comme scanInvoice, la route n'exige pas le
+   * module Dépenses (19/09/2026) ; `enabled: false` = scan désactivé pour la société.
    */
-  getScanQuota(): Observable<{ used: number; limit: number; remaining: number; resetsAt?: string }> {
-    return this.http.get<{ used: number; limit: number; remaining: number; resetsAt?: string }>(
-      `${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
+  getScanQuota(): Observable<CreditIa> {
+    return this.http.get<CreditIa>(`${this.API_URL}/costs/scan-quota`, { headers: this.getHeaders() });
   }
 
   updateCost(id: number, cost: any): Observable<void> {

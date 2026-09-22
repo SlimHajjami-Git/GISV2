@@ -3,15 +3,17 @@ import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { CreditIaBarComponent } from './credit-ia-bar.component';
+import { CreditIa, creditBloque, creditPerime, delaiAvantRecharge, infobulleCredit, lireCreditIa } from './credit-ia.helpers';
 
 /**
- * Brique « Scanner une facture » — bouton + compteur de quota + envoi du fichier
+ * Brique « Scanner une facture » — bouton + barre « Crédit IA » + envoi du fichier
  * à l'IA, sans rien savoir de l'écran qui l'accueille.
  *
  * Née le 19/09/2026 de l'écran Dépenses, seul à porter le scan : la demande est
  * de l'ajouter à Entretien effectué, Nouvelle réparation, Échéances et Carburant.
  * Le composant fait TOUT ce qui est commun (préparation de la photo, appel,
- * état « analyse en cours », quota, messages d'erreur) et émet le résultat BRUT ;
+ * état « analyse en cours », crédit IA, messages d'erreur) et émet le résultat BRUT ;
  * chaque écran décide ensuite du remplissage de SES champs — le composant ne
  * connaît ni les dépenses, ni les catégories, ni aucun formulaire.
  */
@@ -23,13 +25,11 @@ export interface LigneFactureScannee {
   category: string;
 }
 
-/** Quota MENSUEL de scans IA de la société — partagé par tous les écrans. */
-export interface QuotaScan {
-  used: number;
-  limit: number;
-  remaining: number;
-  resetsAt?: string;
-}
+/**
+ * Crédit IA MENSUEL de la société, en jetons — partagé par tous les écrans. Remplace le
+ * quota en nombre de scans le 22/09/2026 (voir credit-ia.helpers.ts).
+ */
+export type QuotaScan = CreditIa;
 
 /**
  * Champs extraits de la facture. `null` = absent ou illisible sur le document :
@@ -68,7 +68,7 @@ export interface ResultatScanFacture {
   extraction: ExtractionFacture;
   /** Fichier stocké par le serveur (/uploads/invoices/...) — à enregistrer en justificatif. */
   receiptUrl: string;
-  /** Quota après ce scan (null si le serveur ne l'a pas renvoyé). */
+  /** Crédit IA après ce scan (null si le serveur ne l'a pas renvoyé). */
   quota: QuotaScan | null;
 }
 
@@ -183,33 +183,35 @@ export function normaliserExtraction(brut: any): ExtractionFacture {
 @Component({
   selector: 'app-scan-facture',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CreditIaBarComponent],
   template: `
     @if (autorise) {
-      <button class="btn-scan" (click)="fichier.click()"
-              [disabled]="occupe"
-              [title]="infobulle">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-          <line x1="3" y1="12" x2="21" y2="12"/>
-        </svg>
-        {{ analyse ? 'Analyse…' : libelle }}
+      <span class="scan-groupe">
+        <button class="btn-scan" (click)="fichier.click()"
+                [disabled]="occupe"
+                [title]="infobulle">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+          </svg>
+          {{ analyse ? 'Analyse…' : libelle }}
+        </button>
         @if (quota) {
-          <!-- Scans UTILISÉS ce mois / quota — même lecture que la fiche admin. Avant le
-               11/09/2026 la bulle affichait le RESTE (« 16/20 »), qui se lisait comme
-               16 scans consommés et laissait croire que le compteur ne repartait jamais à zéro. -->
-          <span class="scan-quota-chip" [class.scan-quota-chip-empty]="quota.remaining === 0">
-            {{ quota.used }}/{{ quota.limit }} ce mois
-          </span>
+          <!-- Part du crédit IA gratuit du mois déjà consommée (22/09/2026) : remplace la
+               pastille « 12/20 ce mois ». HORS du bouton : un bouton rend ses enfants
+               présentationnels, le rôle progressbar y serait perdu pour les lecteurs d'écran. -->
+          <app-credit-ia-bar [credit]="quota"></app-credit-ia-bar>
         }
-      </button>
-      <input #fichier type="file" accept="image/*,application/pdf" hidden (change)="onFichier($event)">
+        <input #fichier type="file" accept="image/*,application/pdf" hidden (change)="onFichier($event)">
+      </span>
     }
   `,
   styles: [`
-    /* L'hôte disparaît de la mise en page : le bouton reste un enfant direct de la
-       barre d'actions de l'écran, exactement comme avant l'extraction. */
+    /* L'hôte disparaît de la mise en page : le groupe bouton + barre est un enfant
+       direct de la barre d'actions de l'écran, comme le bouton seul avant. */
     :host { display: contents; }
+
+    .scan-groupe { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
     .btn-scan {
       display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
@@ -222,15 +224,6 @@ export function normaliserExtraction(brut: any): ExtractionFacture {
        classe .scanning qui n'a jamais été posée : le bouton grisé montrait toujours
        « interdit ». Rendu conservé tel quel — le changer serait visible pour le client. */
     .btn-scan:disabled { opacity: .6; cursor: not-allowed; }
-
-    /* Compteur de quota mensuel (scans utilisés / limite) */
-    .scan-quota-chip {
-      display: inline-grid; place-items: center;
-      padding: 1px 7px; border-radius: 999px;
-      background: #7c3aed; color: #ffffff;
-      font-size: 10.5px; font-weight: 800; letter-spacing: .01em;
-    }
-    .scan-quota-chip-empty { background: #dc2626; }
   `]
 })
 export class ScanFactureComponent implements OnInit, OnDestroy {
@@ -242,16 +235,16 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
   /** Écran pas prêt (véhicule non choisi, formulaire fermé…) : bouton grisé. */
   @Input() desactive = false;
 
-  /** Motif affiché en infobulle quand `desactive` est vrai (sinon le compteur de quota). */
+  /** Motif affiché en infobulle quand `desactive` est vrai (sinon l'état du crédit IA). */
   @Input() raisonDesactivation = '';
 
-  /** Scan réussi : extraction + justificatif + quota. */
+  /** Scan réussi : extraction + justificatif + crédit IA. */
   @Output() scanne = new EventEmitter<ResultatScanFacture>();
 
   /** Scan échoué : le message est déjà affiché, `receiptUrl` peut être exploitable. */
   @Output() echec = new EventEmitter<EchecScanFacture>();
 
-  /** Quota mensuel de la société (null tant qu'il n'est pas chargé). */
+  /** Crédit IA du mois de la société (null tant qu'il n'est pas chargé, ou API ancienne). */
   quota: QuotaScan | null = null;
   /** Vrai pendant l'appel : le bouton passe à « Analyse… ». */
   analyse = false;
@@ -260,7 +253,7 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
 
   /**
    * Le scan est ouvert à quiconque a accès à l'écran : le contrôle réel est côté
-   * serveur (quota mensuel par société, appliqué avant tout appel payant à l'IA).
+   * serveur (crédit IA mensuel par société, appliqué avant tout appel payant à l'IA).
    *
    * N'ajoutez PAS de condition sur un droit de module ici. Décision de Karim du
    * 19/09/2026 : le scan ne relève pas des Dépenses — c'est l'écran hôte qui est
@@ -273,40 +266,74 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
     return !!this.authService.getCurrentUserSync();
   }
 
+  /** Grisé pendant l'analyse, sur demande de l'écran, ou crédit épuisé / fonction fermée
+   *  (100 % : le serveur refuserait le scan, inutile de le promettre). Un crédit épuisé
+   *  dont la date de recharge est passée ne grise plus : le serveur l'a remis à zéro. */
   get occupe(): boolean {
-    return this.analyse || this.desactive || this.quota?.remaining === 0;
+    return this.analyse || this.desactive || (!!this.quota && creditBloque(this.quota, Date.now()));
   }
 
-  /** « 1er octobre » : jour de la prochaine remise à zéro du compteur. */
-  get quotaResetLabel(): string {
-    const iso = this.quota?.resetsAt;
-    if (!iso) return 'le 1er du mois prochain';
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return 'le 1er du mois prochain';
-    const mois = d.toLocaleDateString('fr-FR', { month: 'long', timeZone: 'UTC' });
-    return 'le ' + (d.getUTCDate() === 1 ? '1er' : String(d.getUTCDate())) + ' ' + mois;
-  }
-
-  /** Bulle d'aide : ce que veut dire le compteur, et quand il repart à zéro. */
+  /** Bulle d'aide du bouton : motif de l'écran s'il est grisé, sinon l'état du crédit. */
   get infobulle(): string {
     if (this.desactive && this.raisonDesactivation) return this.raisonDesactivation;
     const q = this.quota;
     if (!q) return 'Scanner une facture avec l\'IA';
-    if (q.remaining === 0) return `Quota mensuel atteint (${q.used}/${q.limit}) — nouveau quota ${this.quotaResetLabel}. Votre administrateur peut augmenter la limite.`;
-    return `${q.used} scan${q.used > 1 ? 's' : ''} utilisé${q.used > 1 ? 's' : ''} sur ${q.limit} ce mois-ci — il en reste ${q.remaining}. Compteur remis à zéro ${this.quotaResetLabel}.`;
+    return infobulleCredit(q, Date.now());
   }
+
+  /** Relecture du crédit prévue à la date de recharge (écran resté ouvert au changement de mois). */
+  private minuterieRecharge: ReturnType<typeof setTimeout> | null = null;
 
   ngOnInit(): void {
     if (!this.autorise) return;
-    this.apiService.getScanQuota().pipe(takeUntil(this.destroy$)).subscribe({
-      next: (q) => { this.quota = q; this.cdr.detectChanges(); },
-      error: () => { /* quota indisponible → bouton reste utilisable, le serveur tranche */ }
-    });
+    this.chargerCredit();
   }
 
   ngOnDestroy(): void {
+    this.annulerMinuterie();
     this.destroy$.next();
     this.destroy$.complete();
+  }
+
+  private chargerCredit(): void {
+    this.apiService.getScanQuota().pipe(takeUntil(this.destroy$)).subscribe({
+      // lireCreditIa rend null sur une réponse d'API ancienne : pas de barre, bouton actif.
+      next: (q) => { this.definirCredit(lireCreditIa(q)); this.cdr.detectChanges(); },
+      error: () => { /* crédit indisponible → bouton reste utilisable, le serveur tranche */ }
+    });
+  }
+
+  /** Pose le crédit reçu du serveur et prévoit sa relecture à la prochaine recharge. */
+  private definirCredit(credit: QuotaScan | null): void {
+    this.quota = credit;
+    this.planifierRecharge();
+  }
+
+  /**
+   * Le crédit n'était lu qu'à l'ouverture : épuisé le 30, l'écran resté ouvert gardait
+   * le 1er une barre rouge à 100 % et un bouton grisé — aucun clic possible, donc aucun
+   * appel pour apprendre la recharge. On relit donc le crédit juste après la date de
+   * recharge annoncée par le serveur (délai borné, voir delaiAvantRecharge). Le bouton est
+   * dégrisé même si cette relecture échoue (creditBloque tient compte de l'heure).
+   */
+  private planifierRecharge(): void {
+    this.annulerMinuterie();
+    const delai = delaiAvantRecharge(this.quota, Date.now());
+    if (delai === null) return;
+    this.minuterieRecharge = setTimeout(() => {
+      this.minuterieRecharge = null;
+      // Délai borné (≈ 24,8 jours) atteint avant la recharge : on attend encore.
+      if (this.quota && !creditPerime(this.quota, Date.now())) { this.planifierRecharge(); return; }
+      this.cdr.detectChanges();
+      this.chargerCredit();
+    }, delai);
+  }
+
+  private annulerMinuterie(): void {
+    if (this.minuterieRecharge !== null) {
+      clearTimeout(this.minuterieRecharge);
+      this.minuterieRecharge = null;
+    }
   }
 
   async onFichier(event: any): Promise<void> {
@@ -319,7 +346,8 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
     this.apiService.scanInvoice(prepared).pipe(takeUntil(this.destroy$)).subscribe({
       next: (res: any) => {
         this.analyse = false;
-        if (res?.quota) this.quota = res.quota;   // compteur mis à jour par le serveur
+        // Barre mise à jour par le serveur (crédit relu après le scan).
+        this.definirCredit(lireCreditIa(res?.quota) ?? this.quota);
         this.scanne.emit({
           extraction: normaliserExtraction(res?.extraction),
           receiptUrl: res?.receiptUrl || '',
@@ -332,10 +360,15 @@ export class ScanFactureComponent implements OnInit, OnDestroy {
         // 413 = refusé par le proxy sur la taille avant d'atteindre l'API : le message
         // générique pousserait l'utilisateur à réessayer le même fichier.
         // Les autres messages viennent du serveur (400 format, 403 non activé,
-        // 429 quota atteint, 502 IA indisponible).
+        // 429 crédit IA épuisé, 502 IA indisponible).
         const message = err?.status === 413
           ? 'Fichier trop volumineux (maximum 12 Mo). Réduisez la taille ou envoyez une photo compressée.'
           : (err?.error?.message || "L'analyse de la facture a échoué. Vous pouvez saisir les informations manuellement.");
+        // Refus 403/429 : le serveur joint le crédit du moment. La barre passe alors à
+        // 100 % et le bouton se grise — sans quoi il restait actif sur une page ouverte
+        // avant l'épuisement (autre utilisateur, autre onglet) et chaque clic était refusé.
+        const credit = lireCreditIa(err?.error?.quota);
+        if (credit) this.definirCredit(credit);
         alert(message);
         this.echec.emit({ message, receiptUrl: err?.error?.receiptUrl || '' });
         this.cdr.detectChanges();

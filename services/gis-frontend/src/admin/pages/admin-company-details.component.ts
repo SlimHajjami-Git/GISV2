@@ -7,7 +7,9 @@ import { Router, ActivatedRoute } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { CompanyResetResult } from '../services/admin.service';
 import { AdminService, Client, AdminVehicle, Role, SystemUser } from '../services/admin.service';
-import { parseScanQuotaInput } from './scan-quota.helpers';
+import { aideSaisieCredit, creditDepuisFiche, parseScanCreditInput, saisieInitialeCredit, SCAN_CREDIT_DEFAULT, SCAN_CREDIT_MAX } from './scan-quota.helpers';
+import { CreditIaBarComponent } from '../../components/shared/credit-ia-bar.component';
+import { CreditIa, formatJetons, libelleRecharge } from '../../components/shared/credit-ia.helpers';
 import { driverAccountsPreviewText, driverAccountsResultText, keptUsersText } from './company-reset.helpers';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
@@ -20,7 +22,7 @@ type CompanyRole = Role & { userCount?: number };
 @Component({
   selector: 'admin-company-details',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent, PermissionEditorComponent],
+  imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent, PermissionEditorComponent, CreditIaBarComponent],
   template: `
     <admin-layout [pageTitle]="company?.name || 'Détails Société'">
       <div *ngIf="loading" class="loading-container">
@@ -147,7 +149,8 @@ type CompanyRole = Role & { userCount?: number };
           </div>
         </div>
 
-        <!-- Quota mensuel de scans de factures IA -->
+        <!-- Crédit IA mensuel du scan de factures, en jetons (22/09/2026 — avant : un
+             nombre de scans). Même barre et mêmes seuils que l'écran client. -->
         <div class="scan-quota-card">
           <div class="scan-quota-head">
             <div class="scan-quota-icon">
@@ -157,21 +160,31 @@ type CompanyRole = Role & { userCount?: number };
               </svg>
             </div>
             <div class="scan-quota-txt">
-              <h3>Scan de factures (IA)</h3>
-              <p>Utilisés ce mois : <strong>{{ scanQuotaUsed }}</strong> / {{ scanQuotaEffective }}
-                <span *ngIf="scanQuotaLimit === null" class="scan-quota-default-tag">défaut</span>
-                <span *ngIf="scanQuotaEffective === 0" class="scan-quota-off-tag">désactivé</span>
-              </p>
+              <h3>Crédit IA — scan de factures</h3>
+              <div class="scan-credit-etat" *ngIf="scanCredit as c; else creditIndisponible">
+                <app-credit-ia-bar [credit]="c" [largeur]="160" libelle=""></app-credit-ia-bar>
+                <span *ngIf="c.enabled">{{ formatJetons(c.usedTokens) }} / {{ formatJetons(c.budgetTokens) }} jetons ce mois
+                  · {{ c.scansThisMonth }} scan{{ c.scansThisMonth > 1 ? 's' : '' }} · se recharge {{ libelleRecharge(c.resetsAt) }}</span>
+                <span *ngIf="scanCreditTokens === null && scanCreditLegacy === null" class="scan-quota-default-tag">défaut</span>
+                <span *ngIf="scanCreditTokens === null && scanCreditLegacy !== null" class="scan-quota-default-tag"
+                      title="Ancien réglage en nombre de scans, converti à 3 000 jetons par scan. Enregistrer le remplace.">ancien quota : {{ scanCreditLegacy }} scans</span>
+              </div>
+              <ng-template #creditIndisponible><p>Consommation du mois indisponible.</p></ng-template>
             </div>
           </div>
           <div class="scan-quota-form">
-            <input type="number" min="0" max="100000" [(ngModel)]="scanQuotaInput"
-                   [placeholder]="SCAN_QUOTA_DEFAULT + ' (défaut)'" />
+            <label class="scan-credit-label" for="scan-credit-input">Crédit IA mensuel (jetons)</label>
+            <!-- type="text" et non "number" : sur un champ number le navigateur ne transmet pas
+                 le texte tapé — « 150 000 » arrivait null (enregistré comme « défaut ») et
+                 « 150.000 » comme 150 jetons. inputmode garde le pavé numérique sur mobile. -->
+            <input id="scan-credit-input" type="text" inputmode="numeric" autocomplete="off" [(ngModel)]="scanQuotaInput"
+                   [placeholder]="formatJetons(SCAN_CREDIT_DEFAULT) + ' (défaut)'" />
             <button class="btn-secondary" (click)="saveScanQuota()" [disabled]="scanQuotaSaving">
               {{ scanQuotaSaving ? 'Enregistrement…' : 'Enregistrer' }}
             </button>
           </div>
-          <p class="scan-quota-hint">Vide = défaut plateforme ({{ SCAN_QUOTA_DEFAULT }}/mois) • 0 = désactiver • le quota se réinitialise chaque mois</p>
+          <p class="scan-quota-hint scan-credit-equivalence">{{ aideSaisie }}</p>
+          <p class="scan-quota-hint">Vide = défaut plateforme ({{ formatJetons(SCAN_CREDIT_DEFAULT) }} jetons ≈ 20 scans) • 0 = désactiver • le crédit se recharge le 1er de chaque mois</p>
           <p class="scan-quota-msg" *ngIf="scanQuotaMsg">{{ scanQuotaMsg }}</p>
         </div>
 
@@ -2389,6 +2402,14 @@ type CompanyRole = Role & { userCount?: number };
       font-size: 13px; background: transparent; color: inherit;
     }
     .scan-quota-hint { flex-basis: 100%; margin: 0; font-size: 11.5px; opacity: .55; }
+    /* Crédit IA : barre + consommation du mois, libellé du champ, équivalence en scans */
+    .scan-credit-etat {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px;
+      margin-top: 4px; font-size: 12.5px;
+    }
+    .scan-credit-etat > span:not(.scan-quota-default-tag) { opacity: .75; }
+    .scan-credit-label { font-size: 12.5px; font-weight: 600; opacity: .8; white-space: nowrap; }
+    .scan-credit-equivalence { opacity: .8; font-weight: 600; }
     .scan-quota-msg { flex-basis: 100%; margin: 0; font-size: 12px; font-weight: 600; color: #6d28d9; }
   `]
 })
@@ -2511,26 +2532,34 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
     });
   }
 
-  // ── Quota mensuel de scans de factures IA ─────────────────────────────────
-  /** Limite effective (null = défaut plateforme 20). */
-  scanQuotaLimit: number | null = null;
-  scanQuotaUsed = 0;
-  /** Champ de saisie : '' = défaut plateforme. */
+  // ── Crédit IA mensuel du scan de factures (jetons, 22/09/2026) ─────────────
+  /** Crédit du mois (budget effectif, consommation, recharge) pour la barre ; null = inconnu. */
+  scanCredit: CreditIa | null = null;
+  /** Réglage enregistré en jetons (null = défaut plateforme ou ancien quota). */
+  scanCreditTokens: number | null = null;
+  /** ANCIEN quota en nombre de scans, lu tant qu'aucun crédit en jetons n'est réglé. */
+  scanCreditLegacy: number | null = null;
+  /** Champ de saisie (jetons, texte brut : « 150 000 » permis) : '' = défaut plateforme. */
   scanQuotaInput: string | number | null = '';
   scanQuotaSaving = false;
   scanQuotaMsg = '';
-  readonly SCAN_QUOTA_DEFAULT = 20;
+  readonly SCAN_CREDIT_DEFAULT = SCAN_CREDIT_DEFAULT;
+  readonly SCAN_CREDIT_MAX = SCAN_CREDIT_MAX;
+  readonly formatJetons = formatJetons;
+  readonly libelleRecharge = libelleRecharge;
 
-  get scanQuotaEffective(): number {
-    return this.scanQuotaLimit ?? this.SCAN_QUOTA_DEFAULT;
+  /** Sous le champ : « ≈ N scans par mois » pour la saisie en cours, ou le motif du refus. */
+  get aideSaisie(): string {
+    return aideSaisieCredit(this.scanQuotaInput);
   }
 
   loadScanQuota() {
     this.adminService.getSociete(this.companyId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (s) => {
-        this.scanQuotaLimit = s?.invoiceScanMonthlyLimit ?? null;
-        this.scanQuotaUsed = s?.invoiceScanUsedThisMonth ?? 0;
-        this.scanQuotaInput = this.scanQuotaLimit === null ? '' : String(this.scanQuotaLimit);
+        this.scanCredit = creditDepuisFiche(s);
+        this.scanCreditTokens = s?.invoiceScanMonthlyTokens ?? null;
+        this.scanCreditLegacy = s?.invoiceScanMonthlyLimit ?? null;
+        this.scanQuotaInput = saisieInitialeCredit(s);
         this.autoSuspendEnabled = (s as any)?.autoSuspendEnabled ?? true;
         // Échéance & facturation (carte Abonnement)
         this.subExpiresAt = (s as any)?.subscriptionExpiresAt ?? null;
@@ -2654,21 +2683,32 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
   }
 
   saveScanQuota() {
-    // Nombre, chaîne ou null selon l'état du champ type="number" : le helper absorbe tout,
-    // et surtout garde le 0 (« désactiver ») que l'ancien `|| ''` transformait en défaut.
-    const parsed = parseScanQuotaInput(this.scanQuotaInput);
+    // Chaîne brute du champ texte (ou nombre, ou null) : le helper absorbe tout, garde le 0
+    // (« désactiver ») que l'ancien `|| ''` transformait en défaut, et refuse « 150.000 ».
+    const parsed = parseScanCreditInput(this.scanQuotaInput);
     if (!parsed.ok) {
       this.scanQuotaMsg = parsed.message;
       return;
     }
-    const limit = parsed.limit;
+    const tokens = parsed.tokens;
     this.scanQuotaSaving = true;
     this.scanQuotaMsg = '';
-    this.adminService.setScanQuota(this.companyId, limit).pipe(takeUntil(this.destroy$)).subscribe({
-      next: () => {
+    this.adminService.setScanQuota(this.companyId, tokens).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (res) => {
         this.scanQuotaSaving = false;
-        this.scanQuotaLimit = limit;
-        this.scanQuotaMsg = 'Quota enregistré.';
+        this.scanCreditTokens = tokens;
+        // Le serveur ne relit plus l'ancien quota en scans (il n'y écrit qu'une ombre pour
+        // le retour arrière) et rend le crédit qui s'applique désormais : la barre est
+        // redessinée sans relire toute la fiche.
+        this.scanCreditLegacy = null;
+        this.scanCredit = creditDepuisFiche({
+          invoiceScanBudgetTokens: res?.budgetTokens,
+          invoiceScanUsedTokens: res?.usedTokens,
+          invoiceScanPercentUsed: res?.percentUsed,
+          invoiceScanUsedThisMonth: res?.scansThisMonth,
+          invoiceScanResetsAt: res?.resetsAt
+        }) ?? this.scanCredit;
+        this.scanQuotaMsg = 'Crédit IA enregistré.';
         this.cdr.detectChanges();
         setTimeout(() => { this.scanQuotaMsg = ''; this.cdr.detectChanges(); }, 2500);
       },

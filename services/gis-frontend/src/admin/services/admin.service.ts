@@ -339,10 +339,32 @@ export interface Societe {
   rolesCount: number;
   createdAt: Date;
   updatedAt: Date;
-  /** Quota mensuel de scans de factures IA — null = défaut plateforme (20), 0 = désactivé. */
+  /** ANCIEN quota de scans IA, en nombre de scans — lu (× 3 000 jetons) seulement tant
+   *  qu'aucun crédit en jetons n'est réglé ; l'enregistrement du crédit l'efface. */
   invoiceScanMonthlyLimit?: number | null;
-  /** Scans IA consommés sur le mois calendaire en cours. */
+  /** Scans IA réussis sur le mois calendaire en cours (information). */
   invoiceScanUsedThisMonth?: number;
+  /** Crédit IA mensuel réglé, en jetons — null = défaut plateforme (60 000), 0 = désactivé. */
+  invoiceScanMonthlyTokens?: number | null;
+  /** Budget EFFECTIF du mois en jetons (réglage, ancien quota converti, ou défaut). */
+  invoiceScanBudgetTokens?: number;
+  /** Jetons consommés depuis le 1er du mois (UTC). */
+  invoiceScanUsedTokens?: number;
+  /** Part du budget consommée, 0-100 (arrondi bas). */
+  invoiceScanPercentUsed?: number;
+  /** Prochaine recharge du crédit (1er du mois suivant, UTC). */
+  invoiceScanResetsAt?: string | null;
+}
+
+/** Réponse de PUT /admin/societes/{id}/scan-quota : réglage enregistré + crédit du mois. */
+export interface ScanCreditSaved {
+  invoiceScanMonthlyTokens: number | null;
+  budgetTokens: number;
+  usedTokens: number;
+  remainingTokens: number;
+  percentUsed: number;
+  scansThisMonth: number;
+  resetsAt: string;
 }
 
 export interface SubscriptionType {
@@ -1151,9 +1173,10 @@ export class AdminService {
     return this.http.put<Societe>(`${this.apiUrl}/admin/societes/${id}`, updates, { headers: this.getHeaders() });
   }
 
-  /** Quota mensuel de scans de factures IA — null = défaut plateforme (20), 0 = désactivé. */
-  setScanQuota(id: number, monthlyLimit: number | null): Observable<any> {
-    return this.http.put<any>(`${this.apiUrl}/admin/societes/${id}/scan-quota`, { monthlyLimit }, { headers: this.getHeaders() });
+  /** Crédit IA mensuel du scan de factures, en jetons — null = défaut plateforme (60 000),
+   *  0 = désactivé. Le serveur efface l'ancien quota en scans et rend le crédit du mois. */
+  setScanQuota(id: number, monthlyTokens: number | null): Observable<ScanCreditSaved> {
+    return this.http.put<ScanCreditSaved>(`${this.apiUrl}/admin/societes/${id}/scan-quota`, { monthlyTokens }, { headers: this.getHeaders() });
   }
 
   deleteSociete(id: number): Observable<void> {

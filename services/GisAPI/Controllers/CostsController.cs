@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using System.Security.Claims;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
@@ -102,10 +103,11 @@ public class CostsController : ControllerBase
     // SCAN DE FACTURE IA — deux actions qui ne relèvent PAS du module Dépenses
     //
     // Décision de Karim du 19/09/2026 : le scan est une fonction d'IA commandée par
-    // le QUOTA DE LA SOCIÉTÉ (societes.InvoiceScanMonthlyLimit, 0 = désactivé), pas
-    // par l'abonnement aux Dépenses. Il est ouvert à tout utilisateur AUTHENTIFIÉ de
-    // la société : c'est l'écran qui l'appelle (Carburant, Entretien effectué,
-    // Nouvelle réparation, Échéances, Dépenses) qui reste gardé par SON propre droit,
+    // le CRÉDIT IA MENSUEL DE LA SOCIÉTÉ (en jetons depuis le 22/09/2026, voir
+    // InvoiceScanCredit ; 0 = désactivé), pas par l'abonnement aux Dépenses. Il est
+    // ouvert à tout utilisateur AUTHENTIFIÉ de la société : c'est l'écran qui l'appelle
+    // (Carburant, Entretien effectué, Nouvelle réparation, Échéances, Dépenses) qui reste
+    // gardé par SON propre droit,
     // et c'est lui qui décide de ce qu'on fait du résultat. Le scan n'enregistre rien.
     //
     // Elles restent rangées dans ce contrôleur, donc sous « /api/costs/… », et c'est
@@ -115,53 +117,44 @@ public class CostsController : ControllerBase
     // 12 requêtes par minute et par IP devant un appel payant au modèle vision.
     // ════════════════════════════════════════════════════════════════════════════
 
-    /// <summary>Quota mensuel de scans IA par défaut, quand la société n'a pas de limite
-    /// propre. L'administrateur système le relève ou l'abaisse société par société depuis
-    /// la fiche d'administration (0 = fonction désactivée).</summary>
-    private const int DefaultScanMonthlyLimit = 20;
+    /// <summary>
+    /// Crédit IA du MOIS CIVIL en cours, en jetons (22/09/2026 — avant : un nombre de
+    /// scans). Il se recharge le 1er de chaque mois (minuit UTC) ; <c>ResetsAt</c> est cette
+    /// prochaine recharge, que l'écran affiche (recette du 11/09/2026 : sans date, le client
+    /// croyait sa consommation cumulée sans fin).
+    ///
+    /// <para>Tout est compté PAR SOCIÉTÉ : le budget est lu sur la société de l'appelant et
+    /// la consommation ne somme que les scans journalisés sous cette même société. Société
+    /// introuvable = crédit nul (voir <see cref="InvoiceScanCredit.LoadAsync"/>).</para>
+    /// </summary>
+    private Task<InvoiceScanCreditStatus> GetScanCreditAsync(int companyId, CancellationToken ct) =>
+        InvoiceScanCredit.LoadAsync(_context, companyId, DateTime.UtcNow, ct);
 
     /// <summary>
-    /// Quota du MOIS CIVIL en cours : le compteur repart à zéro le 1er de chaque mois
-    /// (minuit UTC). <c>ResetsAt</c> est cette prochaine remise à zéro — l'écran l'affiche,
-    /// sans quoi le client croyait ses scans cumulés sans fin (recette du 11/09/2026).
-    ///
-    /// <para>Tout est compté PAR SOCIÉTÉ : la limite est lue sur la société de l'appelant et
-    /// les scans consommés ne comptent que ceux journalisés sous cette même société.</para>
+    /// Forme JSON du crédit, identique pour GET scan-quota, pour l'objet « quota » d'un scan
+    /// réussi et pour les refus 403/429. Noms écrits en camelCase ici plutôt que confiés à
+    /// la politique de sérialisation : c'est le contrat lu par la barre des cinq écrans.
     /// </summary>
-    private async Task<(int Limit, int Used, DateTime ResetsAt)> GetScanQuotaAsync(int companyId, CancellationToken ct)
+    private static object CreditBody(InvoiceScanCreditStatus c) => new
     {
-        var now = DateTime.UtcNow;
-        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var resetsAt = monthStart.AddMonths(1);
+        enabled = c.Enabled,
+        budgetTokens = c.BudgetTokens,
+        usedTokens = c.UsedTokens,
+        remainingTokens = c.RemainingTokens,
+        percentUsed = c.PercentUsed,
+        scansThisMonth = c.ScansThisMonth,
+        estimatedScansLeft = c.EstimatedScansLeft,
+        resetsAt = c.ResetsAt
+    };
 
-        // Société introuvable (jeton sans revendication companyId, société supprimée) :
-        // quota NUL, jamais le défaut de la plateforme. Depuis que le scan ne dépend plus
-        // du module Dépenses, ce quota porte SEUL le droit d'user de l'IA : lire la limite
-        // par un FirstOrDefault sur la colonne rendait « société absente » indiscernable de
-        // « société sans limite propre » et offrait 20 scans à un jeton hors société, dont
-        // les journaux seraient partis sous CompanyId 0.
-        var societe = await _context.Societes
-            .AsNoTracking()
-            .Where(s => s.Id == companyId)
-            .Select(s => new { s.InvoiceScanMonthlyLimit })
-            .FirstOrDefaultAsync(ct);
-        if (societe is null)
-            return (0, 0, resetsAt);
-
-        var used = await _context.InvoiceScanLogs
-            .AsNoTracking()
-            .CountAsync(l => l.CompanyId == companyId && l.CreatedAt >= monthStart, ct);
-
-        return (societe.InvoiceScanMonthlyLimit ?? DefaultScanMonthlyLimit, used, resetsAt);
-    }
-
-    /// <summary>Quota mensuel de la société de l'appelant — alimente le compteur affiché
-    /// à côté du bouton « Scanner une facture », sur les cinq écrans qui le portent.</summary>
+    /// <summary>Crédit IA du mois de la société de l'appelant — alimente la barre « Crédit
+    /// IA » affichée à côté du bouton « Scanner une facture », sur les cinq écrans qui le
+    /// portent.</summary>
     [HttpGet("scan-quota")]
     public async Task<ActionResult> GetScanQuota(CancellationToken ct)
     {
-        var (limit, used, resetsAt) = await GetScanQuotaAsync(GetCompanyId(), ct);
-        return Ok(new { used, limit, remaining = Math.Max(0, limit - used), resetsAt });
+        var credit = await GetScanCreditAsync(GetCompanyId(), ct);
+        return Ok(CreditBody(credit));
     }
 
     /// <summary>
@@ -182,22 +175,28 @@ public class CostsController : ControllerBase
         if (!allowed.Contains(ext))
             return BadRequest(new { message = "Format non supporté. Envoyez une image (JPG/PNG) ou un PDF." });
 
-        // Quota mensuel de la société : c'est LE contrôle d'accès de la fonction, et il
+        // Crédit IA mensuel de la société : c'est LE contrôle d'accès de la fonction, et il
         // passe AVANT tout stockage de fichier comme avant tout appel payant à Groq.
-        // Seuls les scans réussis sont décomptés.
+        // Seuls les scans réussis consomment du crédit. Le dernier scan peut dépasser le
+        // budget de quelques milliers de jetons (on ne connaît son coût qu'après l'appel) :
+        // la barre plafonne alors à 100 % et le scan suivant est refusé.
         var companyId = GetCompanyId();
-        var (limit, used, resetsAt) = await GetScanQuotaAsync(companyId, ct);
-        if (limit <= 0)
+        var credit = await GetScanCreditAsync(companyId, ct);
+        if (!credit.Enabled)
             return StatusCode(StatusCodes.Status403Forbidden, new
             {
                 message = "Le scan de factures IA n'est pas activé pour votre société.",
-                used, limit
+                quota = CreditBody(credit)
             });
-        if (used >= limit)
+        if (credit.RemainingTokens <= 0)
             return StatusCode(StatusCodes.Status429TooManyRequests, new
             {
-                message = $"Quota mensuel de scans atteint ({used}/{limit}). Il repart à zéro le {resetsAt:dd/MM/yyyy} ; d'ici là, votre administrateur peut augmenter la limite.",
-                used, limit, resetsAt
+                // Date écrite en culture invariante : « / » dans un format .NET est le
+                // séparateur de la culture du serveur, pas forcément une barre oblique.
+                message = "Crédit IA du mois épuisé (100 %). Il se recharge le "
+                    + credit.ResetsAt.ToString("dd'/'MM'/'yyyy", CultureInfo.InvariantCulture)
+                    + " ; votre administrateur peut l'augmenter.",
+                quota = CreditBody(credit)
             });
 
         byte[] bytes;
@@ -218,7 +217,8 @@ public class CostsController : ControllerBase
         {
             var result = await _invoiceExtraction.ExtractAsync(bytes, file.ContentType ?? "", file.FileName, ct);
 
-            // Count the scan against the monthly quota + audit token consumption.
+            // Le scan consomme le crédit du mois : ses jetons réels sont journalisés, et
+            // c'est leur somme que lisent le contrôle ci-dessus, la barre et la fiche admin.
             _context.InvoiceScanLogs.Add(new InvoiceScanLog
             {
                 CompanyId = companyId,
@@ -227,11 +227,15 @@ public class CostsController : ControllerBase
             });
             await _context.SaveChangesAsync(ct);
 
+            // Crédit RELU après l'écriture plutôt que recalculé à la main : la barre reçoit
+            // exactement ce que le prochain contrôle appliquera (scans simultanés compris).
+            var after = await GetScanCreditAsync(companyId, ct);
+
             return Ok(new
             {
                 extraction = result.Extraction,
                 receiptUrl,
-                quota = new { used = used + 1, limit, remaining = Math.Max(0, limit - used - 1), resetsAt }
+                quota = CreditBody(after)
             });
         }
         catch (InvalidOperationException ex)

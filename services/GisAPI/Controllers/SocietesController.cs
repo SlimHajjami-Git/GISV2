@@ -6,6 +6,7 @@ using GisAPI.Application.Features.Societes.Queries.GetSocieteById;
 using GisAPI.Application.Features.Societes.Commands.CreateSociete;
 using GisAPI.Application.Features.Societes.Commands.UpdateSociete;
 using GisAPI.Application.Features.Societes.Commands.DeleteSociete;
+using GisAPI.Application.Features.Costs;
 using GisAPI.Application.Features.Societes.Commands.SetSocieteScanQuota;
 using GisAPI.Domain.Entities;
 
@@ -104,14 +105,25 @@ public class SocietesController : ControllerBase
     }
 
     /// <summary>
-    /// Fixe le quota mensuel de scans de factures IA de la société.
-    /// null = défaut plateforme (20), 0 = fonctionnalité désactivée.
+    /// Fixe le crédit IA MENSUEL du scan de factures de la société, en jetons.
+    /// null = défaut plateforme (60 000), 0 = fonctionnalité désactivée.
+    /// Rend le réglage enregistré et le crédit du mois qui en découle (barre de la fiche).
     /// </summary>
     [HttpPut("{id}/scan-quota")]
     public async Task<IActionResult> SetScanQuota(int id, [FromBody] SetScanQuotaRequest request)
     {
-        await _mediator.Send(new SetSocieteScanQuotaCommand(id, request.MonthlyLimit));
-        return Ok(new { invoiceScanMonthlyLimit = request.MonthlyLimit });
+        var tokens = request.EffectiveMonthlyTokens();
+        var credit = await _mediator.Send(new SetSocieteScanQuotaCommand(id, tokens));
+        return Ok(new
+        {
+            invoiceScanMonthlyTokens = tokens,
+            budgetTokens = credit.BudgetTokens,
+            usedTokens = credit.UsedTokens,
+            remainingTokens = credit.RemainingTokens,
+            percentUsed = credit.PercentUsed,
+            scansThisMonth = credit.ScansThisMonth,
+            resetsAt = credit.ResetsAt
+        });
     }
 
     /// <summary>
@@ -163,7 +175,24 @@ public record CreateSocieteRequest(
     string AdminPassword
 );
 
-public record SetScanQuotaRequest(int? MonthlyLimit);
+/// <summary>
+/// Réglage du crédit IA : <see cref="MonthlyTokens"/> en jetons (null = défaut, 0 = désactivé).
+/// <see cref="MonthlyLimit"/> est l'ANCIEN champ, en nombre de scans, encore envoyé par une
+/// fiche admin restée en cache le temps du déploiement (le pod API part avant le front) :
+/// sans lui, « 50 scans » saisis sur l'ancien écran arrivaient comme « aucun jeton précisé »
+/// et remettaient la société au défaut. Converti à 3 000 jetons par scan, comme à la lecture,
+/// et borné de même au plafond du réglage : une valeur que l'ancien écran acceptait (jusqu'à
+/// 100 000 scans) n'est pas refusée au nom d'une limite en jetons qu'il ignorait.
+/// </summary>
+public record SetScanQuotaRequest(int? MonthlyTokens = null, int? MonthlyLimit = null)
+{
+    // Un nombre de scans négatif reste négatif, pour être refusé (400) comme avant plutôt
+    // que lu comme « 0 = désactivé ».
+    public int? EffectiveMonthlyTokens() =>
+        MonthlyTokens ?? (MonthlyLimit is int scans
+            ? (scans < 0 ? scans : InvoiceScanCredit.EffectiveBudget(null, scans))
+            : null);
+}
 
 public record UpdateSocieteRequest(
     string? Name,

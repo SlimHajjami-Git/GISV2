@@ -59,11 +59,20 @@ public class Societe : AuditableEntity
     [Column("last_weekly_report_sent_date")]
     public DateOnly? LastWeeklyReportSentDate { get; set; }
 
-    // Quota mensuel de scans de factures IA. NULL = défaut plateforme (20),
-    // 0 = fonctionnalité désactivée. Modifiable par le sys admin depuis
-    // l'interface société de l'admin.
+    // ANCIEN quota mensuel de scans de factures IA, en NOMBRE de scans (NULL = défaut,
+    // 0 = désactivé). Remplacé le 22/09/2026 par le crédit en jetons ci-dessous : il
+    // n'est plus lu que lorsque InvoiceScanMonthlyTokens est NULL, converti à raison de
+    // 3 000 jetons par scan (InvoiceScanCredit.EffectiveBudget). Le réglage admin y écrit
+    // une OMBRE pour le retour arrière du pod (InvoiceScanCredit.LegacyScanLimitShadow :
+    // NULL, 0, ou l'équivalent en scans), seule colonne que lit l'ancien code.
     [Column("invoice_scan_monthly_limit")]
     public int? InvoiceScanMonthlyLimit { get; set; }
+
+    // Crédit IA MENSUEL du scan de factures, en jetons Groq (migration 052). NULL =
+    // défaut plateforme (60 000 ≈ 20 scans), 0 = fonctionnalité désactivée. Remis à
+    // zéro le 1er de chaque mois (UTC). Réglé par le sys admin depuis la fiche société.
+    [Column("invoice_scan_monthly_tokens")]
+    public int? InvoiceScanMonthlyTokens { get; set; }
 
     // Suspension AUTOMATIQUE à l'expiration de l'abonnement (après la grâce de
     // 7 j — voir SubscriptionPolicy). true = comportement standard ; false = la
