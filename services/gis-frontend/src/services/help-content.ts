@@ -974,7 +974,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'echeances',
     titre: 'Renseignez vos échéances',
-    texte: "Chaque véhicule a ici ses lignes assurance, vignette et visite technique. Tant qu'une date n'est pas saisie, la ligne dit « Non renseignée » et personne ne sera prévenu : cliquez sur « Modifier l'échéance » pour saisir la date, ou sur « Renouveler » quand vous payez.",
+    texte: "Chaque véhicule a ici ses lignes assurance, vignette et visite technique. Tant qu'une date n'est pas saisie, la ligne dit « Non renseignée » et personne ne sera prévenu : cliquez sur « Modifier l'échéance » pour saisir la date, ou sur « Renouveler » quand c'est fait.",
     cible: 'echeances-compteurs',
     module: 'documents',
     route: '/echeances'
