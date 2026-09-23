@@ -11,6 +11,8 @@ import { ToastService } from '../services/toast.service';
 import { SignalRService, TourEvent } from '../services/signalr.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
+import { textesTournees, TextesTournees } from '../services/tournees-textes-pays';
 import { forkJoin, Subject, of, Subscription } from 'rxjs';
 import { debounceTime, switchMap, catchError, filter, takeUntil } from 'rxjs/operators';
 import { driverAfterVehicleChange, driverOptionLabel, DriverOption, selectableDrivers } from './tours-driver.helpers';
@@ -170,7 +172,7 @@ declare let L: any;
             </div>
             <div class="field">
               <label>Nom *</label>
-              <input type="text" [(ngModel)]="tourForm.name" placeholder="Ex: Livraison Lyon - Marseille">
+              <input type="text" [(ngModel)]="tourForm.name" [placeholder]="textes.exempleNom">
             </div>
             <div class="field-row">
               <div class="field">
@@ -965,8 +967,12 @@ export class ToursComponent implements OnInit, OnDestroy {
     private location: Location,
     private pdfExport: PdfExportService,
     private toast: ToastService,
-    private signalR: SignalRService
+    private signalR: SignalRService,
+    private userPrefs: UserPreferencesService
   ) {}
+
+  /** Exemples du pays du client (euro = France, sinon Tunisie) — meme regle que les sinistres. */
+  get textes(): TextesTournees { return textesTournees(this.userPrefs.current.currency); }
 
   /// Ouvre le lecteur de trajet (playback) borné à la fenêtre de la tournée :
   /// 5 min avant le démarrage → 5 min après la fin (ou maintenant si en cours).
