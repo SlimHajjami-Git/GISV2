@@ -13,6 +13,7 @@ import { peutEtreRedetecte as dossierRedetectable } from './accident-redetection
 import { Vehicle } from '../models/types';
 import { AuthService } from '../services/auth.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { textesSinistres, TextesSinistres } from '../services/sinistres-textes-pays';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
 /**
@@ -195,12 +196,12 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
             <div class="field-row">
               <div class="field">
-                <label>Gouvernorat</label>
-                <input type="text" [(ngModel)]="manualForm.locationGovernorate" placeholder="Tunis, Sfax, ...">
+                <label>{{ textes.division }}</label>
+                <input type="text" [(ngModel)]="manualForm.locationGovernorate" [placeholder]="textes.exempleDivision">
               </div>
               <div class="field">
-                <label>Commune</label>
-                <input type="text" [(ngModel)]="manualForm.locationCommune" placeholder="Le Bardo, ...">
+                <label>{{ textes.localite }}</label>
+                <input type="text" [(ngModel)]="manualForm.locationCommune" [placeholder]="textes.exempleLocalite">
               </div>
             </div>
 
@@ -393,6 +394,8 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
 
   /** Active/default ISO currency code (e.g. "DZD") for label adornments. */
   get currencyCode(): string { return this.userPrefs.current.currency; }
+  /** Libelles et exemples du pays du client (euro = France, sinon textes d'origine). */
+  get textes(): TextesSinistres { return textesSinistres(this.userPrefs.current.currency); }
 
   ngOnInit(): void {
     this.isAdmin = !!this.auth.getCurrentUserSync()?.isCompanyAdmin;
