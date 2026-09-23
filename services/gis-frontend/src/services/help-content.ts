@@ -898,7 +898,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     paragraphes: [
       "Cet onglet est réservé aux administrateurs de la société.",
       "Respectez l'ordre des colonnes du modèle sans en insérer ni en déplacer : l'import lit les colonnes par leur position, pas par leur titre. Une colonne décalée produit des lignes fausses sans message d'erreur.",
-      "La feuille « Entretiens » est faite pour les entretiens préventifs. N'y saisissez pas de réparations : elles seraient comptabilisées comme des entretiens et fausseraient vos coûts."
+      "Le modèle a une feuille par nature de donnée : « Véhicules », « Entretiens », « Réparations », « Carburant », « Dépenses ». Une réparation va dans « Réparations », jamais dans « Entretiens » : saisie au mauvais endroit, elle serait comptée comme un entretien préventif et fausserait vos coûts."
     ],
     aRetenir: "Faites un export avant un import massif. C'est votre seul filet si l'import ne donne pas ce que vous attendiez."
   },
@@ -947,7 +947,10 @@ export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'ajouter-vehicule',
     titre: 'Ajoutez votre premier véhicule',
-    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos véhicules dans un fichier ? Importez-les d'un coup : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
+    // Le modele d'import a cinq feuilles (verifie dans DataPortController le
+    // 23/09/2026) : Vehicules, Entretiens, Reparations, Carburant, Depenses —
+    // toutes lues et creees a l'import. Karim tient a ce que la visite le dise.
+    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos données dans un fichier ? Importez tout d'un coup — véhicules, entretiens, réparations, pleins de carburant et dépenses : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
     cible: 'vehicules-nouveau',
     module: 'vehicles',
     route: '/vehicles'
