@@ -492,7 +492,7 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
             <thead><tr>
               <th class="c-date">Date</th><th class="c-veh" title="Immatriculation du véhicule">Véhicule</th><th class="c-type">Type</th>
               <th>Description</th><th class="c-sup">Fournisseur</th>
-              <th class="c-km r" title="Kilométrage relevé lors de l'intervention">Kilométrage</th><th class="c-cost r">Coût</th>
+              <th class="c-km r" title="Compteur relevé lors de l'intervention">Compteur</th><th class="c-cost r">Coût</th>
             </tr></thead>
             <tbody>
               <tr *ngFor="let r of gpa?.recentInterventions">
@@ -574,18 +574,18 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
         </div>
       </section>
 
-      <!-- ── Kilométrage par véhicule ── -->
+      <!-- ── Distance parcourue par véhicule ── -->
       <section class="card acc-indigo anim" style="--i:9">
         <div class="card-head">
           <span class="icon-chip"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8.5"/><path d="M12 13l4-4"/><path d="M12 4.5V2.5M9 3h6"/></svg></span>
-          <div class="head-txt"><div class="eyebrow">Activité</div><h2>Kilométrage</h2></div>
-          <div class="head-right"><span class="chip" *ngIf="periodDistance>0"><b class="num">{{ periodDistance | number:'1.0-0' }}&nbsp;km</b><span class="delta" *ngIf="distanceTrend!==null && distanceTrend!==0" [class.good]="distanceTrend>0" [class.bad]="distanceTrend<0"><svg viewBox="0 0 24 24" fill="currentColor" [style.transform]="distanceTrend<0?'rotate(180deg)':''"><path d="M12 5l7 10H5z"/></svg>{{ absPct(distanceTrend) }}%</span></span></div>
+          <div class="head-txt"><div class="eyebrow">Activité</div><h2>Distance parcourue</h2></div>
+          <div class="head-right"><span class="chip" *ngIf="periodDistance>0" [title]="'Distance parcourue par le parc ' + periodeAppliquee"><b class="num">{{ periodDistance | number:'1.0-0' }}&nbsp;km</b><span class="chip-periode" *ngIf="periodeAppliquee">{{ periodeAppliquee }}</span><span class="delta" *ngIf="distanceTrend!==null && distanceTrend!==0" [class.good]="distanceTrend>0" [class.bad]="distanceTrend<0"><svg viewBox="0 0 24 24" fill="currentColor" [style.transform]="distanceTrend<0?'rotate(180deg)':''"><path d="M12 5l7 10H5z"/></svg>{{ absPct(distanceTrend) }}%</span></span></div>
         </div>
         <div class="rows" *ngIf="topUnits.length">
           <div *ngFor="let u of pUnits" class="row">
             <span class="plate">{{ u.name }}</span>
-            <div class="grow"><div class="bar"><i [style.width.%]="(u.mileage/maxMileage)*100" style="background:var(--primary)"></i></div></div>
-            <div class="val num">{{ u.mileage | number:'1.0-0' }} <small>km</small></div>
+            <div class="grow"><div class="bar"><i [style.width.%]="(u.periodKm/maxPeriodKm)*100" style="background:var(--primary)"></i></div></div>
+            <div class="val num">{{ u.periodKm | number:'1.0-0' }} <small>km</small></div>
           </div>
         </div>
         <div class="pgr-foot" *ngIf="topUnits.length>5">
@@ -949,6 +949,7 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
     .chip.ghost{border-style:dashed;color:var(--text-muted);font-weight:600}
     .chip.down{color:var(--bad-600);background:color-mix(in srgb,var(--acc-red) 10%,transparent);border-color:color-mix(in srgb,var(--acc-red) 26%,transparent)}
     .chip-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+    .chip-periode{font-size:10px;font-weight:600;color:var(--text-muted)}
     .delta{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700}
     .delta.bad{color:var(--bad-600)}
     .delta.good{color:var(--ok-600)}
@@ -1300,13 +1301,20 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   motionData = {stationary:0,ignitionOn:0,moving:0,movingIgnition:0,lbs:0,wifi:0,noState:0,noCoords:0};
   healthData = {healthy:0,attention:0,unhealthy:0};
   geofences:{name:string;color:string;count:number}[] = [];
-  topUnits:{name:string;color:string;mileage:number}[] = [];
-  maxMileage = 1;
+  // Une barre par vehicule : distance PARCOURUE sur la periode affichee.
+  // Le champ s'appelait `mileage`, le mot meme du compteur de vie du vehicule
+  // (Monitoring) : c'est cette confusion qui a fait lire une somme de trajets
+  // comme un kilometrage au compteur.
+  topUnits:{name:string;color:string;periodKm:number}[] = [];
+  maxPeriodKm = 1;
   totalFuelConsumed = 0;
   fuelEstimated = false;
   costTrend: number|null = null;
   distanceTrend: number|null = null;
   periodDistance = 0;
+  // Le chiffre depend du selecteur en haut de page : sans cette etiquette,
+  // rien a l'ecran ne disait SUR QUELLE PERIODE portent les kilometres.
+  periodeAppliquee = '';
   typeBreakdown:{type:string;count:number;km:number;color:string}[]=[];
   maxTypeCount=1;
   // graphique carburant : géométrie 660×230, X∈[40,620], Y∈[66,190]
@@ -1604,14 +1612,18 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
     // Monitoring garde le tableau de bord GPS (et n'appelle jamais /dashboard/gpa).
     if(this.isGpaCompany){ this.loadGpa(); if(this.fuelAllowed) this.loadFuelReal(); }
     const custom=this.selectedPeriod==='custom'&&!!this.fromDate&&!!this.toDate;
-    this.apiService.getDashboardAll(custom?'custom':this.selectedPeriod,custom?this.fromDate:undefined,custom?this.toDate:undefined)
+    // Periode figee ici : l'etiquette doit decrire la reponse recue, pas la
+    // case que l'operateur aurait cochee entre-temps.
+    const periodeDemandee=custom?'custom':this.selectedPeriod;
+    const duDemande=custom?this.fromDate:'';const auDemande=custom?this.toDate:'';
+    this.apiService.getDashboardAll(periodeDemandee,custom?this.fromDate:undefined,custom?this.toDate:undefined)
       .pipe(takeUntil(this.destroy$)).subscribe({
       next:(d:any)=>{
         if(d.vehicleStatus){const v=d.vehicleStatus;this.motionData={stationary:v.stopped??0,ignitionOn:v.ignitionOn??0,moving:0,movingIgnition:v.moving??0,lbs:0,wifi:0,noState:v.maintenance??0,noCoords:v.noGps??0};}
         if(d.expenses){const e=d.expenses;this.fuelCost=e.fuelCost??0;this.maintenanceCost=e.maintenanceCost??0;this.repairCost=e.repairCost??0;this.otherCost=e.otherCost??0;this.acquisitionCost=e.acquisitionCost??0;this.totalCost=e.totalCost??(this.fuelCost+this.maintenanceCost+this.repairCost+this.acquisitionCost+this.otherCost);}
         if(d.drivingScores?.length)this.drivingScores=d.drivingScores.map((s:any)=>({plate:s.plate,score:s.score})).sort((a:any,b:any)=>b.score-a.score);
         if(d.healthData)this.healthData={healthy:d.healthData.healthy??0,attention:d.healthData.attention??0,unhealthy:d.healthData.unhealthy??0};
-        if(d.topUnits?.length){this.topUnits=d.topUnits.map((u:any)=>({name:u.name,color:u.color,mileage:Math.round(u.mileage??0)})).sort((a:any,b:any)=>b.mileage-a.mileage);this.maxMileage=Math.max(...this.topUnits.map(u=>u.mileage),1);}
+        if(d.topUnits?.length){this.topUnits=d.topUnits.map((u:any)=>({name:u.name,color:u.color,periodKm:Math.round(u.periodKm??u.mileage??0)})).sort((a:any,b:any)=>b.periodKm-a.periodKm);this.maxPeriodKm=Math.max(...this.topUnits.map(u=>u.periodKm),1);}
         if(d.geofences)this.geofences=d.geofences.map((g:any)=>({name:g.name,color:g.color,count:g.count??0}));
         if(d.alerts)this.alerts=d.alerts.map((a:any)=>({message:a.message,severity:a.severity,time:a.time}));
         if(d.recentTrips)this.recentTrips=d.recentTrips.map((t:any)=>({plate:t.plate,distance:t.distance,duration:t.duration,date:t.date}));
@@ -1624,7 +1636,11 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
           this.buildChart(fc.chartValues||[],fc.chartDays||[]);
         }
         if(d.trends){this.costTrend=d.trends.cost??null;this.distanceTrend=d.trends.distance??null;}
-        if(d.periodDistance!=null)this.periodDistance=d.periodDistance;
+        // `periodKm` est le nom non ambigu ; `periodDistance` reste lu tant que
+        // des serveurs plus anciens ne publient que lui.
+        if(d.periodKm!=null)this.periodDistance=d.periodKm;
+        else if(d.periodDistance!=null)this.periodDistance=d.periodDistance;
+        this.periodeAppliquee=this.libellePeriode(periodeDemandee,duDemande,auDemande);
         if(d.typeBreakdown){this.typeBreakdown=d.typeBreakdown;this.maxTypeCount=Math.max(...this.typeBreakdown.map(t=>t.count),1);}
         this.rebuild();this.cdr.detectChanges();
       },
@@ -1646,6 +1662,22 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   donutIdx(name:string):number{return this.donutSegs.findIndex(s=>s.name===name);}
 
   absPct(v:number):string{return Math.abs(v).toFixed(1);}
+
+  /** Etiquette de la periode DEMANDEE au serveur, pour la coller au chiffre. */
+  private libellePeriode(periode:string,du:string,au:string):string{
+    if(periode==='custom')return du&&au?`du ${this.jourCourt(du)} au ${this.jourCourt(au)}`:'sur la période choisie';
+    switch(periode){
+      case 'today':return "aujourd'hui";
+      case 'yesterday':return 'hier';
+      case 'week':return 'sur la semaine';
+      case 'month':return 'sur le mois';
+      case 'year':return "sur l'année";
+      default:{const l=this.periodsFr.find(p=>p.value===periode)?.label;return l?`sur ${l.toLowerCase()}`:'sur la période';}
+    }
+  }
+
+  /** jj/mm d'une date ISO aaaa-mm-jj, sans passer par le fuseau (faux en Tunisie). */
+  private jourCourt(iso:string):string{const p=iso.split('-');return p.length===3?`${p[2]}/${p[1]}`:iso;}
 
   scoreC(s:number):string{return s>=80?'#059669':s>=60?'#d97706':'#dc2626';}
   fuelC(c:number):string{return c<=6?'#059669':c<=8?'#d97706':'#dc2626';}

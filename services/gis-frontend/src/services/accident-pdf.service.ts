@@ -97,7 +97,7 @@ export class AccidentPdfService {
     if (report.weatherConditions) contexte.push(['Conditions météo', report.weatherConditions]);
     if (report.roadConditions) contexte.push(['État de la chaussée', report.roadConditions]);
     if (report.policeReportNumber) contexte.push(['N° de constat / PV', report.policeReportNumber]);
-    if (report.mileageAtAccident != null) contexte.push(['Kilométrage au sinistre', `${report.mileageAtAccident} km`]);
+    if (report.mileageAtAccident != null) contexte.push(['Compteur au sinistre', `${report.mileageAtAccident} km`]);
     if (report.decidedByName) {
       contexte.push(['Confirmé par', report.decidedAt
         ? `${report.decidedByName} — ${this.dateHeure(report.decidedAt)}`

@@ -94,7 +94,7 @@ import {
                   <span class="sort-icon" *ngIf="sortColumn === 'name'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
                 </th>
                 <th class="th-sortable" (click)="toggleSort('mileage')">
-                  Kilometrage
+                  Compteur
                   <span class="sort-icon" *ngIf="sortColumn === 'mileage'">{{ sortDirection === 'asc' ? '&#9650;' : '&#9660;' }}</span>
                 </th>
                 <th>Telephone</th>
@@ -217,7 +217,7 @@ import {
                   <div class="detail-item"><span class="detail-label">Modele</span><span class="detail-value">{{ selectedVehicle.model || '-' }}</span></div>
                   <div class="detail-item"><span class="detail-label">Annee</span><span class="detail-value">{{ selectedVehicle.year || '-' }}</span></div>
                   <div class="detail-item"><span class="detail-label">Couleur</span><span class="detail-value">{{ selectedVehicle.color || '-' }}</span></div>
-                  <div class="detail-item"><span class="detail-label">Kilometrage</span><span class="detail-value highlight">{{ selectedVehicle.mileage | number }} km</span></div>
+                  <div class="detail-item"><span class="detail-label">Compteur</span><span class="detail-value highlight">{{ selectedVehicle.mileage | number }} km</span></div>
                   <div class="detail-item"><span class="detail-label">Carburant</span><span class="detail-value">{{ selectedVehicle.fuelType || '-' }}</span></div>
                   <div class="detail-item"><span class="detail-label">Reservoir</span><span class="detail-value">{{ selectedVehicle.fuelTankCapacity ? selectedVehicle.fuelTankCapacity + ' L' : '-' }}</span></div>
                 </div>

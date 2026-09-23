@@ -22,6 +22,11 @@ export interface Vehicle {
   hasGPS: boolean;
   assignedDriverId?: string;
   assignedDriverName?: string;
+  /**
+   * COMPTEUR du véhicule : kilomètres cumulés depuis sa mise en service, affiché
+   * « Compteur » dans la fiche. Rien à voir avec les distances des Rapports, qui
+   * sont des sommes SUR UNE PÉRIODE — les deux étaient lues « Kilométrage ».
+   */
   mileage: number;
   fuelTankCapacity?: number;
   currentSpeed?: number;

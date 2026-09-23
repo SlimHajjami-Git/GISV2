@@ -84,7 +84,7 @@
               <span class="card-value">{{ formatNumber(report.executiveSummary.totalDistanceKm) }}</span>
               <span class="card-label">km parcourus</span>
               <span class="card-sub" *ngIf="!sansBoitier">{{ report.executiveSummary.totalTrips }} trajets</span>
-              <span class="card-sub" *ngIf="sansBoitier" title="Kilométrage reconstitué des relevés compteur saisis">Trajets : {{ nonDisponible | lowercase }}</span>
+              <span class="card-sub" *ngIf="sansBoitier" title="Distance reconstituée des relevés compteur saisis">Trajets : {{ nonDisponible | lowercase }}</span>
             </div>
           </div>
           <div class="summary-card warning">
@@ -158,7 +158,7 @@
             </div>
           </div>
           <p class="section-note" *ngIf="sansBoitier">
-            Sans boîtier GPS, la distance comparée est le kilométrage reconstitué des relevés compteur saisis,
+            Sans boîtier GPS, la distance comparée est reconstituée des relevés compteur saisis,
             et le carburant les litres achetés sur chacun des deux mois.
           </p>
         </div>
@@ -242,7 +242,7 @@
 
         <div class="empty-hint" *ngIf="sansBoitier">
           Taux d'utilisation, jours d'activité, distance journalière et trajets : non disponibles sans boîtier GPS.
-          Le kilométrage du mois, reconstitué des relevés compteur saisis, figure dans le résumé.
+          La distance parcourue du mois, reconstituée des relevés compteur saisis, figure dans le résumé.
         </div>
 
         <ng-container *ngIf="!sansBoitier">

@@ -329,7 +329,7 @@ interface ImpactProfile {
                     </select>
                   </label>
                   <label class="phase-field">
-                    <span>Kilométrage à l'accident</span>
+                    <span>Compteur à l'accident</span>
                     <input type="number" [(ngModel)]="phase2.mileageAtAccident" placeholder="50000">
                   </label>
                   <label class="phase-field">

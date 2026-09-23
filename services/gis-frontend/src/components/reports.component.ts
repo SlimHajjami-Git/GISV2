@@ -3570,7 +3570,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           },
           title: {
             display: true,
-            text: `Kilométrage par ${xAxisLabel.toLowerCase()}`,
+            text: `Distance parcourue par ${xAxisLabel.toLowerCase()}`,
             font: { size: 14 }
           }
         },
@@ -3721,8 +3721,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
   kmMensuelTitre(v: VehicleMonthlyCost): string {
     switch (v.kmSource) {
       case 'gps': return 'Distance mesurée par le boîtier GPS';
-      case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
-      default: return 'Kilométrage non mesurable sur le mois : les relevés compteur saisis ne permettent pas de calculer une distance (un seul relevé, compteur inchangé ou relevés incohérents)';
+      case 'odometer': return 'Distance reconstituée des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
+      default: return 'Distance non mesurable sur le mois : les relevés compteur saisis ne permettent pas de calculer une distance (un seul relevé, compteur inchangé ou relevés incohérents)';
     }
   }
 
@@ -3777,7 +3777,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return new Date(r.year, r.month - 2, 1).toLocaleDateString('fr-FR', { month: 'long' });
   }
 
-  /** Sous-titre du KPI Kilométrage : d'où viennent les km, et combien de véhicules sont mesurés. */
+  /** Sous-titre du KPI Distance parcourue : d'où viennent les km, et combien de véhicules sont mesurés. */
   mfSourceKm(): string {
     const r = this.monthlyReport;
     if (!r) return '';
@@ -3788,16 +3788,16 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (gps && releves) return `GPS ${gps} · relevés ${releves} · sur ${n}`;
     if (gps) return `boîtiers GPS · ${gps}/${n}`;
     if (releves) return `relevés saisis · ${releves}/${n}`;
-    return 'aucun kilométrage mesuré';
+    return 'aucune distance mesurée';
   }
 
   /** Info-bulle de la cellule Km : origine du kilométrage. */
   mfSourceTitre(v: MonthlyFleetVehicleRow): string {
     switch (v.distanceSource) {
       case 'gps': return 'Distance mesurée par le boîtier GPS';
-      case 'odometer': return 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)'
+      case 'odometer': return 'Distance reconstituée des relevés compteur saisis (pleins, entretiens, réparations, dépenses)'
         + (v.reliableDistance ? '' : ' — incertain : rupture de compteur ou relevé écarté');
-      default: return 'Kilométrage non mesurable sur le mois';
+      default: return 'Distance non mesurable sur le mois';
     }
   }
 
@@ -6182,7 +6182,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           + (this.aDesAvoirs(this.monthlyCostCredit())
             ? `${this.libelleAvoirs} : ${this.infoBulleAvoirs} ; les autres postes restent bruts.   ` : '')
         : '* ')
-        + 'Km « non mesuré » : kilométrage non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
+        + 'Km « non mesuré » : distance non mesurable sur le mois ; les ratios au kilomètre sont alors sans objet.',
     };
   }
 
@@ -6233,7 +6233,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       { header: 'Marque', dataKey: 'brand' },
       { header: 'Modèle', dataKey: 'model' },
       { header: 'Année', dataKey: 'year' },
-      { header: 'Kilométrage', dataKey: 'mileage' },
+      { header: 'Compteur', dataKey: 'mileage' },
       { header: 'Santé (/100)', dataKey: 'healthScore' },
       { header: 'Niveau', dataKey: 'healthLevel' },
       { header: 'Score conduite', dataKey: 'drivingScore' },
@@ -6317,8 +6317,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
       : [
           { header: 'Immatriculation', dataKey: 'vehicle' },
           { header: 'Véhicule', dataKey: 'vehicleName' },
-          { header: 'Kilométrage (km)', dataKey: 'km' },
-          { header: 'Origine du kilométrage', dataKey: 'source' },
+          { header: 'Distance parcourue (km)', dataKey: 'km' },
+          { header: 'Origine de la distance', dataKey: 'source' },
           { header: 'Litres', dataKey: 'liters' },
           { header: 'Consommation (L/100 km)', dataKey: 'l100' },
           { header: `Carburant (${cur})`, dataKey: 'fuel' },
@@ -6368,7 +6368,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     });
 
     const statistics: Record<string, string> = {
-      'Kilométrage': t.measuredVehicles ? `${this.formatNumber(t.distanceKm)} km` : '—',
+      'Distance parcourue': t.measuredVehicles ? `${this.formatNumber(t.distanceKm)} km` : '—',
       'Carburant': `${this.formatNumber(t.liters)} L`,
       'Coût total': this.formatCurrency(t.totalCost),
       'Coût au km': t.costPerKm == null ? '—' : `${this.formatCostPerKm(t.costPerKm)} ${cur}/km`,
@@ -8515,21 +8515,21 @@ export class ReportsComponent implements OnInit, OnDestroy {
     return this.cranDensiteCout() > 12;
   }
 
-  /** Info-bulle de la colonne Kilométrage : origine (compteur / GPS) et fiabilité de la distance. */
+  /** Info-bulle de la colonne Distance parcourue : origine (compteur / GPS) et fiabilité de la distance. */
   distanceSourceTitle(v: { distanceSource: string; reliableDistance?: boolean; ignoredOdometerReadings?: number; odometerBreaks?: number }): string {
     switch (v.distanceSource) {
       case 'gps':
-        return 'Kilométrage issu des trajets GPS';
+        return 'Distance issue des trajets GPS';
       case 'odometer': {
         // Quatre sources depuis le 10/09/2026, plus seulement les pleins.
-        let s = 'Kilométrage reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
+        let s = 'Distance reconstituée des relevés compteur saisis (pleins, entretiens, réparations, dépenses)';
         if (v.reliableDistance === false) s += ' (incertain)';
         if (v.ignoredOdometerReadings) s += ` — ${v.ignoredOdometerReadings} relevé(s) ignoré(s)`;
         if (v.odometerBreaks) s += ` — ${v.odometerBreaks} rupture(s) de compteur`;
         return s;
       }
       default:
-        return 'Aucun kilométrage mesurable sur la période';
+        return 'Aucune distance mesurable sur la période';
     }
   }
 
@@ -8762,7 +8762,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                 const parKm = v.costPerKm == null ? 'Coût au km non mesurable' : `${fmt3(Number(v.costPerKm))} ${cur}/km`;
                 const total = `Coût total : ${this.formatCurrency(v.totalCost)}`;
                 const lines = ranking ? [total, parKm] : [parKm, total];
-                if (v.distanceKm != null) lines.push(`Kilométrage : ${this.formatNumber(v.distanceKm)} km`);
+                if (v.distanceKm != null) lines.push(`Distance parcourue : ${this.formatNumber(v.distanceKm)} km`);
                 // L'écart porte sur le coût au km, même quand les barres montrent le coût total.
                 if (v.deviationFromAveragePct != null) lines.push(`${ranking ? 'Écart au km vs moyenne' : 'Écart vs moyenne'} : ${this.formatSignedPct(v.deviationFromAveragePct)}`);
                 return lines;
@@ -9641,7 +9641,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     const statistics: Record<string, string> = {
       [`Coût total d'exploitation`]: String(mt(r.totalCost)),
-      'Kilométrage total': String(km(r.totalKm)),
+      'Distance parcourue totale': String(km(r.totalKm)),
       // « Coût moyen exploitation (€/km) » mesure 41,8 mm : il debordait de la
       // carte, large de 35,5 mm utiles. Raccourci, il tombe a 25,6 mm.
       [`Coût moyen (${cur}/km)`]: this.formatCostPerKm(r.averageCostPerKm),
@@ -9818,7 +9818,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           { header: 'Immatriculation', dataKey: 'vehicle' },
           { header: 'Véhicule', dataKey: 'vehicleName' },
           { header: 'Interventions (nb)', dataKey: 'interventions' },
-          { header: 'Kilométrage (km)', dataKey: 'km' },
+          { header: 'Distance parcourue (km)', dataKey: 'km' },
           { header: 'Interventions / 1000 km', dataKey: 'frequencyPer1000Km' },
           { header: `Coût total réparations (${cur})`, dataKey: 'totalCost' },
           { header: `Coût moyen / intervention (${cur})`, dataKey: 'avgCost' },

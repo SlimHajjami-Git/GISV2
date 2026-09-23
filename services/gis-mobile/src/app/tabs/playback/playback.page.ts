@@ -193,7 +193,9 @@ export function playbackMarkerHtml(p: PlaybackPoint): string {
       <div class="stats-bar" *ngIf="points.length > 0">
         <div class="stat">
           <span class="stat-val">{{ totalDistance | number:'1.1-1' }}</span>
-          <span class="stat-label">km</span>
+          <!-- « km » seul, sous un chiffre, se lisait comme un compteur : c'est la distance
+               parcourue sur la seule tranche rejouée, mesurée point à point (computeStats). -->
+          <span class="stat-label">km parcourus</span>
         </div>
         <div class="stat">
           <span class="stat-val">{{ maxSpeed | number:'1.0-0' }}</span>

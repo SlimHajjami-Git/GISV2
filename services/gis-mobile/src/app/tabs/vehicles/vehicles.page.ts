@@ -130,7 +130,10 @@ export const STATE_REFRESH_MS = 30000;
               <!-- Ni flèche ni vert : c'était l'icône « En route », même sur un véhicule garé. -->
               <ion-icon name="trail-sign-outline" color="primary"></ion-icon>
               <span class="detail-value">{{ selectedVehicle.mileage | number:'1.0-0' }} km</span>
-              <span class="detail-label">Kilométrage</span>
+              <!-- « Kilométrage » désignait ici le compteur du véhicule et, dans les Rapports,
+                   une distance sur quelques jours : le même mot pour deux grandeurs sans rapport.
+                   Ici c'est le compteur (cumul de vie), et lui seul. -->
+              <span class="detail-label">Compteur</span>
             </div>
             <div class="detail-item">
               <!-- Contact mis = couleur de l'application, pas le vert « En route » : au ralenti,
@@ -145,6 +148,14 @@ export const STATE_REFRESH_MS = 30000;
               <span class="detail-label">Type</span>
             </div>
           </div>
+
+          <!-- L'écran des Rapports montre, lui, des kilomètres SUR UNE PÉRIODE : le rappel
+               évite de prendre l'un pour l'autre en passant d'un onglet à l'autre. -->
+          <p class="detail-hint">
+            <ion-icon name="information-circle-outline" aria-hidden="true"></ion-icon>
+            <span>Le compteur cumule toute la vie du véhicule. Pour les kilomètres d'une
+              période, voir Rapports &rsaquo; Distance.</span>
+          </p>
 
           <div class="detail-driver" *ngIf="selectedVehicle.assignedDriverName">
             <ion-icon name="person-outline" color="primary"></ion-icon>
@@ -272,6 +283,11 @@ export const STATE_REFRESH_MS = 30000;
     .detail-item ion-icon { font-size: 20px; display: block; margin: 0 auto 4px; }
     .detail-value { display: block; font-weight: 600; font-size: 14px; }
     .detail-label { display: block; font-size: 11px; color: var(--ion-color-medium); }
+    .detail-hint {
+      display: flex; gap: 6px; margin: -8px 0 16px;
+      font-size: 11px; line-height: 1.4; color: var(--ion-color-medium);
+    }
+    .detail-hint ion-icon { font-size: 13px; flex: 0 0 auto; margin-top: 1px; }
     .detail-driver {
       display: flex; align-items: center; gap: 8px;
       padding: 10px 14px; background: var(--ion-color-light);

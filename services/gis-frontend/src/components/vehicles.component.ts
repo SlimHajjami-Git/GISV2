@@ -179,7 +179,7 @@ interface VehicleTrip {
                   <th class="col-vehicle">Véhicule</th>
                   <th class="col-plate">Plaque</th>
                   <th class="col-type">Type</th>
-                  <th class="col-mileage">Kilométrage</th>
+                  <th class="col-mileage">Compteur</th>
                   <th class="col-driver">Chauffeur</th>
                   <th class="col-status">Statut</th>
                   <th class="col-gps">GPS</th>
@@ -326,16 +326,16 @@ interface VehicleTrip {
              la liste des vehicules traversant par-dessus (constate le 21/09/2026). -->
         <div class="credit-modal" (click)="$event.stopPropagation()">
           <div class="credit-head">
-            <h3>Corriger le kilométrage</h3>
+            <h3>Corriger le compteur</h3>
             <button class="credit-close" (click)="closeMileageFix()">✕</button>
           </div>
           <div class="credit-body">
             <p class="credit-note">
               {{ mileageFix.vehicleName }} — compteur actuel {{ mileageFix.current | appDistance:0 }}.
-              Le kilométrage ne recule jamais automatiquement : cette correction est enregistrée
+              Le compteur ne recule jamais automatiquement : cette correction est enregistrée
               dans le journal avec son motif.
             </p>
-            <label class="mfix-label" for="mfixKm">Nouveau kilométrage <span class="mfix-req">*</span></label>
+            <label class="mfix-label" for="mfixKm">Nouvelle valeur du compteur <span class="mfix-req">*</span></label>
             <input id="mfixKm" class="mfix-input" type="number" min="0" step="1"
                    [(ngModel)]="mileageFix.mileage" [disabled]="mileageFix.saving">
             <label class="mfix-label" for="mfixReason">Motif <span class="mfix-req">*</span></label>
@@ -412,13 +412,13 @@ interface VehicleTrip {
                   <span class="spec-value">{{ selectedDetailVehicle.color || 'Non spécifié' }}</span>
                 </div>
                 <div class="spec-item">
-                  <span class="spec-label">Kilométrage</span>
+                  <span class="spec-label">Compteur</span>
                   <span class="spec-value">
                     {{ selectedDetailVehicle.mileage | appDistance:0 }}
                     <span class="mileage-source" *ngIf="selectedDetailVehicle.hasGPS" title="Données GPS disponibles">📡</span>
                     <button type="button" class="mileage-fix-btn" *ngIf="!selectedDetailVehicle.hasGPS"
                             (click)="openMileageFix(selectedDetailVehicle)"
-                            title="Corriger le kilométrage (motif obligatoire)">Corriger</button>
+                            title="Corriger le compteur (motif obligatoire)">Corriger</button>
                   </span>
                 </div>
                 <div class="spec-item">

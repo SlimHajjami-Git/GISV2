@@ -462,7 +462,7 @@ function dateSeule(d: string | null | undefined): string {
                 </select>
               </div>
               <div class="vehicle-info-box" *ngIf="selectedVehicle">
-                <span class="info-label">Kilometrage actuel:</span>
+                <span class="info-label">Compteur actuel :</span>
                 <span class="info-value">{{ (selectedVehicle.mileage || 0) | appDistance:0 }}</span>
               </div>
             </div>
@@ -504,7 +504,7 @@ function dateSeule(d: string | null | undefined): string {
                   <input type="date" class="form-control" [(ngModel)]="form.repairDate">
                 </div>
                 <div class="form-group">
-                  <label>Kilometrage</label>
+                  <label>Compteur</label>
                   <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km">
                 </div>
               </div>
@@ -644,7 +644,7 @@ function dateSeule(d: string | null | undefined): string {
                 <span class="detail-value">{{ viewingRepair.vehicleName }} - {{ viewingRepair.vehiclePlate }}</span>
               </div>
               <div class="detail-row" *ngIf="viewingRepair.mileageAtRepair">
-                <span class="detail-label">Kilometrage</span>
+                <span class="detail-label">Compteur</span>
                 <span class="detail-value">{{ (viewingRepair.mileageAtRepair || 0) | appDistance:0 }}</span>
               </div>
             </div>

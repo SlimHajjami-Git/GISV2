@@ -106,6 +106,12 @@ export class ApiService {
     return this.http.get<any>(`${this.API}/reports/daily/${vehicleId}`, { params });
   }
 
+  /**
+   * Distance parcourue SUR UNE PÉRIODE, mesurée sur les positions GPS (ou reconstituée
+   * des relevés au compteur pour un véhicule sans boîtier). Malgré le nom de la route,
+   * ce n'est PAS le compteur du véhicule (Vehicle.mileage) : l'écran l'annonce
+   * « Distance parcourue » avec ses dates.
+   */
   getMileageReports(startDate: string, endDate: string, vehicleIds?: number[]): Observable<any[]> {
     let params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
     if (vehicleIds?.length) {
@@ -134,6 +140,11 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API}/trips`, { params });
   }
 
+  /**
+   * Somme des trajets DÉTECTÉS sur la période (colonne distance des trajets), et non une
+   * mesure refaite sur les positions : elle peut s'écarter de getMileageReports pour la
+   * même période. L'écran le dit plutôt que de laisser croire à deux fois le même chiffre.
+   */
   getTripsSummary(startDate: string, endDate: string): Observable<any> {
     const params = new HttpParams().set('startDate', startDate).set('endDate', endDate);
     return this.http.get<any>(`${this.API}/trips/summary`, { params });

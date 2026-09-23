@@ -83,3 +83,98 @@ describe('ReportsPage (chronologie aux couleurs des états)', () => {
       .toEqual([rgb('#10b981'), rgb('#ef4444')]);
   });
 });
+
+/**
+ * Distance d'une PÉRIODE contre COMPTEUR du véhicule (recette du 23/09/2026).
+ *
+ * Constat : « Kilométrage » nommait à la fois l'onglet des kilomètres du mois et le compteur
+ * de la fiche véhicule, et deux onglets voisins affichaient « km total » pour deux grandeurs
+ * différentes — la somme des trajets détectés d'un côté, la distance mesurée sur les positions
+ * de l'autre. Rien à l'écran ne disait laquelle on lisait, ni sur quelle période.
+ */
+describe('ReportsPage (distance de période vs compteur)', () => {
+  let fixture: ComponentFixture<ReportsPage>;
+  let page: ReportsPage;
+  let mileageRange: { start: string; end: string } | null;
+  let tripsRange: { start: string; end: string } | null;
+
+  /** 'AAAA-MM-JJ' → 'JJ/MM/AAAA' : formatage volontairement indépendant du fuseau du poste. */
+  const fr = (iso: string) => { const [y, m, d] = iso.split('-'); return `${d}/${m}/${y}`; };
+
+  const texte = () => (fixture.nativeElement.textContent as string).replace(/\s+/g, ' ');
+
+  beforeEach(async () => {
+    mileageRange = null;
+    tripsRange = null;
+    await TestBed.configureTestingModule({
+      declarations: [ReportsPage],
+      providers: [
+        {
+          provide: ApiService,
+          useValue: {
+            getVehicles: () => of([]),
+            getDailyReports: () => of([]),
+            getMileageReports: (start: string, end: string) => {
+              mileageRange = { start, end };
+              return of([{ vehicleName: 'Camion Sfax', plate: '263 TU 6995', totalDistanceKm: 3012.4, averageDailyKm: 100, maxDailyKm: 240 }]);
+            },
+            getTrips: () => of([]),
+            getTripsSummary: (start: string, end: string) => {
+              tripsRange = { start, end };
+              return of({ totalTrips: 12, totalDistanceKm: 58597, averageSpeedKph: 42, totalDurationMinutes: 600 });
+            }
+          }
+        },
+        { provide: ActionSheetController, useValue: { create: async () => ({ present: async () => {} }) } },
+        { provide: LoadingController, useValue: { create: async () => ({ present: async () => {}, dismiss: async () => {} }) } }
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA]
+    }).compileComponents();
+    fixture = TestBed.createComponent(ReportsPage);
+    page = fixture.componentInstance;
+    page.selectedDate = '2026-09-23T10:00:00.000Z';
+    fixture.detectChanges();
+  });
+
+  afterEach(() => fixture.destroy());
+
+  it('l\'onglet des kilomètres du mois s\'appelle « Distance », plus « Kilométrage » — ce mot est réservé au compteur', () => {
+    const onglets = Array.from<HTMLElement>(fixture.nativeElement.querySelectorAll('ion-segment-button'))
+      .map(b => b.textContent!.trim());
+    expect(onglets).toEqual(['Activité', 'Distance', 'Trajets', 'Mensuel']);
+  });
+
+  it('la distance du mois s\'annonce « Distance parcourue » avec la période RÉELLEMENT demandée', () => {
+    page.activeTab = 'mileage';
+    page.onTabChange();
+    fixture.detectChanges();
+
+    expect(mileageRange!.end).toBe('2026-09-23');
+    // Le libellé recopie les bornes envoyées à l'API : il ne peut pas annoncer une autre période.
+    expect(page.mileagePeriodLabel).toBe(`du ${fr(mileageRange!.start)} au ${fr(mileageRange!.end)}`);
+    expect(texte()).toContain(`Distance parcourue ${page.mileagePeriodLabel}`);
+    expect(texte()).toContain('km parcourus');
+    expect(texte()).not.toContain('km total');
+    // La phrase qui sépare les deux grandeurs là où elles se touchent.
+    expect(texte()).toContain('positions GPS');
+    expect(texte()).toContain('compteur du véhicule');
+  });
+
+  it('la somme des trajets se dit « km cumulés », datée, et se démarque de la distance mesurée et du compteur', () => {
+    page.activeTab = 'trips';
+    page.onTabChange();
+    fixture.detectChanges();
+
+    expect(page.tripsPeriodLabel).toBe(`le ${fr(tripsRange!.end)}`);
+    expect(texte()).toContain(`Trajets détectés ${page.tripsPeriodLabel}`);
+    expect(texte()).toContain('km cumulés');
+    expect(texte()).not.toContain('km total');
+    expect(texte()).toContain('peut différer');
+    expect(texte()).toContain('ce n\'est pas le compteur du véhicule');
+  });
+
+  it('sans période chargée, aucun libellé ne prétend en connaître une', () => {
+    expect(page.mileagePeriodLabel).toBe('');
+    expect(page.tripsPeriodLabel).toBe('');
+  });
+});

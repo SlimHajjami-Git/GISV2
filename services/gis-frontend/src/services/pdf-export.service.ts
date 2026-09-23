@@ -1121,14 +1121,14 @@ export class PdfExportService {
           { header: 'Description', dataKey: 'description', weight: 3.35 },
           { header: 'Fournisseur', dataKey: 'supplierName', weight: 2.6 },
           { header: 'Coût', dataKey: 'costFormatted', weight: 1.25 },
-          { header: 'Km', dataKey: 'mileage', weight: 1.5 }
+          { header: 'Compteur', dataKey: 'mileage', weight: 1.5 }
         ];
       default:
         return [
           { header: 'Date/Heure', dataKey: 'time' },
           { header: 'Valeur', dataKey: 'value' },
           { header: 'Détails', dataKey: 'details' },
-          { header: 'Kilométrage', dataKey: 'kilometrage' }
+          { header: 'Distance parcourue', dataKey: 'kilometrage' }
         ];
     }
   }

@@ -23,7 +23,7 @@ use crate::{
         gps_validator::GpsValidator,
         speed_filter::SpeedFilter,
         stop_detector::StopDetector,
-        trip_detector::TripDetector,
+        trip_detector::{TripDetector, STALE_TRIP_SILENCE_SECS, STALE_TRIP_SWEEP_INTERVAL_SECS},
     },
     telemetry,
 };
@@ -128,6 +128,49 @@ pub async fn run_listeners(
                 }));
             }
         }
+    }
+
+    // Balayage des trajets restés ouverts. La coupure sur durée de
+    // `process_frame` n'agit QU'À l'arrivée d'une trame : un boîtier qui se tait
+    // (coupure GSM, véhicule au garage, boîtier débranché) garderait son trajet
+    // ouvert indéfiniment, et sa fenêtre de recalcul recouvrirait celles des
+    // trajets suivants — le même déplacement facturé plusieurs fois. Même
+    // traitement d'erreur d'insertion que les quatre chemins de trames.
+    {
+        let services_sweep = Arc::clone(&services);
+        let database_sweep = Arc::clone(&database);
+        handles.push(tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
+                STALE_TRIP_SWEEP_INTERVAL_SECS,
+            ));
+            // Le premier tick d'un interval est immédiat : on le consomme pour ne
+            // pas balayer au démarrage, quand aucune trame n'a encore été vue.
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                let stale = services_sweep
+                    .trip_detector
+                    .sweep_stale(Utc::now(), STALE_TRIP_SILENCE_SECS)
+                    .await;
+                for completed_trip in stale {
+                    if let Err(err) = database_sweep.insert_trip(&completed_trip).await {
+                        warn!(
+                            ?err,
+                            device_id = completed_trip.device_id,
+                            "Failed to insert swept trip"
+                        );
+                    } else {
+                        info!(
+                            device_id = completed_trip.device_id,
+                            vehicle_id = ?completed_trip.vehicle_id,
+                            distance_km = completed_trip.distance_km,
+                            duration_min = completed_trip.duration_minutes,
+                            "Trip recorded (balayage)"
+                        );
+                    }
+                }
+            }
+        }));
     }
 
     info!(count = handles.len(), "Listeners running; awaiting shutdown signal");

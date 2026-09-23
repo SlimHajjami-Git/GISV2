@@ -161,7 +161,7 @@ import { UserPreferencesService } from '../../services/user-preferences.service'
                 </div>
 
                 <div class="form-group">
-                  <label for="mileage">Kilométrage</label>
+                  <label for="mileage">Compteur</label>
                   <input type="number" id="mileage" name="mileage" [(ngModel)]="costForm.mileage" min="0">
                 </div>
 

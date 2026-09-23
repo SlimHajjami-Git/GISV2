@@ -217,6 +217,14 @@ public class DashboardService : IDashboardService
             {
                 name = vehicleById[x.VehicleId].Plate ?? vehicleById[x.VehicleId].Name,
                 color = topUnitsColors[i % topUnitsColors.Length],
+                // Distance PARCOURUE sur la periode demandee. Publie sous le nom
+                // `mileage` depuis l'origine, alors que ce mot designe ailleurs le
+                // compteur de vie du vehicule (Monitoring, fiche vehicule) : deux
+                // grandeurs sous un seul mot, et c'est cette lecture-la que le
+                // client a contestee. `periodKm` nomme la grandeur sans ambiguite.
+                periodKm = Math.Round((double)x.Km),
+                // Conserve pour compatibilite : l'application mobile lit encore
+                // `mileage`. A retirer quand plus aucune version en service ne le lit.
                 mileage = Math.Round((double)x.Km)
             })
             .ToList();
@@ -515,6 +523,10 @@ public class DashboardService : IDashboardService
             recentTrips = tripsList,
             drivers = driversList,
             trends = new { cost = costTrend, distance = distanceTrend },
+            // Meme chiffre sous deux noms : `periodKm` dit la grandeur (distance
+            // parcourue SUR LA PERIODE demandee), `periodDistance` reste publie
+            // pour ne pas casser les clients deja livres.
+            periodKm = Math.Round((double)currentDistance),
             periodDistance = Math.Round((double)currentDistance),
             typeBreakdown
         };
