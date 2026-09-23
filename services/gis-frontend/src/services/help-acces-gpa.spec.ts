@@ -97,8 +97,11 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
 
     const etapes = aide.etapesGuide().map(e => e.id);
     expect(etapes).not.toContain('voir-la-carte');
-    expect(etapes).toContain('ajouter-vehicule');
-    expect(etapes).toContain('premier-rapport');
+    // Parcours GPA fixe par Karim le 23/09/2026, dans cet ordre : vehicule,
+    // chauffeurs, echeances, programme d'entretien puis son affectation.
+    expect(etapes).toEqual([
+      'bienvenue', 'ajouter-vehicule', 'ajouter-chauffeurs', 'echeances', 'entretien-modele', 'entretien-affecter'
+    ]);
   });
 
   it('ADMIN en GPA : aucun article visible ne cite un rapport GPS ferme', () => {

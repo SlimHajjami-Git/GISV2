@@ -41,6 +41,17 @@ class PageSuivi {}
 @Component({ standalone: true, template: `<div data-guide="rapports-type">Type de rapport</div>` })
 class PageRapports {}
 
+// Parcours GPA du 23/09/2026 : chauffeurs, échéances, puis les deux étapes de
+// l'écran Entretiens (créer un modèle, l'affecter) — deux cibles sur une même page.
+@Component({ standalone: true, template: `<button data-guide="chauffeurs-nouveau">Nouveau chauffeur</button>` })
+class PageChauffeurs {}
+
+@Component({ standalone: true, template: `<div data-guide="echeances-compteurs">Compteurs</div>` })
+class PageEcheances {}
+
+@Component({ standalone: true, template: `<button data-guide="entretiens-affecter">Affecter</button><button data-guide="entretiens-nouveau-modele">Nouveau modele</button>` })
+class PageEntretiens {}
+
 describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
   let utilisateur: BehaviorSubject<any>;
   let guide: ComponentFixture<GuidedHelpComponent>;
@@ -66,6 +77,9 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
           { path: 'vehicles', component: PageVehicules },
           { path: 'monitoring', component: PageSuivi },
           { path: 'reports', component: PageRapports },
+          { path: 'drivers', component: PageChauffeurs },
+          { path: 'echeances', component: PageEcheances },
+          { path: 'entretien-programmable', component: PageEntretiens },
         ]),
         { provide: AuthService, useValue: {
           getCurrentUserSync: () => utilisateur.value,
@@ -103,8 +117,11 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     expect(guide.componentInstance.etape?.id).toBe('ajouter-vehicule');
   });
 
-  it('va au bout des quatre étapes, puis ne se repropose plus', async () => {
-    for (const attendue of ['ajouter-vehicule', 'voir-la-carte', 'premier-rapport']) {
+  it('va au bout des sept étapes (offre GPS complète), puis ne se repropose plus', async () => {
+    // Ordre voulu par Karim (23/09/2026) : véhicule, chauffeurs, [carte si GPS],
+    // échéances, programme d'entretien, affectation. Deux étapes de suite sur
+    // /entretien-programmable : la seconde ne doit pas renaviguer ni se perdre.
+    for (const attendue of ['ajouter-vehicule', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter']) {
       guide.componentInstance.suivant();
       await attendre();
       expect(guide.componentInstance.etape?.id).toBe(attendue);

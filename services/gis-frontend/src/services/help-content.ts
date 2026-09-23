@@ -925,24 +925,40 @@ export const ARTICLES_AIDE: HelpArticle[] = [
  * souscrit ou si l'element n'est pas trouve, l'etape est sautee : la visite doit
  * s'adapter a l'abonnement du client, pas montrer des ecrans qu'il n'a pas.
  */
+/*
+ * Parcours defini par Karim le 23/09/2026 pour l'offre GPA — l'ordre dans
+ * lequel un nouveau client doit s'y prendre pour commencer a travailler :
+ * son premier vehicule (ou l'import Excel de tout son parc), ses chauffeurs,
+ * les echeances de ses documents, puis un programme d'entretien et son
+ * affectation aux vehicules. Le rapport n'en fait plus partie (« le reste on
+ * verra si c'est necessaire »). La carte reste reservee aux offres GPS et se
+ * place apres les chauffeurs ; ce qu'on ajoute pour le GPS se decidera ensuite.
+ */
 export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'bienvenue',
     titre: 'Bienvenue dans Calypso',
-    // Étape jouée pour TOUTES les offres : elle ne cite donc que ce que tout
-    // client a dans « Exploitation ». « tournées » était promis au client GPA,
-    // qui n'a pas ce module.
-    texte: "Quelques étapes pour être autonome. Votre parc se trouve dans le menu « Exploitation » : vos véhicules et vos chauffeurs. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    // Étape jouée pour TOUTES les offres : elle ne cite que ce que tout client
+    // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
+    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, puis un programme d'entretien. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
     route: '/dashboard'
   },
   {
     id: 'ajouter-vehicule',
     titre: 'Ajoutez votre premier véhicule',
-    texte: "« Nouveau véhicule » ouvre la fiche à remplir. Seuls les champs marqués d'une étoile sont obligatoires : nom, plaque, marque, modèle, année, type, statut, kilométrage et carburant.",
+    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos véhicules dans un fichier ? Importez-les d'un coup : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
     cible: 'vehicules-nouveau',
     module: 'vehicles',
     route: '/vehicles'
+  },
+  {
+    id: 'ajouter-chauffeurs',
+    titre: 'Ajoutez vos chauffeurs',
+    texte: "« Nouveau chauffeur » crée la fiche : le prénom et le nom suffisent. Renseignez la date d'expiration du permis pour être prévenu avant, et rattachez le chauffeur à son véhicule.",
+    cible: 'chauffeurs-nouveau',
+    module: 'employees',
+    route: '/drivers'
   },
   {
     id: 'voir-la-carte',
@@ -953,11 +969,27 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     route: '/monitoring'
   },
   {
-    id: 'premier-rapport',
-    titre: 'Générez votre premier rapport',
-    texte: "Choisissez un type de rapport, un véhicule et une période, puis cliquez sur « Exécuter ». L'export Excel, PDF ou CSV se débloque une fois le rapport affiché.",
-    cible: 'rapports-type',
-    module: 'reports',
-    route: '/reports'
+    id: 'echeances',
+    titre: 'Renseignez vos échéances',
+    texte: "Chaque véhicule a ici ses lignes assurance, vignette et visite technique. Tant qu'une date n'est pas saisie, la ligne dit « Non renseignée » et personne ne sera prévenu : cliquez sur « Modifier l'échéance » pour saisir la date, ou sur « Renouveler » quand vous payez.",
+    cible: 'echeances-compteurs',
+    module: 'documents',
+    route: '/echeances'
+  },
+  {
+    id: 'entretien-modele',
+    titre: "Créez un programme d'entretien",
+    texte: "« Nouveau modele » définit un entretien qui revient — vidange, révision — avec son intervalle en kilomètres ou en mois. Calypso vous préviendra à l'approche de l'échéance.",
+    cible: 'entretiens-nouveau-modele',
+    module: 'maintenance',
+    route: '/entretien-programmable'
+  },
+  {
+    id: 'entretien-affecter',
+    titre: 'Affectez-le à vos véhicules',
+    texte: "« Affecter » applique le programme aux véhicules concernés. À partir de là, chaque véhicule a sa prochaine échéance d'entretien, et « Marquer fait » la recale quand l'entretien est réalisé.",
+    cible: 'entretiens-affecter',
+    module: 'maintenance',
+    route: '/entretien-programmable'
   }
 ];
