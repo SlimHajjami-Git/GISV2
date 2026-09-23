@@ -121,6 +121,41 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     ]);
   });
 
+  it('une etape ne survit pas si son ECRAN est ferme, meme quand son module d’offre est ouvert', () => {
+    // Constat du 23/09/2026. « premier-rapport » et « vehicules-en-place » sont
+    // signees module: 'monitoring' — c'est la marque de l'offre GPS, pas le droit
+    // d'ouvrir la page. Leurs routes, /reports et /vehicles, sont gardees par
+    // FeatureGuard. Or la creation d'un utilisateur livre canMonitoring a true et
+    // canReports / canVehicles a false PAR DEFAUT : la visite envoyait donc un
+    // employe tout neuf sur « Acces non autorise » a sa premiere connexion.
+    const employe = aideAvecCompte({
+      id: 'u-employe-gps', isSystemAdmin: false, isCompanyAdmin: false,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true },
+      userPermissions: {
+        canMonitoring: true, canVehicles: false, canReports: false,
+        canDrivers: true, canDocuments: true, canMaintenance: true, canUsers: true
+      }
+    });
+    const etapes = employe.etapesGuide().map(e => e.id);
+    expect(etapes).not.toContain('premier-rapport');
+    expect(etapes).not.toContain('vehicules-en-place');
+    // Ce qu'il garde : les ecrans qui lui sont bien ouverts.
+    expect(etapes).toContain('voir-la-carte');
+    expect(etapes).toContain('echeances');
+    // Et l'inverse : les memes droits ouverts, les deux etapes reviennent.
+    const complet = aideAvecCompte({
+      id: 'u-complet-gps', isSystemAdmin: false, isCompanyAdmin: false,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true },
+      userPermissions: {
+        canMonitoring: true, canVehicles: true, canReports: true,
+        canDrivers: true, canDocuments: true, canMaintenance: true, canUsers: true
+      }
+    });
+    const etapesCompletes = complet.etapesGuide().map(e => e.id);
+    expect(etapesCompletes).toContain('premier-rapport');
+    expect(etapesCompletes).toContain('vehicules-en-place');
+  });
+
   it('les alertes par e-mail sont avant-dernieres en GPS, dernieres en GPA — et jamais sans le droit Utilisateurs', () => {
     const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
     const etapesGps = gps.etapesGuide().map(e => e.id);

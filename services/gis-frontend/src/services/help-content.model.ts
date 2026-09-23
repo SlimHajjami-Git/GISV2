@@ -111,6 +111,17 @@ export interface GuideEtape {
    * c'est le module `monitoring` qui signe l'offre GPS (Karim, 23/09/2026).
    */
   sauf?: HelpModule;
+  /**
+   * Module necessaire pour ATTEINDRE `route`, quand il differe de `module`.
+   * `module` sert a signer l'offre (« monitoring » = client GPS) ; il ne dit pas
+   * si la page visee est ouverte. Sans ce second filtre, une etape signee
+   * « monitoring » et pointant sur /reports etait proposee a un utilisateur qui
+   * a le suivi mais pas les rapports : FeatureGuard le renvoyait au tableau de
+   * bord avec « Acces non autorise », des sa toute premiere connexion — et
+   * canMonitoring vaut true par defaut a la creation d'un utilisateur, pas
+   * canReports. Constat du 23/09/2026.
+   */
+  moduleRoute?: HelpModule;
   /** Page sur laquelle l'etape doit etre jouee. */
   route?: string;
   /**

@@ -168,6 +168,7 @@ export class HelpService {
   etapesGuide(): GuideEtape[] {
     return ETAPES_GUIDE.filter(e =>
       (!e.module || this.moduleAutorise(e.module))
+      && (!e.moduleRoute || this.moduleAutorise(e.moduleRoute))
       && (!e.sauf || !this.moduleAutorise(e.sauf)));
   }
 
