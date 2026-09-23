@@ -1020,7 +1020,11 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "« Affecter » applique le programme aux véhicules concernés. À partir de là, chaque véhicule a sa prochaine échéance d'entretien, et « Marquer fait » la recale quand l'entretien est réalisé.",
     cible: 'entretiens-affecter',
     module: 'maintenance',
-    route: '/entretien-programmable'
+    route: '/entretien-programmable',
+    // Derniere etape du parcours GPA : « Terminer » depose le client sur
+    // Vehicules, pour qu'il ajoute les siens (Karim, 23/09/2026). En GPS ce
+    // n'est pas la derniere etape, la valeur n'y sert pas.
+    routeApresFin: '/vehicles'
   },
   // Offre GPS seulement (Karim, 23/09/2026 : « ajoute rapport » pour le GPS,
   // retire pour la GPA). Toutes les offres GPS ont le module Rapports ; si un
@@ -1031,6 +1035,9 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Choisissez un type de rapport, un véhicule et une période, puis cliquez sur « Exécuter ». L'export Excel, PDF ou CSV se débloque une fois le rapport affiché.",
     cible: 'rapports-type',
     module: 'monitoring',
-    route: '/reports'
+    route: '/reports',
+    // Derniere etape du parcours GPS : « Terminer » depose le client sur
+    // « Suivi en direct », pour qu'il voie ses vehicules (Karim, 23/09/2026).
+    routeApresFin: '/monitoring'
   }
 ];

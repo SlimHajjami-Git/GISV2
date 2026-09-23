@@ -120,6 +120,14 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     ]);
   });
 
+  it('« Terminer » depose le client sur Vehicules en GPA, sur Suivi en direct en GPS', () => {
+    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
+    const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
+    const derniere = (etapes: ReturnType<typeof gpa.etapesGuide>) => etapes[etapes.length - 1];
+    expect(derniere(gpa.etapesGuide()).routeApresFin).toBe('/vehicles');
+    expect(derniere(gps.etapesGuide()).routeApresFin).toBe('/monitoring');
+  });
+
   it('ADMIN en GPA : aucun article visible ne cite un rapport GPS ferme', () => {
     const aide = aideAvecCompte({
       id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,

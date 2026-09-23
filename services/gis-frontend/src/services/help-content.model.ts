@@ -113,4 +113,11 @@ export interface GuideEtape {
   sauf?: HelpModule;
   /** Page sur laquelle l'etape doit etre jouee. */
   route?: string;
+  /**
+   * Page ou deposer le client quand il clique « Terminer » sur CETTE etape
+   * (donc si c'est la derniere de son parcours). Karim, 23/09/2026 : en GPA on
+   * revient a l'ecran Vehicules pour qu'il ajoute les siens ; en GPS a « Suivi
+   * en direct » pour qu'il voie les siens. « Passer » ne deplace pas.
+   */
+  routeApresFin?: string;
 }

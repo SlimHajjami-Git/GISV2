@@ -132,6 +132,9 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     await attendre();
     expect(guide.componentInstance.actif).toBe(false);
     expect(help.doitProposerLeGuide()).toBe(false);
+    // Fin du parcours GPS : le client est depose sur « Suivi en direct » pour
+    // voir ses vehicules (Karim, 23/09/2026).
+    expect(TestBed.inject(Router).url).toBe('/monitoring');
   });
 
   it('Échap puis changement de page : la visite ne revient pas et ne ramène pas au tableau de bord', async () => {
