@@ -51,6 +51,10 @@ class PageEcheances {}
 
 @Component({ standalone: true, template: `<button data-guide="entretiens-affecter">Affecter</button><button data-guide="entretiens-nouveau-modele">Nouveau modele</button>` })
 class PageEntretiens {}
+
+// Alertes par e-mail (Karim, 23/09/2026) : l'onglet de « Gestion des Utilisateurs ».
+@Component({ standalone: true, template: `<button data-guide="alertes-email-onglet">Alertes par email</button>` })
+class PageUtilisateurs {}
 describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
   let utilisateur: BehaviorSubject<any>;
   let guide: ComponentFixture<GuidedHelpComponent>;
@@ -79,6 +83,7 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
           { path: 'drivers', component: PageChauffeurs },
           { path: 'echeances', component: PageEcheances },
           { path: 'entretien-programmable', component: PageEntretiens },
+          { path: 'users', component: PageUtilisateurs },
         ]),
         { provide: AuthService, useValue: {
           getCurrentUserSync: () => utilisateur.value,
@@ -118,12 +123,13 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     expect(guide.componentInstance.etape?.id).toBe('vehicules-en-place');
   });
 
-  it('va au bout des huit étapes (offre GPS complète), puis ne se repropose plus', async () => {
+  it('va au bout des neuf étapes (offre GPS complète), puis ne se repropose plus', async () => {
     // Ordre voulu par Karim (23/09/2026) pour le GPS : véhicules en place,
-    // chauffeurs, carte, zones, échéances, programme d'entretien, affectation.
+    // chauffeurs, carte, échéances, programme d'entretien, affectation,
+    // alertes par e-mail, puis le premier rapport.
     // Deux étapes de suite sur /entretien-programmable : la seconde ne doit pas
     // renaviguer ni se perdre.
-    for (const attendue of ['vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter', 'premier-rapport']) {
+    for (const attendue of ['vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email', 'premier-rapport']) {
       guide.componentInstance.suivant();
       await attendre();
       expect(guide.componentInstance.etape?.id).toBe(attendue);

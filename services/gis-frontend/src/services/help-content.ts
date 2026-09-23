@@ -945,7 +945,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     titre: 'Bienvenue dans Calypso',
     // Étape jouée pour TOUTES les offres : elle ne cite que ce que tout client
     // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
-    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, puis un programme d'entretien. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, un programme d'entretien, puis les adresses qui reçoivent vos alertes par e-mail. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
     sauf: 'monitoring',
     route: '/dashboard'
@@ -957,7 +957,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'bienvenue-gps',
     titre: 'Bienvenue dans Calypso',
-    texte: "Quelques étapes pour démarrer, dans l'ordre : vos véhicules, vos chauffeurs, la carte en direct, les échéances de vos documents, un programme d'entretien, puis votre premier rapport. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    texte: "Quelques étapes pour démarrer, dans l'ordre : vos véhicules, vos chauffeurs, la carte en direct, les échéances de vos documents, un programme d'entretien, les alertes par e-mail, puis votre premier rapport. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
     module: 'monitoring',
     route: '/dashboard'
@@ -1020,7 +1020,22 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "« Affecter » applique le programme aux véhicules concernés. À partir de là, chaque véhicule a sa prochaine échéance d'entretien, et « Marquer fait » la recale quand l'entretien est réalisé.",
     cible: 'entretiens-affecter',
     module: 'maintenance',
-    route: '/entretien-programmable',
+    route: '/entretien-programmable'
+  },
+  // Etape ajoutee par Karim le 23/09/2026 pour les deux offres : « une etape
+  // tres importante qu'on a oubliee, l'alerte par mail ». Avant-derniere en
+  // GPS (le rapport suit), derniere en GPA. Le module `users` est dans tous
+  // les plans ; si l'utilisateur n'a pas ce droit, la cible est absente et
+  // l'etape est sautee.
+  {
+    id: 'alertes-email',
+    titre: 'Recevez vos alertes par e-mail',
+    // Types proposes par l'ecran (ALERT_TYPES d'alert-emails.component.ts) :
+    // Assurance, Taxe Circulation, Visite Technique, Entretien, Permis, Accident.
+    texte: "Calypso envoie une copie de ses alertes par e-mail — assurance, visite technique, entretien, permis — mais seulement aux adresses inscrites ici. Ouvrez l'onglet « Alertes par email », puis « Ajouter une adresse » : une adresse et un type d'alerte. Sans adresse, personne n'est prévenu par mail.",
+    cible: 'alertes-email-onglet',
+    module: 'users',
+    route: '/users',
     // Derniere etape du parcours GPA : « Terminer » depose le client sur
     // Vehicules, pour qu'il ajoute les siens (Karim, 23/09/2026). En GPS ce
     // n'est pas la derniere etape, la valeur n'y sert pas.

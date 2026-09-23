@@ -98,9 +98,10 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     const etapes = aide.etapesGuide().map(e => e.id);
     expect(etapes).not.toContain('voir-la-carte');
     // Parcours GPA fixe par Karim le 23/09/2026, dans cet ordre : vehicule,
-    // chauffeurs, echeances, programme d'entretien puis son affectation.
+    // chauffeurs, echeances, programme d'entretien, son affectation, puis les
+    // alertes par e-mail (ajoutees le meme jour : « une etape tres importante »).
     expect(etapes).toEqual([
-      'bienvenue', 'ajouter-vehicule', 'ajouter-chauffeurs', 'echeances', 'entretien-modele', 'entretien-affecter'
+      'bienvenue', 'ajouter-vehicule', 'ajouter-chauffeurs', 'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email'
     ]);
   });
 
@@ -116,8 +117,21 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
 
     expect(aide.etapesGuide().map(e => e.id)).toEqual([
       'bienvenue-gps', 'vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte',
-      'echeances', 'entretien-modele', 'entretien-affecter', 'premier-rapport'
+      'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email', 'premier-rapport'
     ]);
+  });
+
+  it('les alertes par e-mail sont avant-dernieres en GPS, dernieres en GPA — et jamais sans le droit Utilisateurs', () => {
+    const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
+    const etapesGps = gps.etapesGuide().map(e => e.id);
+    expect(etapesGps[etapesGps.length - 2]).toBe('alertes-email');
+    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
+    const etapesGpa = gpa.etapesGuide().map(e => e.id);
+    expect(etapesGpa[etapesGpa.length - 1]).toBe('alertes-email');
+    // Un utilisateur simple sans le droit « Utilisateurs » ne peut pas ouvrir
+    // l'ecran : l'etape est retiree, la visite se termine sur l'affectation.
+    const sansDroit = aideAvecCompte({ id: 'u-sans', isSystemAdmin: false, isCompanyAdmin: false, subscriptionFeatures: abonnementGpa, userPermissions: { canVehicles: true, canEmployees: true, canDocuments: true, canMaintenance: true, canUsers: false } });
+    expect(sansDroit.etapesGuide().map(e => e.id)).not.toContain('alertes-email');
   });
 
   it('« Terminer » depose le client sur Vehicules en GPA, sur Suivi en direct en GPS', () => {
