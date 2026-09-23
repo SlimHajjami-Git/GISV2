@@ -69,7 +69,10 @@ describe('exemples des écrans clients (marché français)', () => {
     // L'exemple d'assureur « (ex: AXA, Macif...) » a disparu avec le sous-formulaire
     // Assurance de l'écran Dépenses (Karim, 23/09/2026) : l'assurance se règle
     // depuis Échéances. Plus rien à vérifier ici pour cet écran.
-    expect(source('tours.component.ts')).toContain('placeholder="Ex: Livraison Lyon - Marseille"');
+    // L'exemple de tournée dépend du pays depuis le 23/09/2026 (tournees-textes-pays.ts) :
+    // « Lyon - Marseille » pour un compte en euros, « Tunis - Sfax » sinon.
+    expect(source('tours.component.ts')).toContain('[placeholder]="textes.exempleNom"');
+    expect(readFileSync(join(__dirname, '..', 'services', 'tournees-textes-pays.ts'), 'utf8')).toContain('Ex: Livraison Lyon - Marseille');
     expect(source('vehicle-loans.component.ts')).toContain('placeholder="Ex: Lyon"');
     expect(source('vehicles.component.ts')).toContain('chez Peugeot Lyon');
   });
