@@ -91,18 +91,33 @@ public class DataPortTemplateExampleTests
     private static int Crees(DataPortController.ImportSummary b) =>
         b.VehiclesCreated + b.VehiclesUpdated + b.MaintenanceCreated + b.RepairsCreated + b.FuelCreated + b.ExpensesCreated;
 
-    private static async Task AucuneDonneeCreeeAsync(GisDbContext ctx)
+    private static async Task AucuneDonneeCreeeAsync(GisDbContext ctx, int vehicules = 2)
     {
         ctx.ChangeTracker.Clear();
-        (await ctx.Vehicles.CountAsync()).Should().Be(2);
+        (await ctx.Vehicles.CountAsync()).Should().Be(vehicules);
         (await ctx.VehicleCosts.CountAsync()).Should().Be(0);
         (await ctx.Repairs.CountAsync()).Should().Be(0);
         (await ctx.FuelEntries.CountAsync()).Should().Be(0);
         (await ctx.Vehicles.AsNoTracking().SingleAsync(v => v.Id == 1)).Mileage.Should().Be(100_000);
     }
 
-    /// <summary>Le modèle tel qu'il était servi avant le correctif : exemple en ligne 2 de chaque feuille.</summary>
-    private static byte[] AncienModele()
+    /// <summary>Le modèle tel qu'il était servi avant le correctif : exemple tunisien en ligne 2 de chaque feuille.</summary>
+    private static byte[] AncienModele() => ModeleAvecExemplesEnLigne2(
+        new object[] { "123 TU 4567", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 },
+        new object[] { "123 TU 4567", "15/08/2026", "Vidange + filtres", 350 },
+        new object[] { "123 TU 4567", "18/08/2026", "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" },
+        new object[] { "123 TU 4567", "20/08/2026", 45, 2.2, 99, 145200 },
+        new object[] { "123 TU 4567", "10/08/2026", "Assurance", "Assurance flotte 2026", 625, 145000 });
+
+    /// <summary>Un client français qui a recopié l'exemple de l'aide en ligne 2 de chaque feuille.</summary>
+    private static byte[] ModeleFrancaisRempliAvecSesExemples() => ModeleAvecExemplesEnLigne2(
+        new object[] { "AB-123-CD", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 },
+        new object[] { "AB-123-CD", "15/08/2026", "Vidange + filtres", 180 },
+        new object[] { "AB-123-CD", "18/08/2026", "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" },
+        new object[] { "AB-123-CD", "20/08/2026", 45, 1.75, 78.75, 145200 },
+        new object[] { "AB-123-CD", "10/08/2026", "Assurance", "Assurance flotte 2026", 900, 145000 });
+
+    private static byte[] ModeleAvecExemplesEnLigne2(object[] vehicule, object[] entretien, object[] reparation, object[] plein, object[] depense)
     {
         using var wb = new XLWorkbook();
         void Feuille(string nom, string[] entetes, params object[] exemple)
@@ -117,30 +132,136 @@ public class DataPortTemplateExampleTests
             ws.Row(2).Style.Font.Italic = true;
         }
 
-        Feuille("Véhicules", new[] { "Matricule", "Nom", "Marque", "Modèle", "Année", "Type", "Carburant", "Kilométrage", "Capacité réservoir (L)" },
-            "123 TU 4567", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80);
-        Feuille("Entretiens", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Intitulé", "Coût" },
-            "123 TU 4567", "15/08/2026", "Vidange + filtres", 350);
-        Feuille("Réparations", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Description", "Type", "Kilométrage", "Main d'œuvre", "Pièces", "Total", "Statut", "Fournisseur", "N° facture", "Référence" },
-            "123 TU 4567", "18/08/2026", "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée");
-        Feuille("Carburant", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Volume (L)", "Prix/L", "Montant total", "Kilométrage" },
-            "123 TU 4567", "20/08/2026", 45, 2.2, 99, 145200);
-        Feuille("Dépenses", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Type", "Description", "Montant", "Kilométrage", "Volume (L)", "N° pièce" },
-            "123 TU 4567", "10/08/2026", "Assurance", "Assurance flotte 2026", 625, 145000);
+        Feuille("Véhicules", new[] { "Matricule", "Nom", "Marque", "Modèle", "Année", "Type", "Carburant", "Kilométrage", "Capacité réservoir (L)" }, vehicule);
+        Feuille("Entretiens", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Intitulé", "Coût" }, entretien);
+        Feuille("Réparations", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Description", "Type", "Kilométrage", "Main d'œuvre", "Pièces", "Total", "Statut", "Fournisseur", "N° facture", "Référence" }, reparation);
+        Feuille("Carburant", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Volume (L)", "Prix/L", "Montant total", "Kilométrage" }, plein);
+        Feuille("Dépenses", new[] { "Matricule", "Date (JJ/MM/AAAA)", "Type", "Description", "Montant", "Kilométrage", "Volume (L)", "N° pièce" }, depense);
 
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
         return ms.ToArray();
     }
 
+    // ──────────── Exemples selon le pays du client (Karim, 23/09/2026) ────────────
+    // « Le fichier modèle contient des immatriculations tunisiennes alors qu'il est
+    // destiné à l'export, essentiellement la France. » Même règle que les sinistres :
+    // un compte en euros voit une plaque française et des montants en euros, tout
+    // autre compte garde l'exemple tunisien. À l'import, les deux jeux sont écartés.
+
+    private const string PlaqueFrancaise = "AB-123-CD";
+    private const string PlaqueTunisienne = "123 TU 4567";
+
+    private static readonly string[] Feuilles = { "Véhicules", "Entretiens", "Réparations", "Carburant", "Dépenses" };
+
+    /// <summary>Le parc de <see cref="ParcAvecVehiculeDeLExempleAsync"/>, plus le véhicule de l'exemple français, dans une société en euros.</summary>
+    private static async Task<GisDbContext> ParcFrancaisEnEurosAsync()
+    {
+        var ctx = await ParcAvecVehiculeDeLExempleAsync();
+        ctx.Vehicles.Add(new Vehicle { Id = 3, Name = "Camion 1", Plate = PlaqueFrancaise, CompanyId = CompanyId, Status = "available", Mileage = 100_000 });
+        ctx.Societes.Add(new Societe
+        {
+            Id = CompanyId, Name = "Belive GPA", SubscriptionStatus = "active", IsActive = true,
+            Settings = new SocieteSettings { Currency = "EUR" }
+        });
+        await ctx.SaveChangesAsync();
+        return ctx;
+    }
+
+    private static async Task<IXLWorksheet> AideDuModeleAsync(GisDbContext ctx)
+    {
+        var modele = (await Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
+        var wb = new XLWorkbook(new MemoryStream(modele));
+        foreach (var nom in Feuilles)
+            wb.Worksheet(nom).LastRowUsed()!.RowNumber().Should().Be(1, $"la feuille {nom} ne porte que ses en-têtes");
+        return wb.Worksheet(DataPortController.HelpSheetName);
+    }
+
+    [Fact]
+    public async Task Un_compte_en_euros_recoit_un_modele_a_plaque_francaise_et_montants_en_euros()
+    {
+        using var ctx = await ParcFrancaisEnEurosAsync();
+
+        var aide = await AideDuModeleAsync(ctx);
+
+        aide.CellsUsed().Count(c => c.GetString() == PlaqueFrancaise).Should().Be(5, "un exemple par feuille, en français");
+        aide.CellsUsed().Any(c => c.GetString() == PlaqueTunisienne).Should().BeFalse("plus de plaque tunisienne pour un client en euros");
+        aide.CellsUsed().Any(c => c.DataType == XLDataType.Number && c.GetDouble() == 1.75).Should().BeTrue("prix du litre en euros");
+    }
+
+    [Fact]
+    public async Task Un_compte_hors_euro_garde_l_exemple_tunisien()
+    {
+        using var ctx = await ParcAvecVehiculeDeLExempleAsync();
+        ctx.Societes.Add(new Societe
+        {
+            Id = CompanyId, Name = "Belive GPS", SubscriptionStatus = "active", IsActive = true,
+            Settings = new SocieteSettings { Currency = "TND" }
+        });
+        await ctx.SaveChangesAsync();
+
+        var aide = await AideDuModeleAsync(ctx);
+
+        aide.CellsUsed().Count(c => c.GetString() == PlaqueTunisienne).Should().Be(5);
+        aide.CellsUsed().Any(c => c.GetString() == PlaqueFrancaise).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Sans_societe_connue_le_modele_reste_tunisien_comme_avant()
+    {
+        // Devise du déploiement (AppCurrency.Default, "TND" hors configuration) :
+        // le comportement d'avant le 23/09/2026 est conservé tel quel.
+        using var ctx = await ParcAvecVehiculeDeLExempleAsync();
+        var aide = await AideDuModeleAsync(ctx);
+        aide.CellsUsed().Count(c => c.GetString() == PlaqueTunisienne).Should().Be(5);
+    }
+
+    [Fact]
+    public async Task Chez_un_client_francais_les_exemples_francais_ET_tunisiens_recopies_ne_creent_rien()
+    {
+        // Pire cas : les deux véhicules d'exemple existent dans le parc, tout serait rattaché.
+        using var ctx = await ParcFrancaisEnEurosAsync();
+
+        var bilan = await ImporterAsync(ctx, ModeleFrancaisRempliAvecSesExemples());
+        Crees(bilan).Should().Be(0, "les cinq lignes recopiées de l'aide française sont des exemples");
+        bilan.IgnoredLines.Should().Be(5);
+        bilan.Notes.Should().Contain("Véhicules : ligne d'exemple du modèle ignorée.");
+        await AucuneDonneeCreeeAsync(ctx, vehicules: 3);
+
+        // Modèle téléchargé avant le 23/09/2026, exemple tunisien en ligne 2 : écarté aussi.
+        var ancien = await ImporterAsync(ctx, AncienModele());
+        Crees(ancien).Should().Be(0);
+        ancien.IgnoredLines.Should().Be(5);
+        await AucuneDonneeCreeeAsync(ctx, vehicules: 3);
+    }
+
+    [Fact]
+    public async Task Une_vraie_ligne_francaise_qui_ne_reprend_qu_une_partie_de_l_exemple_est_importee()
+    {
+        using var ctx = await ParcFrancaisEnEurosAsync();
+        using var wb = new XLWorkbook(new MemoryStream(ModeleFrancaisRempliAvecSesExemples()));
+        // Même plaque et même date que l'exemple, mais un autre entretien : c'est une saisie.
+        wb.Worksheet("Entretiens").Cell(3, 1).Value = PlaqueFrancaise;
+        wb.Worksheet("Entretiens").Cell(3, 2).Value = "15/08/2026";
+        wb.Worksheet("Entretiens").Cell(3, 3).Value = "Contrôle technique";
+        wb.Worksheet("Entretiens").Cell(3, 4).Value = 95;
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+
+        var bilan = await ImporterAsync(ctx, ms.ToArray());
+
+        bilan.MaintenanceCreated.Should().Be(1);
+        bilan.MaintenanceIgnored.Should().Be(1, "la ligne d'exemple intacte reste écartée");
+    }
+
     // ─────────────────────────────── DEF-029 ───────────────────────────────
 
     [Fact]
-    public void Le_modele_n_a_que_des_en_tetes_dans_ses_feuilles_de_donnees_et_ses_exemples_dans_l_aide()
+    public async Task Le_modele_n_a_que_des_en_tetes_dans_ses_feuilles_de_donnees_et_ses_exemples_dans_l_aide()
     {
         using var ctx = Contexte();
 
-        var modele = Controleur(ctx).Template().Should().BeOfType<FileContentResult>().Subject.FileContents;
+        var modele = (await Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
 
         using var wb = new XLWorkbook(new MemoryStream(modele));
         wb.Worksheets.Select(w => w.Name).Should().Equal(
@@ -156,7 +277,7 @@ public class DataPortTemplateExampleTests
     public async Task Importer_le_modele_tel_quel_ne_cree_rien()
     {
         using var ctx = await ParcAvecVehiculeDeLExempleAsync();
-        var modele = Controleur(ctx).Template().Should().BeOfType<FileContentResult>().Subject.FileContents;
+        var modele = (await Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
 
         var bilan = await ImporterAsync(ctx, modele);
 
@@ -215,7 +336,7 @@ public class DataPortTemplateExampleTests
         // Reprend la couverture de l'ancien test « feuille Dépenses importable », qui
         // importait l'exemple lui-même : type ramené à son code, montant et compteur lus.
         using var ctx = await ParcAvecVehiculeDeLExempleAsync();
-        var modele = Controleur(ctx).Template().Should().BeOfType<FileContentResult>().Subject.FileContents;
+        var modele = (await Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
         using var wb = new XLWorkbook(new MemoryStream(modele));
         var depenses = wb.Worksheet("Dépenses");
         depenses.Cell(2, 1).Value = "123 TU 4567"; depenses.Cell(2, 2).Value = "10/08/2026";
