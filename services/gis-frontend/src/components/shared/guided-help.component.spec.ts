@@ -29,7 +29,7 @@ class PageTableauDeBord implements OnInit {
   ngOnInit(): void { if (this.help.doitProposerLeGuide()) { this.help.ouvrirGuide(); } }
 }
 
-@Component({ standalone: true, template: `<button data-guide="vehicules-nouveau">Nouveau véhicule</button>` })
+@Component({ standalone: true, template: `<div data-guide="vehicules-liste">Liste</div><button data-guide="vehicules-nouveau">Nouveau véhicule</button>` })
 class PageVehicules implements OnInit {
   private help = inject(HelpService);
   ngOnInit(): void { if (this.help.doitProposerLeGuide()) { this.help.ouvrirGuide(); } }
@@ -41,6 +41,20 @@ class PageSuivi {}
 @Component({ standalone: true, template: `<div data-guide="rapports-type">Type de rapport</div>` })
 class PageRapports {}
 
+// Parcours GPA du 23/09/2026 : chauffeurs, échéances, puis les deux étapes de
+// l'écran Entretiens (créer un modèle, l'affecter) — deux cibles sur une même page.
+@Component({ standalone: true, template: `<button data-guide="chauffeurs-nouveau">Nouveau chauffeur</button>` })
+class PageChauffeurs {}
+
+@Component({ standalone: true, template: `<div data-guide="echeances-compteurs">Compteurs</div>` })
+class PageEcheances {}
+
+@Component({ standalone: true, template: `<button data-guide="entretiens-affecter">Affecter</button><button data-guide="entretiens-nouveau-modele">Nouveau modele</button>` })
+class PageEntretiens {}
+
+// Alertes par e-mail (Karim, 23/09/2026) : l'onglet de « Gestion des Utilisateurs ».
+@Component({ standalone: true, template: `<button data-guide="alertes-email-onglet">Alertes par email</button>` })
+class PageUtilisateurs {}
 describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
   let utilisateur: BehaviorSubject<any>;
   let guide: ComponentFixture<GuidedHelpComponent>;
@@ -66,6 +80,10 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
           { path: 'vehicles', component: PageVehicules },
           { path: 'monitoring', component: PageSuivi },
           { path: 'reports', component: PageRapports },
+          { path: 'drivers', component: PageChauffeurs },
+          { path: 'echeances', component: PageEcheances },
+          { path: 'entretien-programmable', component: PageEntretiens },
+          { path: 'users', component: PageUtilisateurs },
         ]),
         { provide: AuthService, useValue: {
           getCurrentUserSync: () => utilisateur.value,
@@ -88,9 +106,11 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     jest.restoreAllMocks();
   });
 
+  // Tous les modules sont ouverts ici (hasModuleAccess => true) : c'est le
+  // parcours GPS qui est joué — sans « Ajoutez votre premier véhicule ».
   it('s\'ouvre sur l\'étape 1 au tableau de bord', () => {
     expect(guide.componentInstance.actif).toBe(true);
-    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue-gps');
   });
 
   it('« Suivant » mène à l\'étape 2 sur /vehicles — la nouvelle page ne relance pas la visite', async () => {
@@ -100,11 +120,16 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     expect(TestBed.inject(Router).url).toBe('/vehicles');
     expect(guide.componentInstance.actif).toBe(true);
     expect(guide.componentInstance.index).toBe(1);
-    expect(guide.componentInstance.etape?.id).toBe('ajouter-vehicule');
+    expect(guide.componentInstance.etape?.id).toBe('vehicules-en-place');
   });
 
-  it('va au bout des quatre étapes, puis ne se repropose plus', async () => {
-    for (const attendue of ['ajouter-vehicule', 'voir-la-carte', 'premier-rapport']) {
+  it('va au bout des neuf étapes (offre GPS complète), puis ne se repropose plus', async () => {
+    // Ordre voulu par Karim (23/09/2026) pour le GPS : véhicules en place,
+    // chauffeurs, carte, échéances, programme d'entretien, affectation,
+    // alertes par e-mail, puis le premier rapport.
+    // Deux étapes de suite sur /entretien-programmable : la seconde ne doit pas
+    // renaviguer ni se perdre.
+    for (const attendue of ['vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email', 'premier-rapport']) {
       guide.componentInstance.suivant();
       await attendre();
       expect(guide.componentInstance.etape?.id).toBe(attendue);
@@ -113,6 +138,9 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     await attendre();
     expect(guide.componentInstance.actif).toBe(false);
     expect(help.doitProposerLeGuide()).toBe(false);
+    // Fin du parcours GPS : le client est depose sur « Suivi en direct » pour
+    // voir ses vehicules (Karim, 23/09/2026).
+    expect(TestBed.inject(Router).url).toBe('/monitoring');
   });
 
   it('Échap puis changement de page : la visite ne revient pas et ne ramène pas au tableau de bord', async () => {

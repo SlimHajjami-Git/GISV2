@@ -166,7 +166,9 @@ export class HelpService {
 
   /** Etapes pertinentes pour ce client : on saute les modules non souscrits. */
   etapesGuide(): GuideEtape[] {
-    return ETAPES_GUIDE.filter(e => !e.module || this.moduleAutorise(e.module));
+    return ETAPES_GUIDE.filter(e =>
+      (!e.module || this.moduleAutorise(e.module))
+      && (!e.sauf || !this.moduleAutorise(e.sauf)));
   }
 
   /**

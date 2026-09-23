@@ -172,7 +172,7 @@ interface VehicleTrip {
           </div>
 
           <!-- Table des véhicules -->
-          <div class="table-container">
+          <div class="table-container" data-guide="vehicules-liste">
             <table class="vehicles-table" *ngIf="filteredVehicles.length > 0">
               <thead>
                 <tr>

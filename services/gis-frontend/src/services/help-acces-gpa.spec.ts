@@ -97,8 +97,49 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
 
     const etapes = aide.etapesGuide().map(e => e.id);
     expect(etapes).not.toContain('voir-la-carte');
-    expect(etapes).toContain('ajouter-vehicule');
-    expect(etapes).toContain('premier-rapport');
+    // Parcours GPA fixe par Karim le 23/09/2026, dans cet ordre : vehicule,
+    // chauffeurs, echeances, programme d'entretien, son affectation, puis les
+    // alertes par e-mail (ajoutees le meme jour : « une etape tres importante »).
+    expect(etapes).toEqual([
+      'bienvenue', 'ajouter-vehicule', 'ajouter-chauffeurs', 'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email'
+    ]);
+  });
+
+  it('offre GPS : pas d’ajout de vehicule (crees par l’equipe Belive), mais la carte et les zones', () => {
+    // Parcours GPS fixe par Karim le 23/09/2026 : « presque la meme chose que
+    // GPA », sans « Ajoutez votre premier vehicule ». Toutes les offres GPS
+    // (Standard, Pro, Premium) ont le suivi, le geofencing et les tournees.
+    const aide = aideAvecCompte({
+      id: 'u-admin-gps', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true },
+      userPermissions: null
+    });
+
+    expect(aide.etapesGuide().map(e => e.id)).toEqual([
+      'bienvenue-gps', 'vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte',
+      'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email', 'premier-rapport'
+    ]);
+  });
+
+  it('les alertes par e-mail sont avant-dernieres en GPS, dernieres en GPA — et jamais sans le droit Utilisateurs', () => {
+    const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
+    const etapesGps = gps.etapesGuide().map(e => e.id);
+    expect(etapesGps[etapesGps.length - 2]).toBe('alertes-email');
+    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
+    const etapesGpa = gpa.etapesGuide().map(e => e.id);
+    expect(etapesGpa[etapesGpa.length - 1]).toBe('alertes-email');
+    // Un utilisateur simple sans le droit « Utilisateurs » ne peut pas ouvrir
+    // l'ecran : l'etape est retiree, la visite se termine sur l'affectation.
+    const sansDroit = aideAvecCompte({ id: 'u-sans', isSystemAdmin: false, isCompanyAdmin: false, subscriptionFeatures: abonnementGpa, userPermissions: { canVehicles: true, canEmployees: true, canDocuments: true, canMaintenance: true, canUsers: false } });
+    expect(sansDroit.etapesGuide().map(e => e.id)).not.toContain('alertes-email');
+  });
+
+  it('« Terminer » depose le client sur Vehicules en GPA, sur Suivi en direct en GPS', () => {
+    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
+    const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
+    const derniere = (etapes: ReturnType<typeof gpa.etapesGuide>) => etapes[etapes.length - 1];
+    expect(derniere(gpa.etapesGuide()).routeApresFin).toBe('/vehicles');
+    expect(derniere(gps.etapesGuide()).routeApresFin).toBe('/monitoring');
   });
 
   it('ADMIN en GPA : aucun article visible ne cite un rapport GPS ferme', () => {

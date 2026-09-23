@@ -78,7 +78,7 @@ export interface VehicleDocument {
         </div>
 
         <!-- Stats Bar -->
-        <div class="stats-bar">
+        <div class="stats-bar" data-guide="echeances-compteurs">
           <div class="stat-item" [class.alert]="expiredCount > 0" (click)="filterByStatus('expired')">
             <div class="stat-icon expired">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

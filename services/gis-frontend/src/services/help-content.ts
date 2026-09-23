@@ -629,6 +629,11 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     module: 'tours',
     motsCles: ['tournee', 'livraison', 'itineraire', 'planifier', 'trajet prevu', 'etape', 'arret', 'circuit', 'envoyer', 'chauffeur'],
     resume: "Préparer un itinéraire avec ses arrêts, puis le comparer au trajet réellement effectué.",
+    captures: [
+      { fichier: 'tournees-liste.png', legende: "L'écran « Tournees » : les compteurs par statut, et le bouton « Nouvelle tournee »." },
+      { fichier: 'tournee-informations.png', legende: "Étape 1 « Informations » : le nom, le véhicule — le chauffeur rattaché est proposé — et la récurrence." },
+      { fichier: 'tournee-itineraire.png', legende: "Étape 2 « Itineraire » : le départ, la destination, et « + Arret » pour les étapes intermédiaires. L'étape 3 « Estimation » apparaît dès que deux points sont placés." },
+    ],
     etapes: [
       "Ouvrez « Exploitation » > « Tournées » dans le menu.",
       "Cliquez sur « Nouvelle tournee ».",
@@ -899,7 +904,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     paragraphes: [
       "Cet onglet est réservé aux administrateurs de la société.",
       "Respectez l'ordre des colonnes du modèle sans en insérer ni en déplacer : l'import lit les colonnes par leur position, pas par leur titre. Une colonne décalée produit des lignes fausses sans message d'erreur.",
-      "La feuille « Entretiens » est faite pour les entretiens préventifs. N'y saisissez pas de réparations : elles seraient comptabilisées comme des entretiens et fausseraient vos coûts."
+      "Le modèle a une feuille par nature de donnée : « Véhicules », « Entretiens », « Réparations », « Carburant », « Dépenses ». Une réparation va dans « Réparations », jamais dans « Entretiens » : saisie au mauvais endroit, elle serait comptée comme un entretien préventif et fausserait vos coûts."
     ],
     aRetenir: "Faites un export avant un import massif. C'est votre seul filet si l'import ne donne pas ce que vous attendiez."
   },
@@ -926,24 +931,65 @@ export const ARTICLES_AIDE: HelpArticle[] = [
  * souscrit ou si l'element n'est pas trouve, l'etape est sautee : la visite doit
  * s'adapter a l'abonnement du client, pas montrer des ecrans qu'il n'a pas.
  */
+/*
+ * Parcours defini par Karim le 23/09/2026 pour l'offre GPA — l'ordre dans
+ * lequel un nouveau client doit s'y prendre pour commencer a travailler :
+ * son premier vehicule (ou l'import Excel de tout son parc), ses chauffeurs,
+ * les echeances de ses documents, puis un programme d'entretien et son
+ * affectation aux vehicules. Le rapport n'en fait plus partie (« le reste on
+ * verra si c'est necessaire »). La carte reste reservee aux offres GPS et se
+ * place apres les chauffeurs ; ce qu'on ajoute pour le GPS se decidera ensuite.
+ */
 export const ETAPES_GUIDE: GuideEtape[] = [
   {
     id: 'bienvenue',
     titre: 'Bienvenue dans Calypso',
-    // Étape jouée pour TOUTES les offres : elle ne cite donc que ce que tout
-    // client a dans « Exploitation ». « tournées » était promis au client GPA,
-    // qui n'a pas ce module.
-    texte: "Quelques étapes pour être autonome. Votre parc se trouve dans le menu « Exploitation » : vos véhicules et vos chauffeurs. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    // Étape jouée pour TOUTES les offres : elle ne cite que ce que tout client
+    // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
+    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, un programme d'entretien, puis les adresses qui reçoivent vos alertes par e-mail. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
+    sauf: 'monitoring',
     route: '/dashboard'
+  },
+  // Offre GPS (Karim, 23/09/2026) : « presque la meme chose que GPA », sans
+  // l'ajout de vehicule — les vehicules sont crees par l'equipe Belive avec
+  // leurs boitiers — plus la carte et les zones. Le module `monitoring` signe
+  // l'offre GPS ; toutes les offres GPS ont aussi geofencing et tournees.
+  {
+    id: 'bienvenue-gps',
+    titre: 'Bienvenue dans Calypso',
+    texte: "Quelques étapes pour démarrer, dans l'ordre : vos véhicules, vos chauffeurs, la carte en direct, les échéances de vos documents, un programme d'entretien, les alertes par e-mail, puis votre premier rapport. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    cible: 'menu-flotte',
+    module: 'monitoring',
+    route: '/dashboard'
+  },
+  {
+    id: 'vehicules-en-place',
+    titre: 'Vos véhicules sont déjà en place',
+    texte: "Ils ont été ajoutés par notre équipe, avec leurs boîtiers. Vérifiez la liste : cliquez sur une ligne pour ouvrir la fiche d'un véhicule, ou sur « Modifier » pour compléter ses informations — chauffeur, couleur, capacité du réservoir.",
+    cible: 'vehicules-liste',
+    module: 'monitoring',
+    route: '/vehicles'
   },
   {
     id: 'ajouter-vehicule',
     titre: 'Ajoutez votre premier véhicule',
-    texte: "« Nouveau véhicule » ouvre la fiche à remplir. Seuls les champs marqués d'une étoile sont obligatoires : nom, plaque, marque, modèle, année, type, statut, compteur et carburant.",
+    sauf: 'monitoring',
+    // Le modele d'import a cinq feuilles (verifie dans DataPortController le
+    // 23/09/2026) : Vehicules, Entretiens, Reparations, Carburant, Depenses —
+    // toutes lues et creees a l'import. Karim tient a ce que la visite le dise.
+    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos données dans un fichier ? Importez tout d'un coup — véhicules, entretiens, réparations, pleins de carburant et dépenses : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
     cible: 'vehicules-nouveau',
     module: 'vehicles',
     route: '/vehicles'
+  },
+  {
+    id: 'ajouter-chauffeurs',
+    titre: 'Ajoutez vos chauffeurs',
+    texte: "« Nouveau chauffeur » crée la fiche : le prénom et le nom suffisent. Renseignez la date d'expiration du permis pour être prévenu avant, et rattachez le chauffeur à son véhicule.",
+    cible: 'chauffeurs-nouveau',
+    module: 'employees',
+    route: '/drivers'
   },
   {
     id: 'voir-la-carte',
@@ -954,11 +1000,60 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     route: '/monitoring'
   },
   {
+    id: 'echeances',
+    titre: 'Renseignez vos échéances',
+    texte: "Chaque véhicule a ici ses lignes assurance, vignette et visite technique. Tant qu'une date n'est pas saisie, la ligne dit « Non renseignée » et personne ne sera prévenu : cliquez sur « Modifier l'échéance » pour saisir la date, ou sur « Renouveler » quand c'est fait.",
+    cible: 'echeances-compteurs',
+    module: 'documents',
+    route: '/echeances'
+  },
+  {
+    id: 'entretien-modele',
+    titre: "Créez un programme d'entretien",
+    texte: "« Nouveau modele » définit un entretien qui revient — vidange, révision — avec son intervalle en kilomètres ou en mois. Calypso vous préviendra à l'approche de l'échéance.",
+    cible: 'entretiens-nouveau-modele',
+    module: 'maintenance',
+    route: '/entretien-programmable'
+  },
+  {
+    id: 'entretien-affecter',
+    titre: 'Affectez-le à vos véhicules',
+    texte: "« Affecter » applique le programme aux véhicules concernés. À partir de là, chaque véhicule a sa prochaine échéance d'entretien, et « Marquer fait » la recale quand l'entretien est réalisé.",
+    cible: 'entretiens-affecter',
+    module: 'maintenance',
+    route: '/entretien-programmable'
+  },
+  // Etape ajoutee par Karim le 23/09/2026 pour les deux offres : « une etape
+  // tres importante qu'on a oubliee, l'alerte par mail ». Avant-derniere en
+  // GPS (le rapport suit), derniere en GPA. Le module `users` est dans tous
+  // les plans ; si l'utilisateur n'a pas ce droit, la cible est absente et
+  // l'etape est sautee.
+  {
+    id: 'alertes-email',
+    titre: 'Recevez vos alertes par e-mail',
+    // Types proposes par l'ecran (ALERT_TYPES d'alert-emails.component.ts) :
+    // Assurance, Taxe Circulation, Visite Technique, Entretien, Permis, Accident.
+    texte: "Calypso envoie une copie de ses alertes par e-mail — assurance, visite technique, entretien, permis — mais seulement aux adresses inscrites ici. Ouvrez l'onglet « Alertes par email », puis « Ajouter une adresse » : une adresse et un type d'alerte. Sans adresse, personne n'est prévenu par mail.",
+    cible: 'alertes-email-onglet',
+    module: 'users',
+    route: '/users',
+    // Derniere etape du parcours GPA : « Terminer » depose le client sur
+    // Vehicules, pour qu'il ajoute les siens (Karim, 23/09/2026). En GPS ce
+    // n'est pas la derniere etape, la valeur n'y sert pas.
+    routeApresFin: '/vehicles'
+  },
+  // Offre GPS seulement (Karim, 23/09/2026 : « ajoute rapport » pour le GPS,
+  // retire pour la GPA). Toutes les offres GPS ont le module Rapports ; si un
+  // utilisateur n'a pas ce droit, la cible est absente et l'etape est sautee.
+  {
     id: 'premier-rapport',
     titre: 'Générez votre premier rapport',
     texte: "Choisissez un type de rapport, un véhicule et une période, puis cliquez sur « Exécuter ». L'export Excel, PDF ou CSV se débloque une fois le rapport affiché.",
     cible: 'rapports-type',
-    module: 'reports',
-    route: '/reports'
+    module: 'monitoring',
+    route: '/reports',
+    // Derniere etape du parcours GPS : « Terminer » depose le client sur
+    // « Suivi en direct », pour qu'il voie ses vehicules (Karim, 23/09/2026).
+    routeApresFin: '/monitoring'
   }
 ];

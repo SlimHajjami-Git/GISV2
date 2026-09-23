@@ -193,7 +193,15 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   }
 
   suivant(): void {
-    if (this.index >= this.etapes.length - 1) { this.terminer(); return; }
+    if (this.index >= this.etapes.length - 1) {
+      // « Terminer » : on ferme, puis on depose le client la ou son parcours
+      // se poursuit (Vehicules en GPA, Suivi en direct en GPS). « Passer », lui,
+      // ne deplace pas : le client a voulu s'arreter la ou il est.
+      const arrivee = this.etapes[this.index]?.routeApresFin;
+      this.terminer();
+      if (arrivee) { this.router.navigateByUrl(arrivee); }
+      return;
+    }
     this.allerA(this.index + 1);
   }
 

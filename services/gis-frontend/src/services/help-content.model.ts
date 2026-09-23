@@ -104,6 +104,20 @@ export interface GuideEtape {
   cible: string;
   /** Module requis pour que l'etape ait un sens. */
   module?: HelpModule;
+  /**
+   * Module dont la presence RETIRE l'etape. Sert a distinguer les offres :
+   * « Ajoutez votre premier vehicule » n'a de sens qu'en GPA — chez un client
+   * GPS, les vehicules sont crees par l'equipe Belive avec leurs boitiers, et
+   * c'est le module `monitoring` qui signe l'offre GPS (Karim, 23/09/2026).
+   */
+  sauf?: HelpModule;
   /** Page sur laquelle l'etape doit etre jouee. */
   route?: string;
+  /**
+   * Page ou deposer le client quand il clique « Terminer » sur CETTE etape
+   * (donc si c'est la derniere de son parcours). Karim, 23/09/2026 : en GPA on
+   * revient a l'ecran Vehicules pour qu'il ajoute les siens ; en GPS a « Suivi
+   * en direct » pour qu'il voie les siens. « Passer » ne deplace pas.
+   */
+  routeApresFin?: string;
 }
