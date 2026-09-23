@@ -387,21 +387,22 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     id: 'saisir-depense',
     titre: 'Enregistrer une dépense',
     module: 'costs',
-    motsCles: ['depense', 'cout', 'facture', 'payer', 'montant', 'amende', 'peage', 'assurance', 'saisir'],
-    resume: "Toutes les dépenses d'un véhicule, quelle que soit leur nature.",
+    motsCles: ['depense', 'cout', 'facture', 'payer', 'montant', 'amende', 'peage', 'stationnement', 'carte grise', 'saisir'],
+    resume: "Les dépenses d'un véhicule qui n'ont pas leur propre écran : péage, stationnement, amende, carte grise…",
     captures: [
-      { fichier: 'depenses-formulaire.png', legende: "Le formulaire change selon la catégorie choisie." },
+      { fichier: 'depenses-formulaire.png', legende: "Le formulaire : véhicule, catégorie, date, description et montant." },
     ],
     etapes: [
       "Ouvrez « Dépenses » dans le menu Finances.",
       "Cliquez sur « Nouvelle dépense ».",
       "Choisissez le « Véhicule », la « Catégorie » et la « Date » — toujours obligatoires.",
-      "Remplissez le bloc qui apparaît selon la catégorie choisie.",
+      "Saisissez la « Description » et le « Montant ».",
       "Cliquez sur « Enregistrer »."
     ],
     paragraphes: [
-      "Le formulaire s'adapte à la catégorie : carburant demande le volume et le prix au litre, entretien demande un modèle d'entretien, réparation demande une description et des pièces, assurance demande un assureur.",
-      "Le bouton « Enregistrer » reste inactif tant que le formulaire n'est pas complet — c'est le signe qu'il manque une information dans le bloc de la catégorie.",
+      "Les catégories proposées sont celles qui n'ont pas d'écran à elles : carte grise, autorisation de transport, péage, stationnement, amende, avoir fournisseur, autre. Un plein se saisit dans « Carburant », un entretien dans « Entretiens », une réparation dans « Réparations », et l'assurance, la visite technique ou la vignette se règlent depuis « Échéances » avec « Renouveler » : chacun de ces écrans met à jour ce qui va avec — compteur, prochaine échéance, date de validité.",
+      "Toutes ces dépenses, quel que soit l'écran de saisie, reviennent dans la liste de cet écran et dans ses totaux.",
+      "Le bouton « Enregistrer » reste inactif tant que le montant n'est pas renseigné.",
       "La case « Afficher les échéances à venir » ajoute les mensualités non encore échues. Elles sont visibles mais exclues des totaux, pour ne pas gonfler vos coûts du mois.",
       "Le menu « … » des lignes d'échéance permet de « Marquer payée », de joindre une quittance, ou d'« Ignorer cette échéance » — une échéance ignorée sort des totaux et du tableau de bord."
     ],
