@@ -67,7 +67,10 @@ describe('exemples des écrans clients (marché français)', () => {
     expect(source('register.component.ts')).toContain('placeholder="Dupont"');
     expect(source('register.component.ts')).toContain('placeholder="Transports Dupont"');
     expect(source('expenses.component.html')).toContain("(ex: AXA, Macif...)");
-    expect(source('tours.component.ts')).toContain('placeholder="Ex: Livraison Lyon - Marseille"');
+    // L'exemple de tournée dépend du pays depuis le 23/09/2026 (tournees-textes-pays.ts) :
+    // « Lyon - Marseille » pour un compte en euros, « Tunis - Sfax » sinon.
+    expect(source('tours.component.ts')).toContain('[placeholder]="textes.exempleNom"');
+    expect(readFileSync(join(__dirname, '..', 'services', 'tournees-textes-pays.ts'), 'utf8')).toContain('Ex: Livraison Lyon - Marseille');
     expect(source('vehicle-loans.component.ts')).toContain('placeholder="Ex: Lyon"');
     expect(source('vehicles.component.ts')).toContain('chez Peugeot Lyon');
   });
