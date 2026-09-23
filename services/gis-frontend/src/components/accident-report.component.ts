@@ -18,6 +18,7 @@ import {
 import { AuthService } from '../services/auth.service';
 import { AccidentPdfService } from '../services/accident-pdf.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { textesSinistres, TextesSinistres } from '../services/sinistres-textes-pays';
 import { PermissionService } from '../services/permission.service';
 
 interface NarrativeEvent {
@@ -565,12 +566,12 @@ interface ImpactProfile {
 
                 <div class="phase-row">
                   <label class="phase-field"><span>Nom du tiers</span><input type="text" [(ngModel)]="newThirdParty.name" placeholder="Prénom Nom"></label>
-                  <label class="phase-field"><span>Téléphone</span><input type="text" [(ngModel)]="newThirdParty.phone" placeholder="+216 ..."></label>
-                  <label class="phase-field"><span>Immatriculation</span><input type="text" [(ngModel)]="newThirdParty.vehiclePlate" placeholder="123 TU 4567"></label>
+                  <label class="phase-field"><span>Téléphone</span><input type="text" [(ngModel)]="newThirdParty.phone" [placeholder]="textes.exempleTelephone"></label>
+                  <label class="phase-field"><span>Immatriculation</span><input type="text" [(ngModel)]="newThirdParty.vehiclePlate" [placeholder]="textes.exemplePlaque"></label>
                 </div>
                 <div class="phase-row">
                   <label class="phase-field"><span>Modèle véhicule</span><input type="text" [(ngModel)]="newThirdParty.vehicleModel" placeholder="Renault Clio"></label>
-                  <label class="phase-field"><span>Compagnie d'assurance</span><input type="text" [(ngModel)]="newThirdParty.insuranceCompany" placeholder="STAR, COMAR, AMI..."></label>
+                  <label class="phase-field"><span>Compagnie d'assurance</span><input type="text" [(ngModel)]="newThirdParty.insuranceCompany" [placeholder]="textes.exempleAssureurs"></label>
                   <label class="phase-field"><span>N° police assurance tiers</span><input type="text" [(ngModel)]="newThirdParty.insuranceNumber" placeholder="..."></label>
                 </div>
                 <div class="phase-row">
@@ -604,9 +605,7 @@ interface ImpactProfile {
               <p class="lead">
                 Un <strong class="hl">choc violent</strong> a été détecté sur votre véhicule
                 <strong>{{ vehicleLabel }}</strong> le
-                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
-                <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
-                <strong>{{ locationGovernorate }}</strong></ng-container>.
+                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">{{ textes.synthAvantLocalite }}<strong>{{ locationCommune }}</strong>{{ textes.synthApresLocalite }}</ng-container><ng-container *ngIf="locationGovernorate">{{ textes.synthAvantDivision }}<strong>{{ locationGovernorate }}</strong>{{ textes.synthApresDivision }}</ng-container>.
               </p>
               <p>
                 Cet événement a été marqué comme <strong>fausse alerte</strong> par
@@ -625,9 +624,7 @@ interface ImpactProfile {
                 <p class="lead">
                   Votre véhicule <strong>{{ vehicleLabel }}</strong> a fait l'objet d'une
                   <strong>déclaration d'accident</strong> le
-                  <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
-                  <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
-                  <strong>{{ locationGovernorate }}</strong></ng-container>.
+                  <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">{{ textes.synthAvantLocalite }}<strong>{{ locationCommune }}</strong>{{ textes.synthApresLocalite }}</ng-container><ng-container *ngIf="locationGovernorate">{{ textes.synthAvantDivision }}<strong>{{ locationGovernorate }}</strong>{{ textes.synthApresDivision }}</ng-container>.
                 </p>
                 <p *ngIf="phase2.description">
                   Description déclarée : «&nbsp;{{ phase2.description }}&nbsp;»
@@ -641,9 +638,7 @@ interface ImpactProfile {
               <p class="lead">
                 Votre véhicule <strong>{{ vehicleLabel }}</strong> a été impliqué dans un
                 <strong class="hl">accident grave</strong> le
-                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">, sur la commune de
-                <strong>{{ locationCommune }}</strong></ng-container><ng-container *ngIf="locationGovernorate">, dans le gouvernorat de
-                <strong>{{ locationGovernorate }}</strong></ng-container>.
+                <strong>{{ synthesisDateTimeLong }}</strong><ng-container *ngIf="locationCommune">{{ textes.synthAvantLocalite }}<strong>{{ locationCommune }}</strong>{{ textes.synthApresLocalite }}</ng-container><ng-container *ngIf="locationGovernorate">{{ textes.synthAvantDivision }}<strong>{{ locationGovernorate }}</strong>{{ textes.synthApresDivision }}</ng-container>.
               </p>
               <p>
                 L'analyse des données enregistrées par le boîtier GPS installé sur ce véhicule
@@ -670,11 +665,11 @@ interface ImpactProfile {
             <div class="loc-grid">
               <div class="loc-info">
                 <div class="loc-row">
-                  <div class="loc-k">Commune</div>
+                  <div class="loc-k">{{ textes.localite }}</div>
                   <div class="loc-v">{{ locationCommune || '—' }}</div>
                 </div>
                 <div class="loc-row">
-                  <div class="loc-k">Gouvernorat</div>
+                  <div class="loc-k">{{ textes.division }}</div>
                   <div class="loc-v">{{ locationGovernorate || '—' }}</div>
                 </div>
                 <div class="loc-row">
@@ -2118,6 +2113,8 @@ export class AccidentReportComponent implements OnInit, OnDestroy, AfterViewInit
 
   /** Active currency ISO code (e.g. "DZD"), used for amount-field labels. */
   get currencyCode(): string { return this.userPrefs.current.currency; }
+  /** Libelles et exemples du pays du client (euro = France, sinon textes d'origine). */
+  get textes(): TextesSinistres { return textesSinistres(this.userPrefs.current.currency); }
 
   /**
    * Vrai quand l'abonnement de la SOCIÉTÉ comprend le suivi GPS (moduleMonitoring).
