@@ -628,6 +628,11 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     module: 'tours',
     motsCles: ['tournee', 'livraison', 'itineraire', 'planifier', 'trajet prevu', 'etape', 'arret', 'circuit', 'envoyer', 'chauffeur'],
     resume: "Préparer un itinéraire avec ses arrêts, puis le comparer au trajet réellement effectué.",
+    captures: [
+      { fichier: 'tournees-liste.png', legende: "L'écran « Tournees » : les compteurs par statut, et le bouton « Nouvelle tournee »." },
+      { fichier: 'tournee-informations.png', legende: "Étape 1 « Informations » : le nom, le véhicule — le chauffeur rattaché est proposé — et la récurrence." },
+      { fichier: 'tournee-itineraire.png', legende: "Étape 2 « Itineraire » : le départ, la destination, et « + Arret » pour les étapes intermédiaires. L'étape 3 « Estimation » apparaît dès que deux points sont placés." },
+    ],
     etapes: [
       "Ouvrez « Exploitation » > « Tournées » dans le menu.",
       "Cliquez sur « Nouvelle tournee ».",
@@ -942,11 +947,33 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
     texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, puis un programme d'entretien. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
     cible: 'menu-flotte',
+    sauf: 'monitoring',
     route: '/dashboard'
+  },
+  // Offre GPS (Karim, 23/09/2026) : « presque la meme chose que GPA », sans
+  // l'ajout de vehicule — les vehicules sont crees par l'equipe Belive avec
+  // leurs boitiers — plus la carte et les zones. Le module `monitoring` signe
+  // l'offre GPS ; toutes les offres GPS ont aussi geofencing et tournees.
+  {
+    id: 'bienvenue-gps',
+    titre: 'Bienvenue dans Calypso',
+    texte: "Quelques étapes pour démarrer, dans l'ordre : vos véhicules, vos chauffeurs, la carte en direct, les échéances de vos documents, un programme d'entretien, puis votre premier rapport. Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
+    cible: 'menu-flotte',
+    module: 'monitoring',
+    route: '/dashboard'
+  },
+  {
+    id: 'vehicules-en-place',
+    titre: 'Vos véhicules sont déjà en place',
+    texte: "Ils ont été ajoutés par notre équipe, avec leurs boîtiers. Vérifiez la liste : cliquez sur une ligne pour ouvrir la fiche d'un véhicule, ou sur « Modifier » pour compléter ses informations — chauffeur, couleur, capacité du réservoir.",
+    cible: 'vehicules-liste',
+    module: 'monitoring',
+    route: '/vehicles'
   },
   {
     id: 'ajouter-vehicule',
     titre: 'Ajoutez votre premier véhicule',
+    sauf: 'monitoring',
     // Le modele d'import a cinq feuilles (verifie dans DataPortController le
     // 23/09/2026) : Vehicules, Entretiens, Reparations, Carburant, Depenses —
     // toutes lues et creees a l'import. Karim tient a ce que la visite le dise.
@@ -994,5 +1021,16 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     cible: 'entretiens-affecter',
     module: 'maintenance',
     route: '/entretien-programmable'
+  },
+  // Offre GPS seulement (Karim, 23/09/2026 : « ajoute rapport » pour le GPS,
+  // retire pour la GPA). Toutes les offres GPS ont le module Rapports ; si un
+  // utilisateur n'a pas ce droit, la cible est absente et l'etape est sautee.
+  {
+    id: 'premier-rapport',
+    titre: 'Générez votre premier rapport',
+    texte: "Choisissez un type de rapport, un véhicule et une période, puis cliquez sur « Exécuter ». L'export Excel, PDF ou CSV se débloque une fois le rapport affiché.",
+    cible: 'rapports-type',
+    module: 'monitoring',
+    route: '/reports'
   }
 ];

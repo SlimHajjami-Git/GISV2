@@ -104,6 +104,13 @@ export interface GuideEtape {
   cible: string;
   /** Module requis pour que l'etape ait un sens. */
   module?: HelpModule;
+  /**
+   * Module dont la presence RETIRE l'etape. Sert a distinguer les offres :
+   * « Ajoutez votre premier vehicule » n'a de sens qu'en GPA — chez un client
+   * GPS, les vehicules sont crees par l'equipe Belive avec leurs boitiers, et
+   * c'est le module `monitoring` qui signe l'offre GPS (Karim, 23/09/2026).
+   */
+  sauf?: HelpModule;
   /** Page sur laquelle l'etape doit etre jouee. */
   route?: string;
 }

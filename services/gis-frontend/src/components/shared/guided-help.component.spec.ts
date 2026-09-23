@@ -29,7 +29,7 @@ class PageTableauDeBord implements OnInit {
   ngOnInit(): void { if (this.help.doitProposerLeGuide()) { this.help.ouvrirGuide(); } }
 }
 
-@Component({ standalone: true, template: `<button data-guide="vehicules-nouveau">Nouveau véhicule</button>` })
+@Component({ standalone: true, template: `<div data-guide="vehicules-liste">Liste</div><button data-guide="vehicules-nouveau">Nouveau véhicule</button>` })
 class PageVehicules implements OnInit {
   private help = inject(HelpService);
   ngOnInit(): void { if (this.help.doitProposerLeGuide()) { this.help.ouvrirGuide(); } }
@@ -51,7 +51,6 @@ class PageEcheances {}
 
 @Component({ standalone: true, template: `<button data-guide="entretiens-affecter">Affecter</button><button data-guide="entretiens-nouveau-modele">Nouveau modele</button>` })
 class PageEntretiens {}
-
 describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
   let utilisateur: BehaviorSubject<any>;
   let guide: ComponentFixture<GuidedHelpComponent>;
@@ -102,9 +101,11 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     jest.restoreAllMocks();
   });
 
+  // Tous les modules sont ouverts ici (hasModuleAccess => true) : c'est le
+  // parcours GPS qui est joué — sans « Ajoutez votre premier véhicule ».
   it('s\'ouvre sur l\'étape 1 au tableau de bord', () => {
     expect(guide.componentInstance.actif).toBe(true);
-    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue-gps');
   });
 
   it('« Suivant » mène à l\'étape 2 sur /vehicles — la nouvelle page ne relance pas la visite', async () => {
@@ -114,14 +115,15 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     expect(TestBed.inject(Router).url).toBe('/vehicles');
     expect(guide.componentInstance.actif).toBe(true);
     expect(guide.componentInstance.index).toBe(1);
-    expect(guide.componentInstance.etape?.id).toBe('ajouter-vehicule');
+    expect(guide.componentInstance.etape?.id).toBe('vehicules-en-place');
   });
 
-  it('va au bout des sept étapes (offre GPS complète), puis ne se repropose plus', async () => {
-    // Ordre voulu par Karim (23/09/2026) : véhicule, chauffeurs, [carte si GPS],
-    // échéances, programme d'entretien, affectation. Deux étapes de suite sur
-    // /entretien-programmable : la seconde ne doit pas renaviguer ni se perdre.
-    for (const attendue of ['ajouter-vehicule', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter']) {
+  it('va au bout des huit étapes (offre GPS complète), puis ne se repropose plus', async () => {
+    // Ordre voulu par Karim (23/09/2026) pour le GPS : véhicules en place,
+    // chauffeurs, carte, zones, échéances, programme d'entretien, affectation.
+    // Deux étapes de suite sur /entretien-programmable : la seconde ne doit pas
+    // renaviguer ni se perdre.
+    for (const attendue of ['vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte', 'echeances', 'entretien-modele', 'entretien-affecter', 'premier-rapport']) {
       guide.componentInstance.suivant();
       await attendre();
       expect(guide.componentInstance.etape?.id).toBe(attendue);

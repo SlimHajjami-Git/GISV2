@@ -104,6 +104,22 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     ]);
   });
 
+  it('offre GPS : pas d’ajout de vehicule (crees par l’equipe Belive), mais la carte et les zones', () => {
+    // Parcours GPS fixe par Karim le 23/09/2026 : « presque la meme chose que
+    // GPA », sans « Ajoutez votre premier vehicule ». Toutes les offres GPS
+    // (Standard, Pro, Premium) ont le suivi, le geofencing et les tournees.
+    const aide = aideAvecCompte({
+      id: 'u-admin-gps', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true },
+      userPermissions: null
+    });
+
+    expect(aide.etapesGuide().map(e => e.id)).toEqual([
+      'bienvenue-gps', 'vehicules-en-place', 'ajouter-chauffeurs', 'voir-la-carte',
+      'echeances', 'entretien-modele', 'entretien-affecter', 'premier-rapport'
+    ]);
+  });
+
   it('ADMIN en GPA : aucun article visible ne cite un rapport GPS ferme', () => {
     const aide = aideAvecCompte({
       id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
