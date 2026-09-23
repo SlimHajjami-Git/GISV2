@@ -152,7 +152,10 @@ export const routes: Routes = [
         { path: 'confirmation-email', component: ConfirmEmailComponent }
       ]
     : []),
-  { path: 'device-check', component: DeviceCheckComponent },
+  // Diagnostic boîtier : réservé aux comptes connectés depuis le 23/09/2026. L'API
+  // /api/devicecheck n'avait AUCUN [Authorize] et traversait toutes les sociétés ; elle
+  // ne répond plus qu'à un jeton, dans la société et le périmètre de l'appelant.
+  { path: 'device-check', component: DeviceCheckComponent, canActivate: [AuthGuard] },
   // Écran pleine page hors layout : abonnement de la société suspendu/expiré.
   { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },

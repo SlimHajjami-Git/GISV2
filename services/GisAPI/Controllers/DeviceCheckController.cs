@@ -1,29 +1,71 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using System.Text.RegularExpressions;
 
 namespace GisAPI.Controllers;
 
+/// <summary>
+/// Outil d'installation : « ce boîtier remonte-t-il ? », par IMEI, par MAT ou par plaque.
+///
+/// <para><b>Cette classe ne portait AUCUN attribut <c>[Authorize]</c></b>, et l'application
+/// ne déclare aucune <c>FallbackPolicy</c> (Program.cs ne fait qu'enchaîner
+/// <c>UseAuthentication()</c> / <c>UseAuthorization()</c>) : la route répondait 200 avec un
+/// corps JSON complet SANS le moindre jeton. <c>PermissionMiddleware</c> ne rattrapait rien
+/// — il rend la main immédiatement quand la requête n'est pas authentifiée. La requête
+/// levait en plus les filtres multi-tenant (<c>IgnoreQueryFilters()</c>) sur GpsDevices ET
+/// sur Vehicles : elle traversait donc TOUTES les sociétés. Avec une plaque — qui se lit
+/// dans la rue — n'importe qui obtenait la dernière position, le contact, les coordonnées,
+/// le compteur, le carburant et l'heure de dernière trame de n'importe quel véhicule de
+/// n'importe quel client. Le commentaire XML affirmait « requires authentication » : c'est
+/// précisément ce mensonge qui a masqué le trou.</para>
+///
+/// <para>Fermeture en trois temps : authentification exigée, filtres multi-tenant rétablis
+/// (la société de l'appelant), puis la PORTÉE VÉHICULE commune à tous les écrans. La portée
+/// a TROIS états : <c>null</c> = administrateur, aucun filtre ; liste non vide = ses
+/// véhicules ; liste VIDE = il ne voit RIEN. L'administrateur sans aucune affectation
+/// (utilisateur 11 de HERTZ) continue donc de tout voir.</para>
+///
+/// <para><b>Conséquence côté écran, à trancher par Slim :</b> la page Angular
+/// « /device-check » est aujourd'hui publique (aucun <c>AuthGuard</c> sur la route) et
+/// l'intercepteur retire volontairement le jeton des appels « /devicecheck/ ». Tant que le
+/// frontend n'est pas repris, cette page recevra 401. La route n'est pas supprimée : elle a
+/// un usage légitime d'outil interne, mais elle est désormais réservée aux comptes
+/// connectés et au périmètre de l'appelant.</para>
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class DeviceCheckController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public DeviceCheckController(GisDbContext context)
+    public DeviceCheckController(GisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     private static string MaskImei(string imei) =>
         imei.Length > 4 ? new string('*', imei.Length - 4) + imei[^4..] : imei;
 
     /// <summary>
-    /// Lookup a GPS device by IMEI or vehicle MAT/plate (requires authentication)
-    /// Returns last position info: connection status, ignition, coordinates, odometer, fuel, last frame time
+    /// Réponse unique pour « rien à montrer » : identifiant inconnu, boîtier d'une autre
+    /// société, ou véhicule hors du périmètre de l'appelant. Le refus ne doit JAMAIS se
+    /// distinguer de l'absence, sinon la route devient un oracle d'existence de plaques.
+    /// </summary>
+    private ActionResult Introuvable() =>
+        Ok(new { found = false, message = "MAT/IMEI introuvable." });
+
+    /// <summary>
+    /// Recherche d'un boîtier par IMEI, par MAT ou par plaque, dans la SOCIÉTÉ DE L'APPELANT
+    /// et dans SON périmètre de véhicules. Rend l'état de connexion, le contact, les
+    /// coordonnées, le compteur, le carburant et l'heure de dernière trame.
     /// </summary>
     [HttpGet("lookup")]
     public async Task<ActionResult> Lookup([FromQuery] string q)
@@ -33,32 +75,34 @@ public class DeviceCheckController : ControllerBase
 
         var query = q.Trim();
 
-        // Try to find by IMEI (DeviceUid) first, then by MAT (plate)
-        var device = await _context.GpsDevices.IgnoreQueryFilters().AsNoTracking()
+        // Plus aucun IgnoreQueryFilters ici : les filtres globaux de GisDbContext bornent
+        // GpsDevices et Vehicles à la société de l'appelant (et ne s'effacent que pour
+        // l'administrateur système, qui a la vue plate-forme par définition).
+        var device = await _context.GpsDevices.AsNoTracking()
             .FirstOrDefaultAsync(d => d.DeviceUid == query);
 
         Vehicle? vehicle = null;
 
         if (device != null)
         {
-            vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
+            vehicle = await _context.Vehicles.AsNoTracking()
                 .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id);
         }
         else
         {
             // Try by MAT on device
-            device = await _context.GpsDevices.IgnoreQueryFilters().AsNoTracking()
+            device = await _context.GpsDevices.AsNoTracking()
                 .FirstOrDefaultAsync(d => d.Mat != null && d.Mat.ToLower() == query.ToLower());
 
             if (device != null)
             {
-                vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
+                vehicle = await _context.Vehicles.AsNoTracking()
                     .FirstOrDefaultAsync(v => v.GpsDeviceId == device.Id);
             }
             else
             {
                 // Try by vehicle plate
-                vehicle = await _context.Vehicles.IgnoreQueryFilters().AsNoTracking()
+                vehicle = await _context.Vehicles.AsNoTracking()
                     .Include(v => v.GpsDevice)
                     .FirstOrDefaultAsync(v => v.Plate != null && v.Plate.ToLower() == query.ToLower());
 
@@ -68,7 +112,16 @@ public class DeviceCheckController : ControllerBase
         }
 
         if (device == null && vehicle == null)
-            return Ok(new { found = false, message = "MAT/IMEI introuvable." });
+            return Introuvable();
+
+        // Portée véhicule. Un boîtier en stock, rattaché à AUCUN véhicule, n'entre dans la
+        // portée de personne : seul un appelant qui voit tout le parc le consulte.
+        var dansLaPortee = vehicle != null
+            ? await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicle.Id, HttpContext.RequestAborted)
+            : VehicleScope.SeesWholeFleet(_tenantService);
+
+        if (!dansLaPortee)
+            return Introuvable();
 
         if (device == null)
             return Ok(new
@@ -81,7 +134,10 @@ public class DeviceCheckController : ControllerBase
             });
 
         // Get last GPS position
-        var lastPosition = await _context.GpsPositions.IgnoreQueryFilters().AsNoTracking()
+        // GpsPositions ne porte AUCUN filtre multi-tenant (les trames sont indexées par
+        // boîtier, pas par société) : le cloisonnement vient du boîtier résolu ci-dessus,
+        // déjà borné à la société et à la portée de l'appelant.
+        var lastPosition = await _context.GpsPositions.AsNoTracking()
             .Where(p => p.DeviceId == device.Id)
             .OrderByDescending(p => p.Id)
             .FirstOrDefaultAsync();

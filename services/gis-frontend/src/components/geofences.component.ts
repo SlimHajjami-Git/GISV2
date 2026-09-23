@@ -5,10 +5,71 @@ import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
 import { SignalRService } from '../services/signalr.service';
+import { ToastService } from '../services/toast.service';
 import { Geofence, GeofenceEvent, GeofencePoint, Vehicle, Company, GeofenceGroup } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import * as L from 'leaflet';
+
+/**
+ * Corps de la bascule actif/inactif : la zone ENTIÈRE, seul `isActive` inversé.
+ *
+ * DÉFAUT CORRIGÉ LE 23/09/2026 : la bascule envoyait `{ isActive }` SEUL. Or
+ * PUT /api/geofences/{id} recopie TOUS les champs du corps sur la zone (nom, type,
+ * géométrie, alertes, plage horaire, groupe) : chaque clic sur « Activer » /
+ * « Désactiver » effaçait donc le nom, le cercle ou le polygone et les alertes de la
+ * zone, qui revenait vide dans la liste. On renvoie ici exactement ce que la liste a
+ * reçu (GeofenceDto), `isActive` inversé.
+ */
+export function corpsBasculeActif(g: any): any {
+  return {
+    name: g.name,
+    description: g.description ?? null,
+    type: g.type,
+    color: g.color,
+    iconName: g.iconName ?? null,
+    coordinates: g.coordinates ?? null,
+    centerLat: g.centerLat ?? g.center?.lat ?? null,
+    centerLng: g.centerLng ?? g.center?.lng ?? null,
+    radius: g.radius ?? null,
+    alertOnEntry: !!g.alertOnEntry,
+    alertOnExit: !!g.alertOnExit,
+    autoStopOnEntry: !!g.autoStopOnEntry,
+    alertSpeedLimit: g.alertSpeedLimit ?? null,
+    // `??` et non `||` : un délai de 0 minute est une valeur, pas une absence.
+    notificationCooldownMinutes: g.notificationCooldownMinutes ?? 5,
+    maxStayDurationMinutes: g.maxStayDurationMinutes ?? null,
+    activeStartTime: g.activeStartTime ?? null,
+    activeEndTime: g.activeEndTime ?? null,
+    activeDays: g.activeDays ?? null,
+    groupId: g.groupId ?? null,
+    isActive: !g.isActive
+  };
+}
+
+/**
+ * Message affiché quand une écriture sur une zone échoue. Règle serveur du 23/09/2026 :
+ * un compte qui a la permission « Géofences » gère toute zone qu'il VOIT ; une zone
+ * qu'il ne voit pas (ou plus) répond 404, une création sans droit répond 403, un
+ * véhicule hors de son périmètre répond 400 avec un message. Aucun de ces cas ne doit
+ * rester muet (console seule) : l'utilisateur croyait son action faite.
+ */
+export function messageErreurZone(err: any, action: string): string {
+  const statut = typeof err?.status === 'number' ? err.status : 0;
+  const detail = typeof err?.error?.message === 'string' ? err.error.message : '';
+  switch (statut) {
+    case 400:
+      return detail || `Impossible de ${action} : le serveur a refusé les données envoyées.`;
+    case 403:
+      return detail || `Vous n'avez pas le droit de ${action}. La gestion des zones demande la permission « Géofences » et au moins un véhicule affecté.`;
+    case 404:
+      return "Cette zone n'existe plus ou ne fait plus partie de votre périmètre. La liste a été actualisée.";
+    case 0:
+      return 'Serveur injoignable. Vérifiez votre connexion et réessayez.';
+    default:
+      return detail || `Impossible de ${action} (erreur ${statut}). Réessayez dans un instant.`;
+  }
+}
 
 @Component({
   selector: 'app-geofences',
@@ -191,7 +252,7 @@ import * as L from 'leaflet';
                 </div>
 
                 <div class="card-footer">
-                  <button class="btn-action" (click)="toggleActive(geofence)">
+                  <button class="btn-action" (click)="toggleActive(geofence)" [disabled]="estEnBascule(geofence)">
                     <svg *ngIf="geofence.isActive" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <rect x="6" y="4" width="4" height="16"/>
                       <rect x="14" y="4" width="4" height="16"/>
@@ -455,7 +516,7 @@ import * as L from 'leaflet';
 
               <div class="popup-footer">
                 <button type="button" class="btn-cancel" (click)="closePopup()">Annuler</button>
-                <button type="submit" class="btn-save" [disabled]="!canSave()">
+                <button type="submit" class="btn-save" [disabled]="!canSave() || enregistrementEnCours">
                   {{ editingGeofence ? 'Mettre à jour' : 'Créer la zone' }}
                 </button>
               </div>
@@ -1415,6 +1476,11 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
   showPopup = false;
   editingGeofence: Geofence | null = null;
 
+  /** Zones dont la bascule actif/inactif attend la réponse du serveur (anti double clic). */
+  private basculesEnCours = new Set<string>();
+  /** Enregistrement (création ou modification) en attente : le bouton est désactivé. */
+  enregistrementEnCours = false;
+
   // History modal state
   showHistoryModal = false;
   historyGeofence: Geofence | null = null;
@@ -1468,7 +1534,8 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     private router: Router,
     private apiService: ApiService,
     private signalRService: SignalRService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private toastService: ToastService
   ) {}
 
   ngOnInit() {
@@ -1513,18 +1580,20 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
       error: (err) => console.error('Error loading geofences:', err)
     });
 
+    // Angular 21 : chaque retour HTTP qui change l'affichage (compteur « Événements »,
+    // listes du formulaire) redemande un rendu explicite.
     this.apiService.getVehicles().subscribe({
-      next: (vehicles) => this.vehicles = vehicles,
+      next: (vehicles) => { this.vehicles = vehicles; this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading vehicles:', err)
     });
 
     this.apiService.getGeofenceGroups().subscribe({
-      next: (groups) => this.groups = groups,
+      next: (groups) => { this.groups = groups; this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading groups:', err)
     });
 
     this.apiService.getGeofenceEvents().subscribe({
-      next: (events) => this.events = events.slice(0, 50),
+      next: (events) => { this.events = events.slice(0, 50); this.cdr.detectChanges(); },
       error: (err) => console.error('Error loading events:', err)
     });
   }
@@ -1926,10 +1995,35 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
   }
 
+  estEnBascule(geofence: Geofence): boolean {
+    return this.basculesEnCours.has(String(geofence.id));
+  }
+
+  /**
+   * Bascule actif/inactif. L'état affiché n'est JAMAIS inversé localement : il vient
+   * toujours de la liste relue au serveur, succès ou échec — le basculeur ne peut donc
+   * pas montrer un état que la base n'a pas. Voir corpsBasculeActif pour le corps.
+   */
   toggleActive(geofence: Geofence) {
-    this.apiService.updateGeofence(parseInt(geofence.id), { isActive: !geofence.isActive }).subscribe({
-      next: () => this.refreshData(),
-      error: (err) => console.error('Error toggling geofence:', err)
+    const cle = String(geofence.id);
+    if (this.basculesEnCours.has(cle)) return;
+    this.basculesEnCours.add(cle);
+    this.cdr.detectChanges();
+
+    this.apiService.updateGeofence(parseInt(String(geofence.id)), corpsBasculeActif(geofence)).subscribe({
+      next: () => {
+        this.basculesEnCours.delete(cle);
+        this.refreshData();
+      },
+      error: (err) => {
+        console.error('Error toggling geofence:', err);
+        this.basculesEnCours.delete(cle);
+        const action = geofence.isActive ? 'désactiver cette zone' : 'activer cette zone';
+        this.toastService.error('Zone non modifiée', messageErreurZone(err, action));
+        // Relecture : sur 404 la zone disparaît de la liste, sinon l'état réel revient.
+        this.refreshData();
+        this.cdr.detectChanges();
+      }
     });
   }
 
@@ -1988,9 +2082,14 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
 
   deleteGeofence(geofence: Geofence) {
     if (confirm(`Êtes-vous sûr de vouloir supprimer la zone "${geofence.name}" ?`)) {
-      this.apiService.deleteGeofence(parseInt(geofence.id)).subscribe({
+      this.apiService.deleteGeofence(parseInt(String(geofence.id))).subscribe({
         next: () => this.refreshData(),
-        error: (err) => console.error('Error deleting geofence:', err)
+        error: (err) => {
+          console.error('Error deleting geofence:', err);
+          this.toastService.error('Zone non supprimée', messageErreurZone(err, 'supprimer cette zone'));
+          this.refreshData();
+          this.cdr.detectChanges();
+        }
       });
     }
   }
@@ -2182,23 +2281,50 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
     // no-op as far as the database was concerned.
     const vehicleIds: number[] = (geofenceData.assignedVehicleIds as number[]) || [];
 
+    // Échecs GÉRÉS (règle serveur du 23/09/2026) : ils n'allaient qu'en console, le
+    // formulaire restait ouvert sans un mot ou se fermait comme si tout était fait.
+    //   • zone refusée (400/403) : message, formulaire GARDÉ pour corriger ;
+    //   • zone disparue du périmètre (404) : message, formulaire fermé, liste relue ;
+    //   • zone enregistrée mais véhicules refusés : avertissement explicite — la zone
+    //     existe, seul le rattachement a échoué (véhicule hors périmètre, par exemple).
+    this.enregistrementEnCours = true;
+    this.cdr.detectChanges();
+
+    const terminer = () => {
+      this.enregistrementEnCours = false;
+      this.closePopup();
+      this.refreshData();
+      this.cdr.detectChanges();
+    };
+    const echecVehicules = (err: any) => {
+      console.error('Error assigning geofence vehicles:', err);
+      this.toastService.warning('Zone enregistrée, véhicules non rattachés',
+        messageErreurZone(err, 'rattacher ces véhicules à la zone'));
+      terminer();
+    };
+    const echecZone = (err: any, action: string) => {
+      this.enregistrementEnCours = false;
+      this.toastService.error('Zone non enregistrée', messageErreurZone(err, action));
+      if (err?.status === 404) {
+        terminer();
+      } else {
+        this.cdr.detectChanges();
+      }
+    };
+
     if (this.editingGeofence) {
-      const id = parseInt(this.editingGeofence.id);
+      const id = parseInt(String(this.editingGeofence.id));
       this.apiService.updateGeofence(id, geofenceData).subscribe({
         next: () => {
           this.apiService.assignGeofenceVehicles(id, vehicleIds).subscribe({
-            next: () => {
-              this.closePopup();
-              this.refreshData();
-            },
-            error: (err) => {
-              console.error('Error assigning geofence vehicles:', err);
-              this.closePopup();
-              this.refreshData();
-            }
+            next: () => terminer(),
+            error: (err) => echecVehicules(err)
           });
         },
-        error: (err) => console.error('Error updating geofence:', err)
+        error: (err) => {
+          console.error('Error updating geofence:', err);
+          echecZone(err, 'modifier cette zone');
+        }
       });
     } else {
       this.apiService.createGeofence(geofenceData).subscribe({
@@ -2206,19 +2332,17 @@ export class GeofencesComponent implements OnInit, AfterViewInit, OnDestroy {
           const newId = Number(created?.id);
           if (Number.isFinite(newId) && vehicleIds.length > 0) {
             this.apiService.assignGeofenceVehicles(newId, vehicleIds).subscribe({
-              next: () => { this.closePopup(); this.refreshData(); },
-              error: (err) => {
-                console.error('Error assigning geofence vehicles:', err);
-                this.closePopup();
-                this.refreshData();
-              }
+              next: () => terminer(),
+              error: (err) => echecVehicules(err)
             });
           } else {
-            this.closePopup();
-            this.refreshData();
+            terminer();
           }
         },
-        error: (err) => console.error('Error creating geofence:', err)
+        error: (err) => {
+          console.error('Error creating geofence:', err);
+          echecZone(err, 'créer cette zone');
+        }
       });
     }
   }

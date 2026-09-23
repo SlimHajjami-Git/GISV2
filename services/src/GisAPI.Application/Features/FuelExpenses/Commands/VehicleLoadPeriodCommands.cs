@@ -1,5 +1,6 @@
 using FluentValidation;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -54,6 +55,12 @@ public class CreateVehicleLoadPeriodHandler : IRequestHandler<CreateVehicleLoadP
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId, ct)
             ?? throw new InvalidOperationException($"Véhicule {request.VehicleId} introuvable");
 
+        // …mais pas qu'on ne peut pas le déclarer sur le véhicule d'un AUTRE LOCATAIRE
+        // de la même société : le tonnage change son analyse de consommation. Même
+        // message qu'un véhicule inexistant : on ne révèle pas qu'il existe.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, request.VehicleId, ct))
+            throw new InvalidOperationException($"Véhicule {request.VehicleId} introuvable");
+
         var overlaps = await _context.VehicleLoadPeriods.AnyAsync(lp =>
             lp.VehicleId == request.VehicleId &&
             lp.StartTime < (request.EndTime ?? DateTime.MaxValue) &&
@@ -101,18 +108,24 @@ public class UpdateVehicleLoadPeriodValidator : AbstractValidator<UpdateVehicleL
 public class UpdateVehicleLoadPeriodHandler : IRequestHandler<UpdateVehicleLoadPeriodCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public UpdateVehicleLoadPeriodHandler(IGisDbContext context)
+    public UpdateVehicleLoadPeriodHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(UpdateVehicleLoadPeriodCommand request, CancellationToken ct)
     {
-        // Le filtre tenant global sur VehicleLoadPeriods scope déjà la lecture.
+        // Le filtre tenant global sur VehicleLoadPeriods scope la SOCIÉTÉ, pas le
+        // locataire : on ajoute la portée véhicules (false => 404 côté contrôleur).
         var period = await _context.VehicleLoadPeriods
             .FirstOrDefaultAsync(lp => lp.Id == request.Id, ct);
         if (period == null) return false;
+
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, period.VehicleId, ct))
+            return false;
 
         var overlaps = await _context.VehicleLoadPeriods.AnyAsync(lp =>
             lp.Id != request.Id &&
@@ -138,10 +151,12 @@ public record DeleteVehicleLoadPeriodCommand(int Id) : IRequest<bool>;
 public class DeleteVehicleLoadPeriodHandler : IRequestHandler<DeleteVehicleLoadPeriodCommand, bool>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public DeleteVehicleLoadPeriodHandler(IGisDbContext context)
+    public DeleteVehicleLoadPeriodHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<bool> Handle(DeleteVehicleLoadPeriodCommand request, CancellationToken ct)
@@ -149,6 +164,9 @@ public class DeleteVehicleLoadPeriodHandler : IRequestHandler<DeleteVehicleLoadP
         var period = await _context.VehicleLoadPeriods
             .FirstOrDefaultAsync(lp => lp.Id == request.Id, ct);
         if (period == null) return false;
+
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, period.VehicleId, ct))
+            return false;
 
         _context.VehicleLoadPeriods.Remove(period);
         await _context.SaveChangesAsync(ct);

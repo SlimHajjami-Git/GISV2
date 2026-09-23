@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
@@ -16,19 +18,45 @@ public class TramOnLineController : ControllerBase
 {
     private readonly GisDbContext _context;
     private readonly ILogger<TramOnLineController> _logger;
+    private readonly ICurrentTenantService _tenantService;
 
-    public TramOnLineController(GisDbContext context, ILogger<TramOnLineController> logger)
+    public TramOnLineController(GisDbContext context, ILogger<TramOnLineController> logger, ICurrentTenantService tenantService)
     {
         _context = context;
         _logger = logger;
+        _tenantService = tenantService;
     }
 
     /// <summary>
-    /// Register a MAT (device UID). If it does not exist, create a GPS device and vehicle (HTZ X).
+    /// Enregistre un MAT (identifiant logique du boîtier). S'il est inconnu, CRÉE un boîtier
+    /// et un véhicule « HTZ X ».
+    ///
+    /// <para><b>La route créait un véhicule sans aucun droit et dans la mauvaise société.</b>
+    /// Le préfixe « /api/tramonline » ne figure dans aucune table de
+    /// <c>PermissionMiddleware</c> : n'importe quel compte connecté, même restreint à deux
+    /// véhicules, pouvait l'appeler. Et la société d'accueil n'était pas celle de l'appelant
+    /// mais <c>Societes.OrderBy(Id).First()</c> — la PREMIÈRE société de la plate-forme, la
+    /// table des tenants n'ayant volontairement aucun filtre multi-tenant. Un utilisateur
+    /// d'une société créait donc boîtier et véhicule chez une AUTRE société, où ils
+    /// apparaissaient dans les écrans d'un client qui n'avait rien demandé.</para>
+    ///
+    /// <para>Fermeture : créer un véhicule est une opération de parc, réservée à un appelant
+    /// dont le périmètre EST la flotte entière (administrateur de société, administrateur
+    /// système) ; et la création se fait dans la société DE L'APPELANT, jamais dans une
+    /// société devinée.</para>
     /// </summary>
     [HttpPost("register/{mat}")]
     public async Task<ActionResult<MatRegistrationResponse>> RegisterMat(string mat)
     {
+        if (!VehicleScope.SeesWholeFleet(_tenantService))
+        {
+            return new ObjectResult(new
+            {
+                message = "La création d'un véhicule est réservée aux administrateurs de la société."
+            })
+            { StatusCode = 403 };
+        }
+
         if (string.IsNullOrWhiteSpace(mat))
         {
             return BadRequest("MAT is required.");
@@ -36,7 +64,9 @@ public class TramOnLineController : ControllerBase
 
         mat = mat.Trim();
 
-        // Search by Mat field (GPS logical identifier), not DeviceUid (IMEI)
+        // Search by Mat field (GPS logical identifier), not DeviceUid (IMEI).
+        // Le filtre global de GisDbContext borne déjà cette recherche à la société de
+        // l'appelant — l'administrateur système, lui, a la vue plate-forme par définition.
         var existingDevice = await _context.GpsDevices
             .Include(d => d.Vehicle)
             .FirstOrDefaultAsync(d => d.Mat == mat);
@@ -51,17 +81,18 @@ public class TramOnLineController : ControllerBase
                 existingDevice.Vehicle?.GpsDeviceId ?? existingDevice.Id));
         }
 
-        var companyId = await _context.Societes
-            .OrderBy(c => c.Id)
-            .Select(c => c.Id)
-            .FirstOrDefaultAsync();
+        // La société de l'APPELANT, jamais la première de la table.
+        var companyId = _tenantService.CompanyId ?? 0;
 
         if (companyId == 0)
         {
             return BadRequest("No company configured. Please create a company first.");
         }
 
-        var htzCount = await _context.Vehicles.CountAsync(v => v.Name.StartsWith("HTZ"));
+        // Comptage borné à la société : sans ce filtre explicite, un administrateur système
+        // (filtres globaux levés) numéroterait « HTZ X » sur tout le parc de la plate-forme.
+        var htzCount = await _context.Vehicles
+            .CountAsync(v => v.CompanyId == companyId && v.Name.StartsWith("HTZ"));
         var vehicleName = $"HTZ {htzCount}";
 
         var gpsDevice = new GpsDevice
@@ -112,6 +143,25 @@ public class TramOnLineController : ControllerBase
             .FirstOrDefaultAsync(d => d.Mat == mat.Trim());
 
         if (device == null)
+        {
+            return NotFound($"No device found for MAT {mat}.");
+        }
+
+        // ROUTE SŒUR du rejeu de trajectoire : jusqu'à 1000 points du boîtier, indexés
+        // par MAT. Le boîtier est résolu vers SON véhicule et on applique la portée
+        // (null = administrateur, aucun filtre). Un boîtier rattaché à aucun véhicule
+        // n'entre dans la portée de personne. Le refus reste le 404 « MAT inconnu ».
+        var vehiculeDuBoitier = await _context.Vehicles
+            .AsNoTracking()
+            .Where(v => v.GpsDeviceId == device.Id)
+            .Select(v => (int?)v.Id)
+            .FirstOrDefaultAsync();
+
+        var horsPortee = vehiculeDuBoitier.HasValue
+            ? !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehiculeDuBoitier.Value, HttpContext.RequestAborted)
+            : !VehicleScope.SeesWholeFleet(_tenantService);
+
+        if (horsPortee)
         {
             return NotFound($"No device found for MAT {mat}.");
         }

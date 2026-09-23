@@ -384,9 +384,9 @@ public class TourMonitoringService : BackgroundService
 
         await context.SaveChangesAsync(ct);
 
-        // Notify via SignalR (real-time)
-        await hubContext.Clients.Group($"company_{tour.CompanyId}")
-            .SendAsync("TourStatusChanged", new
+        // Temps réel : administrateurs et portée du véhicule, jamais le groupe société
+        // (GroupesGps.Tournee — le message porte le nom de la tournée).
+        await DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourStatusChanged", new
             {
                 tourId = tour.Id,
                 status = "in_progress",
@@ -673,8 +673,7 @@ public class TourMonitoringService : BackgroundService
                 wp.WaypointStatus = "completed";
                 changed = true;
 
-                await hubContext.Clients.Group($"company_{tour.CompanyId}")
-                    .SendAsync("TourWaypointCompleted", new
+                await DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourWaypointCompleted", new
                     {
                         tourId = tour.Id,
                         waypointId = wp.Id,
@@ -714,8 +713,7 @@ public class TourMonitoringService : BackgroundService
                     "Tour {TourId}: waypoint '{WpName}' deadline exceeded (deadline={Deadline:HH:mm}, now={Now:HH:mm})",
                     tour.Id, wp.Name ?? wp.Type, deadline, now);
 
-                await hubContext.Clients.Group($"company_{tour.CompanyId}")
-                    .SendAsync("TourWaypointOverdue", new
+                await DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourWaypointOverdue", new
                     {
                         tourId = tour.Id,
                         waypointId = wp.Id,
@@ -871,7 +869,7 @@ public class TourMonitoringService : BackgroundService
             _lostAlerted.TryRemove(tour.Id, out _);   // nouvelle coupure = nouvelle alerte possible
 
             _logger.LogInformation("Tour {TourId}: tracking source {Previous} → {Source}", tour.Id, previous ?? "?", choice.Source);
-            await hubContext.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourTrackingSourceChanged", new
+            await DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourTrackingSourceChanged", new
             {
                 tourId = tour.Id, source = choice.Source, since = now,
                 deviceAvailable = choice.DeviceAlive, phoneAvailable = choice.PhoneAlive, timestamp = now
@@ -959,9 +957,8 @@ public class TourMonitoringService : BackgroundService
         _departedAt.TryRemove(tour.Id, out _);
         _pendingDestArrival.TryRemove(tour.Id, out _);
 
-        // Notify completion
-        await hubContext.Clients.Group($"company_{tour.CompanyId}")
-            .SendAsync("TourStatusChanged", new
+        // Notify completion — mêmes destinataires (GroupesGps.Tournee)
+        await DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourStatusChanged", new
             {
                 tourId = tour.Id,
                 status = "completed",
@@ -1017,18 +1014,43 @@ public class TourMonitoringService : BackgroundService
                 "Tour {TourId}: vehicle deviated {Distance:F0}m from planned route",
                 tour.Id, distFromSegment);
 
-            await hubContext.Clients.Group($"company_{tour.CompanyId}")
-                .SendAsync("TourDeviation", new
-                {
-                    tourId = tour.Id,
-                    tourName = tour.Name,
-                    deviationMeters = Math.Round(distFromSegment),
-                    vehicleLatitude = position.Latitude,
-                    vehicleLongitude = position.Longitude,
-                    message = $"Vehicule devie de {Math.Round(distFromSegment)}m du trajet prevu",
-                    timestamp = DateTime.UtcNow
-                }, ct);
+            await DiffuserEcartDeTourneeAsync(hubContext, tour, position.Latitude, position.Longitude,
+                distFromSegment, ct);
         }
+    }
+
+    /// <summary>
+    /// Diffusion de l'écart de tournée. C'est le SEUL message de ce service qui porte
+    /// la POSITION GPS du véhicule, et il partait au groupe société — que toute la
+    /// société rejoint. La refonte des groupes du hub (incident HERTZ) avait fait
+    /// passer les positions par un groupe PAR VÉHICULE ; ce producteur-là n'avait pas
+    /// suivi, si bien qu'un locataire affecté à 2 véhicules sur 307 recevait encore la
+    /// position de n'importe lequel des 305 autres dès qu'il s'écartait de sa tournée.
+    ///
+    /// Même règle et même helper que les positions et les alertes :
+    /// <see cref="GroupesGps.Diffusion"/> — groupe flotte (ceux qui voient tout) plus
+    /// le groupe du seul véhicule concerné. Depuis la quatrième passe, TOUS les messages
+    /// de tournée de ce service passent par la même porte
+    /// (<see cref="DiffusionTournees"/>, destinataires <see cref="GroupesGps.Tournee"/>) :
+    /// les cinq autres partaient encore au groupe société avec le nom de la tournée.
+    ///
+    /// Extraite pour être testable : le chemin d'appel réel est privé et vit dans une
+    /// boucle de <see cref="BackgroundService"/>.
+    /// </summary>
+    internal static Task DiffuserEcartDeTourneeAsync(
+        IHubContext<GpsHub> hubContext, Tour tour,
+        double latitude, double longitude, double distFromSegment, CancellationToken ct)
+    {
+        return DiffusionTournees.EnvoyerAsync(hubContext, tour, "TourDeviation", new
+            {
+                tourId = tour.Id,
+                tourName = tour.Name,
+                deviationMeters = Math.Round(distFromSegment),
+                vehicleLatitude = latitude,
+                vehicleLongitude = longitude,
+                message = $"Vehicule devie de {Math.Round(distFromSegment)}m du trajet prevu",
+                timestamp = DateTime.UtcNow
+            }, ct);
     }
 
     /// <summary>GPS sample used for trace-based waypoint detection. <paramref name="Source"/> :

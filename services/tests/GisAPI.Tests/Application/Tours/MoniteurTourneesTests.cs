@@ -97,6 +97,12 @@ public class MoniteurTourneesTests
         var proxy = new Mock<IClientProxy>();
         var clients = new Mock<IHubClients>();
         clients.Setup(c => c.Group(It.IsAny<string>())).Returns(proxy.Object);
+        // Depuis le cloisonnement HERTZ, l'écart de tournée — le seul message de ce
+        // service qui porte la POSITION du véhicule — vise DEUX groupes (flotte +
+        // véhicule) via Clients.Groups. Sans ce montage, l'appel rendait null et le
+        // cycle levait une NullReferenceException AVALÉE par la boucle : les tests de
+        // suivi se retrouvaient avec un TrackingSource jamais écrit.
+        clients.Setup(c => c.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
         var hub = new Mock<IHubContext<GpsHub>>();
         hub.Setup(h => h.Clients).Returns(clients.Object);
 

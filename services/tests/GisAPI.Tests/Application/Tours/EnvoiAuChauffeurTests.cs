@@ -160,6 +160,9 @@ public class EnvoiAuChauffeurTests
         var diffusion = new Mock<IClientProxy>();
         var clients = new Mock<IHubClients>();
         clients.Setup(h => h.Group(It.IsAny<string>())).Returns(diffusion.Object);
+        // Les messages de tournée visent DEUX groupes (flotte + véhicule) via
+        // Clients.Groups depuis le cloisonnement HERTZ (DiffusionTournees).
+        clients.Setup(h => h.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(diffusion.Object);
         var hub = new Mock<IHubContext<GpsHub>>();
         hub.Setup(h => h.Clients).Returns(clients.Object);
 

@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +30,31 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
         // Même correctif que GetExpiriesQueryHandler.
         var companyId = _tenantService.CompanyId ?? 0;
 
+        // La fiche chauffeur nomme le VÉHICULE affecté (nom + plaque). Chez un loueur,
+        // cela revient à dire quel chauffeur conduit le véhicule loué à quel client : on
+        // ne nomme donc que les véhicules de la portée de l'appelant. TROIS états :
+        // null = administrateur, rien ne change ; liste non vide = ses véhicules ;
+        // liste VIDE = aucun véhicule nommé. La LISTE des chauffeurs elle-même n'est pas
+        // rattachée à un véhicule : qui peut la lire est une décision métier, non tranchée ici.
+        var portee = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        var tousVehicules = portee is null;
+        List<int> vehiculesVisibles = portee ?? new List<int>();
+
+        // TRADUCTION VÉRIFIÉE LE 23/09/2026 (EF Core 9.0.1 / Npgsql 9.0.3) : le
+        // « Contains » ci-dessous est dans la PROJECTION, pas dans un Where, et les
+        // tests tournent sur SQLite — un autre fournisseur ne prouve pas que PostgreSQL
+        // traduit. Contrôle fait hors base, par ToQueryString sur un contexte Npgsql
+        // jamais ouvert : les deux branches passent entièrement en SQL, aucune
+        // évaluation côté client, aucun « could not be translated ».
+        //   • restreint : « CASE WHEN v.id IS NOT NULL AND v.id = ANY(@vehiculesVisibles)
+        //     THEN … END » — la portée devient UN paramètre tableau ;
+        //   • administrateur : EF replie le booléen capturé, le test disparaît et la
+        //     colonne est rendue telle quelle.
+        // Deux formes SQL distinctes, donc deux entrées de cache distinctes : un
+        // administrateur ne peut pas hériter du plan compilé d'un locataire. À refaire
+        // avant toute montée de version d'EF ou de Npgsql : la suite de tests, elle, ne
+        // verra jamais cette régression.
+        //
         // Driver is a standalone entity with native fields — no Include on User.
         // Driver.AssignedVehicle is NOT a navigation (see Driver.cs) because it
         // would collide with Vehicle.AssignedDriver in EF's relationship discovery.
@@ -55,9 +81,12 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
                           d.CIN,
                           d.DateOfBirth,
                           d.HireDate,
-                          d.AssignedVehicleId,
-                          vehicle != null ? vehicle.Name : null,
-                          vehicle != null ? vehicle.Plate : null,
+                          vehicle != null && (tousVehicules || vehiculesVisibles.Contains(vehicle.Id))
+                              ? d.AssignedVehicleId : null,
+                          vehicle != null && (tousVehicules || vehiculesVisibles.Contains(vehicle.Id))
+                              ? vehicle.Name : null,
+                          vehicle != null && (tousVehicules || vehiculesVisibles.Contains(vehicle.Id))
+                              ? vehicle.Plate : null,
                           d.Status,
                           d.CreatedAt,
                           d.UserId,

@@ -306,7 +306,12 @@ public class DashboardController : ControllerBase
         }
 
         // ── Vehicle health (from IVehicleHealthScoreService — real DB data) ──
-        var healthResults = await _healthService.CalculateAllScoresAsync(companyId);
+        // CalculateAllScoresAsync note TOUT le parc de la société et les deux listes
+        // ci-dessous publient une PLAQUE : sans portée, un locataire y lisait l'état
+        // des véhicules loués à d'autres clients. Même filtre en mémoire que
+        // /dashboard/all (la signature du service est partagée avec l'assistant IA).
+        var healthResults = DashboardService.ScopedHealthResults(
+            await _healthService.CalculateAllScoresAsync(companyId), widgetScope);
         var healthyVehicles = healthResults
             .Where(h => h.Score >= 60)
             .OrderByDescending(h => h.Score)
@@ -327,9 +332,13 @@ public class DashboardController : ControllerBase
         // ── Immobilized vehicles (from maintenance schedules overdue/critical + vehicle status) ──
         // Modèle désactivé exclu comme dans /vehicle-maintenance/alerts et /stats :
         // le recalcul des statuts l'ignore, son statut est figé (recette GPA, DEF-016).
-        var immobSchedules = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+        // Portée : cette liste publie elle aussi une PLAQUE.
+        var immobQuery = _context.VehicleMaintenanceSchedules.AsNoTracking()
             .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
-                        (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"))
+                        (s.Status == "overdue" || s.Status == "critical" || s.Status == "due"));
+        if (widgetScope is not null)
+            immobQuery = immobQuery.Where(s => widgetScope.Contains(s.VehicleId));
+        var immobSchedules = await immobQuery
             .Include(s => s.Vehicle)
             .Include(s => s.Template)
             .ToListAsync();
@@ -359,12 +368,16 @@ public class DashboardController : ControllerBase
         var sixMonthsAgo = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(-5), DateTimeKind.Utc);
         var monthEnd = DateTime.SpecifyKind(new DateTime(now.Year, now.Month, 1).AddMonths(1).AddSeconds(-1), DateTimeKind.Utc);
 
-        var immobRaw = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+        var immobHistQuery = _context.VehicleMaintenanceSchedules.AsNoTracking()
             .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
                         (s.Status == "overdue" || s.Status == "critical") &&
                         s.NextDueDate.HasValue &&
                         s.NextDueDate.Value >= sixMonthsAgo &&
-                        s.NextDueDate.Value <= monthEnd)
+                        s.NextDueDate.Value <= monthEnd);
+        // Portée : l'histogramme compte des VÉHICULES immobilisés.
+        if (widgetScope is not null)
+            immobHistQuery = immobHistQuery.Where(s => widgetScope.Contains(s.VehicleId));
+        var immobRaw = await immobHistQuery
             .Select(s => new { s.VehicleId, s.NextDueDate!.Value.Year, s.NextDueDate!.Value.Month })
             .ToListAsync();
 
@@ -381,22 +394,35 @@ public class DashboardController : ControllerBase
         }
 
         // ── Trends (real period comparison) ──
+        // Portée : les deux tendances comparent des kilomètres et des dépenses de
+        // VÉHICULES. Sans filtre, un locataire voyait la tendance de tout le parc au
+        // milieu de cartes, elles, déjà restreintes.
+        IQueryable<Trip> TripsSur(DateTime debut, DateTime fin)
+        {
+            var q = _context.Trips.AsNoTracking()
+                .Where(t => t.CompanyId == companyId && t.StartTime >= debut && t.StartTime <= fin && t.Status == "completed");
+            return widgetScope is not null ? q.Where(t => widgetScope.Contains(t.VehicleId)) : q;
+        }
+
+        IQueryable<VehicleCost> CoutsSur(DateTime debut, DateTime fin)
+        {
+            var q = _context.VehicleCosts.AsNoTracking()
+                .Where(c => c.CompanyId == companyId && c.Date >= debut && c.Date <= fin);
+            return widgetScope is not null ? q.Where(c => widgetScope.Contains(c.VehicleId)) : q;
+        }
+
         // Mileage trend: compare current vs previous period trip distances
-        var currentMileage = await _context.Trips.AsNoTracking()
-            .Where(t => t.CompanyId == companyId && t.StartTime >= periodStart && t.StartTime <= periodEnd && t.Status == "completed")
+        var currentMileage = await TripsSur(periodStart, periodEnd)
             .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
-        var prevMileage = await _context.Trips.AsNoTracking()
-            .Where(t => t.CompanyId == companyId && t.StartTime >= prevStart && t.StartTime <= prevEnd && t.Status == "completed")
+        var prevMileage = await TripsSur(prevStart, prevEnd)
             .Select(t => (decimal?)t.DistanceKm).SumAsync() ?? 0m;
         var mileageTrend = prevMileage > 0 ? Math.Round((double)(currentMileage - prevMileage) / (double)prevMileage * 100, 1) : 0;
 
         // Cost trend: compare current vs previous period costs
         // Crédits déduits (avoir, remboursement d'assurance) : additionnés bruts, ils
         // faisaient MONTER la tendance des coûts du mois où le fournisseur remboursait.
-        var currentCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= periodStart && c.Date <= periodEnd));
-        var prevCost = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts.AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= prevStart && c.Date <= prevEnd));
+        var currentCost = await VehicleCostCategory.SignedTotalAsync(CoutsSur(periodStart, periodEnd));
+        var prevCost = await VehicleCostCategory.SignedTotalAsync(CoutsSur(prevStart, prevEnd));
         var costTrend = prevCost > 0 ? Math.Round((double)(currentCost - prevCost) / (double)prevCost * 100, 1) : 0;
 
         var result = new
@@ -570,6 +596,25 @@ public class DashboardController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Périodes nommées acceptées par /api/dashboard/all (cf. DashboardService.GetPeriodRange).</summary>
+    private static readonly string[] AllowedPeriods = { "today", "yesterday", "week", "month", "quarter", "year" };
+
+    /// <summary>
+    /// Fragment « période » de la clé de cache, ramené à une valeur CONNUE.
+    /// La valeur brute arrive de la query string et entrait telle quelle dans la
+    /// clé : n'importe quelle chaîne créait donc son entrée de cache (et le calcul
+    /// qui va avec), alors que GetPeriodRange retombe de toute façon sur le mois
+    /// pour une valeur qu'elle ne connaît pas — deux clés pour un seul contenu.
+    /// Liste blanche, donc, et même repli « month » que GetPeriodRange.
+    /// La plage personnalisée est RECONSTRUITE plus haut à partir de deux dates déjà
+    /// analysées (custom_yyyyMMdd_yyyyMMdd) : elle est sûre par construction.
+    /// </summary>
+    internal static string CacheKeyPeriod(string period, bool isCustomRange)
+    {
+        if (isCustomRange) return period;
+        return AllowedPeriods.Contains(period) ? period : "month";
+    }
+
     /// <summary>
     /// Unified dashboard endpoint — returns ALL data in a single call.
     /// Replaces 9+ separate HTTP requests for much faster dashboard loading.
@@ -603,7 +648,10 @@ public class DashboardController : ControllerBase
             period = $"custom_{fromD:yyyyMMdd}_{toD:yyyyMMdd}";
         }
 
-        var cacheKey = isAdmin ? $"dashboard_all_{companyId}_{period}" : $"dashboard_all_{companyId}_{userId}_{period}";
+        // La période entre dans la CLÉ DE CACHE : elle est ramenée à une valeur
+        // connue avant d'y être concaténée (voir CacheKeyPeriod).
+        var keyPeriod = CacheKeyPeriod(period, isCustomRange);
+        var cacheKey = isAdmin ? $"dashboard_all_{companyId}_{keyPeriod}" : $"dashboard_all_{companyId}_{userId}_{keyPeriod}";
 
         // Cache COALESCÉ (anti-stampede) : un seul recalcul par clé, même sous
         // polling concurrent d'une même société. Le calcul lui-même vit dans
@@ -671,14 +719,21 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetDashboardStats()
     {
         var companyId = GetCompanyId();
+        var userId = GetUserId();
+        var ct = HttpContext.RequestAborted;
         var today = DateTime.UtcNow.Date;
         var thisMonth = DateTime.SpecifyKind(new DateTime(today.Year, today.Month, 1), DateTimeKind.Utc);
 
+        // Portée véhicules — MÊME règle à trois états que /dashboard/all :
+        //   null = administrateur, aucun filtre ; liste non vide = ses véhicules ;
+        //   liste VIDE = il ne voit RIEN (surtout pas l'absence de filtre).
+        // Cette route « legacy » comptait toute la flotte de la société : elle
+        // rouvrait donc, par une autre URL, la fuite HERTZ que /dashboard/all venait
+        // d'être corrigée pour fermer.
+        var scopeIds = await AccessibleVehicleIdsAsync(ct);
+
         // Vehicle stats with real-time GPS classification
-        var vehicles = await _context.Vehicles
-            .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
-            .ToListAsync();
+        var vehicles = await DashboardService.StatsVehiclesAsync(_context, companyId, scopeIds, ct);
 
         var totalVehicles = vehicles.Count;
         var vehiclesWithGps = vehicles.Count(v => v.GpsDeviceId.HasValue);
@@ -721,6 +776,9 @@ public class DashboardController : ControllerBase
         var onlineDevices = movingCount + ignitionOnCount;
 
         // Driver stats — drivers are a standalone entity, not users.
+        // VOLONTAIREMENT à l'échelle de la société, hors portée véhicules : un
+        // conducteur n'appartient pas à un véhicule (il en change), et ce compteur ne
+        // publie ni plaque ni nom. Le cloisonner demanderait une règle métier à part.
         // "Employees" (admin staff tagged with EmployeeRole == "employee") are still counted here
         // because the dashboard groups fleet workforce (drivers + non-admin employees).
         var driversFromDriverTable = await _context.Drivers
@@ -743,66 +801,12 @@ public class DashboardController : ControllerBase
             .CountAsync();
         var activeDrivers = activeDriversFromDriverTable + activeEmployeesFromUserTable;
 
-        // Alert stats - server-side counts with subquery
-        var unresolvedAlerts = await _context.GpsAlerts
-            .AsNoTracking()
-            .Where(a => a.VehicleId.HasValue && 
-                        a.Vehicle!.CompanyId == companyId && 
-                        !a.Resolved)
-            .CountAsync();
-
-        var alertsToday = await _context.GpsAlerts
-            .AsNoTracking()
-            .Where(a => a.VehicleId.HasValue && 
-                        a.Vehicle!.CompanyId == companyId && 
-                        a.Timestamp >= today)
-            .CountAsync();
-
-        // Maintenance stats (from VehicleMaintenanceSchedules — the active system)
-        // Même périmètre que /vehicle-maintenance/stats : ni pause, ni modèle désactivé.
-        var upcomingMaintenance = await _context.VehicleMaintenanceSchedules
-            .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
-                        (s.Status == "upcoming" || s.Status == "due"))
-            .CountAsync();
-
-        var overdueMaintenance = await _context.VehicleMaintenanceSchedules
-            .AsNoTracking()
-            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
-                        (s.Status == "overdue" || s.Status == "critical"))
-            .CountAsync();
-
-        // Cost stats this month — net des crédits (avoir, remboursement d'assurance).
-        var costsThisMonth = await VehicleCostCategory.SignedTotalAsync(_context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth));
-
-        var fuelCostsThisMonth = await _context.VehicleCosts
-            .AsNoTracking()
-            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= thisMonth)
-            .SumAsync(c => c.Amount);
-
-        // Trip stats today
-        var tripsToday = await _context.Trips
-            .AsNoTracking()
-            .Where(t => t.CompanyId == companyId && t.StartTime >= today)
-            .CountAsync();
-
-        var distanceToday = await _context.Trips
-            .AsNoTracking()
-            .Where(t => t.CompanyId == companyId && t.StartTime >= today && t.Status == "completed")
-            .SumAsync(t => t.DistanceKm);
-
-        // Geofence stats
-        var activeGeofences = await _context.Geofences
-            .AsNoTracking()
-            .Where(g => g.CompanyId == companyId && g.IsActive)
-            .CountAsync();
-
-        var geofenceEventsToday = await _context.GeofenceEvents
-            .AsNoTracking()
-            .Where(e => e.Geofence!.CompanyId == companyId && e.Timestamp >= today)
-            .CountAsync();
+        // Alertes, entretiens, coûts, trajets et géozones : tous rattachés à un
+        // VÉHICULE, donc tous cloisonnés sur la portée (voir StatsCountsAsync — les
+        // géozones y suivent en plus la règle du 23/09/2026 : rattachement au parc de
+        // l'appelant et permission Géofences).
+        var counts = await DashboardService.StatsCountsAsync(
+            _context, companyId, userId, scopeIds, today, thisMonth, ct);
 
         return Ok(new
         {
@@ -825,28 +829,28 @@ public class DashboardController : ControllerBase
             },
             Alerts = new
             {
-                Unresolved = unresolvedAlerts,
-                Today = alertsToday
+                Unresolved = counts.UnresolvedAlerts,
+                Today = counts.AlertsToday
             },
             Maintenance = new
             {
-                Upcoming = upcomingMaintenance,
-                Overdue = overdueMaintenance
+                Upcoming = counts.UpcomingMaintenance,
+                Overdue = counts.OverdueMaintenance
             },
             Costs = new
             {
-                ThisMonth = costsThisMonth,
-                FuelThisMonth = fuelCostsThisMonth
+                ThisMonth = counts.CostsThisMonth,
+                FuelThisMonth = counts.FuelCostsThisMonth
             },
             Trips = new
             {
-                Today = tripsToday,
-                DistanceToday = distanceToday
+                Today = counts.TripsToday,
+                DistanceToday = counts.DistanceToday
             },
             Geofences = new
             {
-                Active = activeGeofences,
-                EventsToday = geofenceEventsToday
+                Active = counts.ActiveGeofences,
+                EventsToday = counts.GeofenceEventsToday
             }
         });
     }
@@ -884,43 +888,23 @@ public class DashboardController : ControllerBase
     public async Task<ActionResult> GetRecentActivity([FromQuery] int limit = 20)
     {
         var companyId = GetCompanyId();
-        // Get recent alerts - use navigation property instead of in-memory ID list
-        var recentAlerts = await _context.GpsAlerts
-            .AsNoTracking()
-            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId)
-            .OrderByDescending(a => a.Timestamp)
-            .Take(limit)
-            .Select(a => new
-            {
-                Type = "alert",
-                a.Id,
-                a.Message,
-                a.Timestamp,
-                VehicleName = a.Vehicle != null ? a.Vehicle.Name : null
-            })
-            .ToListAsync();
+        var userId = GetUserId();
+        var ct = HttpContext.RequestAborted;
 
-        // Get recent geofence events
-        var recentGeofenceEvents = await _context.GeofenceEvents
-            .AsNoTracking()
-            .Where(e => e.Vehicle!.CompanyId == companyId)
-            .OrderByDescending(e => e.Timestamp)
-            .Take(limit)
-            .Select(e => new
-            {
-                Type = "geofence",
-                e.Id,
-                Message = $"{e.Type} - {e.Geofence!.Name}",
-                e.Timestamp,
-                VehicleName = e.Vehicle != null ? e.Vehicle.Name : null
-            })
-            .ToListAsync();
+        // Portée véhicules — même règle à trois états que partout ailleurs. Cette
+        // route refaisait la requête du bloc « Alertes » du tableau de bord, sans
+        // portée et en publiant le NOM DU VÉHICULE : elle rouvrait la fuite HERTZ par
+        // une autre URL. Le commentaire « LEGACY ENDPOINTS » ne veut pas dire morte :
+        // le front l'appelle (api.service.ts).
+        var scopeIds = await AccessibleVehicleIdsAsync(ct);
 
-        var activity = recentAlerts
-            .Cast<object>()
-            .Concat(recentGeofenceEvents)
-            .OrderByDescending(a => ((dynamic)a).Timestamp)
-            .Take(limit);
+        // `limit` arrive brut de la query string : un `?limit=-1` descendait jusqu'aux
+        // Take() du service et faisait un `LIMIT -1` refusé par PostgreSQL (500), un
+        // `?limit=1000000` matérialisait deux fois un million de lignes d'alertes.
+        var limite = DashboardService.BornerLimiteActivite(limit);
+
+        var activity = await DashboardService.RecentActivityAsync(
+            _context, companyId, userId, scopeIds, limite, ct);
 
         return Ok(activity);
     }

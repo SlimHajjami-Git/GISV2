@@ -166,8 +166,12 @@ public class DriverAppController : ControllerBase
         {
             tour.OpenedAt = DateTime.UtcNow;
             await _context.SaveChangesAsync(ct);
-            await _hub.Clients.Group($"company_{tour.CompanyId}")
-                .SendAsync("TourOpened", new { tourId = tour.Id, openedAt = tour.OpenedAt }, ct);
+            // Les quatre diffusions de ce contrôleur partaient au groupe SOCIÉTÉ, que
+            // tout le monde rejoint : chez un loueur, chaque locataire apprenait le nom
+            // des tournées des autres, leurs étapes et leurs heures d'arrivée. Une
+            // tournée porte un véhicule : administrateurs + portée de ce véhicule.
+            await DiffusionTournees.EnvoyerAsync(_hub, tour, "TourOpened",
+                new { tourId = tour.Id, openedAt = tour.OpenedAt }, ct);
         }
         return NoContent();
     }
@@ -216,7 +220,7 @@ public class DriverAppController : ControllerBase
             tour.TrackingSourceSince = now;
             await _context.SaveChangesAsync(ct);
 
-            await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourStatusChanged", new
+            await DiffusionTournees.EnvoyerAsync(_hub, tour, "TourStatusChanged", new
             {
                 tourId = tour.Id, status = "in_progress", tourName = tour.Name,
                 message = $"Le chauffeur est parti : {tour.Name}", timestamp = declaredAt
@@ -320,7 +324,7 @@ public class DriverAppController : ControllerBase
 
         if (changed)
         {
-            await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourWaypointCompleted", new
+            await DiffusionTournees.EnvoyerAsync(_hub, tour, "TourWaypointCompleted", new
             {
                 tourId = tour.Id, waypointId = wp.Id, waypointName = wp.Name ?? wp.Type, waypointType = wp.Type,
                 waypointStatus = "completed", actualArrivalTime = wp.ActualArrivalTime,
@@ -354,7 +358,7 @@ public class DriverAppController : ControllerBase
             }
             await _context.SaveChangesAsync(ct);
 
-            await _hub.Clients.Group($"company_{tour.CompanyId}").SendAsync("TourStatusChanged", new
+            await DiffusionTournees.EnvoyerAsync(_hub, tour, "TourStatusChanged", new
             {
                 tourId = tour.Id, status = "completed", tourName = tour.Name,
                 message = $"Tournée terminée par le chauffeur : {tour.Name}",

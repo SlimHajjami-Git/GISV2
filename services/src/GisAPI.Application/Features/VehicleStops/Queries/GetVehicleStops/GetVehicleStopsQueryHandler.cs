@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +69,21 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
             .Include(s => s.Geofence)
             .Where(s => s.CompanyId == companyId);
 
+        // Chez un LOUEUR (HERTZ), le filtre société ne cloisonne RIEN : les véhicules
+        // d'une même société sont loués à des clients différents. Un arrêt publie
+        // l'heure, la durée, les coordonnées, l'adresse et la plaque — l'écran « Arrêts »
+        // rendait donc tout le parc. La portée s'applique AVANT le filtre optionnel par
+        // véhicule, qui ne fait ensuite que l'INTERSECTER : le front n'envoie pas
+        // vehicleId quand aucun véhicule n'est sélectionné.
+        // TROIS états : null = administrateur, aucun filtre ; liste non vide = ses
+        // véhicules ; liste VIDE = il ne voit RIEN.
+        var portee = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(s => ids.Contains(s.VehicleId));
+        }
+
         if (request.VehicleId.HasValue)
         {
             query = query.Where(s => s.VehicleId == request.VehicleId.Value);
@@ -129,6 +145,12 @@ public class GetVehicleStopsQueryHandler : IRequestHandler<GetVehicleStopsQuery,
         // administrateurs système, un vehicleId d'une autre société aurait sinon
         // donné accès à ses positions GPS.
         var companyId = _tenantService.CompanyId ?? 0;
+
+        // Second passage : celui-ci reconstitue les arrêts depuis les POSITIONS GPS du
+        // boîtier. Sans la portée, il suffisait de changer l'identifiant dans l'URL pour
+        // reconstruire les arrêts du véhicule loué à un autre client (IDOR).
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, request.VehicleId.Value, ct))
+            return new List<VehicleStopDto>();
 
         var vehicle = await _context.Vehicles
             .AsNoTracking()

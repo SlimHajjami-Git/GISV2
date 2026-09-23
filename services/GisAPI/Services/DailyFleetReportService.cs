@@ -17,6 +17,11 @@ namespace GisAPI.Services;
 /// HTML summary body plus an Excel (.xlsx) attachment listing per-vehicle
 /// activity.</para>
 ///
+/// <para><b>Périmètre</b> : le contenu n'est PAS le même pour tout le monde. Il
+/// est borné aux véhicules que chaque destinataire a le droit de voir, et un
+/// destinataire qui n'en voit aucun ne reçoit rien du tout — voir
+/// <see cref="LotsAsync"/>.</para>
+///
 /// <para><b>Timezone</b>: the platform stores GPS timestamps in UTC that are
 /// actually Tunisia local (UTC+1) — the report query already shifts its window
 /// by that offset. We compute "TN now" as <c>DateTime.UtcNow.AddHours(1)</c>
@@ -102,10 +107,13 @@ public class DailyFleetReportService : BackgroundService
 
     /// <summary>
     /// Destinataires du rapport journalier ET hebdomadaire d'une société : les comptes actifs
-    /// qui l'ont demandé, jamais un compte chauffeur. Le rapport couvre TOUTE la flotte ;
-    /// un salarié passé chauffeur gardait sinon son abonnement (il ne peut plus le couper,
-    /// /api/reports lui est fermé). DriverAccountRules.Apply coupe déjà le drapeau : ce
-    /// filtre est la ceinture, comme dans NotificationAudience.
+    /// qui l'ont demandé, jamais un compte chauffeur. Un salarié passé chauffeur gardait
+    /// sinon son abonnement (il ne peut plus le couper, /api/reports lui est fermé) :
+    /// DriverAccountRules.Apply coupe déjà le drapeau, ce filtre est la ceinture, comme dans
+    /// NotificationAudience.
+    ///
+    /// <para>Être destinataire ne dit RIEN de ce qu'on a le droit de voir : le contenu envoyé
+    /// à chacun est borné à son périmètre véhicules par <see cref="LotsAsync"/>.</para>
     /// </summary>
     internal static Task<List<User>> RecipientsAsync(IGisDbContext context, int companyId, CancellationToken ct) =>
         context.Users
@@ -119,7 +127,103 @@ public class DailyFleetReportService : BackgroundService
                      && u.Email != "")
             .ToListAsync(ct);
 
-    private async Task SendAllAsync(IServiceScope scope, CancellationToken ct)
+    /// <summary>
+    /// Un lot d'envoi : un périmètre de véhicules, et les destinataires qui le partagent.
+    /// Le contenu (PDF ou classeur) n'est calculé qu'UNE fois par lot, pas une fois par personne.
+    /// </summary>
+    internal sealed record LotRapport(int[] VehicleIds, List<User> Destinataires);
+
+    /// <summary>
+    /// Périmètre véhicules de CHAQUE destinataire, puis regroupement de ceux qui partagent
+    /// exactement le même.
+    ///
+    /// <para>Constat : le service bâtissait le contenu sur tout le parc de la société et
+    /// envoyait le MÊME fichier à tout le monde. Chez un loueur, dont chaque locataire a un
+    /// compte restreint à ses propres véhicules, un locataire affecté à 2 véhicules recevait
+    /// chaque matin l'activité des 307 du parc. Le cloisonnement par SOCIÉTÉ est un invariant
+    /// EF qu'on ne peut pas oublier ; le cloisonnement par UTILISATEUR est une convention
+    /// recopiée à la main — et elle avait été oubliée ici.</para>
+    ///
+    /// <para>Trois états, jamais confondus (même sémantique que
+    /// <c>VehicleScope.AccessibleVehicleIdsAsync</c> et <see cref="DashboardService.ScopeIdsAsync"/>) :</para>
+    /// <list type="bullet">
+    ///   <item><description><c>null</c> = administrateur : tout le parc, <b>y compris quand il
+    ///     n'a aucune affectation</b> (cas réel : une administratrice de loueur a 0 ligne dans
+    ///     UserVehicles et doit continuer à tout voir) ;</description></item>
+    ///   <item><description>liste non vide : ses véhicules, et eux seuls ;</description></item>
+    ///   <item><description>liste VIDE = non-admin sans affectation : il ne voit rien, donc
+    ///     <b>aucun envoi</b> — surtout pas le parc entier.</description></item>
+    /// </list>
+    /// </summary>
+    internal static async Task<List<LotRapport>> LotsAsync(
+        IGisDbContext context,
+        List<User> destinataires,
+        int[] vehiculesSociete,
+        CancellationToken ct)
+    {
+        // Drapeau administrateur relu en base, comme NotificationAudience : administrateur de
+        // société OU rôle système. Requête à part plutôt qu'un Include sur la navigation Role :
+        // celle-ci est requise, et la jointure INTERNE écarterait en silence un destinataire
+        // dont la ligne de rôle manque. Ici on veut l'inverse : il reste destinataire, simplement
+        // sans le privilège « tout le parc ».
+        var rolesAdmin = (await context.Roles
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(r => r.IsCompanyAdmin || r.IsSystemRole)
+            .Select(r => r.Id)
+            .ToListAsync(ct)).ToHashSet();
+
+        // Clé du lot = les identifiants de son périmètre. Les véhicules gardent l'ordre du parc,
+        // donc deux destinataires de même périmètre produisent forcément la même clé.
+        var lots = new Dictionary<string, LotRapport>();
+
+        foreach (var user in destinataires)
+        {
+            var portee = await DashboardService.ScopeIdsAsync(
+                context, rolesAdmin.Contains(user.RoleId), user.Id, ct);
+
+            int[] vehicules;
+            if (portee is null)
+            {
+                vehicules = vehiculesSociete;
+            }
+            else
+            {
+                // Intersection avec le parc : une affectation restée derrière un véhicule
+                // supprimé ou déplacé ne doit jamais faire sortir du périmètre société.
+                var affectes = portee.ToHashSet();
+                vehicules = vehiculesSociete.Where(affectes.Contains).ToArray();
+            }
+
+            // Rien de visible : on n'envoie pas. Un rapport vide serait un envoi de trop, et
+            // le parc entier serait exactement la fuite qu'on ferme.
+            if (vehicules.Length == 0)
+                continue;
+
+            var cle = string.Join(',', vehicules);
+            if (lots.TryGetValue(cle, out var lot))
+                lot.Destinataires.Add(user);
+            else
+                lots[cle] = new LotRapport(vehicules, new List<User> { user });
+        }
+
+        return lots.Values.ToList();
+    }
+
+    /// <summary>
+    /// Trace les destinataires écartés faute de véhicule visible : sans cette ligne, un client
+    /// qui ne reçoit plus rien n'aurait aucune explication dans les journaux.
+    /// </summary>
+    private void JournaliserIgnores(string rapport, Societe societe, int destinataires, List<LotRapport> lots)
+    {
+        var ignores = destinataires - lots.Sum(l => l.Destinataires.Count);
+        if (ignores > 0)
+            _logger.LogInformation(
+                "{Rapport} : {Ignores} destinataire(s) sans véhicule visible, aucun envoi pour eux (société {Company})",
+                rapport, ignores, societe.Name);
+    }
+
+    internal async Task SendAllAsync(IServiceScope scope, CancellationToken ct)
     {
         // Yesterday, TN. The report handler shifts the day window by the UTC+1
         // offset internally, so we pass the TN calendar date here.
@@ -155,50 +259,63 @@ public class DailyFleetReportService : BackgroundService
                 if (users.Count == 0)
                     continue;
 
-                var vehicleIds = await context.Vehicles
+                // Ordonné : l'ordre du parc rend les clés de lot stables (voir LotsAsync).
+                var vehiculesSociete = await context.Vehicles
                     .IgnoreQueryFilters()
                     .AsNoTracking()
                     .Where(v => v.CompanyId == societe.Id)
+                    .OrderBy(v => v.Id)
                     .Select(v => v.Id)
                     .ToArrayAsync(ct);
 
-                if (vehicleIds.Length == 0)
+                if (vehiculesSociete.Length == 0)
+                    continue;
+
+                // Un contenu par PÉRIMÈTRE, plus un contenu unique par société.
+                var lots = await LotsAsync(context, users, vehiculesSociete, ct);
+                JournaliserIgnores("Rapport journalier", societe, users.Count, lots);
+
+                if (lots.Count == 0)
                     continue;
 
                 companiesProcessed++;
 
-                var reports = await mediator.Send(
-                    new GetDailyActivityReportsQuery(reportDateTn, vehicleIds), ct);
-
-                var htmlBody = BuildHtmlBody(societe, reportDateTn, reports);
-                var pdfBytes = DailyFleetReportPdf.Build(societe, reportDateTn, reports);
                 var subject = $"Rapport journalier flotte {societe.Name} — {reportDateTn:dd/MM/yyyy}";
                 var fileName = $"rapport-journalier-{reportDateTn:yyyy-MM-dd}.pdf";
 
-                foreach (var user in users)
+                foreach (var lot in lots)
                 {
-                    try
+                    var reports = await mediator.Send(
+                        new GetDailyActivityReportsQuery(reportDateTn, lot.VehicleIds), ct);
+
+                    var htmlBody = BuildHtmlBody(societe, reportDateTn, reports);
+                    var pdfBytes = DailyFleetReportPdf.Build(societe, reportDateTn, reports);
+
+                    foreach (var user in lot.Destinataires)
                     {
-                        await emailService.SendEmailWithAttachmentAsync(
-                            user.Email,
-                            user.FullName,
-                            subject,
-                            htmlBody,
-                            pdfBytes,
-                            fileName,
-                            "application/pdf",
-                            ct);
-                        emailsSent++;
-                        _logger.LogInformation(
-                            "Daily fleet report sent to {Email} (société {Company})",
-                            user.Email, societe.Name);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        emailsFailed++;
-                        _logger.LogError(ex,
-                            "Failed to send daily fleet report to {Email} (société {Company})",
-                            user.Email, societe.Name);
+                        try
+                        {
+                            await emailService.SendEmailWithAttachmentAsync(
+                                user.Email,
+                                user.FullName,
+                                subject,
+                                htmlBody,
+                                pdfBytes,
+                                fileName,
+                                "application/pdf",
+                                ct);
+                            emailsSent++;
+                            _logger.LogInformation(
+                                "Daily fleet report sent to {Email} ({Vehicles} véhicule(s), société {Company})",
+                                user.Email, lot.VehicleIds.Length, societe.Name);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            emailsFailed++;
+                            _logger.LogError(ex,
+                                "Failed to send daily fleet report to {Email} (société {Company})",
+                                user.Email, societe.Name);
+                        }
                     }
                 }
 
@@ -225,7 +342,7 @@ public class DailyFleetReportService : BackgroundService
     /// week per vehicle and emails it to the opted-in users (same opt-in flag as the
     /// daily report). The per-vehicle daily query is summed over the 7 days.
     /// </summary>
-    private async Task SendWeeklyAsync(IServiceScope scope, CancellationToken ct)
+    internal async Task SendWeeklyAsync(IServiceScope scope, CancellationToken ct)
     {
         var tnNow = DateTime.UtcNow.AddHours(1);
         var weekEndTn = tnNow.Date.AddDays(-1);            // dimanche (la veille)
@@ -250,95 +367,63 @@ public class DailyFleetReportService : BackgroundService
                 if (users.Count == 0)
                     continue;
 
-                var vehicleIds = await context.Vehicles
+                var vehiculesSociete = await context.Vehicles
                     .IgnoreQueryFilters()
                     .AsNoTracking()
                     .Where(v => v.CompanyId == societe.Id)
+                    .OrderBy(v => v.Id)
                     .Select(v => v.Id)
                     .ToArrayAsync(ct);
-                if (vehicleIds.Length == 0)
+                if (vehiculesSociete.Length == 0)
+                    continue;
+
+                // Même cloisonnement que le rapport journalier : le récap hebdomadaire part des
+                // mêmes destinataires et doit s'arrêter aux mêmes véhicules.
+                var lots = await LotsAsync(context, users, vehiculesSociete, ct);
+                JournaliserIgnores("Rapport hebdomadaire", societe, users.Count, lots);
+
+                if (lots.Count == 0)
                     continue;
 
                 companiesProcessed++;
 
-                // The daily report query is per-day; aggregate the 7 days per vehicle.
-                var agg = new Dictionary<int, DailyActivityReportDto>();
-                for (var day = weekStartTn; day <= weekEndTn; day = day.AddDays(1))
-                {
-                    var dayReports = await mediator.Send(
-                        new GetDailyActivityReportsQuery(day, vehicleIds), ct);
-                    foreach (var dr in dayReports)
-                    {
-                        if (!agg.TryGetValue(dr.VehicleId, out var acc))
-                        {
-                            acc = new DailyActivityReportDto
-                            {
-                                VehicleId = dr.VehicleId,
-                                VehicleName = dr.VehicleName,
-                                Plate = dr.Plate,
-                                DriverName = dr.DriverName,
-                                ReportDate = weekEndTn,
-                                HasActivity = false,
-                                Summary = new DailySummaryDto()
-                            };
-                            agg[dr.VehicleId] = acc;
-                        }
-                        if (string.IsNullOrEmpty(acc.Plate) && !string.IsNullOrEmpty(dr.Plate)) acc.Plate = dr.Plate;
-                        if (string.IsNullOrEmpty(acc.DriverName) && !string.IsNullOrEmpty(dr.DriverName)) acc.DriverName = dr.DriverName;
-                        if (dr.HasActivity)
-                        {
-                            acc.HasActivity = true;
-                            acc.Summary.TotalDistanceKm += dr.Summary.TotalDistanceKm;
-                            acc.Summary.TotalDrivingSeconds += dr.Summary.TotalDrivingSeconds;
-                            acc.Summary.TotalStoppedSeconds += dr.Summary.TotalStoppedSeconds;
-                            acc.Summary.TotalActiveSeconds += dr.Summary.TotalActiveSeconds;
-                            acc.Summary.StopCount += dr.Summary.StopCount;
-                            acc.Summary.DriveCount += dr.Summary.DriveCount;
-                            acc.Summary.FuelRefillCount += dr.Summary.FuelRefillCount;
-                            if (dr.Summary.MaxSpeedKph > acc.Summary.MaxSpeedKph)
-                                acc.Summary.MaxSpeedKph = dr.Summary.MaxSpeedKph;
-                        }
-                    }
-                }
-
-                // Weekly average speed = total distance / total driving time.
-                foreach (var acc in agg.Values)
-                {
-                    var hrs = acc.Summary.TotalDrivingSeconds / 3600.0;
-                    acc.Summary.AvgSpeedKph = hrs > 0 ? Math.Round(acc.Summary.TotalDistanceKm / hrs, 1) : 0;
-                }
-
-                var reports = agg.Values.ToList();
                 var periodLabel = $"Semaine du {weekStartTn:dd/MM/yyyy} au {weekEndTn:dd/MM/yyyy}";
-                var htmlBody = BuildHtmlBody(societe, weekEndTn, reports, "Rapport hebdomadaire", periodLabel);
-                var excelBytes = BuildExcel(societe, weekEndTn, reports, "Rapport hebdomadaire flotte", periodLabel);
                 var subject = $"Rapport hebdomadaire flotte {societe.Name} — {weekStartTn:dd/MM} au {weekEndTn:dd/MM/yyyy}";
                 var fileName = $"rapport-hebdo-{weekStartTn:yyyy-MM-dd}_{weekEndTn:yyyy-MM-dd}.xlsx";
 
-                foreach (var user in users)
+                foreach (var lot in lots)
                 {
-                    try
+                    var reports = await AggregerSemaineAsync(
+                        mediator, lot.VehicleIds, weekStartTn, weekEndTn, ct);
+
+                    var htmlBody = BuildHtmlBody(societe, weekEndTn, reports, "Rapport hebdomadaire", periodLabel);
+                    var excelBytes = BuildExcel(societe, weekEndTn, reports, "Rapport hebdomadaire flotte", periodLabel);
+
+                    foreach (var user in lot.Destinataires)
                     {
-                        await emailService.SendEmailWithAttachmentAsync(
-                            user.Email,
-                            user.FullName,
-                            subject,
-                            htmlBody,
-                            excelBytes,
-                            fileName,
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            ct);
-                        emailsSent++;
-                        _logger.LogInformation(
-                            "Weekly fleet report sent to {Email} (société {Company})",
-                            user.Email, societe.Name);
-                    }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
-                    {
-                        emailsFailed++;
-                        _logger.LogError(ex,
-                            "Failed to send weekly fleet report to {Email} (société {Company})",
-                            user.Email, societe.Name);
+                        try
+                        {
+                            await emailService.SendEmailWithAttachmentAsync(
+                                user.Email,
+                                user.FullName,
+                                subject,
+                                htmlBody,
+                                excelBytes,
+                                fileName,
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                ct);
+                            emailsSent++;
+                            _logger.LogInformation(
+                                "Weekly fleet report sent to {Email} ({Vehicles} véhicule(s), société {Company})",
+                                user.Email, lot.VehicleIds.Length, societe.Name);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            emailsFailed++;
+                            _logger.LogError(ex,
+                                "Failed to send weekly fleet report to {Email} (société {Company})",
+                                user.Email, societe.Name);
+                        }
                     }
                 }
 
@@ -356,6 +441,67 @@ public class DailyFleetReportService : BackgroundService
         _logger.LogInformation(
             "WeeklyFleetReport: {Companies} compan(y/ies), {Sent} sent, {Failed} failed for week {Start:dd/MM}-{End:dd/MM/yyyy}",
             companiesProcessed, emailsSent, emailsFailed, weekStartTn, weekEndTn);
+    }
+
+    /// <summary>
+    /// Somme des 7 jours, par véhicule, pour le périmètre passé. La requête de rapport est
+    /// journalière : on la rejoue jour par jour et on agrège. Extrait de SendWeeklyAsync pour
+    /// être rejoué tel quel sur CHAQUE périmètre (un récap par lot de destinataires).
+    /// </summary>
+    private static async Task<List<DailyActivityReportDto>> AggregerSemaineAsync(
+        IMediator mediator,
+        int[] vehicleIds,
+        DateTime weekStartTn,
+        DateTime weekEndTn,
+        CancellationToken ct)
+    {
+        var agg = new Dictionary<int, DailyActivityReportDto>();
+        for (var day = weekStartTn; day <= weekEndTn; day = day.AddDays(1))
+        {
+            var dayReports = await mediator.Send(
+                new GetDailyActivityReportsQuery(day, vehicleIds), ct);
+            foreach (var dr in dayReports)
+            {
+                if (!agg.TryGetValue(dr.VehicleId, out var acc))
+                {
+                    acc = new DailyActivityReportDto
+                    {
+                        VehicleId = dr.VehicleId,
+                        VehicleName = dr.VehicleName,
+                        Plate = dr.Plate,
+                        DriverName = dr.DriverName,
+                        ReportDate = weekEndTn,
+                        HasActivity = false,
+                        Summary = new DailySummaryDto()
+                    };
+                    agg[dr.VehicleId] = acc;
+                }
+                if (string.IsNullOrEmpty(acc.Plate) && !string.IsNullOrEmpty(dr.Plate)) acc.Plate = dr.Plate;
+                if (string.IsNullOrEmpty(acc.DriverName) && !string.IsNullOrEmpty(dr.DriverName)) acc.DriverName = dr.DriverName;
+                if (dr.HasActivity)
+                {
+                    acc.HasActivity = true;
+                    acc.Summary.TotalDistanceKm += dr.Summary.TotalDistanceKm;
+                    acc.Summary.TotalDrivingSeconds += dr.Summary.TotalDrivingSeconds;
+                    acc.Summary.TotalStoppedSeconds += dr.Summary.TotalStoppedSeconds;
+                    acc.Summary.TotalActiveSeconds += dr.Summary.TotalActiveSeconds;
+                    acc.Summary.StopCount += dr.Summary.StopCount;
+                    acc.Summary.DriveCount += dr.Summary.DriveCount;
+                    acc.Summary.FuelRefillCount += dr.Summary.FuelRefillCount;
+                    if (dr.Summary.MaxSpeedKph > acc.Summary.MaxSpeedKph)
+                        acc.Summary.MaxSpeedKph = dr.Summary.MaxSpeedKph;
+                }
+            }
+        }
+
+        // Vitesse moyenne de la semaine = distance totale / temps de conduite total.
+        foreach (var acc in agg.Values)
+        {
+            var hrs = acc.Summary.TotalDrivingSeconds / 3600.0;
+            acc.Summary.AvgSpeedKph = hrs > 0 ? Math.Round(acc.Summary.TotalDistanceKm / hrs, 1) : 0;
+        }
+
+        return agg.Values.ToList();
     }
 
     public static string BuildHtmlBody(Societe societe, DateTime reportDate, List<DailyActivityReportDto> reports, string badgeLabel = "Rapport journalier", string? periodLabel = null)
