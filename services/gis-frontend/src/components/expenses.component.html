@@ -300,15 +300,14 @@
             </div>
             <div class="form-group">
               <label>Catégorie *</label>
-              <select [(ngModel)]="selectedCategory" (change)="onCategoryChange()">
+              <!-- Karim, 23/09/2026 : plus de carburant, entretien, maintenance,
+                   réparation, assurance, visite technique ni vignette ici — chacun
+                   se saisit dans son écran (Carburant, Entretiens, Réparations,
+                   Échéances), qui tient à jour le compteur, les modèles et les
+                   dates. Le filtre de la liste, lui, garde toutes les catégories :
+                   les dépenses déjà enregistrées restent visibles. -->
+              <select [(ngModel)]="selectedCategory">
                 <option value="">Sélectionner...</option>
-                <option value="carburant">⛽ Carburant</option>
-                <option value="entretien">🔧 Entretien</option>
-                <option value="maintenance">🛠️ Maintenance</option>
-                <option value="reparation">🔩 Réparation</option>
-                <option value="insurance">🛡️ Assurance</option>
-                <option value="technical_inspection">📋 Visite technique</option>
-                <option value="tax">💰 Vignette</option>
                 <option value="registration">📄 Carte grise</option>
                 <option value="transport_permit">🚚 Autorisation transport</option>
                 <option value="peage">🛣️ Péage</option>
@@ -324,188 +323,8 @@
             </div>
           </div>
 
-          <!-- CARBURANT -->
-          <div class="category-form" *ngIf="selectedCategory === 'carburant'">
-            <div class="form-section-title">⛽ Détails carburant</div>
-            <div class="form-row-inline">
-              <div class="form-group">
-                <label>Type *</label>
-                <select [(ngModel)]="formFuelTypeId" (change)="onFuelTypeChange()">
-                  @for (ft of fuelTypes; track ft.id) {
-                    <option [value]="ft.id">{{ ft.name }}</option>
-                  }
-                </select>
-              </div>
-              <div class="form-group">
-                <label>Volume (L) *</label>
-                <input type="number" [(ngModel)]="formVolume" min="0" step="0.1">
-              </div>
-              <div class="form-group">
-                <label>Prix/L *</label>
-                <input type="number" [(ngModel)]="formPricePerLiter" min="0" step="0.001">
-              </div>
-            </div>
-            <div class="form-row-inline">
-              <div class="form-group">
-                <label>Station</label>
-                <input type="text" [(ngModel)]="formStation" placeholder="Nom de la station">
-              </div>
-              <div class="form-group">
-                <label>Compteur</label>
-                <input type="number" [(ngModel)]="formOdometerKm" placeholder="Optionnel">
-              </div>
-            </div>
-            <div class="form-total">Total: <strong>{{ calculateFuelTotal() | appCurrency }}</strong></div>
-          </div>
-
-          <!-- ENTRETIEN -->
-          <div class="category-form" *ngIf="selectedCategory === 'entretien'">
-            <div class="form-section-title">🔧 Détails entretien</div>
-            <div class="form-row">
-              <label>Modèle d'entretien</label>
-              <select [(ngModel)]="formTemplateId" *ngIf="!showCreateTemplate">
-                <option value="">Sélectionner un modèle...</option>
-                @for (t of maintenanceTemplates; track t.id) {
-                  <option [value]="t.id">{{ t.name }} ({{ t.category }})</option>
-                }
-              </select>
-              <button class="btn-link" (click)="showCreateTemplate = !showCreateTemplate">
-                {{ showCreateTemplate ? 'Choisir existant' : '+ Créer nouveau modèle' }}
-              </button>
-            </div>
-            <div class="new-template-form" *ngIf="showCreateTemplate">
-              <input type="text" [(ngModel)]="newTemplateName" placeholder="Nom du modèle (ex: Vidange + Filtre)">
-              <select [(ngModel)]="newTemplateCategory">
-                <option value="vidange">Vidange</option>
-                <option value="freins">Freins</option>
-                <option value="pneus">Pneus</option>
-                <option value="filtres">Filtres</option>
-                <option value="revision">Révision</option>
-                <option value="autre">Autre</option>
-              </select>
-            </div>
-            <div class="form-row-inline">
-              <div class="form-group">
-                <label>Main d'œuvre</label>
-                <input type="number" [(ngModel)]="formLaborCost" min="0" step="0.01">
-              </div>
-              <div class="form-group">
-                <label>Pièces</label>
-                <input type="number" [(ngModel)]="formPartsCost" min="0" step="0.01">
-              </div>
-              <div class="form-group">
-                <label>Compteur</label>
-                <input type="number" [(ngModel)]="formMileageAtService">
-              </div>
-            </div>
-            <div class="form-row">
-              <label>Fournisseur/Garage</label>
-              <select [(ngModel)]="formSupplierId">
-                <option value="">Aucun</option>
-                @for (s of suppliers; track s.id) {
-                  <option [value]="s.id">{{ s.name }}</option>
-                }
-              </select>
-            </div>
-            <div class="form-total">Total: <strong>{{ calculateMaintenanceTotal() | appCurrency }}</strong></div>
-          </div>
-
-          <!-- REPARATION -->
-          <div class="category-form" *ngIf="selectedCategory === 'reparation'">
-            <div class="form-section-title">🛠️ Détails réparation</div>
-            <div class="form-row">
-              <label>Description *</label>
-              <input type="text" [(ngModel)]="formDescription" placeholder="Ex: Remplacement radiateur">
-            </div>
-            <div class="form-row-inline">
-              <div class="form-group">
-                <label>Main d'œuvre</label>
-                <input type="number" [(ngModel)]="formLaborCost" min="0" step="0.01">
-              </div>
-              <div class="form-group">
-                <label>N° Facture</label>
-                <input type="text" [(ngModel)]="formRepairReference">
-              </div>
-              <div class="form-group">
-                <label>Fournisseur</label>
-                <select [(ngModel)]="formSupplierId">
-                  <option value="">Aucun</option>
-                  @for (s of suppliers; track s.id) {
-                    <option [value]="s.id">{{ s.name }}</option>
-                  }
-                </select>
-              </div>
-            </div>
-            <div class="parts-section">
-              <div class="parts-header"><span>Pièces détachées</span><button class="btn-add-line" (click)="addRepairPart()">+ Ajouter</button></div>
-              @for (part of repairParts; track $index; let i = $index) {
-                <div class="part-line">
-                  <div class="part-name-wrapper">
-                    <input type="text" [(ngModel)]="part.partName" placeholder="Nom pièce" 
-                           (input)="onPartNameInput(i)" (blur)="hidePartSuggestions()" autocomplete="off">
-                    <div class="part-suggestions" *ngIf="activePartIndex === i && partSuggestions.length > 0">
-                      @for (suggestion of partSuggestions; track suggestion.id) {
-                        <div class="suggestion-item" (mousedown)="selectPartSuggestion(suggestion)">
-                          {{ suggestion.name }}
-                          <span class="suggestion-ref" *ngIf="suggestion.partNumber">{{ suggestion.partNumber }}</span>
-                        </div>
-                      }
-                    </div>
-                  </div>
-                  <input type="text" [(ngModel)]="part.partReference" placeholder="Réf" class="small">
-                  <input type="number" [(ngModel)]="part.quantity" min="1" class="tiny">
-                  <input type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" placeholder="Prix">
-                  <span class="part-subtotal">{{ part.quantity * part.unitPrice | number:'1.2-2' }}</span>
-                  <button class="btn-remove" (click)="removeRepairPart(i)" *ngIf="repairParts.length > 1">×</button>
-                </div>
-              }
-            </div>
-            <div class="form-total">Total: <strong>{{ calculateRepairTotal() | appCurrency }}</strong></div>
-          </div>
-
-          <!-- ASSURANCE -->
-          <div class="category-form" *ngIf="selectedCategory === 'insurance'">
-            <div class="form-section-title">🛡️ Paiement assurance</div>
-            <div class="form-row">
-              <label>Assureur *</label>
-              <select [(ngModel)]="formInsuranceProviderId">
-                <option value="">Sélectionner un assureur...</option>
-                @for (ins of insuranceProviders; track ins.id) {
-                  <option [value]="ins.id">{{ ins.name }}</option>
-                }
-              </select>
-              <button class="btn-link" (click)="showCreateInsurance = !showCreateInsurance">
-                {{ showCreateInsurance ? '✕ Annuler' : '+ Nouvel assureur' }}
-              </button>
-            </div>
-            <div class="new-template-form" *ngIf="showCreateInsurance">
-              <input type="text" [(ngModel)]="newInsuranceName" placeholder="Nom de l'assureur (ex: AXA, Macif...)">
-              <input type="text" [(ngModel)]="newInsurancePhone" placeholder="Téléphone">
-              <button class="btn-add-line" (click)="createInsuranceProvider()">Créer</button>
-            </div>
-            <div class="form-row">
-              <label>Contrat existant</label>
-              <select [(ngModel)]="formContractId">
-                <option value="">Nouveau paiement (sans contrat)</option>
-                @for (c of vehicleContracts; track c.id) {
-                  <option [value]="c.id">{{ c.contractNumber }} - {{ c.provider }} ({{ c.endDate | date:'dd/MM/yyyy' }})</option>
-                }
-              </select>
-            </div>
-            <div class="form-row-inline">
-              <div class="form-group flex-2">
-                <label>Description</label>
-                <input type="text" [(ngModel)]="formDescription" placeholder="Ex: Prime mensuelle, Franchise...">
-              </div>
-              <div class="form-group">
-                <label>Montant *</label>
-                <input type="number" [(ngModel)]="formAmount" min="0" step="0.01">
-              </div>
-            </div>
-          </div>
-
-          <!-- GENERIQUE (péage, stationnement, amende, autre) -->
-          <div class="category-form" *ngIf="selectedCategory && selectedCategory !== 'carburant' && selectedCategory !== 'entretien' && selectedCategory !== 'reparation' && selectedCategory !== 'insurance'">
+          <!-- Un seul bloc pour toutes les catégories : description + montant -->
+          <div class="category-form" *ngIf="selectedCategory">
             <div class="form-section-title">{{ getCategoryIcon(selectedCategory) }} {{ getCategoryLabel(selectedCategory) }}</div>
             <div class="form-row-inline">
               <div class="form-group flex-2">
@@ -518,11 +337,6 @@
               </div>
             </div>
             <p class="xd-hint" *ngIf="selectedCategory === 'credit_note'">Montant en positif : l'avoir est déduit des coûts.</p>
-          </div>
-
-          <div class="form-row" *ngIf="selectedCategory === 'carburant' || selectedCategory === 'entretien'">
-            <label>Notes</label>
-            <textarea [(ngModel)]="formDescription" placeholder="Notes supplémentaires..."></textarea>
           </div>
     </div>
     <p class="save-error" *ngIf="saveError">{{ saveError }}</p>

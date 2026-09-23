@@ -66,7 +66,9 @@ describe('exemples des écrans clients (marché français)', () => {
     expect(source('register.component.ts')).toContain('placeholder="Jean"');
     expect(source('register.component.ts')).toContain('placeholder="Dupont"');
     expect(source('register.component.ts')).toContain('placeholder="Transports Dupont"');
-    expect(source('expenses.component.html')).toContain("(ex: AXA, Macif...)");
+    // L'exemple d'assureur « (ex: AXA, Macif...) » a disparu avec le sous-formulaire
+    // Assurance de l'écran Dépenses (Karim, 23/09/2026) : l'assurance se règle
+    // depuis Échéances. Plus rien à vérifier ici pour cet écran.
     expect(source('tours.component.ts')).toContain('placeholder="Ex: Livraison Lyon - Marseille"');
     expect(source('vehicle-loans.component.ts')).toContain('placeholder="Ex: Lyon"');
     expect(source('vehicles.component.ts')).toContain('chez Peugeot Lyon');
