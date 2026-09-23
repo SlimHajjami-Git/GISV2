@@ -210,7 +210,7 @@ public class DataPortExportImportTests
         ctx.Vehicles.Add(new Vehicle { Id = 1, Name = "Camion 1", Plate = "123 TU 4567", CompanyId = CompanyId, Status = "available" });
         await ctx.SaveChangesAsync();
 
-        var modele = (Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
+        var modele = (await Controleur(ctx).Template()).Should().BeOfType<FileContentResult>().Subject.FileContents;
         using (var wb = new XLWorkbook(new MemoryStream(modele)))
             wb.Worksheets.Select(w => w.Name).Should().Contain("Dépenses");
 
