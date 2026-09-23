@@ -326,7 +326,10 @@ public class RecetteRapportsMineursTests
         ctx.Vehicles.Add(new Vehicle { Id = 20, Name = "Etranger", Plate = "GZ-000-ZZ", CompanyId = 2 });
         await ctx.SaveChangesAsync();
 
-        var controller = new ReportsController(ctx, new Mock<IMediator>(MockBehavior.Strict).Object, null!)
+        // Tenant administrateur : le refus doit venir du cloisonnement SOCIÉTÉ,
+        // que la portée utilisateur (VehicleScope) ne porte pas.
+        var controller = new ReportsController(ctx, new Mock<IMediator>(MockBehavior.Strict).Object, null!,
+            TestDbContextFactory.CreateMockTenantService(CompanyId).Object)
         {
             ControllerContext = new ControllerContext
             {
@@ -369,7 +372,7 @@ public class RecetteRapportsMineursTests
         // Strict : un appel au médiateur (rapport calculé) ferait échouer le test.
         var mediator = new Mock<IMediator>(MockBehavior.Strict);
         // Contexte et service de mail nuls : le refus doit précéder tout accès.
-        var controller = new ReportsController(null!, mediator.Object, null!);
+        var controller = new ReportsController(null!, mediator.Object, null!, null!);
         var debut = new DateTime(2026, 8, 31);
         var fin = new DateTime(2026, 8, 1);
 
@@ -401,7 +404,7 @@ public class RecetteRapportsMineursTests
         var mediator = new Mock<IMediator>();
         mediator.Setup(m => m.Send(It.IsAny<GetOperatingCostReportQuery>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((OperatingCostReportDto)null!);
-        var controller = new ReportsController(null!, mediator.Object, null!);
+        var controller = new ReportsController(null!, mediator.Object, null!, null!);
 
         var reponse = await controller.GetOperatingCostReport(new DateTime(2026, 8, 1, 18, 0, 0), new DateTime(2026, 8, 1, 6, 0, 0));
 

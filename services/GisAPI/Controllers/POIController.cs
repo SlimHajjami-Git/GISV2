@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Common;
@@ -13,13 +15,31 @@ namespace GisAPI.Controllers;
 public class POIController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public POIController(GisDbContext context)
+    public POIController(GisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états : <c>null</c> = administrateur,
+    /// AUCUN filtre ; liste non vide = ses véhicules ; liste VIDE = il ne voit RIEN.
+    ///
+    /// Une VISITE dit « tel véhicule s'est arrêté chez tel client / à telle station,
+    /// à telle heure, pendant tant de minutes », avec la plaque et les coordonnées :
+    /// chez un loueur, c'est l'activité commerciale du locataire d'à côté. Les POINTS
+    /// d'intérêt eux-mêmes restent à l'échelle de la société : ce sont des repères de
+    /// carte, ils ne sont rattachés à aucun véhicule.
+    ///
+    /// « /api/poi » est dans <c>_skipRoutes</c> du <c>PermissionMiddleware</c> : aucune
+    /// case de module n'est demandée, tout compte connecté atteint ces routes.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync() =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, HttpContext.RequestAborted);
 
     // ==================== POINTS OF INTEREST ====================
 
@@ -230,6 +250,13 @@ public class POIController : ControllerBase
 
         var query = _context.PoiVisits.Where(v => v.PoiId == id);
 
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(v => ids.Contains(v.VehicleId));
+        }
+
         if (from.HasValue)
             query = query.Where(v => v.ArrivalAt >= from.Value);
 
@@ -269,6 +296,10 @@ public class POIController : ControllerBase
         [FromQuery] DateTime? to = null)
     {
         var companyId = GetCompanyId();
+
+        // IDOR : il suffisait de changer l'identifiant du véhicule dans l'URL.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted))
+            return NotFound();
 
         var query = _context.PoiVisits
             .Where(v => v.VehicleId == vehicleId && v.CompanyId == companyId);
@@ -344,8 +375,17 @@ public class POIController : ControllerBase
         var activePOIs = await _context.PointsOfInterest
             .CountAsync(p => p.CompanyId == companyId && p.IsActive);
 
-        var totalVisits = await _context.PoiVisits
-            .CountAsync(v => v.CompanyId == companyId && v.ArrivalAt >= from && v.ArrivalAt <= to);
+        var visitesQuery = _context.PoiVisits
+            .Where(v => v.CompanyId == companyId && v.ArrivalAt >= from && v.ArrivalAt <= to);
+
+        var porteeStats = await PorteeVehiculesAsync();
+        if (porteeStats is not null)
+        {
+            List<int> ids = porteeStats;
+            visitesQuery = visitesQuery.Where(v => ids.Contains(v.VehicleId));
+        }
+
+        var totalVisits = await visitesQuery.CountAsync();
 
         var categoryStats = await _context.PointsOfInterest
             .Where(p => p.CompanyId == companyId)

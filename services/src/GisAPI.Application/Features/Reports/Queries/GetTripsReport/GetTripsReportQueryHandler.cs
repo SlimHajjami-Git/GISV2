@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -351,6 +352,18 @@ public class GetTripsReportAllVehiclesQueryHandler : IRequestHandler<GetTripsRep
             .AsNoTracking()
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
 
+        // Portée de l'appelant AVANT le filtre optionnel : sans sélection de
+        // véhicule, le front n'envoie pas VehicleIds (api.service.ts n'ajoute le
+        // paramètre que `if (vehicleIds?.length)`), si bien que ce rapport
+        // rendait le parc ENTIER de la société. Chez un loueur — 307 véhicules
+        // loués à des clients distincts — un locataire restreint à 2 véhicules
+        // lisait les trajets des 305 autres. scope == null => administrateur,
+        // aucun filtre ; liste vide => aucun véhicule visible, donc rapport vide.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
+
+        // La sélection de l'écran INTERSECTE la portée, elle ne la remplace pas.
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 

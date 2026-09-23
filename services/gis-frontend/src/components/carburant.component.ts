@@ -275,9 +275,9 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                      boîtier, ce relevé est la SEULE source du kilométrage : il
                      alimente les échéances d'entretien au km et le coût au km. -->
                 <div class="form-group">
-                  <label>Kilométrage au compteur</label>
+                  <label>Compteur</label>
                   <input type="number" [(ngModel)]="manualEntry.odometerKm" class="form-control" placeholder="Ex: 145820" step="1" min="0">
-                  <small class="form-hint">Met à jour le kilométrage du véhicule — indispensable sans boîtier GPS.</small>
+                  <small class="form-hint">Met à jour le compteur du véhicule — indispensable sans boîtier GPS.</small>
                 </div>
               </div>
               <div class="form-actions">
@@ -554,7 +554,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                 ⚠ {{ consumption.ignoredOdometerReadings }} relevé(s) compteur incohérent(s) ignoré(s) — faute de frappe probable. Corrige-les dans l'onglet Historique pour un kilométrage exact.
               </div>
               <div *ngIf="consumption.entriesWithoutOdometer > 0" style="margin:0 16px 8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;color:#9a3412;font-size:12px;">
-                ⚠ {{ consumption.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le kilométrage au plein pour calculer la consommation.
+                ⚠ {{ consumption.entriesWithoutOdometer }} plein(s) sans relevé compteur — saisis le compteur au plein pour calculer la consommation.
               </div>
 
               <div class="table-container" *ngIf="consumption.vehicles?.length">
@@ -755,7 +755,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
     { key: 'pricePerLiter' as keyof ColumnMapping, label: 'Prix/L', required: true },
     { key: 'invoiceDate' as keyof ColumnMapping, label: 'Date', required: true },
     { key: 'fuelType' as keyof ColumnMapping, label: 'Type', required: false },
-    { key: 'odometerKm' as keyof ColumnMapping, label: 'Kilométrage', required: false }
+    { key: 'odometerKm' as keyof ColumnMapping, label: 'Compteur', required: false }
   ];
 
   showPreview = false;

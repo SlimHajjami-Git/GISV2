@@ -7,6 +7,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common;
+using GisAPI.Application.Common.Security;
 using GisAPI.Services;
 using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
 using MediatR;
@@ -28,14 +29,16 @@ public class GpsController : ControllerBase
     private readonly IGpsHubService _gpsHubService;
     private readonly IRedisCacheService _redisCache;
     private readonly ISender _mediator;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService, IRedisCacheService redisCache, ISender mediator)
+    public GpsController(GisDbContext context, IGeocodingService geocodingService, IGpsHubService gpsHubService, IRedisCacheService redisCache, ISender mediator, ICurrentTenantService tenantService)
     {
         _context = context;
         _geocodingService = geocodingService;
         _gpsHubService = gpsHubService;
         _redisCache = redisCache;
         _mediator = mediator;
+        _tenantService = tenantService;
     }
 
     // Npgsql 6+ requires DateTimeKind.Utc for timestamptz columns.
@@ -49,6 +52,47 @@ public class GpsController : ControllerBase
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états, à ne jamais confondre :
+    /// <c>null</c> = administrateur, AUCUN filtre ; liste non vide = ses véhicules ;
+    /// liste VIDE = non-administrateur sans affectation, il ne voit RIEN.
+    ///
+    /// Chez un LOUEUR (HERTZ), les véhicules d'une même société appartiennent à des
+    /// locataires différents : le filtre société ne cloisonne rien. Toutes les routes
+    /// de ce contrôleur qui rendent des données rattachées à un véhicule passent par ici.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync() =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, HttpContext.RequestAborted);
+
+    /// <summary>
+    /// Boîtiers rattachés aux véhicules de la portée : <c>null</c> pour un administrateur
+    /// (aucun filtre), sinon la liste — VIDE si l'appelant n'a aucun véhicule équipé.
+    ///
+    /// Un boîtier rattaché à AUCUN véhicule n'entre dans la portée de personne : un
+    /// non-administrateur n'y a donc pas accès. C'est ce qui ferme la chaîne
+    /// « je liste les IMEI, puis je lis l'historique du boîtier ».
+    /// </summary>
+    private async Task<List<int>?> PorteeBoitiersAsync(List<int>? porteeVehicules, int companyId)
+    {
+        if (porteeVehicules is null) return null;
+        if (porteeVehicules.Count == 0) return new List<int>();
+
+        return await _context.Vehicles
+            .AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue && porteeVehicules.Contains(v.Id))
+            .Select(v => v.GpsDeviceId!.Value)
+            .Distinct()
+            .ToListAsync(HttpContext.RequestAborted);
+    }
+
+    /// <summary>
+    /// Le véhicule demandé est-il hors de la portée de l'appelant ? Le refus reste un
+    /// 404 identique à celui d'un véhicule inexistant : on ne révèle pas qu'il existe
+    /// (VehicleScope.cs).
+    /// </summary>
+    private async Task<bool> HorsPorteeAsync(int vehicleId) =>
+        !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted);
 
     // Safely extract values from JSONB metadata (values come back as JsonElement after EF Core deserialization)
     private static int GetMetaInt(Dictionary<string, object> meta, string key)
@@ -76,15 +120,25 @@ public class GpsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
+        // Chez un loueur, « toutes les positions de la société » revient à dire à
+        // chaque locataire où se trouvent, en ce moment, les véhicules loués aux
+        // autres clients — avec leur nom et leur plaque. La portée s'applique donc
+        // AVANT d'enrichir, aussi bien sur le chemin Redis que sur le repli base.
+        var portee = await PorteeVehiculesAsync();
+
+        var vehiculesVisibles = _context.Vehicles
+            .AsNoTracking()
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
+        if (portee is not null)
+            vehiculesVisibles = vehiculesVisibles.Where(v => portee.Contains(v.Id));
+
         // Try Redis first for real-time data
         var redisPositions = await _redisCache.GetAllPositionsForCompanyAsync(companyId);
-        
+
         if (redisPositions.Any())
         {
             // Get vehicle info from DB to enrich Redis data
-            var vehicleMap = await _context.Vehicles
-                .AsNoTracking()
-                .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+            var vehicleMap = await vehiculesVisibles
                 .Include(v => v.GpsDevice)
                 .ToDictionaryAsync(v => v.GpsDevice!.DeviceUid, v => v);
 
@@ -115,9 +169,7 @@ public class GpsController : ControllerBase
         }
 
         // Fallback to database - single query with join instead of N+1 correlated subqueries
-        var vehicles = await _context.Vehicles
-            .AsNoTracking()
-            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+        var vehicles = await vehiculesVisibles
             .Include(v => v.GpsDevice)
             .ToListAsync();
 
@@ -164,10 +216,18 @@ public class GpsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
+        // Même fuite que positions/realtime, avec en prime le nom du conducteur :
+        // la portée s'applique dès la liste des véhicules (voir PorteeVehiculesAsync).
+        var portee = await PorteeVehiculesAsync();
+
         // Step 1: Get vehicles with GPS devices (single query)
-        var vehicles = await _context.Vehicles
+        var vehiculesVisibles = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue)
+            .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
+        if (portee is not null)
+            vehiculesVisibles = vehiculesVisibles.Where(v => portee.Contains(v.Id));
+
+        var vehicles = await vehiculesVisibles
             .Include(v => v.GpsDevice)
             .Include(v => v.AssignedDriver)
             .ToListAsync();
@@ -240,6 +300,12 @@ public class GpsController : ControllerBase
         if (vehicle == null)
             return NotFound();
 
+        // IDOR : il suffisait de changer l'identifiant dans l'URL pour obtenir la
+        // dernière position, la plaque et le conducteur de n'importe quel véhicule
+        // de la société. Même 404 qu'un véhicule inexistant.
+        if (await HorsPorteeAsync(vehicleId))
+            return NotFound();
+
         if (!vehicle.GpsDeviceId.HasValue)
             return Ok(new { message = "Vehicle has no GPS device assigned" });
 
@@ -300,6 +366,15 @@ public class GpsController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
+            return NotFound();
+
+        // Le cloisonnement par SOCIÉTÉ ci-dessus ne suffit pas : chez un loueur,
+        // les véhicules d'une même société appartiennent à des locataires
+        // différents. Sans cette portée, un client restreint à 2 véhicules
+        // rejouait le trajet de n'importe lequel des 307 en changeant
+        // l'identifiant dans l'URL. Même 404 qu'un véhicule inexistant : on ne
+        // révèle pas qu'il existe (VehicleScope.cs).
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted))
             return NotFound();
 
         if (!vehicle.GpsDeviceId.HasValue)
@@ -502,6 +577,24 @@ public class GpsController : ControllerBase
 
         if (device == null)
             return NotFound();
+
+        // Cette route rend EXACTEMENT la trajectoire de vehicles/{id}/history, mais
+        // indexée par IMEI : sans ce contrôle, fermer l'autre route ne servait à rien
+        // (il suffisait de lister les boîtiers pour obtenir l'IMEI, puis de lire ici).
+        // On résout le boîtier vers SON véhicule et on applique le même contrôle ;
+        // un boîtier rattaché à aucun véhicule reste hors de portée d'un non-admin.
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            var vehicleIdDuBoitier = await _context.Vehicles
+                .AsNoTracking()
+                .Where(v => v.GpsDeviceId == device.Id && v.CompanyId == companyId)
+                .Select(v => (int?)v.Id)
+                .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+            if (vehicleIdDuBoitier is null || !portee.Contains(vehicleIdDuBoitier.Value))
+                return NotFound();
+        }
 
         from ??= DateTime.UtcNow.AddHours(-24);
         to ??= DateTime.UtcNow;
@@ -713,6 +806,11 @@ public class GpsController : ControllerBase
         if (vehicle == null)
             return NotFound();
 
+        // IDOR : vitesses, temps de contact et fenêtre d'activité de n'importe quel
+        // véhicule de la société. Même 404 qu'un véhicule inexistant.
+        if (await HorsPorteeAsync(vehicleId))
+            return NotFound();
+
         if (!vehicle.GpsDeviceId.HasValue)
             return Ok(new { message = "Vehicle has no GPS device" });
 
@@ -757,8 +855,16 @@ public class GpsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
+        // Un boîtier « disponible » n'est, par définition, rattaché à AUCUN véhicule :
+        // il n'entre donc dans la portée de personne. Pour un non-administrateur la
+        // liste est vide — elle portait l'IMEI et le numéro de SIM de tout le stock de
+        // la société. Le formulaire véhicule bascule alors sur « nouveau boîtier »
+        // (vehicle-popup.component.ts : devices.length === 0 => gpsMode = 'new').
+        if (await PorteeVehiculesAsync() is not null)
+            return Ok(new List<GpsDeviceDto>());
+
         var devices = await _context.GpsDevices
-            .Where(d => d.CompanyId == companyId && 
+            .Where(d => d.CompanyId == companyId &&
                         (d.Status == "unassigned" || d.Status == null) &&
                         !_context.Vehicles.Any(v => v.GpsDeviceId == d.Id))
             .OrderByDescending(d => d.LastCommunication)
@@ -791,8 +897,17 @@ public class GpsController : ControllerBase
     {
         var companyId = GetCompanyId();
 
-        var devices = await _context.GpsDevices
-            .Where(d => d.CompanyId == companyId)
+        // Cette liste rendait à TOUT compte de la société les IMEI, libellés, numéros
+        // de SIM et le NOM DU VÉHICULE affecté des 307 boîtiers : la moitié amont de la
+        // chaîne d'exploitation (lister les IMEI, puis lire devices/{uid}/history).
+        // On ne rend que les boîtiers des véhicules de la portée.
+        var boitiersVisibles = await PorteeBoitiersAsync(await PorteeVehiculesAsync(), companyId);
+
+        var requete = _context.GpsDevices.Where(d => d.CompanyId == companyId);
+        if (boitiersVisibles is not null)
+            requete = requete.Where(d => boitiersVisibles.Contains(d.Id));
+
+        var devices = await requete
             .OrderByDescending(d => d.LastCommunication)
             .Select(d => new GpsDeviceDto
             {
@@ -824,8 +939,15 @@ public class GpsController : ControllerBase
         var companyId = GetCompanyId();
         var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
 
-        var vehicles = await _context.Vehicles
-            .Where(v => v.CompanyId == companyId)
+        // Les compteurs ET la liste nominative (nom, plaque, en ligne / hors ligne)
+        // portaient sur tout le parc de la société : même fuite que positions/latest.
+        var portee = await PorteeVehiculesAsync();
+
+        var requete = _context.Vehicles.Where(v => v.CompanyId == companyId);
+        if (portee is not null)
+            requete = requete.Where(v => portee.Contains(v.Id));
+
+        var vehicles = await requete
             .Include(v => v.GpsDevice)
             .ToListAsync();
 
@@ -876,6 +998,11 @@ public class GpsController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
+            return NotFound(new { message = "Vehicle not found" });
+
+        // Cette route de test lit la dernière position du véhicule et la diffuse au
+        // groupe SignalR de la société : hors portée, c'est un 404 comme ailleurs.
+        if (await HorsPorteeAsync(request.VehicleId))
             return NotFound(new { message = "Vehicle not found" });
 
         // Get last position for coordinates
@@ -939,6 +1066,11 @@ public class GpsController : ControllerBase
         if (vehicle == null)
             return NotFound(new { message = "Vehicle not found" });
 
+        // Cette route injecte une position dans le pipeline (géofences, alertes,
+        // notifications) au nom du véhicule visé : hors portée, 404.
+        if (await HorsPorteeAsync(request.VehicleId))
+            return NotFound(new { message = "Vehicle not found" });
+
         var deviceUid = vehicle.GpsDevice?.DeviceUid ?? $"TEST-{vehicle.Id}";
 
         // Send through MediatR → BroadcastPositionCommandHandler → geofence checks → notifications
@@ -974,6 +1106,13 @@ public class GpsController : ControllerBase
     public async Task<IActionResult> GetImmobilizationState(int deviceId)
     {
         var companyId = GetCompanyId();
+
+        // État d'immobilisation, auteur et TEXTE DES COMMANDES d'un boîtier quelconque
+        // de la société. Hors portée : 404, comme un boîtier inexistant.
+        var boitiersVisibles = await PorteeBoitiersAsync(await PorteeVehiculesAsync(), companyId);
+        if (boitiersVisibles is not null && !boitiersVisibles.Contains(deviceId))
+            return NotFound();
+
         var device = await _context.GpsDevices
             .Where(d => d.Id == deviceId && d.CompanyId == companyId)
             .Select(d => new {
@@ -1046,6 +1185,13 @@ public class GpsController : ControllerBase
             .FirstOrDefaultAsync(d => d.Id == deviceId && d.CompanyId == companyId);
         if (device == null) return NotFound();
 
+        // PAS de filtre de portée ici, et c'est VOULU : le verrou de cette route est
+        // IsCompanyAdmin (lu en base, quelques lignes plus bas), qui est déjà le plus
+        // strict — un non-administrateur est refusé quoi qu'il arrive. Y ajouter la
+        // portée, qui se lit dans le JETON, ferait qu'un administrateur fraîchement
+        // promu mais porteur d'un jeton pas encore rafraîchi aurait une portée VIDE :
+        // il ne pourrait plus LIBÉRER un véhicule immobilisé. Sur une route d'urgence,
+        // ce risque pèse plus lourd que l'oracle d'existence qu'on fermerait.
         var user = await _context.Users
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Id == userId);
@@ -1201,6 +1347,14 @@ public class GpsController : ControllerBase
     public async Task<IActionResult> GetDeviceCommands(int deviceId, [FromQuery] int limit = 20)
     {
         var companyId = GetCompanyId();
+
+        // Historique des commandes (arrêts, libérations, auteurs) d'un boîtier
+        // quelconque de la société. Hors portée : liste vide, pas d'erreur — l'écran
+        // affiche simplement « aucune commande » (fleet-management.component.ts).
+        var boitiersVisibles = await PorteeBoitiersAsync(await PorteeVehiculesAsync(), companyId);
+        if (boitiersVisibles is not null && !boitiersVisibles.Contains(deviceId))
+            return Ok(Array.Empty<object>());
+
         var commands = await _context.DeviceCommands
             .Where(c => c.DeviceId == deviceId && c.CompanyId == companyId)
             .OrderByDescending(c => c.CreatedAt)
@@ -1222,7 +1376,10 @@ public class GpsController : ControllerBase
                 // clé étrangère, UserDeletionHelper ne la voit pas) disparaissaient de
                 // l'historique au lieu d'afficher « Système ».
                 userName = _context.Users.IgnoreQueryFilters()
-                    .Where(u => u.Id == c.UserId)
+                    // IgnoreQueryFilters levait AUSSI le filtre société : le NOM d'un expéditeur
+                    // d'une autre société sortait tel quel. Borné à la société de l'appelant, il
+                    // retombe sur « Système », comme une commande sans auteur.
+                    .Where(u => u.Id == c.UserId && u.CompanyId == companyId)
                     .Select(u => u.FirstName + " " + u.LastName)
                     .FirstOrDefault() ?? "Système"
             })

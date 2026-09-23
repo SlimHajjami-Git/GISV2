@@ -170,7 +170,7 @@ import { CreditIa, creditBloque, creditDepuisReponse, lireCreditIa, lireRefusCre
         <div class="charts-row">
           <!-- Mileage -->
           <div class="chart-card wide">
-            <h3>Kilometrage par vehicule (km)</h3>
+            <h3>Distance parcourue par vehicule (km)</h3>
             <div class="bar-list">
               <div class="blist-row" *ngFor="let item of reportData.charts.mileageByVehicle; let i = index">
                 <span class="blist-rank">#{{ i+1 }}</span>
@@ -208,7 +208,7 @@ import { CreditIa, creditBloque, creditDepuisReponse, lireCreditIa, lireRefusCre
                 <tr>
                   <th>Vehicule</th>
                   <th>Marque/Modele</th>
-                  <th>Km</th>
+                  <th>Compteur</th>
                   <th>Sante</th>
                   <th>Conduite</th>
                   <th>Conso</th>

@@ -57,10 +57,16 @@ import { Router } from '@angular/router';
              gardent le rouge d'usage, porté par leur triangle et leur libellé. -->
         <div class="stat-card">
           <div class="stat-icon" style="background: rgba(99,102,241,0.15);">
-            <ion-icon name="speedometer-outline" style="color: #6366f1;"></ion-icon>
+            <!-- Le cadran de compteur est parti avec le mot : il disait « relevé de compteur »
+                 sur une somme de la journée. Même pictogramme que l'onglet Distance. -->
+            <ion-icon name="analytics-outline" style="color: #6366f1;"></ion-icon>
           </div>
           <div class="stat-value">{{ distanceToday | number:'1.0-0' }} <span class="stat-unit">km</span></div>
-          <div class="stat-label">Distance aujourd'hui</div>
+          <!-- « Distance aujourd'hui » à côté d'un pictogramme de compteur se lisait comme un
+               relevé de compteur. La tuile dit la grandeur (distance parcourue), sa période
+               (le jour) et d'où elle sort (les trajets détectés, comme l'onglet Trajets). -->
+          <div class="stat-label">Distance parcourue</div>
+          <div class="stat-sub">aujourd'hui &middot; trajets détectés</div>
         </div>
 
         <div class="stat-card">
@@ -168,6 +174,7 @@ import { Router } from '@angular/router';
     .stat-icon ion-icon { font-size: 20px; }
     .stat-value { font-size: 24px; font-weight: 700; color: var(--ion-text-color); }
     .stat-label { font-size: 12px; color: var(--ion-color-medium); margin-top: 2px; }
+    .stat-sub { font-size: 10px; line-height: 1.3; color: var(--ion-color-medium); opacity: 0.8; }
     .stat-unit { font-size: 13px; font-weight: 600; color: var(--ion-color-medium); }
     .info-card { margin: 0 16px; border-radius: 16px; }
     .fleet-card { cursor: pointer; }

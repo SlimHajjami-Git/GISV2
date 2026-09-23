@@ -87,7 +87,8 @@ public class AiChatCreditTests
         sante.Setup(s => s.CalculateScoreAsync(It.IsAny<int>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
              .ReturnsAsync(new VehicleHealthResult { VehicleId = 1, Score = 80, Level = "good" });
 
-        return new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance)
+        return new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance,
+            TestDbContextFactory.CreateMockTenantService(CompanyId).Object)
         {
             ControllerContext = new ControllerContext
             {

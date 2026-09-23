@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using GisAPI.Application.Common.Security;
 using GisAPI.Attributes;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 
@@ -13,10 +15,12 @@ namespace GisAPI.Controllers;
 public class CompanyController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public CompanyController(GisDbContext context)
+    public CompanyController(GisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     [HttpGet]
@@ -30,6 +34,19 @@ public class CompanyController : ControllerBase
             .Include(c => c.Users)
             .Include(c => c.Vehicles)
             .AsQueryable();
+
+        // L'entité Societe n'a AUCUN filtre de requête multi-tenant (elle est absente de
+        // la liste de GisDbContext, et pour cause : c'est la table des tenants). Sans le
+        // filtre explicite ci-dessous, tout compte connecté — y compris un locataire de
+        // HERTZ — lisait la fiche commerciale de TOUTES les sociétés clientes : raison
+        // sociale, e-mail, téléphone, adresse, matricule fiscal, abonnement. Les
+        // mutations de ce contrôleur sont déjà réservées au system_admin ([RequireAdmin]),
+        // la lecture ne l'était pas.
+        if (!_tenantService.IsSystemAdmin)
+        {
+            var societeAppelant = _tenantService.CompanyId ?? 0;
+            query = query.Where(c => c.Id == societeAppelant);
+        }
 
         if (!string.IsNullOrEmpty(search))
         {
@@ -79,6 +96,11 @@ public class CompanyController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<CompanyDto>> GetCompany(int id)
     {
+        // Même règle que la liste : hors system_admin, on ne lit que SA société. Le refus
+        // est un 404 identique à celui d'une société inexistante.
+        if (!_tenantService.IsSystemAdmin && id != (_tenantService.CompanyId ?? 0))
+            return NotFound();
+
         var company = await _context.Societes
             .AsNoTracking()
             .Include(c => c.SubscriptionType)
@@ -323,9 +345,43 @@ public class CompanyController : ControllerBase
         return Ok(new { message = "Société supprimée avec succès" });
     }
 
+    /// <summary>
+    /// Garde-fou commun aux deux dernières routes de lecture du contrôleur, restées ouvertes
+    /// après la passe précédente. Deux verrous, dans cet ordre :
+    ///
+    /// <para>1. <b>Société</b> — hors administrateur système, on ne lit que SA société. Le
+    /// refus est un 404 identique à celui d'une société inexistante, comme pour
+    /// <c>GET /api/companies/{id}</c>.</para>
+    ///
+    /// <para>2. <b>Périmètre</b> — ces deux routes publient l'ANNUAIRE des comptes de la
+    /// société (nom, e-mail, téléphone, rôles, droits, dernière connexion) et les comptages
+    /// de TOUT le parc. Ce sont des routes sœurs de « /api/users » et du tableau de bord,
+    /// mais le préfixe « /api/companies » ne figure dans aucune table de
+    /// <c>PermissionMiddleware</c> : elles échappaient à la case Utilisateurs comme au
+    /// cloisonnement par véhicule. Chez un LOUEUR, elles disent à un locataire combien de
+    /// véhicules roulent pour les autres et qui les pilote. Elles sont donc réservées à un
+    /// appelant dont le périmètre EST la flotte entière — l'administrateur de société, même
+    /// sans AUCUNE ligne dans user_vehicles (utilisateur 11 de HERTZ), et l'administrateur
+    /// système.</para>
+    /// </summary>
+    private ActionResult? RefusLectureSociete(int id)
+    {
+        if (_tenantService.IsSystemAdmin)
+            return null;
+
+        if (id != (_tenantService.CompanyId ?? 0))
+            return new NotFoundResult();
+
+        return VehicleScope.SeesWholeFleet(_tenantService)
+            ? null
+            : new NotFoundResult();
+    }
+
     [HttpGet("{id}/users")]
     public async Task<ActionResult<List<CompanyUserDto>>> GetCompanyUsers(int id)
     {
+        if (RefusLectureSociete(id) is { } refus) return refus;
+
         var company = await _context.Societes.FindAsync(id);
         if (company == null)
             return NotFound();
@@ -352,6 +408,8 @@ public class CompanyController : ControllerBase
     [HttpGet("{id}/stats")]
     public async Task<ActionResult<CompanyStatsDto>> GetCompanyStats(int id)
     {
+        if (RefusLectureSociete(id) is { } refus) return refus;
+
         var company = await _context.Societes
             .Include(c => c.Users)
             .Include(c => c.Vehicles)

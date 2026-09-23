@@ -481,6 +481,14 @@ public class DrivingBehaviorService : IDrivingBehaviorService
 
     /// <summary>
     /// Calculate driving score for a vehicle over a period
+    ///
+    /// ATTENTION — ce service ouvre une portée DI NEUVE : son GisDbContext reçoit un
+    /// CurrentTenantService VIERGE (TenantMiddleware ne renseigne que la portée de la
+    /// requête), donc CompanyId vaut null et le filtre global multi-tenant s'annule de
+    /// lui-même. Autrement dit ce service ne cloisonne RIEN, ni par société ni par
+    /// portée véhicules : c'est volontaire, il sert aussi le chemin d'ingestion GPS,
+    /// hors requête HTTP. Tout appelant HTTP doit donc borner le vehicleId AVANT
+    /// (voir DrivingBehaviorController.HorsPorteeAsync).
     /// </summary>
     public async Task<DrivingScore> CalculateDrivingScoreAsync(int vehicleId, DateTime startDate, DateTime endDate)
     {

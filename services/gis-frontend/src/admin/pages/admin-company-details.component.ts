@@ -312,7 +312,7 @@ type CompanyRole = Role & { userCount?: number };
                   <th>Type</th>
                   <th>Statut</th>
                   <th>GPS</th>
-                  <th>Kilométrage</th>
+                  <th>Compteur</th>
                   <th>Actions</th>
                 </tr>
               </thead>

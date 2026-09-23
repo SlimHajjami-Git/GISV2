@@ -87,7 +87,8 @@ public class AvoirsAssistantIaTests
 
         // Crédit IA de la société (22/09/2026) : sans société connue, le rapport serait refusé.
         AiCreditTestData.EnsureSocieteAvecCredit(ctx, CompanyId);
-        var controleur = new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance)
+        var controleur = new AiChatController(ctx, llm.Object, sante.Object, NullLogger<AiChatController>.Instance,
+            TestDbContextFactory.CreateMockTenantService(CompanyId).Object)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = Admin() } }
         };

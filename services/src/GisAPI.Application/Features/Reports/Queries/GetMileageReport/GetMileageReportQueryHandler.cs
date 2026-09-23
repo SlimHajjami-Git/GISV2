@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -308,11 +309,24 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
         // (le filtre global de multi-tenance est contourné pour ces comptes).
         var companyId = _tenantService.CompanyId ?? 0;
 
+        // Portée de l'appelant, calculée UNE fois pour les deux sélections de ce
+        // rapport (véhicules avec boîtier ci-dessous, véhicules sans boîtier plus
+        // bas) : sans sélection à l'écran le front n'envoie pas VehicleIds, et le
+        // rapport rendait alors le parc ENTIER de la société. Chez un loueur, un
+        // locataire restreint à 2 véhicules lisait le kilométrage des 305 autres.
+        // scope == null => administrateur, aucun filtre ; liste vide => aucun
+        // véhicule visible, donc rapport vide.
+        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
         var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
             .Include(v => v.AssignedDriver)
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId.HasValue);
 
+        if (scope is not null)
+            vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
+
+        // La sélection de l'écran INTERSECTE la portée, elle ne la remplace pas.
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 
@@ -378,6 +392,11 @@ public class GetMileageReportsQueryHandler : IRequestHandler<GetMileageReportsQu
         var noGpsQuery = _context.Vehicles.AsNoTracking()
             .Include(v => v.AssignedDriver)
             .Where(v => v.CompanyId == companyId && v.GpsDeviceId == null);
+        // Même portée que le bloc GPS ci-dessus : ce second passage l'avait oubliée,
+        // si bien qu'un locataire restreint voyait quand même tous les véhicules
+        // sans boîtier de la société.
+        if (scope is not null)
+            noGpsQuery = noGpsQuery.Where(v => scope.Contains(v.Id));
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             noGpsQuery = noGpsQuery.Where(v => request.VehicleIds.Contains(v.Id));
         var noGpsVehicles = await noGpsQuery.ToListAsync(ct);

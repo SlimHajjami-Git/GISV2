@@ -174,7 +174,7 @@ interface CompanyUser {
               <tr>
                 <th>Véhicule</th>
                 <th>Plaque</th>
-                <th>Kilométrage</th>
+                <th>Compteur</th>
                 <th>GPS</th>
                 <th>Statut</th>
                 <th>Actions</th>
@@ -380,7 +380,7 @@ interface CompanyUser {
               </div>
               <div class="form-hint">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                Le kilométrage de départ sera capturé automatiquement depuis le GPS.
+                Le compteur de départ sera capturé automatiquement depuis le GPS.
               </div>
             </div>
             <div class="modal-footer">
@@ -1377,7 +1377,7 @@ export class VehicleLoansComponent implements OnInit, OnDestroy {
   confirmReturn(r: Reservation) {
     this.confirmDialog = {
       title: 'Retourner le véhicule',
-      message: `Confirmer le retour de "${r.vehicleName}" ? Le kilométrage sera capturé depuis le GPS.`,
+      message: `Confirmer le retour de "${r.vehicleName}" ? Le compteur sera capturé depuis le GPS.`,
       btnText: 'Confirmer',
       btnClass: 'btn-success-solid',
       action: () => this.doReturn(r)

@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -28,7 +29,13 @@ public class GetDailyActivityReportQueryHandler : IRequestHandler<GetDailyActivi
         // administrateurs système, donc sans borne explicite ce rapport ouvrirait le
         // véhicule d'une autre société (fuite inter-sociétés).
         // Hors contexte HTTP (job DailyFleetReportService) CompanyId est null : on ne
-        // restreint pas, ce job boucle déjà société par société.
+        // restreint pas ici, et ce n'est PAS un fail-open — ce handler d'UN véhicule
+        // n'a que deux appelants, tous deux bornés en amont :
+        //   • GET /api/reports/daily/{vehicleId}, gardé par VehiculeAccessibleAsync
+        //     (société + portée utilisateur, et société 0 quand le jeton n'a pas de
+        //     companyId, donc 404) ;
+        //   • GetDailyActivityReportsQueryHandler, qui vient de choisir la liste des
+        //     véhicules et refuse de rendre quoi que ce soit sans société identifiable.
         var companyId = _tenantService.CompanyId;
 
         IQueryable<Vehicle> vehicleQuery = _context.Vehicles
@@ -600,8 +607,6 @@ public class GetDailyActivityReportsQueryHandler : IRequestHandler<GetDailyActiv
         // Écran opérationnel : le filtre global de multi-tenance est contourné pour les
         // administrateurs système, sans quoi cette liste remonterait la flotte de TOUTES
         // les sociétés (fuite inter-sociétés).
-        // Hors contexte HTTP (job DailyFleetReportService) CompanyId est null : on ne
-        // restreint pas, ce job passe déjà les véhicules d'une seule société.
         var companyId = _tenantService.CompanyId;
 
         var vehiclesQuery = _context.Vehicles
@@ -609,8 +614,42 @@ public class GetDailyActivityReportsQueryHandler : IRequestHandler<GetDailyActiv
             .Where(v => v.GpsDeviceId.HasValue);
 
         if (companyId.HasValue)
+        {
             vehiclesQuery = vehiclesQuery.Where(v => v.CompanyId == companyId.Value);
 
+            // Portée de l'appelant AVANT le filtre optionnel : sans sélection de
+            // véhicule le front n'envoie pas VehicleIds, et ce rapport rendait
+            // alors l'activité du parc ENTIER de la société. Chez un loueur, un
+            // locataire restreint à 2 véhicules lisait celle des 305 autres.
+            var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+            if (scope is not null)
+                vehiclesQuery = vehiclesQuery.Where(v => scope.Contains(v.Id));
+        }
+        else
+        {
+            // AUCUN TENANT. Deux appelants peuvent arriver ici, et un seul a le droit
+            // d'obtenir quelque chose :
+            //   • le job de fond DailyFleetReportService, qui tourne hors requête HTTP
+            //     et passe TOUJOURS la liste explicite des véhicules d'UNE société
+            //     (lot de destinataires, puis récap hebdomadaire) ;
+            //   • une requête HTTP dont le jeton ne porte pas de companyId exploitable
+            //     (TenantMiddleware n'appelle alors jamais SetTenant). Le filtre global
+            //     de multi-tenance est lui aussi neutralisé dans ce cas
+            //     (GisDbContext : `_tenantService.CompanyId == null` ouvre tout), si
+            //     bien que le bloc ci-dessus ne filtrait NI par société NI par
+            //     utilisateur : l'appel rendait l'activité de TOUTES les sociétés.
+            // Faute de tenant, on se raccroche à la seule chose vérifiable : le
+            // périmètre demandé doit désigner des véhicules d'UNE SEULE société — ce
+            // que le job garantit par construction. Tout le reste (aucun périmètre, ou
+            // un périmètre qui enjambe plusieurs sociétés) ne rend RIEN.
+            var societe = await SocieteDuPerimetreAsync(request.VehicleIds, ct);
+            if (societe is null)
+                return new List<DailyActivityReportDto>();
+
+            vehiclesQuery = vehiclesQuery.Where(v => v.CompanyId == societe.Value);
+        }
+
+        // La sélection de l'écran INTERSECTE la portée, elle ne la remplace pas.
         if (request.VehicleIds != null && request.VehicleIds.Length > 0)
             vehiclesQuery = vehiclesQuery.Where(v => request.VehicleIds.Contains(v.Id));
 
@@ -628,6 +667,29 @@ public class GetDailyActivityReportsQueryHandler : IRequestHandler<GetDailyActiv
         }
 
         return reports;
+    }
+
+    /// <summary>
+    /// Société commune aux véhicules demandés, ou <c>null</c> s'il n'y en a pas
+    /// exactement une (périmètre absent, vide, inconnu, ou à cheval sur plusieurs
+    /// sociétés). Sert uniquement au cas « pas de tenant » ci-dessus : c'est le
+    /// garde-fou qui empêche un appel HTTP sans tenant de balayer toute la base,
+    /// tout en laissant passer le job de fond, dont chaque lot est déjà borné à une
+    /// société. <c>Take(2)</c> : on n'a besoin de savoir que « une seule ou plus ».
+    /// </summary>
+    private async Task<int?> SocieteDuPerimetreAsync(int[]? vehicleIds, CancellationToken ct)
+    {
+        if (vehicleIds is null || vehicleIds.Length == 0) return null;
+
+        var societes = await _context.Vehicles
+            .AsNoTracking()
+            .Where(v => vehicleIds.Contains(v.Id))
+            .Select(v => v.CompanyId)
+            .Distinct()
+            .Take(2)
+            .ToListAsync(ct);
+
+        return societes.Count == 1 ? societes[0] : null;
     }
 }
 

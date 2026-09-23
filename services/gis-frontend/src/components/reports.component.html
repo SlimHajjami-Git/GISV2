@@ -548,7 +548,7 @@
             @if (monthlyCostReport.departments.length > 0) {
               <div class="report-note">
                 <span>ℹ️</span>
-                <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « non mesuré » quand le kilométrage n’est pas mesurable sur le mois (un seul relevé, compteur inchangé ou relevés incohérents), et les ratios au kilomètre affichent alors « — » plutôt que 0. Le KM total ne compte que les distances mesurées, et les ratios des lignes de total ne portent que sur les véhicules mesurés.@if (aDesAvoirs(monthlyCostCredit())) {<span> Carburant, Entretien, Réparation et Autres sont BRUTS ; les avoirs fournisseurs et remboursements d’assurance forment la colonne « Avoirs », en négatif, et seul le Total Coût en tient compte.</span>}</span>
+                <span>Distance parcourue : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « non mesuré » quand la distance n’est pas mesurable sur le mois (un seul relevé, compteur inchangé ou relevés incohérents), et les ratios au kilomètre affichent alors « — » plutôt que 0. Le KM total ne compte que les distances mesurées, et les ratios des lignes de total ne portent que sur les véhicules mesurés.@if (aDesAvoirs(monthlyCostCredit())) {<span> Carburant, Entretien, Réparation et Autres sont BRUTS ; les avoirs fournisseurs et remboursements d’assurance forment la colonne « Avoirs », en négatif, et seul le Total Coût en tient compte.</span>}</span>
               </div>
             }
 
@@ -604,7 +604,7 @@
               <div class="stat-card stat-card--icone">
                 <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20 8 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M20 20 16 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 5v3M12 11v3M12 17v2"/></svg></span>
                 <span class="stat-corps">
-                  <span class="stat-label">Kilométrage</span>
+                  <span class="stat-label">Distance parcourue</span>
                   <span class="stat-value">{{ monthlyReport.totals.measuredVehicles ? formatNumber(monthlyReport.totals.distanceKm) : '—' }} <small>km</small></span>
                   <span class="stat-sub">{{ mfSourceKm() }}</span>
                 </span>
@@ -630,7 +630,7 @@
                 <span class="stat-corps">
                   <span class="stat-label">Coût au km</span>
                   <span class="stat-value accent">{{ monthlyReport.totals.costPerKm == null ? '—' : formatCostPerKm(monthlyReport.totals.costPerKm) }} <small>{{ getCurrencyCode() }}/km</small></span>
-                  <span class="stat-sub">{{ monthlyReport.totals.costPerKm == null ? 'aucun kilométrage mesuré' : 'sur ' + formatNumber(monthlyReport.totals.distanceKm) + ' km' }}</span>
+                  <span class="stat-sub">{{ monthlyReport.totals.costPerKm == null ? 'aucune distance mesurée' : 'sur ' + formatNumber(monthlyReport.totals.distanceKm) + ' km' }}</span>
                 </span>
               </div>
               <div class="stat-card stat-card--icone">
@@ -658,7 +658,7 @@
                       <thead>
                         <tr>
                           <th title="Immatriculation (le nom du véhicule en info-bulle sur la ligne)">Véhicule</th>
-                          <th class="num" title="Kilométrage du mois">Km</th>
+                          <th class="num" title="Distance parcourue sur le mois">Km</th>
                           <th class="num" title="Litres de carburant">Litres</th>
                           <th class="num" title="Consommation en litres aux 100 km">L/100</th>
                           <th class="num" title="Carburant">Carb.{{ mfDeviseEntete() }}</th>
@@ -680,7 +680,7 @@
                         @for (v of monthlyReport.vehicles; track v.vehicleId) {
                           <tr [class.muted]="v.totalCost === 0 && v.distanceKm == null">
                             <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
-                            <td class="num" [title]="mfSourceTitre(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceSource === 'odometer' && !v.reliableDistance" title="Kilométrage incertain : rupture ou relevé écarté">?</span></td>
+                            <td class="num" [title]="mfSourceTitre(v)">{{ v.distanceKm == null ? '—' : formatNumber(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceSource === 'odometer' && !v.reliableDistance" title="Distance incertaine : rupture ou relevé écarté">?</span></td>
                             <td class="num">{{ v.liters > 0 ? formatNumber(v.liters, 1) : '0' }}</td>
                             <td class="num">{{ v.consumptionPer100Km == null ? '—' : formatNumber(v.consumptionPer100Km, 2) }}</td>
                             <td class="num">{{ mfMontant(v.fuelCost) }}</td>
@@ -726,7 +726,7 @@
 
                 <div class="report-note mf-note">
                   <span>ℹ️</span>
-                  <span>Kilométrage : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « — » quand le mois n’en compte pas au moins deux. Consommation = litres ÷ kilométrage du véhicule. Coûts = dépenses saisies du mois (carburant, entretiens, réparations, autres), BRUTES ; les mensualités d’acquisition ne sont pas comptées.@if (aDesAvoirs(monthlyReport.totals.creditAmount)) {<span> La colonne « Avoirs » porte les avoirs fournisseurs et les remboursements d’assurance en négatif : seul le Total en tient compte.</span>}@if (!monthlyReport.fleetHasGps) { Utilisation, trajets et heures de conduite demandent un boîtier GPS.}</span>
+                  <span>Distance parcourue : boîtier GPS pour un véhicule équipé ; sinon reconstitué des relevés compteur saisis (pleins, entretiens, réparations, dépenses) — « — » quand le mois n’en compte pas au moins deux. Consommation = litres ÷ distance parcourue par le véhicule. Coûts = dépenses saisies du mois (carburant, entretiens, réparations, autres), BRUTES ; les mensualités d’acquisition ne sont pas comptées.@if (aDesAvoirs(monthlyReport.totals.creditAmount)) {<span> La colonne « Avoirs » porte les avoirs fournisseurs et les remboursements d’assurance en négatif : seul le Total en tient compte.</span>}@if (!monthlyReport.fleetHasGps) { Utilisation, trajets et heures de conduite demandent un boîtier GPS.}</span>
                 </div>
               </div>
 
@@ -763,14 +763,14 @@
                 </div>
                 <div class="dept-group mf-km-carte">
                   <div class="dept-header">
-                    <span class="dept-badge">Kilomètres par véhicule</span>
+                    <span class="dept-badge">Distance parcourue par véhicule</span>
                   </div>
                   @if (mfVehiculesMesures().length) {
                     <div class="cost-chart-box mf-km-box">
                       <div class="mf-km-inner" [style.min-height.px]="mfKmHauteur()"><canvas #mfKmCanvas></canvas></div>
                     </div>
                   } @else {
-                    <div class="ai-no-data mf-vide">Aucun kilométrage mesuré ce mois</div>
+                    <div class="ai-no-data mf-vide">Aucune distance mesurée ce mois</div>
                   }
                 </div>
               </div>
@@ -874,7 +874,7 @@
 
               <!-- Mileage + Driving Scores -->
               <div class="ai-charts-grid two-col">
-                <ui-card title="Kilométrage par véhicule" [showHeader]="true">
+                <ui-card title="Distance parcourue par véhicule" [showHeader]="true">
                   <div class="ai-bar-list">
                     <div class="ai-brow" *ngFor="let item of aiFleetReport.charts.mileageByVehicle; let i = index">
                       <span class="ai-brow-rank">#{{ i+1 }}</span>
@@ -1156,13 +1156,13 @@
                 <span class="stat-icone stat-icone--bleu"><svg viewBox="0 0 24 24" aria-hidden="true"><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M4 20 8 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M20 20 16 4"/><path stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round" d="M12 5v3M12 11v3M12 17v2"/></svg></span>
                 <span class="stat-corps">
                 <span class="stat-value" [title]="kmCellule(operatingCost.totalKm) + ' km'">{{ kmCellule(operatingCost.totalKm) }} km</span>
-                <span class="stat-label">Kilométrage total (km)</span>
+                <span class="stat-label">Distance parcourue (km)</span>
                 <!-- Sous-titre dans les DEUX cas : sans lui cette carte restait muette
                      et sa voisine de gauche portait seule tout le texte de la rangée. -->
                 @if (operatingCost.vehiclesWithoutDistance > 0) {
-                  <span class="stat-sub">{{ operatingCost.vehiclesWithoutDistance }} sans kilométrage mesurable</span>
+                  <span class="stat-sub">{{ operatingCost.vehiclesWithoutDistance }} sans distance mesurable</span>
                 } @else {
-                  <span class="stat-sub">Kilométrage mesurable partout</span>
+                  <span class="stat-sub">Distance mesurable partout</span>
                 }
                 </span>
               </div>
@@ -1226,7 +1226,7 @@
                         @if (isRanking) {
                           <th class="rank-col">#</th>
                           <th title="Immatriculation">Immat.</th>
-                          <th class="num" title="Kilométrage de la période">Km</th>
+                          <th class="num" title="Distance parcourue sur la période">Km</th>
                           <th class="num">Coût total</th>
                           <th class="num" title="Coût d’exploitation par kilomètre">{{ getCurrencyCode() }}/km</th>
                           <th class="num">Carburant</th>
@@ -1238,7 +1238,7 @@
                           }
                         } @else {
                           <th title="Immatriculation">Immat.</th>
-                          <th class="num" title="Kilométrage de la période">Km</th>
+                          <th class="num" title="Distance parcourue sur la période">Km</th>
                           <th class="num">Carburant</th>
                           <th class="num">Entretiens</th>
                           <th class="num">Réparations</th>
@@ -1264,7 +1264,7 @@
                                  largeur de deux colonnes de chiffres. Repli sur le nom si la
                                  plaque manque. Le nom reste dans l’info-bulle. -->
                             <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
-                            <td class="num" [title]="distanceSourceTitle(v)">{{ kmCellule(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
+                            <td class="num" [title]="distanceSourceTitle(v)">{{ kmCellule(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Distance incertaine">?</span></td>
                             <td class="num total-cell">{{ montantCellule(v.totalCost) }}</td>
                             <td class="num">{{ coutKmCellule(v.costPerKm) }}</td>
                             <td class="num">{{ montantCellule(v.fuelCost) }}</td>
@@ -1280,7 +1280,7 @@
                                  largeur de deux colonnes de chiffres. Repli sur le nom si la
                                  plaque manque. Le nom reste dans l’info-bulle. -->
                             <td class="vehicle-cell" [title]="v.vehicleName">{{ v.plate || v.vehicleName }}</td>
-                            <td class="num" [title]="distanceSourceTitle(v)">{{ kmCellule(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Kilométrage incertain">?</span></td>
+                            <td class="num" [title]="distanceSourceTitle(v)">{{ kmCellule(v.distanceKm) }}<span class="src-tag" *ngIf="v.distanceKm != null && !v.reliableDistance" title="Distance incertaine">?</span></td>
                             <td class="num">{{ montantCellule(v.fuelCost) }}</td>
                             <td class="num">{{ montantCellule(v.maintenanceCost) }}</td>
                             <td class="num">{{ montantCellule(v.repairCost) }}</td>
@@ -1349,7 +1349,7 @@
                   <canvas #operatingCostCanvas></canvas>
                 </div>
                 @if (!hasOperatingCostChartData()) {
-                  <div class="ai-no-data">Aucun véhicule avec un kilométrage mesurable : le coût au km ne peut pas être classé.</div>
+                  <div class="ai-no-data">Aucun véhicule avec une distance mesurable : le coût au km ne peut pas être classé.</div>
                 }
               </div>
             </div>
@@ -1635,7 +1635,7 @@
                 <span class="stat-corps">
                   <span class="stat-label">Fréquence moyenne</span>
                   <span class="stat-value accent" title="Interventions par véhicule">{{ formatNumber(repairFrequency.averageInterventionsPerVehicle, 1) }} <small>interv. / véhicule</small></span>
-                  <span class="stat-sub">{{ repairFrequency.averageFrequencyPer1000Km == null ? 'kilométrage non mesurable' : formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) + ' interv. / 1000 km' }}</span>
+                  <span class="stat-sub">{{ repairFrequency.averageFrequencyPer1000Km == null ? 'distance non mesurable' : formatNumber(repairFrequency.averageFrequencyPer1000Km, 2) + ' interv. / 1000 km' }}</span>
                 </span>
               </div>
               <div class="stat-card stat-card--icone">
@@ -1670,7 +1670,7 @@
                         <th>Véhicule</th>
                         <!-- Intitulés abrégés sur une ligne (demande de Karim) ; le libellé complet en info-bulle -->
                         <th class="num" title="Nombre d’interventions">Interv.</th>
-                        <th class="num" title="Kilométrage de la période">Km</th>
+                        <th class="num" title="Distance parcourue sur la période">Km</th>
                         <th class="num" title="Interventions pour 1000 km parcourus">/1000 km</th>
                         <th class="num" title="Coût total des réparations">Coût total</th>
                         <th class="num" title="Coût moyen par intervention">Coût moy.</th>
@@ -1776,7 +1776,7 @@
                           <th class="rf-etroit">Type d'intervention</th>
                           <th>Description</th>
                           <th>Fournisseur</th>
-                          <th class="num rf-etroit">Kilométrage</th>
+                          <th class="num rf-etroit">Compteur</th>
                           <th class="num rf-etroit">Coût</th>
                         </tr>
                       </thead>
@@ -1808,7 +1808,7 @@
             <ng-template #rfNote>
               <div class="report-note rf-note">
                 <span>ℹ️</span>
-                <span>Une intervention = une réparation saisie, non annulée. Fréquence moyenne = interventions ÷ véhicules du périmètre, y compris ceux sans intervention (en gris). Pour 1000 km : kilométrage des trajets GPS ou, sans boîtier, des relevés compteur saisis. Coûts = ceux des réparations comptées (les dépenses « Réparation » figurent dans « Coût d’exploitation »). Type = celui saisi, sinon déduit de la description (« déduit »).</span>
+                <span>Une intervention = une réparation saisie, non annulée. Fréquence moyenne = interventions ÷ véhicules du périmètre, y compris ceux sans intervention (en gris). Pour 1000 km : distance des trajets GPS ou, sans boîtier, des relevés compteur saisis. Coûts = ceux des réparations comptées (les dépenses « Réparation » figurent dans « Coût d’exploitation »). Type = celui saisi, sinon déduit de la description (« déduit »).</span>
               </div>
             </ng-template>
           </div>
@@ -2401,12 +2401,12 @@
                         <th class="sortable" (click)="sortBy('description')">Description <span class="sort-icon">{{ getSortIcon('description') }}</span></th>
                         <th class="sortable" (click)="sortBy('supplierName')">Fournisseur <span class="sort-icon">{{ getSortIcon('supplierName') }}</span></th>
                         <th class="sortable num" (click)="sortBy('cost')">Coût <span class="sort-icon">{{ getSortIcon('cost') }}</span></th>
-                        <th class="sortable num" (click)="sortBy('mileageValue')">Kilométrage <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
+                        <th class="sortable num" (click)="sortBy('mileageValue')">Compteur <span class="sort-icon">{{ getSortIcon('mileageValue') }}</span></th>
                       } @else {
                         <th class="sortable" (click)="sortBy('time')">Date/Heure <span class="sort-icon">{{ getSortIcon('time') }}</span></th>
                         <th class="sortable" (click)="sortBy('value')">Valeur <span class="sort-icon">{{ getSortIcon('value') }}</span></th>
                         <th>Détails</th>
-                        <th>Kilométrage</th>
+                        <th>Distance parcourue</th>
                       }
                     </tr>
                   </thead>

@@ -360,7 +360,7 @@ export function fuelDetailToSave(
                 </div>
 
                 <div class="form-group">
-                  <label for="costMileage">Kilométrage</label>
+                  <label for="costMileage">Compteur</label>
                   <input type="number" id="costMileage" [(ngModel)]="costForm.mileage" name="mileage" min="0" placeholder="0" />
                 </div>
 

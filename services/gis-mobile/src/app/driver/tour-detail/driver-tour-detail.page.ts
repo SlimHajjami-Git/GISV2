@@ -86,7 +86,8 @@ interface CachedTour {
         <div class="summary">
           <div><ion-icon name="time-outline"></ion-icon> Départ {{ tour.scheduledStartTime | date:'dd/MM HH:mm' }}</div>
           <div *ngIf="tour.vehicleName"><ion-icon name="car-outline"></ion-icon> {{ tour.vehicleName }} <small *ngIf="tour.vehiclePlate">({{ tour.vehiclePlate }})</small></div>
-          <div *ngIf="tour.estimatedDistanceKm"><ion-icon name="speedometer-outline"></ion-icon> {{ tour.estimatedDistanceKm | number:'1.0-0' }} km
+          <!-- Distance PRÉVUE de la tournée : ni un compteur, ni un parcours mesuré. -->
+          <div *ngIf="tour.estimatedDistanceKm"><ion-icon name="speedometer-outline"></ion-icon> {{ tour.estimatedDistanceKm | number:'1.0-0' }} km prévus
             <span *ngIf="tour.estimatedDurationMinutes"> · {{ durationLabel(tour.estimatedDurationMinutes) }}</span></div>
           <p class="notes" *ngIf="tour.notes || tour.description">{{ tour.notes || tour.description }}</p>
         </div>

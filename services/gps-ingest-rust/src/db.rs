@@ -958,15 +958,19 @@ impl TelemetryStore for Database {
         // par les contraintes uniques : on recalcule en ordre chronologique
         // (même patron que daily_statistics), segments plafonnés à 5 km contre
         // les sauts GPS résiduels.
-        let corrected_km: Option<f64> = sqlx::query_scalar(
-            r#"
+        // BETWEEN LEAST/GREATEST : défense en profondeur. Les bornes émises par le
+        // détecteur sont désormais monotones (cf. trip_detector.rs), mais si une
+        // borne haute repassait un jour sous la borne basse, un BETWEEN nu rendrait
+        // un ensemble VIDE sans rien signaler — exactement le scénario qui armait
+        // l'ancien repli gonflé.
+        const RECALCUL_DISTANCE_SQL: &str = r#"
             WITH ordered AS (
                 SELECT latitude, longitude, speed_kph, ignition_on,
                        LAG(latitude)  OVER (ORDER BY recorded_at) AS prev_lat,
                        LAG(longitude) OVER (ORDER BY recorded_at) AS prev_lng
                 FROM gps_positions
                 WHERE device_id = $1
-                  AND recorded_at BETWEEN $2 AND $3
+                  AND recorded_at BETWEEN LEAST($2, $3) AND GREATEST($2, $3)
             )
             SELECT COALESCE(SUM(
                 CASE WHEN prev_lat IS NOT NULL
@@ -982,22 +986,62 @@ impl TelemetryStore for Database {
                 ELSE 0 END
             ), 0)::FLOAT8
             FROM ordered
-            "#,
-        )
-        .bind(trip.device_id)
-        .bind(trip.start_time)
-        .bind(trip.end_time)
-        .fetch_one(&self.pool)
-        .await
-        .ok();
+        "#;
 
-        // Repli sur la valeur du détecteur si la base n'a rien rendu (fenêtre
-        // vide = positions pas encore visibles, cas dégradé) — mieux vaut un
-        // chiffre gonflé qu'un zéro qui ferait disparaître le trajet.
-        let distance_km = match corrected_km {
-            Some(d) if d > 0.05 => d,
-            _ => trip.distance_km,
+        let mut recalcul: std::result::Result<f64, sqlx::Error> =
+            sqlx::query_scalar(RECALCUL_DISTANCE_SQL)
+                .bind(trip.device_id)
+                .bind(trip.start_time)
+                .bind(trip.end_time)
+                .fetch_one(&self.pool)
+                .await;
+
+        // Le `.ok()` d'avant avalait TOUTE erreur SQL sans laisser la moindre
+        // trace : un recalcul en échec était indiscernable d'un recalcul rendant
+        // zéro, et les deux partaient sur le même repli gonflé.
+        if let Err(ref err) = recalcul {
+            tracing::error!(
+                device_id = trip.device_id,
+                start_time = %trip.start_time,
+                end_time = %trip.end_time,
+                error = %err,
+                "Recalcul de la distance du trajet en échec, seconde tentative"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            recalcul = sqlx::query_scalar(RECALCUL_DISTANCE_SQL)
+                .bind(trip.device_id)
+                .bind(trip.start_time)
+                .bind(trip.end_time)
+                .fetch_one(&self.pool)
+                .await;
+        }
+
+        // Plus de fourre-tout `_ => trip.distance_km` : un recalcul QUI A ABOUTI
+        // fait foi, même s'il rend un petit chiffre — c'est la vérité
+        // chronologique des positions réellement en base. Seul un échec SQL répété
+        // laisse passer la valeur du détecteur, et le trajet est alors marqué
+        // "distance_unverified" : les trois cumuls .NET filtrent
+        // `Status == "completed"` (DashboardService.cs:173, DashboardController.cs:793,
+        // OperatingCostAggregator.cs:277), donc un trajet non vérifié sort
+        // mécaniquement des totaux tout en restant visible dans la liste. Mieux
+        // qu'écrire un chiffre faux, et mieux que perdre le trajet.
+        let (distance_km, status) = match recalcul {
+            Ok(d) => (d, trip.status.clone()),
+            Err(err) => {
+                tracing::warn!(
+                    device_id = trip.device_id,
+                    start_time = %trip.start_time,
+                    end_time = %trip.end_time,
+                    error = %err,
+                    detector_km = trip.distance_km,
+                    "Distance non vérifiable après seconde tentative : trajet enregistré en distance_unverified"
+                );
+                (trip.distance_km, "distance_unverified".to_string())
+            }
         };
+
+        // La vitesse moyenne suit la distance RÉELLEMENT écrite, jamais celle du
+        // détecteur.
         let avg_speed_kph = if trip.duration_minutes > 0 {
             (distance_km / (trip.duration_minutes as f64 / 60.0)).min(trip.max_speed_kph.max(1.0))
         } else {
@@ -1052,7 +1096,7 @@ impl TelemetryStore for Database {
         .bind(trip.harsh_braking_count)
         .bind(trip.harsh_accel_count)
         .bind(trip.overspeeding_count)
-        .bind(&trip.status)
+        .bind(&status)
         .bind(trip.company_id)
         .fetch_one(&self.pool)
         .await?;

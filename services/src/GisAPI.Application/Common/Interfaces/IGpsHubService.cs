@@ -6,9 +6,19 @@ namespace GisAPI.Application.Common.Interfaces;
 public interface IGpsHubService
 {
     /// <summary>
-    /// Send position update to all clients subscribed to a company
+    /// Diffuse une position SANS dire de quel véhicule il s'agit : elle ne peut donc
+    /// atteindre que les destinataires « tout le parc » (administrateurs). À n'utiliser
+    /// que lorsque le véhicule est réellement inconnu.
     /// </summary>
     Task SendPositionUpdateAsync(int companyId, object position);
+
+    /// <summary>
+    /// Diffuse une position à ceux qui voient tout le parc ET aux utilisateurs restreints
+    /// dont la portée contient CE véhicule. C'est la voie normale : un flux temps réel
+    /// envoyé à toute la société ne cloisonne rien chez un loueur, où chaque véhicule est
+    /// loué à un client différent (incident HERTZ).
+    /// </summary>
+    Task SendPositionUpdateAsync(int companyId, int? vehicleId, object position);
 
     /// <summary>
     /// Send position update to clients subscribed to a specific vehicle
@@ -16,9 +26,10 @@ public interface IGpsHubService
     Task SendVehiclePositionAsync(int vehicleId, object position);
 
     /// <summary>
-    /// Send alert to all clients subscribed to a company
+    /// Diffuse une alerte — qui porte la plaque et la position du véhicule — selon la
+    /// même règle que <see cref="SendPositionUpdateAsync(int, int?, object)"/>.
     /// </summary>
-    Task SendAlertAsync(int companyId, object alert);
+    Task SendAlertAsync(int companyId, int? vehicleId, object alert);
 
     /// <summary>
     /// Send geofence event to clients subscribed to a geofence

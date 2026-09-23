@@ -192,7 +192,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         // Broadcast to company group
         if (cached.CompanyId > 0)
         {
-            await _gpsHubService.SendPositionUpdateAsync(cached.CompanyId, positionUpdate);
+            await _gpsHubService.SendPositionUpdateAsync(cached.CompanyId, cached.VehicleId, positionUpdate);
         }
 
         // Broadcast to specific vehicle subscribers
@@ -259,7 +259,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
             if (cached.CompanyId > 0)
             {
-                await _gpsHubService.SendAlertAsync(cached.CompanyId, alertDto);
+                await _gpsHubService.SendAlertAsync(cached.CompanyId, cached.VehicleId, alertDto);
             }
 
             // Publish speed alert notification when the Rust ingest

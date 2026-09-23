@@ -19,10 +19,15 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const router = inject(Router);
   const http = inject(HttpClient);
 
-  // Skip auth header for public endpoints (login, register, refresh, device-check,
-  // and the pre-login AI assistant). These must never carry a JWT or trigger the
+  // Skip auth header for public endpoints (login, register, refresh, and the
+  // pre-login AI assistant). These must never carry a JWT or trigger the
   // 401 refresh/logout flow.
-  if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh') || req.url.includes('/devicecheck/') || req.url.includes('/assistant/')) {
+  //
+  // « /devicecheck/ » N'EN FAIT PLUS PARTIE (23/09/2026) : la route API était la seule
+  // sans [Authorize] et traversait toutes les sociétés. Elle exige maintenant un compte
+  // connecté ; lui retirer le jeton ici la condamnait à répondre 401 à tout le monde.
+  // Elle suit désormais le flux commun : jeton posé, rafraîchi, 401 géré.
+  if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh') || req.url.includes('/assistant/')) {
     return next(req);
   }
 

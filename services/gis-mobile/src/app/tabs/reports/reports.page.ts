@@ -17,8 +17,11 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
           <ion-segment-button value="daily">
             <ion-label>Activité</ion-label>
           </ion-segment-button>
+          <!-- « Kilométrage » nommait ici une distance SUR UNE PÉRIODE, alors que le même mot
+               nomme le COMPTEUR du véhicule dans sa fiche : deux grandeurs sans rapport sous
+               un seul libellé. L'onglet s'appelle « Distance », le compteur garde « Compteur ». -->
           <ion-segment-button value="mileage">
-            <ion-label>Kilométrage</ion-label>
+            <ion-label>Distance</ion-label>
           </ion-segment-button>
           <ion-segment-button value="trips">
             <ion-label>Trajets</ion-label>
@@ -129,8 +132,8 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
       <!-- ═══════════ MILEAGE ═══════════ -->
       <div *ngIf="activeTab === 'mileage' && !loading">
         <div class="empty-state" *ngIf="mileageReports.length === 0">
-          <ion-icon name="speedometer-outline"></ion-icon>
-          <p>Aucun rapport kilométrique</p>
+          <ion-icon name="analytics-outline"></ion-icon>
+          <p>Aucune distance mesurée sur la période</p>
         </div>
 
         <ion-card *ngFor="let r of mileageReports" class="report-card">
@@ -142,10 +145,16 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
             <ion-card-subtitle>{{ r.plate }}</ion-card-subtitle>
           </ion-card-header>
           <ion-card-content>
+            <!-- La période est écrite en toutes lettres : « km total » seul se lisait comme un
+                 relevé de compteur, alors que c'est la somme du 1er du mois à la date choisie. -->
+            <div class="metric-caption">
+              <ion-icon name="analytics-outline" aria-hidden="true"></ion-icon>
+              Distance parcourue <span class="period">{{ mileagePeriodLabel }}</span>
+            </div>
             <div class="kpi-grid">
               <div class="kpi-item highlight">
                 <span class="kpi-value">{{ r.totalDistanceKm | number:'1.1-1' }}</span>
-                <span class="kpi-label">km total</span>
+                <span class="kpi-label">km parcourus</span>
               </div>
               <div class="kpi-item">
                 <span class="kpi-value">{{ r.averageDailyKm | number:'1.0-0' }}</span>
@@ -172,6 +181,13 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
                 </div>
               </div>
             </div>
+
+            <!-- Les deux grandeurs se touchent ici : une phrase dit laquelle on regarde. -->
+            <div class="metric-note">
+              <ion-icon name="information-circle-outline" aria-hidden="true"></ion-icon>
+              <span>Distance mesurée sur les positions GPS de la période. À ne pas confondre avec
+                le compteur du véhicule (onglet Véhicules), qui cumule toute sa vie.</span>
+            </div>
           </ion-card-content>
         </ion-card>
       </div>
@@ -181,6 +197,13 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
         <!-- Summary card -->
         <ion-card class="summary-card" *ngIf="tripsSummary">
           <ion-card-content>
+            <!-- Même chiffre, autre grandeur que l'onglet Distance : ici c'est la somme des
+                 trajets DÉTECTÉS, pas une mesure sur les positions. Les deux ne tombent pas
+                 toujours d'accord, d'où la période affichée et la note en bas de carte. -->
+            <div class="metric-caption">
+              <ion-icon name="navigate-outline" aria-hidden="true"></ion-icon>
+              Trajets détectés <span class="period">{{ tripsPeriodLabel }}</span>
+            </div>
             <div class="kpi-grid">
               <div class="kpi-item highlight">
                 <span class="kpi-value">{{ tripsSummary.totalTrips || trips.length }}</span>
@@ -188,7 +211,7 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
               </div>
               <div class="kpi-item">
                 <span class="kpi-value">{{ tripsSummary.totalDistanceKm | number:'1.1-1' }}</span>
-                <span class="kpi-label">km total</span>
+                <span class="kpi-label">km cumulés</span>
               </div>
               <div class="kpi-item">
                 <span class="kpi-value">{{ tripsSummary.averageSpeedKph | number:'1.0-0' }}</span>
@@ -198,6 +221,13 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
                 <span class="kpi-value">{{ formatDuration(tripsSummary.totalDurationMinutes) }}</span>
                 <span class="kpi-label">durée totale</span>
               </div>
+            </div>
+
+            <div class="metric-note">
+              <ion-icon name="information-circle-outline" aria-hidden="true"></ion-icon>
+              <span>Somme des trajets détectés par le boîtier. Elle peut différer de la
+                « Distance parcourue » de l'onglet Distance, mesurée sur les positions GPS,
+                et ce n'est pas le compteur du véhicule.</span>
             </div>
           </ion-card-content>
         </ion-card>
@@ -260,7 +290,8 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
                 </div>
                 <div class="kpi-item">
                   <span class="kpi-value">{{ monthlyReport.fleet?.totalDistanceKm || monthlyReport.totalDistanceKm || 0 | number:'1.0-0' }}</span>
-                  <span class="kpi-label">km total</span>
+                  <!-- Somme du MOIS affiché en titre de la carte, pas un compteur de flotte. -->
+                  <span class="kpi-label">km parcourus</span>
                 </div>
                 <div class="kpi-item">
                   <span class="kpi-value">{{ monthlyReport.fleet?.totalTrips || monthlyReport.totalTrips || 0 }}</span>
@@ -430,6 +461,19 @@ import { ActionSheetController, LoadingController } from '@ionic/angular';
     .kpi-item.highlight { background: rgba(26,86,219,0.08); }
     .kpi-value { display: block; font-size: 18px; font-weight: 700; color: var(--ion-text-color); }
     .kpi-label { display: block; font-size: 10px; color: var(--ion-color-medium); margin-top: 2px; }
+    /* Nature de la grandeur (au-dessus des chiffres) et sa période, pour qu'une distance de
+       période ne se lise pas comme un compteur. */
+    .metric-caption {
+      display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+      font-size: 12px; font-weight: 600; color: var(--ion-text-color); margin-bottom: 10px;
+    }
+    .metric-caption ion-icon { font-size: 14px; color: var(--ion-color-primary); }
+    .metric-caption .period { font-weight: 400; color: var(--ion-color-medium); }
+    .metric-note {
+      display: flex; gap: 6px; margin-top: 12px;
+      font-size: 11px; line-height: 1.4; color: var(--ion-color-medium);
+    }
+    .metric-note ion-icon { font-size: 13px; flex: 0 0 auto; margin-top: 1px; }
     .mini-chart { margin-top: 16px; }
     .chart-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--ion-color-medium); }
     .bar-chart {
@@ -505,6 +549,10 @@ export class ReportsPage implements OnInit {
   tripsSummary: any = null;
   monthlyReport: any = null;
 
+  /** Bornes de la dernière requête de chaque onglet, source unique des libellés de période. */
+  private mileagePeriod: { start: string; end: string } | null = null;
+  private tripsPeriod: { start: string; end: string } | null = null;
+
   constructor(
     private api: ApiService,
     private actionSheetCtrl: ActionSheetController,
@@ -522,6 +570,27 @@ export class ReportsPage implements OnInit {
       return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
     }
     return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  /**
+   * Période écrite à côté du chiffre. Sans elle, « km total » se lisait comme un relevé de
+   * compteur alors que c'est une somme sur quelques jours. Elle est recopiée des bornes
+   * RÉELLEMENT envoyées à l'API (loadMileageReport / loadTripsReport) et non recalculée :
+   * un libellé ne peut donc pas annoncer une période que la requête n'a pas demandée.
+   */
+  get mileagePeriodLabel(): string {
+    const p = this.mileagePeriod;
+    return p ? `du ${this.frDate(p.start)} au ${this.frDate(p.end)}` : '';
+  }
+
+  get tripsPeriodLabel(): string {
+    return this.tripsPeriod ? `le ${this.frDate(this.tripsPeriod.end)}` : '';
+  }
+
+  /** 'AAAA-MM-JJ' → 'JJ/MM/AAAA' sans repasser par Date : un fuseau décalerait le jour. */
+  private frDate(iso: string): string {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y}`;
   }
 
   loadVehicles() {
@@ -610,6 +679,7 @@ export class ReportsPage implements OnInit {
     const d = new Date(date);
     const start = new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split('T')[0];
     const end = date;
+    this.mileagePeriod = { start, end };
 
     if (this.selectedVehicleId) {
       this.api.getMileageReport(this.selectedVehicleId, start, end).subscribe({
@@ -627,6 +697,7 @@ export class ReportsPage implements OnInit {
   private loadTripsReport(date: string) {
     const startDate = date;
     const endDate = date;
+    this.tripsPeriod = { start: startDate, end: endDate };
 
     this.api.getTrips(this.selectedVehicleId || undefined, startDate, endDate).subscribe({
       next: (t) => { this.trips = Array.isArray(t) ? t : []; this.loading = false; },

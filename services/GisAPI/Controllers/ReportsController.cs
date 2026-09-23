@@ -6,6 +6,8 @@ using System.Security.Claims;
 using System.Text.Json;
 using MediatR;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
@@ -31,15 +33,17 @@ public class ReportsController : ControllerBase
     private readonly GisDbContext _context;
     private readonly IMediator _mediator;
     private readonly IEmailService _emailService;
+    private readonly ICurrentTenantService _tenantService;
 
     private const double DefaultStopSpeedThresholdKph = 3.0;
     private const int DefaultMinStopDurationSeconds = 120;
 
-    public ReportsController(GisDbContext context, IMediator mediator, IEmailService emailService)
+    public ReportsController(GisDbContext context, IMediator mediator, IEmailService emailService, ICurrentTenantService tenantService)
     {
         _context = context;
         _mediator = mediator;
         _emailService = emailService;
+        _tenantService = tenantService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -54,6 +58,35 @@ public class ReportsController : ControllerBase
     // rapport vide, indiscernable d'une période sans activité.
     private BadRequestObjectResult PeriodeInversee() =>
         BadRequest(new { message = ReportRequestRules.InvertedPeriodMessage });
+
+    /// <summary>
+    /// Le véhicule demandé dans l'URL est-il accessible à l'appelant ?
+    ///
+    /// Les routes « un véhicule » de ce contrôleur ne vérifiaient que la SOCIÉTÉ.
+    /// Chez un loueur dont les 307 véhicules sont loués à des clients distincts,
+    /// il suffisait donc de changer l'identifiant dans l'URL pour lire les
+    /// trajets, arrêts, kilométrage ou coûts du véhicule d'un autre locataire :
+    /// le cloisonnement société est un invariant EF, celui par UTILISATEUR est
+    /// une convention qui avait été oubliée ici.
+    ///
+    /// Les deux contrôles sont nécessaires et aucun ne remplace l'autre :
+    ///  • existence DANS la société — <see cref="VehicleScope"/> ne la porte pas
+    ///    (pour un administrateur il court-circuite toute requête sur Vehicles,
+    ///    et le filtre de requête EF est de toute façon contourné pour les
+    ///    administrateurs système) ;
+    ///  • portée utilisateur — un non-administrateur ne voit que les véhicules
+    ///    qui lui sont affectés, rien s'il n'en a aucun.
+    /// </summary>
+    private async Task<bool> VehiculeAccessibleAsync(int vehicleId, int companyId, CancellationToken ct = default)
+    {
+        var appartientALaSociete = await _context.Vehicles
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId, ct);
+
+        if (!appartientALaSociete)
+            return false;
+
+        return await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, ct);
+    }
 
     /// <summary>Active/desactive l'envoi du rapport journalier par email pour l'utilisateur courant.</summary>
     [HttpPut("daily-fleet-report/preference")]
@@ -437,9 +470,8 @@ public class ReportsController : ControllerBase
         var companyId = GetCompanyId();
         var reportDate = date?.Date ?? DateTime.UtcNow.Date;
 
-        // Verify vehicle belongs to company
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        // Société ET portée utilisateur : voir VehiculeAccessibleAsync.
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();
@@ -493,9 +525,8 @@ public class ReportsController : ControllerBase
 
         var companyId = GetCompanyId();
 
-        // Verify vehicle belongs to company
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        // Société ET portée utilisateur : voir VehiculeAccessibleAsync.
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();
@@ -579,8 +610,7 @@ public class ReportsController : ControllerBase
 
         var companyId = GetCompanyId();
 
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();
@@ -630,8 +660,7 @@ public class ReportsController : ControllerBase
 
         var companyId = GetCompanyId();
 
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();
@@ -711,9 +740,8 @@ public class ReportsController : ControllerBase
 
         var companyId = GetCompanyId();
 
-        // Verify vehicle belongs to company
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        // Société ET portée utilisateur : voir VehiculeAccessibleAsync.
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();
@@ -805,9 +833,8 @@ public class ReportsController : ControllerBase
 
         var companyId = GetCompanyId();
 
-        // Verify vehicle belongs to company
-        var vehicleExists = await _context.Vehicles
-            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
+        // Société ET portée utilisateur : voir VehiculeAccessibleAsync.
+        var vehicleExists = await VehiculeAccessibleAsync(vehicleId, companyId);
 
         if (!vehicleExists)
             return VehiculeIntrouvable();

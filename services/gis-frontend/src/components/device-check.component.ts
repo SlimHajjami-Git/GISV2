@@ -1,7 +1,20 @@
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
+
+/**
+ * Message affiché pour un échec de la recherche, selon le statut HTTP. Exporté pour
+ * les tests : aucun statut ne doit laisser l'écran muet ou afficher un « HTTP 0 » brut.
+ */
+export function messageErreurDiagnostic(statut: number): string {
+  if (statut === 401) return 'Votre session a expiré. Reconnectez-vous pour lancer un diagnostic.';
+  if (statut === 403) return "Votre compte n'a pas accès au diagnostic des boîtiers.";
+  if (statut === 0) return 'Serveur injoignable. Vérifiez votre connexion et réessayez.';
+  return `Le diagnostic a échoué (erreur ${statut}). Réessayez dans un instant.`;
+}
 
 @Component({
   selector: 'app-device-check',
@@ -356,8 +369,24 @@ export class DeviceCheckComponent {
   result: any = null;
   error = '';
 
-  constructor(private cdr: ChangeDetectorRef) {}
+  constructor(
+    private http: HttpClient,
+    private router: Router,
+    private cdr: ChangeDetectorRef
+  ) {}
 
+  /**
+   * Cloisonnement HERTZ (23/09/2026) : /api/devicecheck était la SEULE route de l'API
+   * sans [Authorize] — elle répondait 200 sans jeton et traversait toutes les sociétés
+   * (IgnoreQueryFilters). Elle exige désormais un compte connecté et ne rend que les
+   * boîtiers de SA société et de SON périmètre de véhicules.
+   *
+   * L'appel passe donc par HttpClient, c'est-à-dire par authInterceptor, qui pose le
+   * jeton ET le rafraîchit (proactivement avant expiration, puis sur 401). L'ancien
+   * window.fetch échappait à l'intercepteur : un premier correctif y posait le jeton à
+   * la main, mais sans rafraîchissement — une session expirée devenait « HTTP 401 »
+   * affiché tel quel, sans issue. La route Angular est gardée par AuthGuard.
+   */
   search() {
     const q = this.query.trim();
     if (!q) return;
@@ -365,23 +394,27 @@ export class DeviceCheckComponent {
     this.result = null;
     this.error = '';
 
-    const url = `${environment.apiUrl}/devicecheck/lookup?q=${encodeURIComponent(q)}`;
+    const params = new HttpParams().set('q', q);
 
-    window.fetch(url)
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(data => {
+    this.http.get<any>(`${environment.apiUrl}/devicecheck/lookup`, { params }).subscribe({
+      next: data => {
         this.result = data;
         this.loading = false;
         this.cdr.detectChanges();
-      })
-      .catch(err => {
-        this.error = err?.message || 'Erreur de connexion au serveur.';
+      },
+      error: (err: HttpErrorResponse) => {
+        const statut = typeof err?.status === 'number' ? err.status : 0;
+        this.error = messageErreurDiagnostic(statut);
         this.loading = false;
         this.cdr.detectChanges();
-      });
+        // Session perdue malgré la tentative de rafraîchissement de l'intercepteur :
+        // retour à la connexion, jamais un échec muet. (L'intercepteur y renvoie déjà
+        // quand le rafraîchissement échoue ; ce cas couvre l'absence totale de session.)
+        if (statut === 401) {
+          this.router.navigate(['/login'], { queryParams: { returnUrl: '/device-check' } });
+        }
+      }
+    });
   }
 
   formatDate(iso: string): string {

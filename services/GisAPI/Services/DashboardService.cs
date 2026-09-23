@@ -200,7 +200,12 @@ public class DashboardService : IDashboardService
             .ToList();
 
         // ── 5. Vehicle health ──
-        var healthResults = await _healthService.CalculateAllScoresAsync(companyId);
+        // CalculateAllScoresAsync note TOUT le parc de la société : sans portée, les
+        // compteurs Sain/Attention/Critique d'un locataire HERTZ affecté à 2 véhicules
+        // totalisaient les 307 du parc. Le filtre s'applique au RÉSULTAT, en mémoire,
+        // plutôt qu'en changeant la signature partagée d'IVehicleHealthScoreService
+        // (l'assistant IA l'appelle aussi) — et le service renvoie déjà VehicleId.
+        var healthResults = ScopedHealthResults(await _healthService.CalculateAllScoresAsync(companyId), scopeIds);
         var healthy = healthResults.Count(h => h.Score >= 80);
         var attention = healthResults.Count(h => h.Score >= 40 && h.Score < 80);
         var unhealthy = healthResults.Count(h => h.Score < 40);
@@ -217,6 +222,14 @@ public class DashboardService : IDashboardService
             {
                 name = vehicleById[x.VehicleId].Plate ?? vehicleById[x.VehicleId].Name,
                 color = topUnitsColors[i % topUnitsColors.Length],
+                // Distance PARCOURUE sur la periode demandee. Publie sous le nom
+                // `mileage` depuis l'origine, alors que ce mot designe ailleurs le
+                // compteur de vie du vehicule (Monitoring, fiche vehicule) : deux
+                // grandeurs sous un seul mot, et c'est cette lecture-la que le
+                // client a contestee. `periodKm` nomme la grandeur sans ambiguite.
+                periodKm = Math.Round((double)x.Km),
+                // Conserve pour compatibilite : l'application mobile lit encore
+                // `mileage`. A retirer quand plus aucune version en service ne le lit.
                 mileage = Math.Round((double)x.Km)
             })
             .ToList();
@@ -224,53 +237,27 @@ public class DashboardService : IDashboardService
         // ── 7. Geofences — number of PASSAGES (entry/exit events) in the period,
         //       not the static count of assigned vehicles (which never reflected activity). ──
         var geoColors = new[] { "#22c55e", "#3b82f6", "#f97316", "#06b6d4", "#8b5cf6", "#ec4899", "#eab308", "#14b8a6" };
-        var geofencesRaw = await _context.Geofences.AsNoTracking()
-            .Where(g => g.CompanyId == companyId && g.IsActive)
-            .Select(g => new { g.Id, g.Name })
-            .ToListAsync();
-        var geoEventCounts = await _context.GeofenceEvents.AsNoTracking()
-            .Where(e => e.CompanyId == companyId && e.Timestamp >= periodStart && e.Timestamp <= periodEnd)
-            .GroupBy(e => e.GeofenceId)
-            .Select(g => new { GeofenceId = g.Key, Count = g.Count() })
-            .ToListAsync();
-        var geoCountMap = geoEventCounts.ToDictionary(x => x.GeofenceId, x => x.Count);
+        // Portée de la LISTE des zones — règle du 23/09/2026, qui CORRIGE la consigne
+        // de la veille (« garder la liste entière, ne cloisonner que les compteurs ») :
+        // chez un loueur, un client « ne devrait pas voir les géofences, ni recevoir de
+        // notifications de ces géofences ou d'autres véhicules que les siens ».
+        // Voir VisibleGeofencesAsync pour la règle exacte et pour le fait de production
+        // à ne pas prendre pour une régression (HERTZ n'a aucune liaison zone↔véhicule).
+        var geofencesRaw = await VisibleGeofencesAsync(_context, companyId, userId, scopeIds, ct);
+        // Portée des COMPTEURS de passages : inchangée — un passage est l'entrée ou la
+        // sortie d'un VÉHICULE, il suit donc la portée véhicules de l'appelant.
+        var geoCountMap = await GeofencePassageCountsAsync(_context, companyId, scopeIds, periodStart, periodEnd, ct);
         var geofencesList = geofencesRaw
             .Select((g, i) => new { name = g.Name, color = geoColors[i % geoColors.Length], count = geoCountMap.GetValueOrDefault(g.Id, 0) })
             .ToList();
 
         // ── 8. Alerts (GpsAlerts + Notifications merged) ──
-        var gpsAlerts = await _context.GpsAlerts.AsNoTracking()
-            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId)
-            .OrderByDescending(a => a.Timestamp)
-            .Take(20)
-            .Select(a => new { message = a.Message ?? "Alerte", severity = a.Severity ?? "info", ts = a.Timestamp })
-            .ToListAsync();
-
-        var notifications = await _context.Notifications.AsNoTracking()
-            .Where(n => n.CompanyId == companyId)
-            .OrderByDescending(n => n.CreatedAt)
-            .Take(20)
-            .Select(n => new { message = n.Title ?? "Notification", severity = n.Priority, ts = n.CreatedAt })
-            .ToListAsync();
-
-        var mergedAlerts = gpsAlerts
-            .Select(a => new
-            {
-                a.message,
-                severity = a.severity == "critical" ? "danger" : a.severity == "warning" ? "warning" : "info",
-                time = a.ts.ToString("dd/MM HH:mm"),
-                a.ts
-            })
-            .Concat(notifications.Select(n => new
-            {
-                message = n.message,
-                severity = n.severity == "high" || n.severity == "critical" ? "danger" : n.severity == "medium" ? "warning" : "info",
-                time = n.ts.ToString("dd/MM HH:mm"),
-                ts = n.ts
-            }))
-            .OrderByDescending(a => a.ts)
-            .Take(20)
-            .Select(a => new { a.message, a.severity, a.time })
+        // C'est LE symptôme signalé par HERTZ (« il reçoit les notifications de tout
+        // le parc ») : un locataire affecté à 2 véhicules sur 307 lisait ici les
+        // alertes des 305 autres. Voir AlertFeedAsync pour la règle exacte.
+        // La forme publiée reste { message, severity, time } : l'écran la lit telle quelle.
+        var mergedAlerts = (await AlertFeedAsync(_context, companyId, userId, scopeIds, ct))
+            .Select(a => new { message = a.Message, severity = a.Severity, time = a.Timestamp.ToString("dd/MM HH:mm") })
             .ToList();
 
         // ── 9. Recent trips ──
@@ -515,6 +502,10 @@ public class DashboardService : IDashboardService
             recentTrips = tripsList,
             drivers = driversList,
             trends = new { cost = costTrend, distance = distanceTrend },
+            // Meme chiffre sous deux noms : `periodKm` dit la grandeur (distance
+            // parcourue SUR LA PERIODE demandee), `periodDistance` reste publie
+            // pour ne pas casser les clients deja livres.
+            periodKm = Math.Round((double)currentDistance),
             periodDistance = Math.Round((double)currentDistance),
             typeBreakdown
         };
@@ -545,6 +536,432 @@ public class DashboardService : IDashboardService
             .Where(uv => uv.UserId == userId)
             .Select(uv => uv.VehicleId)
             .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Une ligne du bloc « Alertes » du tableau de bord, avant mise en forme :
+    /// libellé, gravité déjà traduite (danger / warning / info) et horodatage brut
+    /// (c'est lui qui ordonne la fusion des deux sources).
+    /// </summary>
+    public record DashboardAlert(string Message, string Severity, DateTime Timestamp);
+
+    /// <summary>
+    /// Les 20 dernières lignes du bloc « Alertes », fusion de DEUX sources qui ne se
+    /// cloisonnent PAS de la même façon (incident de confidentialité HERTZ du
+    /// 23/09/2026 — un locataire affecté à 2 véhicules sur 307 lisait ici tout le parc) :
+    ///   • <c>gps_alerts</c> porte un VÉHICULE : elle suit la portée véhicules
+    ///     (<paramref name="scopeIds"/>), exactement comme les trajets récents ;
+    ///   • <c>notifications</c> porte un DESTINATAIRE : une notification appartient à
+    ///     son utilisateur, et la cloche le sait déjà
+    ///     (<c>GetNotificationsQueryHandler</c> filtre sur <c>UserId</c>) — le tableau
+    ///     de bord, lui, ne filtrait que sur la société.
+    /// Les deux filtres ne s'appliquent QUE si <paramref name="scopeIds"/> n'est pas
+    /// <c>null</c>, et pour deux raisons distinctes :
+    ///   • décision produit du 23/09/2026 : pour un ADMINISTRATEUR on ne change RIEN,
+    ///     il continue de voir les alertes ET les notifications de toute la société ;
+    ///   • le pré-chauffage appelle le service avec <c>userId: 0, isAdmin: true</c> :
+    ///     un filtre inconditionnel sur <c>UserId == 0</c> viderait l'entrée admin
+    ///     mise en cache, celle que reçoivent tous les admins de la société.
+    /// Statique et prenant le contexte en paramètre pour être appelable telle quelle
+    /// par les tests — aucune copie de la règle ailleurs.
+    /// </summary>
+    public static async Task<List<DashboardAlert>> AlertFeedAsync(
+        IGisDbContext context, int companyId, int userId, List<int>? scopeIds, CancellationToken ct)
+    {
+        var alertsQuery = context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId);
+        var notificationsQuery = context.Notifications.AsNoTracking()
+            .Where(n => n.CompanyId == companyId);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            alertsQuery = alertsQuery.Where(a => ids.Contains(a.VehicleId!.Value));
+            notificationsQuery = notificationsQuery.Where(n => n.UserId == userId);
+        }
+
+        var gpsAlerts = await alertsQuery
+            .OrderByDescending(a => a.Timestamp)
+            .Take(20)
+            .Select(a => new { message = a.Message ?? "Alerte", severity = a.Severity ?? "info", ts = a.Timestamp })
+            .ToListAsync(ct);
+
+        var notifications = await notificationsQuery
+            .OrderByDescending(n => n.CreatedAt)
+            .Take(20)
+            .Select(n => new { message = n.Title ?? "Notification", severity = n.Priority, ts = n.CreatedAt })
+            .ToListAsync(ct);
+
+        return gpsAlerts
+            .Select(a => new DashboardAlert(
+                a.message,
+                a.severity == "critical" ? "danger" : a.severity == "warning" ? "warning" : "info",
+                a.ts))
+            .Concat(notifications.Select(n => new DashboardAlert(
+                n.message,
+                n.severity == "high" || n.severity == "critical" ? "danger" : n.severity == "medium" ? "warning" : "info",
+                n.ts)))
+            .OrderByDescending(a => a.Timestamp)
+            .Take(20)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Restreint les scores de santé (calculés pour TOUTE la société) à la portée
+    /// véhicules de l'appelant : <c>null</c> = tout le parc, liste vide = rien.
+    /// Filtrage en mémoire à dessein — la signature d'<c>IVehicleHealthScoreService</c>
+    /// est partagée (assistant IA, fiche véhicule) et ne doit pas bouger pour ça.
+    /// </summary>
+    public static List<VehicleHealthResult> ScopedHealthResults(List<VehicleHealthResult> results, List<int>? scopeIds)
+    {
+        if (scopeIds is null) return results;
+        var ids = new HashSet<int>(scopeIds);
+        return results.Where(h => ids.Contains(h.VehicleId)).ToList();
+    }
+
+    /// <summary>
+    /// Nombre de PASSAGES (entrées/sorties) par géofence sur [from, to], dans la
+    /// portée véhicules de l'appelant. Un passage est le franchissement d'un
+    /// VÉHICULE : il se cloisonne sur <paramref name="scopeIds"/> (null = tout le
+    /// parc, liste vide = rien). La LISTE des zones, elle, obéit à une autre règle —
+    /// voir <see cref="VisibleGeofenceIdsAsync"/>.
+    /// </summary>
+    public static async Task<Dictionary<int, int>> GeofencePassageCountsAsync(
+        IGisDbContext context, int companyId, List<int>? scopeIds, DateTime from, DateTime to, CancellationToken ct)
+    {
+        var eventsQuery = context.GeofenceEvents.AsNoTracking()
+            .Where(e => e.CompanyId == companyId && e.Timestamp >= from && e.Timestamp <= to);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            eventsQuery = eventsQuery.Where(e => ids.Contains(e.VehicleId));
+        }
+
+        var counts = await eventsQuery
+            .GroupBy(e => e.GeofenceId)
+            .Select(g => new { GeofenceId = g.Key, Count = g.Count() })
+            .ToListAsync(ct);
+
+        return counts.ToDictionary(x => x.GeofenceId, x => x.Count);
+    }
+
+    /// <summary>Une géozone telle que le tableau de bord la publie : identifiant et libellé.</summary>
+    public record DashboardGeofence(int Id, string Name);
+
+    /// <summary>
+    /// Identifiants des géozones VISIBLES par l'appelant, ou <c>null</c> lorsqu'il
+    /// les voit toutes (le filtre société suffit alors). Une liste VIDE signifie
+    /// « aucune zone visible » et doit produire un résultat vide.
+    ///
+    /// RÈGLE DU 23/09/2026 (décidée par Slim, capture d'écran à l'appui). Elle
+    /// REMPLACE la consigne de la veille, qui laissait la liste des zones entière et
+    /// ne cloisonnait que les compteurs de passages : au sens métier c'était faux,
+    /// chez un loueur un client « ne devrait pas voir les géofences, ni recevoir de
+    /// notifications de ces géofences ou d'autres véhicules que les siens ».
+    ///   • administrateur (portée <c>null</c>) : RIEN ne change, toutes les zones
+    ///     de sa société ;
+    ///   • utilisateur restreint AVEC la case Géofences (<c>users.can_geofences</c>) :
+    ///       zones rattachées à au moins un de SES véhicules (<c>geofence_vehicles</c>)
+    ///       UNION zones rattachées à AUCUN véhicule ;
+    ///   • utilisateur restreint SANS la case Géofences : AUCUNE zone, même rattachée
+    ///     (règle de Slim pour Kap Pharma, inchangée) ;
+    ///   • utilisateur restreint sans aucun véhicule affecté (portée VIDE) : AUCUNE
+    ///     zone — la liste vide veut dire « il ne voit rien », jamais « tout ».
+    /// Ce qui reste INTERDIT : voir une zone rattachée UNIQUEMENT aux véhicules
+    /// d'autres utilisateurs.
+    ///
+    /// AJUSTEMENT DU 23/09/2026 (même jour) — les zones SANS liaison. La première
+    /// version ne montrait à un restreint que les zones rattachées à ses véhicules.
+    /// Or une zone NEUVE n'est rattachée à rien : dès que l'écriture a été rendue aux
+    /// gestionnaires de zones (voir <c>GeofencesController</c>), un Opérateur de
+    /// SICOAC qui crée une zone l'aurait vue disparaître sous ses yeux. Les faits de
+    /// production relevés ce jour-là : 17 comptes NON administrateurs ont la case
+    /// Géofences et/ou Entretien et/ou Paramètres — SICOAC en a 7 (rôle « Operateur »,
+    /// 11 véhicules affectés sur 11 pour six d'entre eux, 5 sur 11 pour le
+    /// septième), PARENIN 2, EXALTIS 1, BELIVE plusieurs : ce sont eux qui gèrent les
+    /// zones de leur société au quotidien. Une zone sans liaison est une zone DE
+    /// SOCIÉTÉ — la surveillance l'applique d'ailleurs à TOUT le parc
+    /// (<c>BroadcastPositionCommandHandler.ComputeInsideZones</c>) — et elle se gère
+    /// par ceux qui ont la case. Les compteurs de passages, eux, restent cloisonnés
+    /// aux véhicules de la portée (voir les appelants) : voir la zone ne donne pas les
+    /// passages des véhicules des autres.
+    ///
+    /// La permission est lue EN BASE, comme le fait <c>PermissionMiddleware</c> : le
+    /// jeton ne porte que les rôles (voir <c>JwtService</c>), jamais les cases par
+    /// module. Utilisateur introuvable => aucune zone (fail-closed).
+    ///
+    /// FAIT DE PRODUCTION À CONNAÎTRE : HERTZ n'a JAMAIS rattaché ses zones à des
+    /// véhicules (3 zones, 0 liaison). Ses zones sont donc des zones DE SOCIÉTÉ : un
+    /// compte restreint de HERTZ qui recevrait un jour la case Géofences les verrait
+    /// toutes les trois — c'est le sens de la case (« gère les zones »). Kap Pharma
+    /// (users.id = 58) a can_geofences = FALSE : il ne voit toujours AUCUNE zone, et le
+    /// relevé du 23/09 ne cite aucun compte restreint de HERTZ parmi ceux qui ont la
+    /// case. Ne donner la case Géofences à un LOCATAIRE qu'en connaissance de cause.
+    /// </summary>
+    public static async Task<List<int>?> VisibleGeofenceIdsAsync(
+        IGisDbContext context, int companyId, int userId, List<int>? scopeIds, CancellationToken ct)
+    {
+        // Administrateur : aucun filtre, exactement comme avant.
+        if (scopeIds is null) return null;
+
+        if (!await CanManageGeofencesAsync(context, companyId, userId, ct)) return new List<int>();
+
+        // Portée véhicules VIDE : il ne voit rien — pas même les zones de société.
+        if (scopeIds.Count == 0) return new List<int>();
+
+        return await VisibleGeofenceIdsQuery(context, companyId, scopeIds).ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// La case Géofences de l'appelant (<c>users.can_geofences</c>), lue EN BASE et
+    /// bornée à sa société. Utilisateur introuvable => false (fail-closed). Partagée
+    /// par la règle de lecture ci-dessus et par la règle d'écriture de
+    /// <c>GeofencesController</c> : une seule lecture de la case, pas deux copies.
+    /// </summary>
+    public static Task<bool> CanManageGeofencesAsync(
+        IGisDbContext context, int companyId, int userId, CancellationToken ct) =>
+        context.Users.AsNoTracking()
+            .Where(u => u.Id == userId && u.CompanyId == companyId)
+            .Select(u => u.CanGeofences)
+            .FirstOrDefaultAsync(ct);
+
+    /// <summary>
+    /// Requête SQL de la règle restreinte de <see cref="VisibleGeofenceIdsAsync"/> :
+    /// zones de la société rattachées à l'un des véhicules de <paramref name="scopeIds"/>,
+    /// OU rattachées à aucun véhicule. Deux sous-requêtes EXISTS / NOT EXISTS sur
+    /// <c>geofence_vehicles</c>, la liste des véhicules passant en UN paramètre tableau.
+    /// </summary>
+    internal static IQueryable<int> VisibleGeofenceIdsQuery(IGisDbContext context, int companyId, List<int> scopeIds)
+    {
+        List<int> ids = scopeIds;
+        return context.Geofences.AsNoTracking()
+            .Where(g => g.CompanyId == companyId
+                && (g.AssignedVehicles.Any(gv => ids.Contains(gv.VehicleId))
+                    || !g.AssignedVehicles.Any()))
+            .Select(g => g.Id);
+    }
+
+    /// <summary>
+    /// Géozones actives de la société visibles par l'appelant, règle de
+    /// <see cref="VisibleGeofenceIdsAsync"/>. Ordonnées par identifiant pour que la
+    /// couleur attribuée à chaque zone par l'écran soit stable d'un appel à l'autre.
+    /// </summary>
+    public static async Task<List<DashboardGeofence>> VisibleGeofencesAsync(
+        IGisDbContext context, int companyId, int userId, List<int>? scopeIds, CancellationToken ct)
+    {
+        var visibleIds = await VisibleGeofenceIdsAsync(context, companyId, userId, scopeIds, ct);
+        if (visibleIds is { Count: 0 }) return new List<DashboardGeofence>();
+
+        var query = context.Geofences.AsNoTracking()
+            .Where(g => g.CompanyId == companyId && g.IsActive);
+
+        if (visibleIds is not null)
+        {
+            List<int> gids = visibleIds;
+            query = query.Where(g => gids.Contains(g.Id));
+        }
+
+        return await query
+            .OrderBy(g => g.Id)
+            .Select(g => new DashboardGeofence(g.Id, g.Name))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Véhicules retenus par <c>GET /api/dashboard/stats</c> : ceux de la société,
+    /// bornés à la portée de l'appelant (null = tout le parc, liste VIDE = aucun).
+    /// Cette route comptait la flotte ENTIÈRE de la société — mêmes compteurs que
+    /// /dashboard/all, mais par une autre URL, donc le même symptôme HERTZ.
+    /// </summary>
+    public static async Task<List<Vehicle>> StatsVehiclesAsync(
+        IGisDbContext context, int companyId, List<int>? scopeIds, CancellationToken ct)
+    {
+        var query = context.Vehicles.AsNoTracking()
+            .Where(v => v.CompanyId == companyId);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            query = query.Where(v => ids.Contains(v.Id));
+        }
+
+        return await query.ToListAsync(ct);
+    }
+
+    /// <summary>Compteurs de <c>GET /api/dashboard/stats</c> rattachés à un véhicule.</summary>
+    public record DashboardStatsCounts(
+        int UnresolvedAlerts,
+        int AlertsToday,
+        int UpcomingMaintenance,
+        int OverdueMaintenance,
+        decimal CostsThisMonth,
+        decimal FuelCostsThisMonth,
+        int TripsToday,
+        decimal DistanceToday,
+        int ActiveGeofences,
+        int GeofenceEventsToday);
+
+    /// <summary>
+    /// Les compteurs de <c>/api/dashboard/stats</c> qui portent sur un VÉHICULE
+    /// (alertes, entretiens, coûts, trajets, géozones), dans la portée de l'appelant.
+    /// Ils ne filtraient que par société : un locataire de HERTZ affecté à 2 véhicules
+    /// y lisait les alertes, les coûts et les kilomètres des 305 autres.
+    /// Les géozones suivent en plus la règle du 23/09/2026
+    /// (<see cref="VisibleGeofenceIdsAsync"/>) : un passage n'est compté que s'il
+    /// concerne un véhicule de la portée ET une zone que l'appelant a le droit de voir.
+    /// Les compteurs Conducteurs restent volontairement à l'échelle de la société —
+    /// un conducteur n'est pas rattaché à un véhicule de façon exclusive.
+    /// </summary>
+    public static async Task<DashboardStatsCounts> StatsCountsAsync(
+        IGisDbContext context, int companyId, int userId, List<int>? scopeIds,
+        DateTime today, DateTime thisMonth, CancellationToken ct)
+    {
+        var unresolvedAlerts = context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId && !a.Resolved);
+        var alertsToday = context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId && a.Timestamp >= today);
+
+        // Même périmètre qu'ailleurs : ni en pause, ni modèle désactivé.
+        var upcoming = context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
+                        (s.Status == "upcoming" || s.Status == "due"));
+        var overdue = context.VehicleMaintenanceSchedules.AsNoTracking()
+            .Where(s => s.CompanyId == companyId && !s.IsPaused && s.Template!.IsActive &&
+                        (s.Status == "overdue" || s.Status == "critical"));
+
+        var costs = context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Date >= thisMonth);
+        var fuelCosts = context.VehicleCosts.AsNoTracking()
+            .Where(c => c.CompanyId == companyId && c.Type == "fuel" && c.Date >= thisMonth);
+
+        var tripsToday = context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= today);
+        var distanceToday = context.Trips.AsNoTracking()
+            .Where(t => t.CompanyId == companyId && t.StartTime >= today && t.Status == "completed");
+
+        var geofences = context.Geofences.AsNoTracking()
+            .Where(g => g.CompanyId == companyId && g.IsActive);
+        var geofenceEventsToday = context.GeofenceEvents.AsNoTracking()
+            .Where(e => e.Geofence!.CompanyId == companyId && e.Timestamp >= today);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            unresolvedAlerts = unresolvedAlerts.Where(a => ids.Contains(a.VehicleId!.Value));
+            alertsToday = alertsToday.Where(a => ids.Contains(a.VehicleId!.Value));
+            upcoming = upcoming.Where(s => ids.Contains(s.VehicleId));
+            overdue = overdue.Where(s => ids.Contains(s.VehicleId));
+            costs = costs.Where(c => ids.Contains(c.VehicleId));
+            fuelCosts = fuelCosts.Where(c => ids.Contains(c.VehicleId));
+            tripsToday = tripsToday.Where(t => ids.Contains(t.VehicleId));
+            distanceToday = distanceToday.Where(t => ids.Contains(t.VehicleId));
+            geofenceEventsToday = geofenceEventsToday.Where(e => ids.Contains(e.VehicleId));
+        }
+
+        var visibleGeofenceIds = await VisibleGeofenceIdsAsync(context, companyId, userId, scopeIds, ct);
+        if (visibleGeofenceIds is not null)
+        {
+            List<int> gids = visibleGeofenceIds;
+            geofences = geofences.Where(g => gids.Contains(g.Id));
+            geofenceEventsToday = geofenceEventsToday.Where(e => gids.Contains(e.GeofenceId));
+        }
+
+        return new DashboardStatsCounts(
+            UnresolvedAlerts: await unresolvedAlerts.CountAsync(ct),
+            AlertsToday: await alertsToday.CountAsync(ct),
+            UpcomingMaintenance: await upcoming.CountAsync(ct),
+            OverdueMaintenance: await overdue.CountAsync(ct),
+            // Net des crédits (avoir, remboursement d'assurance), comme partout ailleurs.
+            CostsThisMonth: await VehicleCostCategory.SignedTotalAsync(costs),
+            FuelCostsThisMonth: await fuelCosts.Select(c => (decimal?)c.Amount).SumAsync(ct) ?? 0m,
+            TripsToday: await tripsToday.CountAsync(ct),
+            DistanceToday: await distanceToday.Select(t => (decimal?)t.DistanceKm).SumAsync(ct) ?? 0m,
+            ActiveGeofences: await geofences.CountAsync(ct),
+            GeofenceEventsToday: await geofenceEventsToday.CountAsync(ct));
+    }
+
+    /// <summary>Une ligne du flux <c>GET /api/dashboard/activity</c>.</summary>
+    public record DashboardActivity(string Type, int Id, string? Message, DateTime Timestamp, string? VehicleName);
+
+    /// <summary>
+    /// Plafond du flux « activité récente ». Au-delà, ce n'est plus un flux : l'écran
+    /// n'affiche qu'une poignée de lignes, et rien ne justifie de matérialiser plus.
+    /// </summary>
+    public const int LimiteActiviteMax = 200;
+
+    /// <summary>
+    /// Borne la limite reçue de la query string. Elle arrivait BRUTE jusqu'aux trois
+    /// <c>Take()</c> de <see cref="RecentActivityAsync"/> :
+    ///   • <c>?limit=-1</c> produisait un <c>LIMIT -1</c>, refusé par PostgreSQL
+    ///     (« LIMIT must not be negative ») — une 500 à la portée de n'importe qui ;
+    ///   • <c>?limit=1000000</c> matérialisait deux fois un million de lignes de
+    ///     <c>gps_alerts</c> (446 k lignes par jour sur TN) pour n'en rendre que le
+    ///     dessus.
+    /// </summary>
+    public static int BornerLimiteActivite(int limit) => Math.Clamp(limit, 1, LimiteActiviteMax);
+
+    /// <summary>
+    /// Le flux « activité récente » : dernières alertes GPS et derniers passages de
+    /// géofence, fusionnés par horodatage.
+    ///
+    /// Cette route refaisait, à une URL près, la requête du bloc « Alertes » du
+    /// tableau de bord — et sans aucune portée : elle publie le NOM DU VÉHICULE, donc
+    /// un locataire de HERTZ y retrouvait tout le parc alors que /dashboard/all venait
+    /// d'être cloisonné. Elle vit sous un commentaire « LEGACY ENDPOINTS » mais le
+    /// front l'appelle toujours (api.service.ts).
+    ///
+    /// Trois états, comme partout : <paramref name="scopeIds"/> null = administrateur,
+    /// aucun filtre ; liste non vide = ses véhicules ; liste VIDE = rien.
+    /// Les passages de géofence suivent EN PLUS la règle du 23/09/2026
+    /// (<see cref="VisibleGeofenceIdsAsync"/>) : la ligne publie le NOM DE LA ZONE,
+    /// que l'appelant n'a pas forcément le droit de connaître.
+    /// </summary>
+    public static async Task<List<DashboardActivity>> RecentActivityAsync(
+        IGisDbContext context, int companyId, int userId, List<int>? scopeIds, int limit, CancellationToken ct)
+    {
+        // Borne appliquée ICI aussi, et pas seulement chez l'appelant : les trois
+        // Take() ci-dessous reçoivent une valeur qui vient de la query string.
+        limit = BornerLimiteActivite(limit);
+
+        var alertsQuery = context.GpsAlerts.AsNoTracking()
+            .Where(a => a.VehicleId.HasValue && a.Vehicle!.CompanyId == companyId);
+        var eventsQuery = context.GeofenceEvents.AsNoTracking()
+            .Where(e => e.Vehicle!.CompanyId == companyId);
+
+        if (scopeIds is not null)
+        {
+            List<int> ids = scopeIds;
+            alertsQuery = alertsQuery.Where(a => ids.Contains(a.VehicleId!.Value));
+            eventsQuery = eventsQuery.Where(e => ids.Contains(e.VehicleId));
+        }
+
+        var visibleGeofenceIds = await VisibleGeofenceIdsAsync(context, companyId, userId, scopeIds, ct);
+        if (visibleGeofenceIds is not null)
+        {
+            List<int> gids = visibleGeofenceIds;
+            eventsQuery = eventsQuery.Where(e => gids.Contains(e.GeofenceId));
+        }
+
+        var recentAlerts = await alertsQuery
+            .OrderByDescending(a => a.Timestamp)
+            .Take(limit)
+            .Select(a => new DashboardActivity("alert", a.Id, a.Message, a.Timestamp,
+                a.Vehicle != null ? a.Vehicle.Name : null))
+            .ToListAsync(ct);
+
+        var recentEvents = await eventsQuery
+            .OrderByDescending(e => e.Timestamp)
+            .Take(limit)
+            .Select(e => new DashboardActivity("geofence", e.Id, e.Type + " - " + e.Geofence!.Name, e.Timestamp,
+                e.Vehicle != null ? e.Vehicle.Name : null))
+            .ToListAsync(ct);
+
+        return recentAlerts
+            .Concat(recentEvents)
+            .OrderByDescending(a => a.Timestamp)
+            .Take(limit)
+            .ToList();
     }
 
     /// <summary>

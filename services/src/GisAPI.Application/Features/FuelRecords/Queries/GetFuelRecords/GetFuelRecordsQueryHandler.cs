@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
@@ -24,6 +25,19 @@ public class GetFuelRecordsQueryHandler : IRequestHandler<GetFuelRecordsQuery, F
             .Include(f => f.Vehicle)
             .Include(f => f.Driver)
             .AsQueryable();
+
+        // Chez un LOUEUR (HERTZ), le filtre société ne cloisonne RIEN. Ces relevés
+        // publient pleins, vols de carburant et anomalies AVEC la plaque : un locataire
+        // lisait la consommation des véhicules loués aux autres clients. La portée
+        // s'applique AVANT le filtre optionnel, qui ne fait ensuite que l'INTERSECTER.
+        // TROIS états : null = administrateur, aucun filtre ; liste non vide = ses
+        // véhicules ; liste VIDE = il ne voit RIEN.
+        var portee = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(f => ids.Contains(f.VehicleId));
+        }
 
         // Apply filters
         if (request.VehicleId.HasValue)

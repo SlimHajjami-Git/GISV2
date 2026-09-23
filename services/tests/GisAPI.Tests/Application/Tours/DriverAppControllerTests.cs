@@ -61,6 +61,9 @@ public class DriverAppControllerTests
         var notifs = new Mock<INotificationService>();
         var clients = new Mock<IHubClients>();
         clients.Setup(c => c.Group(It.IsAny<string>())).Returns(Mock.Of<IClientProxy>());
+        // Les messages de tournée visent DEUX groupes (flotte + véhicule) via
+        // Clients.Groups depuis le cloisonnement HERTZ (DiffusionTournees).
+        clients.Setup(c => c.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(Mock.Of<IClientProxy>());
         var hub = new Mock<IHubContext<GpsHub>>();
         hub.Setup(h => h.Clients).Returns(clients.Object);
 

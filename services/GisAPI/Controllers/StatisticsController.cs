@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 
@@ -12,13 +14,32 @@ namespace GisAPI.Controllers;
 public class StatisticsController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public StatisticsController(GisDbContext context)
+    public StatisticsController(GisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états : <c>null</c> = administrateur,
+    /// AUCUN filtre ; liste non vide = ses véhicules ; liste VIDE = il ne voit RIEN.
+    ///
+    /// « /api/statistics » est dans <c>_skipRoutes</c> du <c>PermissionMiddleware</c> :
+    /// aucune case de module n'est même demandée, tout compte connecté l'atteint. Ces
+    /// statistiques publient kilométrage, vitesse maximale, freinages et coût carburant
+    /// PAR VÉHICULE, avec la plaque — chez un loueur, les chiffres d'exploitation des
+    /// véhicules loués aux autres clients.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync() =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, HttpContext.RequestAborted);
+
+    /// <summary>404 identique à un véhicule inexistant : on ne révèle pas qu'il existe.</summary>
+    private async Task<bool> HorsPorteeAsync(int vehicleId) =>
+        !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted);
 
     [HttpGet("daily")]
     public async Task<ActionResult<List<DailyStatistics>>> GetDailyStatistics(
@@ -36,6 +57,14 @@ public class StatisticsController : ControllerBase
                         s.Date <= DateOnly.FromDateTime(endDate.Value))
             .Include(s => s.Vehicle)
             .AsQueryable();
+
+        // La portée s'applique AVANT le filtre optionnel, qui ne fait que l'intersecter.
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(s => ids.Contains(s.VehicleId));
+        }
 
         if (vehicleId.HasValue)
             query = query.Where(s => s.VehicleId == vehicleId);
@@ -61,6 +90,10 @@ public class StatisticsController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
+            return NotFound();
+
+        // IDOR : il suffisait de changer l'identifiant dans l'URL.
+        if (await HorsPorteeAsync(vehicleId))
             return NotFound();
 
         var dailyStats = await _context.DailyStatistics
@@ -94,6 +127,11 @@ public class StatisticsController : ControllerBase
         return Ok(summary);
     }
 
+    // Les deux routes CONDUCTEURS ci-dessous restent à l'échelle de la société, comme
+    // les compteurs Conducteurs de /api/dashboard/stats : un conducteur n'est pas
+    // rattaché exclusivement à un véhicule (drivers.assigned_vehicle_id est un simple
+    // rattachement courant, pas un historique), et cloisonner des scores par conducteur
+    // demande une décision métier de Slim — donc on ne la devine pas ici.
     [HttpGet("drivers")]
     public async Task<ActionResult<List<DriverScore>>> GetDriverScores(
         [FromQuery] int? driverId = null,

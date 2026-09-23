@@ -4,11 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using System.Text;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.AiCredits;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Services;
 
 namespace GisAPI.Controllers;
@@ -22,15 +24,35 @@ public class AiChatController : ControllerBase
     private readonly ILlmService _llmService;
     private readonly IVehicleHealthScoreService _healthService;
     private readonly ILogger<AiChatController> _logger;
+    private readonly ICurrentTenantService _tenantService;
 
     public AiChatController(IGisDbContext context, ILlmService llmService,
-        IVehicleHealthScoreService healthService, ILogger<AiChatController> logger)
+        IVehicleHealthScoreService healthService, ILogger<AiChatController> logger,
+        ICurrentTenantService tenantService)
     {
         _context = context;
         _llmService = llmService;
         _healthService = healthService;
         _logger = logger;
+        _tenantService = tenantService;
     }
+
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états : <c>null</c> = administrateur,
+    /// AUCUN filtre ; liste non vide = ses véhicules ; liste VIDE = il ne voit RIEN.
+    ///
+    /// Le préfixe « /api/ai-chat » n'exige AUCUNE case de module (seul /fleet-report en
+    /// porte une) : tout compte connecté atteignait ces routes, et l'assistant RÉDIGE un
+    /// diagnostic complet — kilométrage, entretiens, réparations, coûts — sur le véhicule
+    /// qu'on lui nomme. Chez un loueur, c'est le dossier d'exploitation du véhicule loué
+    /// à un autre client, mis en forme par l'IA.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync() =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, RequestAborted);
+
+    /// <summary>404 identique à un véhicule inexistant : on ne révèle pas qu'il existe.</summary>
+    private async Task<bool> HorsPorteeAsync(int vehicleId) =>
+        !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, RequestAborted);
 
     private int GetUserId() => int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
@@ -67,7 +89,7 @@ public class AiChatController : ControllerBase
             .Include(v => v.GpsDevice)
             .FirstOrDefaultAsync(v => v.Id == request.VehicleId && v.CompanyId == companyId);
 
-        if (vehicle == null)
+        if (vehicle == null || await HorsPorteeAsync(request.VehicleId))
             return NotFound(new { message = "Véhicule introuvable" });
 
         // Crédit IA contrôlé AVANT d'enregistrer le message de l'utilisateur : un message
@@ -199,9 +221,20 @@ public class AiChatController : ControllerBase
     {
         var companyId = GetCompanyId();
 
-        var vehicles = await _context.Vehicles
+        var query = _context.Vehicles
             .AsNoTracking()
-            .Where(v => v.CompanyId == companyId)
+            .Where(v => v.CompanyId == companyId);
+
+        // Cette liste rendait les 307 plaques du parc : c'est le catalogue qui servait
+        // ensuite à nommer n'importe quel véhicule dans /send, /report ou /compare.
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(v => ids.Contains(v.Id));
+        }
+
+        var vehicles = await query
             .Select(v => new
             {
                 v.Id,
@@ -228,6 +261,10 @@ public class AiChatController : ControllerBase
     public async Task<IActionResult> GetHealthScore(int vehicleId)
     {
         var companyId = GetCompanyId();
+
+        if (await HorsPorteeAsync(vehicleId))
+            return NotFound(new { message = "Véhicule introuvable" });
+
         var result = await _healthService.CalculateScoreAsync(vehicleId, companyId);
         return Ok(result);
     }
@@ -239,7 +276,13 @@ public class AiChatController : ControllerBase
     public async Task<IActionResult> GetAllHealthScores()
     {
         var companyId = GetCompanyId();
-        var results = await _healthService.CalculateAllScoresAsync(companyId);
+
+        // Le service note TOUT le parc de la société : on restreint le RÉSULTAT à la
+        // portée, exactement comme le tableau de bord (DashboardService.ScopedHealthResults),
+        // plutôt que de faire bouger la signature partagée d'IVehicleHealthScoreService.
+        var results = DashboardService.ScopedHealthResults(
+            await _healthService.CalculateAllScoresAsync(companyId), await PorteeVehiculesAsync());
+
         return Ok(results);
     }
 
@@ -255,11 +298,21 @@ public class AiChatController : ControllerBase
         if (request.VehicleIds == null || request.VehicleIds.Count < 2 || request.VehicleIds.Count > 5)
             return BadRequest(new { message = "Sélectionnez entre 2 et 5 véhicules" });
 
-        var vehicles = await _context.Vehicles
+        var vehiclesQuery = _context.Vehicles
             .AsNoTracking()
             .Include(v => v.GpsDevice)
-            .Where(v => request.VehicleIds.Contains(v.Id) && v.CompanyId == companyId)
-            .ToListAsync();
+            .Where(v => request.VehicleIds.Contains(v.Id) && v.CompanyId == companyId);
+
+        // La portée INTERSECTE la sélection : comparer un véhicule hors portée revenait
+        // à s'en faire rédiger le dossier complet par l'IA.
+        var porteeCompare = await PorteeVehiculesAsync();
+        if (porteeCompare is not null)
+        {
+            List<int> ids = porteeCompare;
+            vehiclesQuery = vehiclesQuery.Where(v => ids.Contains(v.Id));
+        }
+
+        var vehicles = await vehiclesQuery.ToListAsync();
 
         if (vehicles.Count < 2)
             return BadRequest(new { message = "Véhicules introuvables" });
@@ -325,7 +378,7 @@ public class AiChatController : ControllerBase
             .Include(v => v.GpsDevice)
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
-        if (vehicle == null)
+        if (vehicle == null || await HorsPorteeAsync(vehicleId))
             return NotFound(new { message = "Véhicule introuvable" });
 
         await AiCredit.EnsureAvailableAsync(_context, companyId, RequestAborted);

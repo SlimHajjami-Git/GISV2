@@ -1,5 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Services;
 using GisAPI.Domain.Entities;
 
@@ -12,13 +16,49 @@ public class DrivingBehaviorController : ControllerBase
 {
     private readonly IDrivingBehaviorService _drivingBehaviorService;
     private readonly ILogger<DrivingBehaviorController> _logger;
+    private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
     public DrivingBehaviorController(
         IDrivingBehaviorService drivingBehaviorService,
-        ILogger<DrivingBehaviorController> logger)
+        ILogger<DrivingBehaviorController> logger,
+        IGisDbContext context,
+        ICurrentTenantService tenantService)
     {
         _drivingBehaviorService = drivingBehaviorService;
         _logger = logger;
+        _context = context;
+        _tenantService = tenantService;
+    }
+
+    /// <summary>
+    /// Le véhicule demandé est-il hors d'atteinte de l'appelant ? DEUX contrôles, et
+    /// les deux sont indispensables :
+    ///
+    ///  1. LA SOCIÉTÉ, explicitement. <c>DrivingBehaviorService</c> ouvre une portée DI
+    ///     NEUVE (<c>CreateScope()</c>) dont le <c>CurrentTenantService</c> n'est jamais
+    ///     renseigné : son <c>CompanyId</c> vaut null, ce qui DÉSACTIVE le filtre global
+    ///     de <c>GisDbContext</c>. Ces trois routes rendaient donc les événements de
+    ///     conduite de n'importe quel véhicule de N'IMPORTE QUELLE société. Le contrôle
+    ///     doit se faire ICI, dans la portée de la requête, qui porte le tenant.
+    ///
+    ///  2. LA PORTÉE VÉHICULES. TROIS états : <c>null</c> = administrateur, aucun filtre ;
+    ///     liste non vide = ses véhicules ; liste VIDE = il ne voit RIEN. Chez un loueur,
+    ///     le filtre société ne cloisonne rien entre locataires.
+    ///
+    /// Le refus est un 404 identique à celui d'un véhicule inexistant.
+    /// </summary>
+    private async Task<bool> HorsPorteeAsync(int vehicleId)
+    {
+        var companyId = _tenantService.CompanyId ?? 0;
+
+        var existe = await _context.Vehicles
+            .AsNoTracking()
+            .AnyAsync(v => v.Id == vehicleId && v.CompanyId == companyId, HttpContext.RequestAborted);
+
+        if (!existe) return true;
+
+        return !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted);
     }
 
     /// <summary>
@@ -30,6 +70,8 @@ public class DrivingBehaviorController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        if (await HorsPorteeAsync(vehicleId)) return NotFound();
+
         var start = startDate ?? DateTime.UtcNow.AddDays(-30);
         var end = endDate ?? DateTime.UtcNow;
 
@@ -46,6 +88,8 @@ public class DrivingBehaviorController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        if (await HorsPorteeAsync(vehicleId)) return NotFound();
+
         var start = startDate ?? DateTime.UtcNow.AddDays(-7);
         var end = endDate ?? DateTime.UtcNow;
 
@@ -62,6 +106,8 @@ public class DrivingBehaviorController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null)
     {
+        if (await HorsPorteeAsync(vehicleId)) return NotFound();
+
         var start = startDate ?? DateTime.UtcNow.AddDays(-30);
         var end = endDate ?? DateTime.UtcNow;
 

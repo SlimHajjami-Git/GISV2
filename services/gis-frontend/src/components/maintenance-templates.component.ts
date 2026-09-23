@@ -312,7 +312,7 @@ interface FlatRow {
                       to repair schedules created with a stale baseline (typical
                       case: tracker without FMS odometer at assignment time).
                     -->
-                    <button class="btn-act rebase" *ngIf="!row.lastDoneDate" (click)="rebaseFromRow(row)" title="Recalculer la prochaine échéance avec le kilométrage actuel">
+                    <button class="btn-act rebase" *ngIf="!row.lastDoneDate" (click)="rebaseFromRow(row)" title="Recalculer la prochaine échéance avec le compteur actuel">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                     </button>
                     <button class="btn-act done" (click)="openMarkDoneFromRow(row)" title="Marquer fait">
@@ -421,13 +421,13 @@ interface FlatRow {
 
             <div class="field-row">
               <div class="field"><label>Date *</label><input type="date" [(ngModel)]="markData.date"></div>
-              <div class="field"><label>Kilometrage *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000" min="0" [class.invalid]="isMileageBelowVehicle()"></div>
+              <div class="field"><label>Compteur *</label><input type="number" [(ngModel)]="markData.mileage" placeholder="45000" min="0" [class.invalid]="isMileageBelowVehicle()"></div>
             </div>
             <div class="field-error" *ngIf="isMileageBelowVehicle()">
-              Inférieur au kilométrage actuel du véhicule ({{ formatKm(markData.vehicleMileage) }}). Un compteur ne recule pas : vérifiez la valeur.
+              Inférieur au compteur actuel du véhicule ({{ formatKm(markData.vehicleMileage) }}). Un compteur ne recule pas : vérifiez la valeur.
             </div>
             <div class="field-hint" *ngIf="isMileageBelowVehicleForPastDate()">
-              Entretien antérieur : inférieur au kilométrage actuel ({{ formatKm(markData.vehicleMileage) }}), accepté s'il n'est pas sous un relevé déjà enregistré à cette date.
+              Entretien antérieur : inférieur au compteur actuel ({{ formatKm(markData.vehicleMileage) }}), accepté s'il n'est pas sous un relevé déjà enregistré à cette date.
             </div>
             <div class="field" *ngIf="canUseSuppliers">
               <label>Fournisseur / Garage</label>
@@ -1520,7 +1520,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
    */
   rebaseFromRow(row: FlatRow) {
     if (!row.scheduleId) return;
-    if (!confirm("Recalculer l'échéance de cet entretien à partir du kilométrage actuel ?\n\n" +
+    if (!confirm("Recalculer l'échéance de cet entretien à partir du compteur actuel ?\n\n" +
                  "À utiliser si l'odomètre du tracker n'était pas câblé au moment de l'assignation.")) return;
     this.apiService.rebaseMaintenanceSchedule(row.scheduleId).pipe(takeUntil(this.destroy$)).subscribe({
       next: () => this.loadVehicles(),
@@ -2073,7 +2073,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Kilométrage</th>
+              <th>Compteur</th>
               <th>Coût estimé</th>
               <th>Coût réel</th>
               <th>Écart</th>

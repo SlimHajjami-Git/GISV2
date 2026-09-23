@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 
@@ -12,13 +14,35 @@ namespace GisAPI.Controllers;
 public class TripsController : ControllerBase
 {
     private readonly GisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public TripsController(GisDbContext context)
+    public TripsController(GisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     private int GetCompanyId() => int.Parse(User.FindFirst("companyId")?.Value ?? "0");
+
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états, à ne jamais confondre :
+    /// <c>null</c> = administrateur, AUCUN filtre ; liste non vide = ses véhicules ;
+    /// liste VIDE = non-administrateur sans affectation, il ne voit RIEN.
+    ///
+    /// Chez un LOUEUR (HERTZ), les véhicules d'une même société appartiennent à des
+    /// locataires différents : le filtre société ne cloisonne RIEN. Un trajet publie
+    /// départ, arrivée, adresses et plaque — c'est la trajectoire du véhicule loué à
+    /// un autre client, sous une autre URL que le playback.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync() =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, HttpContext.RequestAborted);
+
+    /// <summary>
+    /// Le véhicule demandé est-il hors de la portée de l'appelant ? Le refus reste un
+    /// 404 identique à celui d'un véhicule inexistant : on ne révèle pas qu'il existe.
+    /// </summary>
+    private async Task<bool> HorsPorteeAsync(int vehicleId) =>
+        !await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, vehicleId, HttpContext.RequestAborted);
 
     [HttpGet]
     public async Task<ActionResult<List<Trip>>> GetTrips(
@@ -36,6 +60,16 @@ public class TripsController : ControllerBase
             .Include(t => t.Vehicle)
             .Include(t => t.Driver)
             .AsQueryable();
+
+        // La portée s'applique AVANT le filtre optionnel, qui ne fait ensuite que
+        // l'INTERSECTER : le front n'envoie pas vehicleId quand aucun véhicule n'est
+        // sélectionné, c'est justement l'appel qui rendait tout le parc.
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(t => ids.Contains(t.VehicleId));
+        }
 
         if (vehicleId.HasValue)
             query = query.Where(t => t.VehicleId == vehicleId);
@@ -73,6 +107,11 @@ public class TripsController : ControllerBase
         if (trip == null)
             return NotFound();
 
+        // IDOR : le détail porte la trajectoire complète (points de passage). Hors
+        // portée, même 404 qu'un trajet inexistant.
+        if (await HorsPorteeAsync(trip.VehicleId))
+            return NotFound();
+
         return Ok(trip);
     }
 
@@ -90,6 +129,11 @@ public class TripsController : ControllerBase
             .FirstOrDefaultAsync(v => v.Id == vehicleId && v.CompanyId == companyId);
 
         if (vehicle == null)
+            return NotFound();
+
+        // IDOR : il suffisait de changer l'identifiant dans l'URL pour lire les
+        // trajets du véhicule loué à un autre client.
+        if (await HorsPorteeAsync(vehicleId))
             return NotFound();
 
         var query = _context.Trips
@@ -124,6 +168,10 @@ public class TripsController : ControllerBase
         if (trip == null)
             return NotFound();
 
+        // Les points de passage SONT la trajectoire : même contrôle que le détail.
+        if (await HorsPorteeAsync(trip.VehicleId))
+            return NotFound();
+
         var waypoints = await _context.TripWaypoints
             .AsNoTracking()
             .Where(w => w.TripId == id)
@@ -144,10 +192,19 @@ public class TripsController : ControllerBase
 
         var baseQuery = _context.Trips
             .AsNoTracking()
-            .Where(t => t.CompanyId == companyId && 
-                        t.StartTime >= utcStart && 
+            .Where(t => t.CompanyId == companyId &&
+                        t.StartTime >= utcStart &&
                         t.EndTime <= utcEnd &&
                         t.Status == "completed");
+
+        // Les totaux agrègent le parc : sans portée, un locataire lisait le
+        // kilométrage et la consommation des véhicules loués aux autres clients.
+        var portee = await PorteeVehiculesAsync();
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            baseQuery = baseQuery.Where(t => ids.Contains(t.VehicleId));
+        }
 
         var summary = await baseQuery
             .GroupBy(t => 1)

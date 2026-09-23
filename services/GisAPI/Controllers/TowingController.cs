@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,17 @@ public class TowingController : ControllerBase
         _tenant = tenant;
     }
 
+    /// <summary>
+    /// Véhicules visibles par l'appelant. TROIS états : <c>null</c> = administrateur,
+    /// AUCUN filtre ; liste non vide = ses véhicules ; liste VIDE = il ne voit RIEN.
+    ///
+    /// Un remorquage publie StartLat/StartLon, LastLat/LastLon, l'adresse de départ et
+    /// la plaque : c'est de la donnée de VOL de véhicule. Le filtre société ne cloisonne
+    /// rien chez un loueur, où chaque véhicule est loué à un client différent.
+    /// </summary>
+    private Task<List<int>?> PorteeVehiculesAsync(CancellationToken ct) =>
+        VehicleScope.AccessibleVehicleIdsAsync(_context, _tenant, ct);
+
     [HttpGet]
     public async Task<IActionResult> GetTowEvents(
         [FromQuery] string? status = null,
@@ -39,6 +51,13 @@ public class TowingController : ControllerBase
         var query = _context.TowEvents
             .Include(t => t.Vehicle)
             .AsQueryable();
+
+        var portee = await PorteeVehiculesAsync(ct);
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(t => ids.Contains(t.VehicleId));
+        }
 
         if (!string.IsNullOrEmpty(status))
             query = query.Where(t => t.Status == status);
@@ -95,7 +114,16 @@ public class TowingController : ControllerBase
     [HttpGet("unacknowledged-count")]
     public async Task<IActionResult> GetUnacknowledgedCount(CancellationToken ct = default)
     {
-        var count = await _context.TowEvents.CountAsync(t => !t.Acknowledged, ct);
+        var query = _context.TowEvents.Where(t => !t.Acknowledged);
+
+        var portee = await PorteeVehiculesAsync(ct);
+        if (portee is not null)
+        {
+            List<int> ids = portee;
+            query = query.Where(t => ids.Contains(t.VehicleId));
+        }
+
+        var count = await query.CountAsync(ct);
         return Ok(new { count });
     }
 
@@ -104,6 +132,11 @@ public class TowingController : ControllerBase
     {
         var ev = await _context.TowEvents.FirstOrDefaultAsync(t => t.Id == id, ct);
         if (ev == null) return NotFound();
+
+        // Acquitter le remorquage d'un véhicule hors portée, c'est l'effacer du badge
+        // de son vrai locataire : même 404 qu'un événement inexistant.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenant, ev.VehicleId, ct))
+            return NotFound();
 
         ev.Acknowledged = true;
         ev.AcknowledgedBy = _tenant.UserId;

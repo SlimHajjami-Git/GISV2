@@ -68,7 +68,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     etapes: [
       "Allez dans le menu « Véhicules ».",
       "Cliquez sur « Nouveau véhicule » en haut de la liste.",
-      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Marque », « Modèle », « Année », « Type », « Statut », « Kilométrage » et « Type de carburant ».",
+      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Marque », « Modèle », « Année », « Type », « Statut », « Compteur » et « Type de carburant ».",
       "Complétez si vous le souhaitez la couleur, la capacité du réservoir et la date de mise en circulation.",
       "Cliquez sur « Ajouter »."
     ],
@@ -104,18 +104,18 @@ export const ARTICLES_AIDE: HelpArticle[] = [
   },
   {
     id: 'corriger-kilometrage',
-    titre: 'Corriger un kilométrage erroné',
+    titre: 'Corriger un compteur erroné',
     module: 'vehicles',
     motsCles: ['kilometrage', 'compteur', 'km', 'corriger', 'erreur', 'saisie', 'motif', 'modifier', 'changer', 'odometre'],
     resume: "Deux façons de changer un compteur, et celle qu'il faut préférer.",
     etapes: [
       "Dans « Véhicules », cliquez sur la ligne du véhicule elle-même — pas sur le bouton « Modifier ». Le panneau de détail s'ouvre sur la droite.",
-      "Dans ce panneau, repérez la ligne « Kilométrage » : un petit bouton « Corriger » est posé juste à côté de la valeur.",
-      "Cliquez dessus. Saisissez le « Nouveau kilométrage » puis le « Motif » — les deux sont obligatoires.",
+      "Dans ce panneau, repérez la ligne « Compteur » : un petit bouton « Corriger » est posé juste à côté de la valeur.",
+      "Cliquez dessus. Saisissez le « Nouvelle valeur du compteur » puis le « Motif » — les deux sont obligatoires.",
       "Validez avec « Corriger »."
     ],
     paragraphes: [
-      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Kilométrage ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
+      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Compteur ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
       "Préférez le bouton « Corriger » dès qu'il s'agit de rattraper une erreur : la correction est horodatée et conservée avec son motif et le nom de son auteur. Ce journal n'est pas consultable depuis l'application — il sert en cas de litige ou de contrôle, et notre support peut le retrouver.",
       "Le bouton « Corriger » n'apparaît que pour les véhicules sans boîtier GPS. Quand un boîtier remonte le kilométrage, c'est lui qui fait foi, et la ligne affiche alors une petite antenne à la place du bouton.",
       "Le bouton « Modifier » refuse une valeur inférieure au compteur actuel, avec le message « Un compteur ne recule pas : vérifiez la valeur. » C'est une protection contre les fautes de frappe.",
@@ -144,7 +144,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Quatre états existent, avec un code couleur constant : vert pour un véhicule en mouvement, orange au ralenti (contact mis, à l'arrêt), rouge stationné (contact coupé) et gris hors ligne.",
       "Attention à un détail de vocabulaire : l'état vert est écrit « En mouvement » dans la légende, les filtres et la bulle de carte, mais « En marche » dans la fiche dépliante du véhicule. Il s'agit du même état.",
       "« Hors ligne » signifie qu'aucune donnée n'est arrivée depuis au moins trente minutes. Le véhicule roule peut-être : c'est la communication du boîtier qui manque (zone sans réseau, boîtier débranché, batterie).",
-      "La fiche dépliante donne la vitesse actuelle, la vitesse maximale sur 24 h, le carburant, la température moteur, la batterie et le kilométrage. « N/A » signifie que le boîtier ne remonte pas cette information — tous les modèles ne mesurent pas tout."
+      "La fiche dépliante donne la vitesse actuelle, la vitesse maximale sur 24 h, le carburant, la température moteur, la batterie et le compteur. « N/A » signifie que le boîtier ne remonte pas cette information — tous les modèles ne mesurent pas tout."
     ],
     video: { titre: 'Lire la carte du suivi en direct', url: '' }
   },
@@ -299,12 +299,12 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     resume: "Déclarer l'entretien effectué pour recaler la prochaine échéance.",
     etapes: [
       "Dans l'écran « Entretiens » (menu « Maintenance »), repérez la ligne du véhicule et cliquez sur « Marquer fait ».",
-      "Saisissez la « Date » et le « Kilometrage » — les deux sont obligatoires.",
+      "Saisissez la « Date » et le « Compteur » — les deux sont obligatoires.",
       "Choisissez le « Fournisseur / Garage » si vous le suivez.",
       "Détaillez la facture ligne par ligne, puis cliquez sur « Confirmer »."
     ],
     paragraphes: [
-      "Le kilométrage est obligatoire parce qu'il sert à recalculer la prochaine échéance. Une valeur inférieure au compteur actuel est refusée : un compteur ne recule pas.",
+      "Le compteur est obligatoire parce qu'il sert à recalculer la prochaine échéance. Une valeur inférieure au compteur actuel est refusée : un compteur ne recule pas.",
       "Chaque ligne de facture doit être rattachée à un type d'entretien. Une ligne laissée en saisie libre n'est pas enregistrée — l'écran le signale.",
       "Si le véhicule bénéficie d'entretiens offerts par le concessionnaire, cochez « Appliquer le crédit gratuit » : le coût passe à zéro et le compteur d'entretiens offerts diminue.",
       "L'écran compare ensuite le coût estimé du modèle au coût réel de la facture, et affiche l'écart."
@@ -331,7 +331,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     paragraphes: [
       "Les types d'intervention sont « Électrique », « Mécanique », « Freinage », « Pneumatique », « Carrosserie » et « Autres ». Laissé sur « Non précisé », le type est déduit de la description.",
       "Une réparation est enregistrée « Terminée ». En modification, le « Statut » peut passer à « En attente », « En cours » ou « Annulée ». Une réparation annulée reste dans la liste, mais n'est plus comptée dans les coûts — ni tableau de bord, ni rapports, ni Dépenses : c'est la bonne façon d'écarter une facture non due sans perdre son historique.",
-      "Le « Kilometrage » est facultatif et pré-rempli avec le compteur actuel du véhicule. S'il est saisi, il fait avancer le compteur du véhicule, et donc les échéances d'entretien au kilométrage : relisez-le, une faute de frappe ne se rattrape qu'avec « Corriger » dans « Véhicules ». Une réparation annulée ne fait pas avancer le compteur.",
+      "Le « Compteur » est facultatif et pré-rempli avec le compteur actuel du véhicule. S'il est saisi, il fait avancer le compteur du véhicule, et donc les échéances d'entretien au compteur : relisez-le, une faute de frappe ne se rattrape qu'avec « Corriger » dans « Véhicules ». Une réparation annulée ne fait pas avancer le compteur.",
       "Une réparation issue d'un dossier de sinistre porte le badge « Sinistre » et ne se supprime pas depuis cet écran : elle se retire depuis le dossier."
     ],
     aRetenir: "Comme pour les entretiens, il n'y a pas de champ pour joindre la facture : le lien du document scanné est rangé dans les « Notes ».",
@@ -353,7 +353,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Choisissez le « Matricule Véhicule » et le « Type Carburant ».",
       "Indiquez la « Date Facture ».",
       "Saisissez soit le volume et le prix par litre, soit directement le « Montant Total ».",
-      "Renseignez le « Kilométrage au compteur ».",
+      "Renseignez le « Compteur ».",
       "Cliquez sur « Enregistrer »."
     ],
     paragraphes: [
@@ -361,7 +361,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Le bouton « Scanner un ticket » lit le document et pré-remplit les champs. Relisez toujours : quand la plaque ou le type de carburant n'a pas pu être lu avec certitude, l'écran vous le signale et vous demande de choisir.",
       "L'onglet « Import Excel » permet de charger des factures en lot, avec une correspondance de colonnes à régler une fois."
     ],
-    aRetenir: "Le kilométrage au compteur est ce qui rend la consommation calculable. Sans boîtier GPS, ce sont vos saisies — pleins, entretiens, réparations, import — qui font avancer le compteur du véhicule.",
+    aRetenir: "Le compteur est ce qui rend la consommation calculable. Sans boîtier GPS, ce sont vos saisies — pleins, entretiens, réparations, import — qui font avancer le compteur du véhicule.",
     video: { titre: 'Saisir un plein', url: '' }
   },
   {

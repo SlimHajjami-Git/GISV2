@@ -1,4 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -59,6 +60,14 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<
 
         var users = await query.OrderBy(u => u.FirstName).ToListAsync(ct);
 
+        // AssignedVehicleIds publiait la CARTOGRAPHIE COMPLÈTE « quel utilisateur voit
+        // quels véhicules ». Chez un LOUEUR, cette carte dit qui loue quoi : un locataire
+        // y lisait le périmètre de tous les autres. On ne nomme donc que les véhicules de
+        // SA propre portée — null = administrateur, il garde la carte entière.
+        // Le reste de la fiche (nom, CIN, permis) n'est pas rattaché à un véhicule et
+        // n'est pas touché ici : qui peut lister les employés est une décision métier.
+        var portee = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, ct);
+
         // Pas de « véhicule affecté » pour un employé. Il était déduit de
         // vehicles.assigned_driver_id == users.id, or cette colonne est une clé
         // étrangère vers drivers(id) : la fiche affichait le véhicule du chauffeur
@@ -67,7 +76,10 @@ public class GetEmployeesQueryHandler : IRequestHandler<GetEmployeesQuery, List<
         // Les véhicules visibles par l'employé restent dans AssignedVehicleIds (user_vehicles).
         return users.Select(u =>
         {
-            var userVehicleIds = u.UserVehicles.Select(uv => uv.VehicleId).ToArray();
+            var userVehicleIds = u.UserVehicles
+                .Select(uv => uv.VehicleId)
+                .Where(id => portee is null || portee.Contains(id))
+                .ToArray();
 
             return new EmployeeDto(
                 u.Id,

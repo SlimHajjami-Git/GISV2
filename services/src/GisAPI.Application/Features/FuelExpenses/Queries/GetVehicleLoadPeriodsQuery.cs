@@ -1,4 +1,6 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,15 +12,23 @@ public class GetVehicleLoadPeriodsQueryHandler
     : IRequestHandler<GetVehicleLoadPeriodsQuery, List<VehicleLoadPeriodDto>>
 {
     private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenantService;
 
-    public GetVehicleLoadPeriodsQueryHandler(IGisDbContext context)
+    public GetVehicleLoadPeriodsQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
     {
         _context = context;
+        _tenantService = tenantService;
     }
 
     public async Task<List<VehicleLoadPeriodDto>> Handle(GetVehicleLoadPeriodsQuery request, CancellationToken ct)
     {
-        // Filtre tenant global sur VehicleLoadPeriods : déjà scopé société.
+        // Le filtre tenant global scope la SOCIÉTÉ, pas le locataire : chez un loueur
+        // il ne cloisonne rien. « /api/consumption-analysis » n'exige par ailleurs
+        // AUCUNE case de module — la lecture du tonnage déclaré d'un véhicule loué à
+        // un autre client était ouverte à tout compte connecté.
+        if (!await VehicleScope.CanAccessVehicleAsync(_context, _tenantService, request.VehicleId, ct))
+            return new List<VehicleLoadPeriodDto>();
+
         return await _context.VehicleLoadPeriods
             .AsNoTracking()
             .Where(lp => lp.VehicleId == request.VehicleId)

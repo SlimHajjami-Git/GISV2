@@ -141,7 +141,7 @@ export interface CompanyOption {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="mileage">Kilométrage *</label>
+                  <label for="mileage">Compteur *</label>
                   <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" />
                 </div>
               </div>
