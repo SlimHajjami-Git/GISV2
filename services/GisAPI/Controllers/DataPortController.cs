@@ -224,20 +224,42 @@ public class DataPortController : ControllerBase
     // et une assurance. Elles vivent désormais dans la feuille d'aide, et une ligne
     // identique à l'une d'elles est ignorée à l'import : c'est aussi ce qui neutralise
     // les modèles déjà téléchargés.
-    private static readonly object[] VehicleExample =
-        { "123 TU 4567", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 };
-    private static readonly object[] MaintenanceExample =
-        { "123 TU 4567", new DateTime(2026, 8, 15), "Vidange + filtres", 350 };
-    private static readonly object[] RepairExample =
-        { "123 TU 4567", new DateTime(2026, 8, 18), "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" };
-    private static readonly object[] FuelExample =
-        { "123 TU 4567", new DateTime(2026, 8, 20), 45, 2.2, 99, 145200 };
-    private static readonly object[] ExpenseExample =
-        { "123 TU 4567", new DateTime(2026, 8, 10), "Assurance", "Assurance flotte 2026", 625, 145000 };
+    //
+    // Deux jeux d'exemples selon le pays du client (Karim, 23/09/2026 : « le modèle
+    // contient des immatriculations tunisiennes alors qu'il est destiné à l'export,
+    // essentiellement la France »). Même règle que le module Sinistres : un compte en
+    // euros reçoit une plaque française et des montants en euros, tout autre compte
+    // garde l'exemple tunisien. À l'import, les DEUX jeux sont écartés, quel que soit
+    // le compte : un client français peut avoir gardé un modèle téléchargé avant.
+    internal sealed record TemplateExamples(object[] Vehicle, object[] Maintenance, object[] Repair, object[] Fuel, object[] Expense);
+
+    internal static readonly TemplateExamples TunisianExamples = new(
+        Vehicle: new object[] { "123 TU 4567", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 },
+        Maintenance: new object[] { "123 TU 4567", new DateTime(2026, 8, 15), "Vidange + filtres", 350 },
+        Repair: new object[] { "123 TU 4567", new DateTime(2026, 8, 18), "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" },
+        Fuel: new object[] { "123 TU 4567", new DateTime(2026, 8, 20), 45, 2.2, 99, 145200 },
+        Expense: new object[] { "123 TU 4567", new DateTime(2026, 8, 10), "Assurance", "Assurance flotte 2026", 625, 145000 });
+
+    // Plaque au format SIV, montants en euros (1,75 €/L, 45 L = 78,75 €). Les valeurs
+    // à virgule sont exactes en binaire : la comparaison à l'import ne perd rien.
+    internal static readonly TemplateExamples FrenchExamples = new(
+        Vehicle: new object[] { "AB-123-CD", "Camion 1", "Renault", "Master", 2021, "camion", "diesel", 145000, 80 },
+        Maintenance: new object[] { "AB-123-CD", new DateTime(2026, 8, 15), "Vidange + filtres", 180 },
+        Repair: new object[] { "AB-123-CD", new DateTime(2026, 8, 18), "Plaquettes de frein AV", "Freinage", 145100, 80, 120, 200, "Terminée" },
+        Fuel: new object[] { "AB-123-CD", new DateTime(2026, 8, 20), 45, 1.75, 78.75, 145200 },
+        Expense: new object[] { "AB-123-CD", new DateTime(2026, 8, 10), "Assurance", "Assurance flotte 2026", 900, 145000 });
+
+    private static readonly TemplateExamples[] AllExamples = { TunisianExamples, FrenchExamples };
+
+    /// <summary>Jeu d'exemples du modèle selon la devise du compte : euro → France, sinon Tunisie.</summary>
+    internal static TemplateExamples ExamplesFor(string? currency) =>
+        string.Equals(currency?.Trim(), "EUR", StringComparison.OrdinalIgnoreCase) ? FrenchExamples : TunisianExamples;
 
     [HttpGet("template")]
-    public IActionResult Template()
+    public async Task<IActionResult> Template()
     {
+        // Devise de la société : même lecture que le login et les rapports.
+        var examples = ExamplesFor(await ReportCurrency.LoadAsync(_context, GetCompanyId(), HttpContext.RequestAborted));
         using var wb = new XLWorkbook();
 
         // Feuille d'aide en premier : c'est elle qui s'ouvre, avec un exemple par feuille.
@@ -250,14 +272,14 @@ public class DataPortController : ControllerBase
         help.Cell(3, 1).Value = "Chaque ligne est rattachée au véhicule par son matricule (casse, espaces et tirets ignorés). " +
                                 "Une ligne identique à un exemple ci-dessous est ignorée.";
         var line = 5;
-        line = WriteHelpSection(help, line, "Véhicules", VehicleCols, VehicleExample,
+        line = WriteHelpSection(help, line, "Véhicules", VehicleCols, examples.Vehicle,
             "Un matricule déjà présent n'est pas recréé : seul un kilométrage plus élevé est repris.");
-        line = WriteHelpSection(help, line, "Entretiens", MaintenanceCols, MaintenanceExample, null);
-        line = WriteHelpSection(help, line, "Réparations", RepairCols, RepairExample,
+        line = WriteHelpSection(help, line, "Entretiens", MaintenanceCols, examples.Maintenance, null);
+        line = WriteHelpSection(help, line, "Réparations", RepairCols, examples.Repair,
             "Statut : En attente, En cours, Terminée ou Annulée. Fournisseur facultatif, Référence à laisser vide.");
-        line = WriteHelpSection(help, line, "Carburant", FuelCols, FuelExample,
+        line = WriteHelpSection(help, line, "Carburant", FuelCols, examples.Fuel,
             "Montant total vide : calculé à partir du volume et du prix au litre.");
-        WriteHelpSection(help, line, "Dépenses", ExpenseCols, ExpenseExample,
+        WriteHelpSection(help, line, "Dépenses", ExpenseCols, examples.Expense,
             "Type : Assurance, Visite technique, Vignette, Carte grise, Péage, Stationnement, Amende, Lavage, Autre… " +
             "Un avoir : type « Avoir fournisseur », montant positif, déduit des coûts.");
         for (var c = 1; c <= RepairCols.Length; c++)
@@ -306,6 +328,9 @@ public class DataPortController : ControllerBase
     /// casse, nombres et dates par valeur), toutes les autres colonnes vides. Une vraie
     /// saisie qui en reprend une partie (matricule, date…) n'est pas concernée.
     /// </summary>
+    private static bool IsTemplateExample(IXLRangeRow row, Func<TemplateExamples, object[]> sheetExample, int columnCount) =>
+        AllExamples.Any(set => IsTemplateExample(row, sheetExample(set), columnCount));
+
     private static bool IsTemplateExample(IXLRangeRow row, object[] example, int columnCount)
     {
         for (var i = 0; i < columnCount; i++)
@@ -387,7 +412,7 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
-                if (IsTemplateExample(row, VehicleExample, VehicleCols.Length))
+                if (IsTemplateExample(row, e => e.Vehicle, VehicleCols.Length))
                 { result.VehiclesIgnored++; result.NoteTemplateExample("Véhicules"); continue; }
                 var key = Normalize(plate);
                 if (byPlate.TryGetValue(key, out var known))
@@ -466,7 +491,7 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
-                if (IsTemplateExample(row, MaintenanceExample, MaintenanceCols.Length))
+                if (IsTemplateExample(row, e => e.Maintenance, MaintenanceCols.Length))
                 { result.MaintenanceIgnored++; result.NoteTemplateExample("Entretiens"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
                 { result.MaintenanceIgnored++; result.AddNote(MissingVehicleNote("Entretien ignoré", plate)); continue; }
@@ -538,7 +563,7 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
-                if (IsTemplateExample(row, RepairExample, RepairCols.Length))
+                if (IsTemplateExample(row, e => e.Repair, RepairCols.Length))
                 { result.RepairsIgnored++; result.NoteTemplateExample("Réparations"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
                 { result.RepairsIgnored++; result.AddNote(MissingVehicleNote("Réparation ignorée", plate)); continue; }
@@ -650,7 +675,7 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
-                if (IsTemplateExample(row, FuelExample, FuelCols.Length))
+                if (IsTemplateExample(row, e => e.Fuel, FuelCols.Length))
                 { result.FuelIgnored++; result.NoteTemplateExample("Carburant"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
                 { result.FuelIgnored++; result.AddNote(MissingVehicleNote("Plein ignoré", plate)); continue; }
@@ -705,7 +730,7 @@ public class DataPortController : ControllerBase
             {
                 var plate = Str(row.Cell(1));
                 if (string.IsNullOrWhiteSpace(plate)) continue;
-                if (IsTemplateExample(row, ExpenseExample, ExpenseCols.Length))
+                if (IsTemplateExample(row, e => e.Expense, ExpenseCols.Length))
                 { result.ExpensesIgnored++; result.NoteTemplateExample("Dépenses"); continue; }
                 if (!byPlate.TryGetValue(Normalize(plate), out var vehicle))
                 { result.ExpensesIgnored++; result.AddNote(MissingVehicleNote("Dépense ignorée", plate)); continue; }
