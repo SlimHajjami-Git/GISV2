@@ -792,3 +792,111 @@ describe('Tutoriel pas à pas — alertes par e-mail (GPA)', () => {
     expect(guide.componentInstance.actif).toBe(false);
   });
 });
+
+/**
+ * Tutoriel de l'écran Échéances : pas de bouton de création, les lignes existent
+ * d'office (trois par véhicule). Crayon « Modifier l'échéance » de la première ligne,
+ * date, « Enregistrer ». L'écran s'ouvre en /documents (menu) ou /echeances (visite).
+ * Sans véhicule, aucune ligne : le tutoriel ne se montre pas et revient plus tard.
+ */
+@Component({ standalone: true, template: `
+  @for (d of lignes; track d; let i = $index) {
+    <div class="ligne">{{ d }}
+      <button (click)="ouverte = true" [attr.data-guide]="i === 0 ? 'echeances-modifier' : null">✎</button>
+    </div>
+  }
+  @if (ouverte) {
+    <input type="date" data-guide="echeance-date">
+    <button data-guide="echeance-enregistrer" (click)="ouverte = false">Enregistrer</button>
+  }` })
+class EcranEcheances {
+  static lignes = ['Assurance', 'Visite technique', 'Vignette'];
+  lignes = EcranEcheances.lignes;
+  ouverte = false;
+}
+
+describe('Tutoriel pas à pas — écran Échéances (GPA)', () => {
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  const compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const ouvrir = async (url: string, n = 4) => { await harness.navigateByUrl(url); await rafraichir(n); };
+  const el = (cible: string) => document.querySelector('[data-guide="' + cible + '"]') as HTMLInputElement;
+  const etape = () => guide.componentInstance.etape?.id;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    EcranEcheances.lignes = ['Assurance', 'Visite technique', 'Vignette'];
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'documents', component: EcranEcheances },
+          { path: 'echeances', component: EcranEcheances },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    TestBed.inject(HelpService).fermerGuide(true);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('depuis le menu (/documents) : crayon de la première ligne, date, « Enregistrer »', async () => {
+    await ouvrir('/documents');
+    expect(etape()).toBe('tuto-echeance-modifier');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Échéances · Étape 1 sur 3');
+
+    el('echeances-modifier').click(); await rafraichir();
+    expect(etape()).toBe('tuto-echeance-date');
+    const date = el('echeance-date');
+    date.value = '2027-08-15';
+    date.dispatchEvent(new Event('input', { bubbles: true }));
+    await rafraichir(3);
+    guide.componentInstance.suivant(); await rafraichir();
+    expect(etape()).toBe('tuto-echeance-enregistrer');
+
+    el('echeance-enregistrer').click(); await rafraichir(); await rafraichir();
+    expect(guide.componentInstance.actif).toBe(false);
+    await ouvrir('/dashboard');
+    await ouvrir('/documents');
+    expect(guide.componentInstance.actif).toBe(false);          // vu : il ne revient plus
+  });
+
+  it('depuis la visite (/echeances) : même tutoriel', async () => {
+    await ouvrir('/echeances');
+    expect(etape()).toBe('tuto-echeance-modifier');
+  });
+
+  it('client sans véhicule (aucune ligne) : rien ne s\'affiche, et il revient quand les lignes existent', async () => {
+    EcranEcheances.lignes = [];
+    await ouvrir('/documents', 380);                             // ~6 s d'attente du crayon
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(guide.nativeElement.querySelector('.guide-voile')).toBeNull();
+
+    EcranEcheances.lignes = ['Assurance', 'Visite technique', 'Vignette'];
+    await ouvrir('/dashboard');
+    await ouvrir('/documents');
+    expect(etape()).toBe('tuto-echeance-modifier');              // pas marqué vu
+  }, 20000);
+});

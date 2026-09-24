@@ -144,7 +144,7 @@ export interface VehicleDocument {
               </tr>
             </thead>
             <tbody>
-              <tr *ngFor="let doc of filteredDocuments" @scaleIn [class.expired]="doc.status === 'expired'" [class.warning]="doc.status === 'expiring_soon'">
+              <tr *ngFor="let doc of filteredDocuments; let i = index" @scaleIn [class.expired]="doc.status === 'expired'" [class.warning]="doc.status === 'expiring_soon'">
                 <td class="vehicle-cell">
                   <div class="vehicle-info">
                     <span class="vehicle-name">{{ doc.vehicleName }}</span>
@@ -174,7 +174,9 @@ export interface VehicleDocument {
                   <span *ngIf="!doc.lastRenewalCost" class="no-data">-</span>
                 </td>
                 <td class="actions-cell">
-                  <button *ngIf="doc.type !== 'driver_permit'" class="btn-action edit" (click)="openEditPopup(doc)" title="Modifier l'échéance">
+                  <!-- data-guide : premier geste du tutoriel Échéances (help-content.ts), crayon de la PREMIÈRE ligne. -->
+                  <button *ngIf="doc.type !== 'driver_permit'" class="btn-action edit" (click)="openEditPopup(doc)" title="Modifier l'échéance"
+                          [attr.data-guide]="i === 0 ? 'echeances-modifier' : null">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                       <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/>
@@ -238,13 +240,13 @@ export interface VehicleDocument {
               · {{ editDoc.vehicleName }}<span *ngIf="editDoc.vehiclePlate"> ({{ editDoc.vehiclePlate }})</span>
             </p>
             <label for="editExpiry">Date d'expiration</label>
-            <input id="editExpiry" type="date" [(ngModel)]="editDate">
+            <input id="editExpiry" type="date" [(ngModel)]="editDate" data-guide="echeance-date">
             <p class="edit-hint">Corrige la date sans créer de renouvellement ni de dépense.</p>
             <p class="edit-error" *ngIf="editError">{{ editError }}</p>
           </div>
           <div class="edit-foot">
             <button class="edit-cancel" (click)="closeEdit()" [disabled]="editSaving">Annuler</button>
-            <button class="edit-save" (click)="saveEdit()" [disabled]="editSaving || !editDate">
+            <button class="edit-save" (click)="saveEdit()" [disabled]="editSaving || !editDate" data-guide="echeance-enregistrer">
               {{ editSaving ? 'Enregistrement…' : 'Enregistrer' }}
             </button>
           </div>

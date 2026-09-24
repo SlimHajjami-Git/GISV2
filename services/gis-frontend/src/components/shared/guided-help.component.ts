@@ -322,7 +322,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.arriveeFinParcours = null;
     if (arrivee && url.split(/[?#]/)[0] === arrivee.split(/[?#]/)[0]) { return; }
     if (this.actif && this.mode === 'ecran') {
-      if (this.visiteEcran && url.split(/[?#]/)[0] === this.visiteEcran.route) { return; }
+      if (this.visiteEcran && this.help.estSurSonEcran(this.visiteEcran, url)) { return; }
       // Retour arriere du navigateur pendant un guide : il appartenait a
       // l'ecran quitte, il s'efface sans etre marque vu.
       this.arreter();
@@ -451,7 +451,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     // absente (bouton reserve a l'administrateur) l'est pour de bon : on ne fait
     // pas attendre le client plus d'une demi-seconde.
     const navigation = !!etape.route && !this.router.url.startsWith(etape.route);
-    const limite = navigation || index === 0 ? 180 : 30;
+    // Premier geste d'un tutoriel d'ecran : rien n'est affiche pendant l'attente,
+    // on peut donc attendre ~6 s. L'ecran Echeances enchaine deux appels (vehicules,
+    // puis echeances) avant d'afficher sa premiere ligne ; en developpement il
+    // depassait les 3 s, et le tutoriel se refermait sans s'etre montre.
+    const limite = this.mode === 'ecran' && index === 0 ? 360 : navigation || index === 0 ? 180 : 30;
     const aller = () => {
       if (this.detruit || generation !== this.generation) { return; }
       this.attendreCible(etape, 0, generation, limite);
@@ -507,6 +511,15 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
 
   /** Cible introuvable : on avance sans bloquer le client sur un ecran fige. */
   private sauter(): void {
+    // Tutoriel d'ecran dont le premier geste est impossible — aucun vehicule, donc
+    // aucune ligne d'echeance ni liste a remplir : il n'a pas lieu, SANS etre marque
+    // vu. Il reviendra au prochain acces, quand l'ecran le permettra. Enchainer les
+    // etapes suivantes le ferait surgir plus tard, en plein milieu d'une saisie.
+    if (this.mode === 'ecran' && !this.etapeMontree) {
+      this.arreter();
+      this.cdr.detectChanges();
+      return;
+    }
     this.sautees.add(this.index);
     if (this.index >= this.etapes.length - 1) { this.terminer(); }
     else { this.allerA(this.index + 1); }

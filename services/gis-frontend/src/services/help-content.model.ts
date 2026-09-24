@@ -162,6 +162,11 @@ export interface VisiteEcran {
   titre: string;
   /** Chemin exact de l'ecran (sans parametres), par exemple '/vehicles'. */
   route: string;
+  /**
+   * Autres chemins du meme ecran : Echeances s'ouvre en /documents depuis le menu
+   * et en /echeances depuis la visite de premiere connexion.
+   */
+  autresRoutes?: string[];
   /** Module requis, comme pour une etape (droits de l'utilisateur compris). */
   module?: HelpModule;
   /**

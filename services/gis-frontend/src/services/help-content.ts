@@ -1252,5 +1252,42 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: 'disparition'
       }
     ]
+  },
+  {
+    // Ecran Echeances (documents.component.ts) : pas de bouton de creation, les lignes
+    // existent d'office (assurance, visite technique, vignette par vehicule, « Non
+    // renseignee » chez un nouveau client). On passe par le crayon « Modifier
+    // l'echeance » (simple date), pas par « Renouveler » (date de paiement et montant
+    // qui cree une depense). Sans vehicule, aucune ligne : le tutoriel n'a pas lieu.
+    id: 'tuto-echeances-gpa',
+    titre: 'Écran Échéances',
+    route: '/documents',
+    autresRoutes: ['/echeances'],
+    module: 'documents',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-echeance-modifier',
+        titre: 'Renseignez vos échéances',
+        texte: "Chaque véhicule a trois lignes : assurance, visite technique et vignette. Cliquez sur le crayon « Modifier l'échéance » : la fenêtre de saisie s'ouvre.",
+        cible: 'echeances-modifier',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-echeance-date',
+        titre: "La date d'expiration",
+        // Annee sur 4 chiffres dans l'exemple : « 27 » tape seul donne 0027.
+        texte: "Saisissez la date de fin de validité du document indiqué en haut de la fenêtre, par exemple 15/08/2027. Puis cliquez sur « Suivant ».",
+        cible: 'echeance-date',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-echeance-enregistrer',
+        titre: "Enregistrez l'échéance",
+        texte: "Cliquez sur « Enregistrer ». Les autres lignes se remplissent de la même façon, avec leur crayon.",
+        cible: 'echeance-enregistrer',
+        action: 'disparition'
+      }
+    ]
   }
 ];

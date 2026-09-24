@@ -290,8 +290,7 @@ export class HelpService {
     // En premier : le drapeau de premiere connexion est retenu meme sur une page
     // sans guide (le tableau de bord, ou la connexion depose le client).
     const nouveau = this.estNouvelUtilisateur();
-    const chemin = (url || '').split(/[?#]/)[0];
-    const visite = VISITES_ECRANS.find(v => v.route === chemin);
+    const visite = VISITES_ECRANS.find(v => this.estSurSonEcran(v, url));
     if (!visite || !nouveau || !this.guidePourCetteOffre(visite)) return null;
     if (this.ecranVu(visite.id) || this.doitProposerLeGuide()) return null;
     const etapes = visite.etapes.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
@@ -318,6 +317,12 @@ export class HelpService {
     return VISITES_ECRANS
       .filter(v => this.guidePourCetteOffre(v))
       .map(v => v.titre.replace(/^Écran\s+/, ''));
+  }
+
+  /** Ce chemin (parametres ignores) est-il celui de l'ecran de ce tutoriel, ou l'un de ses autres chemins ? */
+  estSurSonEcran(v: VisiteEcran, url: string): boolean {
+    const chemin = (url || '').split(/[?#]/)[0];
+    return chemin === v.route || (v.autresRoutes || []).includes(chemin);
   }
 
   private ecranVu(id: string): boolean {
