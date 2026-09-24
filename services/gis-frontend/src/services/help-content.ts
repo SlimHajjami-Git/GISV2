@@ -1133,9 +1133,9 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         // Le « type » n'est pas cite : choisir un modele le remplace par le type du
         // catalogue (hatchback, van…), absent de la liste Type, qui s'affiche alors
         // vide (defaut de la fiche signale a Karim le 24/09/2026).
-        // Refus du serveur (plaque deja utilisee…) : une alerte s'affiche et la fiche
-        // reste ouverte ; la bulle dit quoi faire.
-        texte: "Le reste est facultatif ou déjà prérempli (année, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ». Un message d'erreur s'affiche ? Revenez corriger avec « Précédent », puis cliquez à nouveau sur « Ajouter ».",
+        // Pas de phrase sur un eventuel refus du serveur : Karim ne veut pas de
+        // message « Un message d'erreur s'affiche ? » dans les bulles (24/09/2026).
+        texte: "Le reste est facultatif ou déjà prérempli (année, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ».",
         cible: 'vehicule-ajouter',
         action: 'disparition'
       }
