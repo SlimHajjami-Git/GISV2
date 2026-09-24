@@ -59,7 +59,7 @@ const ALERT_TYPE_KEYS_WITHOUT_GPS = ALL_ALERT_TYPE_KEYS.filter(k => k !== 'accid
               <p class="ae-subtitle">Adresses qui reçoivent une copie email des alertes de la flotte</p>
             </div>
           </div>
-          <button class="ae-btn-primary" (click)="toggleAddForm()" *ngIf="!showAddForm">
+          <button class="ae-btn-primary" (click)="toggleAddForm()" *ngIf="!showAddForm" data-guide="alerte-ajouter">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/>
               <line x1="5" y1="12" x2="19" y2="12"/>
@@ -85,17 +85,18 @@ const ALERT_TYPE_KEYS_WITHOUT_GPS = ALL_ALERT_TYPE_KEYS.filter(k => k !== 'accid
             <div class="ae-form-grid">
               <div class="ae-field">
                 <label>Adresse email</label>
-                <input type="email" [(ngModel)]="newEmail.email" placeholder="alerte@entreprise.com">
+                <input type="email" [(ngModel)]="newEmail.email" placeholder="alerte@entreprise.com" data-guide="alerte-adresse">
               </div>
               <div class="ae-field">
                 <label>Type d'alerte</label>
-                <select [(ngModel)]="newEmail.alertType">
+                <select [(ngModel)]="newEmail.alertType" data-guide="alerte-type">
                   <option value="" disabled>Choisir un type…</option>
                   <option *ngFor="let type of alertTypeKeys" [value]="type">{{ alertTypeLabels[type] }}</option>
                 </select>
               </div>
               <div class="ae-form-actions">
-                <button class="ae-btn-primary"
+                <!-- data-guide : dernier geste du tutoriel des alertes par e-mail (help-content.ts). -->
+                <button class="ae-btn-primary" data-guide="alerte-enregistrer"
                         (click)="createAlertEmail()"
                         [disabled]="saving || !newEmail.email || !newEmail.alertType">
                   Enregistrer

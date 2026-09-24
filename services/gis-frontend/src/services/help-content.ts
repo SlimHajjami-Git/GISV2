@@ -1203,5 +1203,54 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: 'disparition'
       }
     ]
+  },
+  {
+    // Karim, 24/09/2026 : « il faut ajouter alertes par mail ». Ecran Utilisateurs,
+    // onglet « Alertes par email » (alert-emails.component.ts). Sans adresse
+    // inscrite ici, personne n'est prevenu par e-mail.
+    id: 'tuto-alertes-email-gpa',
+    titre: 'Alertes par e-mail',
+    route: '/users',
+    module: 'users',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-alerte-onglet',
+        titre: 'Recevez vos alertes par e-mail',
+        texte: "Cliquez sur l'onglet « Alertes par email ».",
+        cible: 'alertes-email-onglet',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-alerte-ajouter',
+        titre: 'Ajoutez une adresse',
+        texte: 'Cliquez sur « Ajouter une adresse ».',
+        cible: 'alerte-ajouter',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-alerte-adresse',
+        titre: "L'adresse e-mail",
+        // La premiere fois, l'ecran propose l'adresse de l'utilisateur (toggleAddForm).
+        texte: "Saisissez l'adresse qui recevra les alertes. Puis cliquez sur « Suivant ».",
+        cible: 'alerte-adresse',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-alerte-type',
+        titre: "Le type d'alerte",
+        // Une ligne = une adresse + UN type (ALERT_TYPES ; « Accident » masque en GPA).
+        texte: "Choisissez le « Type d'alerte » : Assurance, Visite Technique, Entretien, Permis… Pour recevoir plusieurs types, vous ajouterez une ligne par type.",
+        cible: 'alerte-type',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-alerte-enregistrer',
+        titre: "Enregistrez l'adresse",
+        texte: 'Cliquez sur « Enregistrer ».',
+        cible: 'alerte-enregistrer',
+        action: 'disparition'
+      }
+    ]
   }
 ];

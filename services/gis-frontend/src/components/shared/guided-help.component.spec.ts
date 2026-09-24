@@ -687,3 +687,108 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     expect(guide.componentInstance.valeurSaisie).toBe(true);
   });
 });
+
+/**
+ * Tutoriel des alertes par e-mail (Karim, 24/09/2026 : « il faut ajouter alertes par
+ * mail »). Écran Utilisateurs, onglet « Alertes par email ». Particularité : le bouton
+ * « Ajouter une adresse » DISPARAÎT dès qu'on le clique (le formulaire le remplace).
+ */
+@Component({ standalone: true, template: `
+  <button data-guide="alertes-email-onglet" (click)="onglet = true">Alertes par email</button>
+  @if (onglet) {
+    @if (!formulaire) { <button data-guide="alerte-ajouter" (click)="formulaire = true">Ajouter une adresse</button> }
+    @if (formulaire) {
+      <input type="email" data-guide="alerte-adresse">
+      <select data-guide="alerte-type"><option value="" disabled selected>Choisir un type…</option><option value="assurance">Assurance</option></select>
+      <button data-guide="alerte-enregistrer" (click)="formulaire = false">Enregistrer</button>
+    }
+  }` })
+class EcranUtilisateurs { onglet = false; formulaire = false; }
+
+describe('Tutoriel pas à pas — alertes par e-mail (GPA)', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const ouvrir = async (url: string) => { await harness.navigateByUrl(url); await rafraichir(); };
+  const el = (cible: string) => document.querySelector('[data-guide="' + cible + '"]') as HTMLInputElement;
+  const bouton = (libelle: string) => Array.from(guide.nativeElement.querySelectorAll('.guide-bulle button') as NodeListOf<HTMLButtonElement>)
+    .find(b => b.textContent!.trim() === libelle);
+  const etape = () => guide.componentInstance.etape?.id;
+  const cliquer = async (cible: string) => { el(cible).click(); await rafraichir(); };
+  const remplir = async (cible: string, valeur: string) => {
+    const champ = el(cible);
+    champ.value = valeur;
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    champ.dispatchEvent(new Event('change', { bubbles: true }));
+    await rafraichir(3);
+  };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true, email: 'gerant@transports-martin.fr' };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'users', component: EcranUtilisateurs },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    TestBed.inject(HelpService).fermerGuide(true);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('onglet, « Ajouter une adresse » (qui disparaît au clic), adresse, type, « Enregistrer » : l\'adresse est inscrite', async () => {
+    await ouvrir('/users');
+    expect(etape()).toBe('tuto-alerte-onglet');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Alertes par e-mail · Étape 1 sur 5');
+
+    await cliquer('alertes-email-onglet');
+    expect(etape()).toBe('tuto-alerte-ajouter');
+
+    await cliquer('alerte-ajouter');                  // le bouton disparaît : ce n'est pas un abandon
+    await rafraichir(14);
+    expect(guide.componentInstance.actif).toBe(true);
+    expect(etape()).toBe('tuto-alerte-adresse');
+
+    await remplir('alerte-adresse', 'gerant@transports-martin.fr');
+    bouton('Suivant')!.click(); await rafraichir();
+    expect(etape()).toBe('tuto-alerte-type');
+    expect(bouton('Suivant')!.disabled).toBe(true);   // « Choisir un type… » ne compte pas
+    await remplir('alerte-type', 'assurance');
+    expect(bouton('Suivant')!.disabled).toBe(false);
+    bouton('Suivant')!.click(); await rafraichir();
+
+    expect(etape()).toBe('tuto-alerte-enregistrer');
+    await cliquer('alerte-enregistrer');
+    await rafraichir();
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/users');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+});
