@@ -301,10 +301,14 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  /** Champ rempli : texte non vide, ou liste positionnee sur autre chose que « -- Selectionner -- » (valeur "null"). */
+  /**
+   * Champ rempli : texte non vide, ou liste positionnee sur un vrai choix. Une option
+   * vide vaut "null" avec [value]="null" (fiche vehicule), mais "0: null" avec
+   * [ngValue]="null" (« Aucun vehicule » de la fiche chauffeur) : les deux sont vides.
+   */
   private champRempli(el: HTMLElement): boolean {
     const v = (el as HTMLInputElement | HTMLSelectElement).value;
-    return typeof v === 'string' && v.trim() !== '' && v !== 'null';
+    return typeof v === 'string' && v.trim() !== '' && v !== 'null' && !/^\d+:\s*null$/.test(v);
   }
 
   /**

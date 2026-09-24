@@ -33,7 +33,9 @@ import { HelpArticle } from '../services/help-content.model';
                utilisateur, bonne offre) : ailleurs le bouton ne ferait rien. -->
           @if (ecransAvecGuide.length) {
             <button type="button" class="btn-visite" (click)="revoirLesGuidesDesEcrans()">
-              {{ guidesRemis ? "C'est fait : ouvrez l'écran " + ecransAvecGuide.join(', ') : 'Revoir les guides des écrans' }}
+              {{ guidesRemis
+                   ? (ecransAvecGuide.length > 1 ? "C'est fait : ouvrez les écrans " : "C'est fait : ouvrez l'écran ") + ecransAvecGuide.join(', ')
+                   : 'Revoir les guides des écrans' }}
             </button>
           }
         </div>

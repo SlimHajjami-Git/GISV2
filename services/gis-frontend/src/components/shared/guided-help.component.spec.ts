@@ -566,3 +566,124 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     expect(c.mode).toBe('ecran');
   });
 });
+
+/**
+ * Tutoriel pas à pas de l'écran Chauffeurs (GPA), sur le modèle validé de Véhicules :
+ * « Nouveau chauffeur », prénom, nom, date d'expiration du permis et véhicule
+ * (facultatifs), puis « Créer le chauffeur ». L'écran de test reproduit la fiche
+ * (employee-popup) : la liste « Aucun véhicule » est en [ngValue]="null", sa valeur
+ * vaut donc "0: null".
+ */
+@Component({ standalone: true, template: `
+  <button data-guide="chauffeurs-nouveau" (click)="ouverte = true">Nouveau chauffeur</button>
+  @if (ouverte) {
+    <form>
+      <input data-guide="chauffeur-prenom">
+      <input data-guide="chauffeur-nom">
+      <input type="date" data-guide="chauffeur-permis-expiration">
+      <select data-guide="chauffeur-vehicule"><option value="0: null">Aucun véhicule</option><option value="1: 5">Clio (AB-123-CD)</option></select>
+      <button type="button" data-guide="chauffeur-creer" (click)="ouverte = false">Créer le chauffeur</button>
+    </form>
+  }` })
+class EcranChauffeurs { ouverte = false; }
+
+describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const ouvrir = async (url: string) => { await harness.navigateByUrl(url); await rafraichir(); };
+  const el = (cible: string) => document.querySelector('[data-guide="' + cible + '"]') as HTMLInputElement;
+  const bouton = (libelle: string) => Array.from(guide.nativeElement.querySelectorAll('.guide-bulle button') as NodeListOf<HTMLButtonElement>)
+    .find(b => b.textContent!.trim() === libelle);
+  const etape = () => guide.componentInstance.etape?.id;
+  const cliquer = async (cible: string) => { el(cible).click(); await rafraichir(); };
+  const remplir = async (cible: string, valeur: string) => {
+    const champ = el(cible);
+    champ.value = valeur;
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    champ.dispatchEvent(new Event('change', { bubbles: true }));
+    await rafraichir(3);
+  };
+  const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    // Utilisateur NON administrateur : « Nouveau chauffeur » lui est ouvert.
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: false };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'drivers', component: EcranChauffeurs },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    help.fermerGuide(true);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('un non-administrateur le reçoit, et le parcours complet crée le chauffeur puis ne revient plus', async () => {
+    await ouvrir('/drivers');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(etape()).toBe('tuto-chauffeur-nouveau');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Chauffeurs · Étape 1 sur 6');
+
+    await cliquer('chauffeurs-nouveau');
+    expect(etape()).toBe('tuto-chauffeur-prenom');
+    await remplir('chauffeur-prenom', 'Jean'); await suivant();
+    await remplir('chauffeur-nom', 'Dupont'); await suivant();
+    expect(etape()).toBe('tuto-chauffeur-permis');
+    await suivant();                                   // date du permis laissée vide
+    expect(etape()).toBe('tuto-chauffeur-vehicule');
+    await suivant();                                   // « Aucun véhicule »
+    expect(etape()).toBe('tuto-chauffeur-creer');
+    expect(bouton('Terminer')).toBeUndefined();
+
+    await cliquer('chauffeur-creer');                  // enregistré : la fiche se ferme
+    await rafraichir();
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/drivers');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('prénom et nom obligatoires ; « Aucun véhicule » (valeur "0: null") compte comme vide', async () => {
+    await ouvrir('/drivers');
+    await cliquer('chauffeurs-nouveau');
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('chauffeur-prenom', 'Jean'); await suivant();
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('chauffeur-nom', 'Dupont'); await suivant();
+    await suivant();
+    expect(etape()).toBe('tuto-chauffeur-vehicule');
+    expect(guide.componentInstance.valeurSaisie).toBe(false);   // « Aucun véhicule » = rien choisi
+    await remplir('chauffeur-vehicule', '1: 5');
+    expect(guide.componentInstance.valeurSaisie).toBe(true);
+  });
+});

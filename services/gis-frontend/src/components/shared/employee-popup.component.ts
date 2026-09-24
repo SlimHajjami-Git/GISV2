@@ -47,11 +47,11 @@ import { Vehicle } from '../../models/types';
             <div class="form-grid">
               <div class="form-group">
                 <label for="firstName">Prénom *</label>
-                <input type="text" id="firstName" name="firstName" [(ngModel)]="formData.firstName" required placeholder="Ex: Jean" />
+                <input type="text" id="firstName" name="firstName" [(ngModel)]="formData.firstName" required placeholder="Ex: Jean" data-guide="chauffeur-prenom" />
               </div>
               <div class="form-group">
                 <label for="lastName">Nom *</label>
-                <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Dupont" />
+                <input type="text" id="lastName" name="lastName" [(ngModel)]="formData.lastName" required placeholder="Ex: Dupont" data-guide="chauffeur-nom" />
               </div>
               <div class="form-group">
                 <label for="email">Email</label>
@@ -103,7 +103,7 @@ import { Vehicle } from '../../models/types';
               </div>
               <div class="form-group">
                 <label for="permitExpiry">Date d'expiration</label>
-                <input type="date" id="permitExpiry" name="permitExpiry" [(ngModel)]="formData.permitExpiry" />
+                <input type="date" id="permitExpiry" name="permitExpiry" [(ngModel)]="formData.permitExpiry" data-guide="chauffeur-permis-expiration" />
               </div>
               <div class="form-group">
                 <label for="permitReminderDays">Rappel avant (jours)</label>
@@ -124,7 +124,7 @@ import { Vehicle } from '../../models/types';
             </div>
             <div class="form-group">
               <label for="assignedVehicleId">Véhicule</label>
-              <select id="assignedVehicleId" name="assignedVehicleId" [(ngModel)]="formData.assignedVehicleId">
+              <select id="assignedVehicleId" name="assignedVehicleId" [(ngModel)]="formData.assignedVehicleId" data-guide="chauffeur-vehicule">
                 <option [ngValue]="null">Aucun véhicule</option>
                 <option *ngFor="let v of vehicles" [ngValue]="v.id">{{ v.name }} ({{ v.plate }})</option>
               </select>
@@ -144,7 +144,8 @@ import { Vehicle } from '../../models/types';
 
           <div class="popup-footer">
             <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
-            <button type="submit" class="btn-primary">
+            <!-- data-guide : dernier geste du tutoriel Chauffeurs (help-content.ts), en création seulement. -->
+            <button type="submit" class="btn-primary" [attr.data-guide]="driver ? null : 'chauffeur-creer'">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="20 6 9 17 4 12"/>
               </svg>

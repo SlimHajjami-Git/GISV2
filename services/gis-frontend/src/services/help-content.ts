@@ -1067,10 +1067,13 @@ export const ETAPES_GUIDE: GuideEtape[] = [
  * pas, a chaque acces, tant qu'il ne l'a ni passe ni termine. Le client fait
  * lui-meme chaque geste ; la bulle lui dit lequel.
  *
- * Pilote : l'ecran « Vehicules » de l'offre GPA, a corriger avec Karim avant de
- * l'appliquer aux autres ecrans. Parcours voulu : « Nouveau vehicule », puis le
- * nom, la plaque, la marque et le modele, sans insister sur le reste (il pourra
- * revenir le remplir), puis « Ajouter ».
+ * Pilote : l'ecran « Vehicules » de l'offre GPA, valide par Karim le 24/09/2026.
+ * Parcours voulu : « Nouveau vehicule », puis le nom, la plaque, la marque et le
+ * modele, sans insister sur le reste (il pourra revenir le remplir), puis
+ * « Ajouter ». Les autres ecrans GPA suivent le meme modele, un par un, chacun
+ * valide avec Karim : Chauffeurs d'abord. Libelles cites TELS QU'A L'ECRAN, meme
+ * sans accents : corriger les ecrans (partages avec le GPS) attend la fin de la
+ * validation GPA (« il faut qu'on valide ensemble GPA et on passe apres »).
  */
 export const VISITES_ECRANS: VisiteEcran[] = [
   {
@@ -1137,6 +1140,66 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         // message « Un message d'erreur s'affiche ? » dans les bulles (24/09/2026).
         texte: "Le reste est facultatif ou déjà prérempli (année, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ».",
         cible: 'vehicule-ajouter',
+        action: 'disparition'
+      }
+    ]
+  },
+  {
+    id: 'tuto-chauffeurs-gpa',
+    titre: 'Écran Chauffeurs',
+    route: '/drivers',
+    module: 'employees',
+    // GPA seulement pendant la validation avec Karim (le GPS viendra ensuite).
+    sauf: 'monitoring',
+    // Pas reserve a l'administrateur : « Nouveau chauffeur » est ouvert a tout
+    // utilisateur qui a l'ecran Chauffeurs (employees.component.html).
+    // Fiche : employee-popup.component.ts. Prenom et Nom suffisent au serveur
+    // (CreateDriverCommand) ; rien n'est prerempli d'utile.
+    etapes: [
+      {
+        id: 'tuto-chauffeur-nouveau',
+        titre: 'Ajoutez votre premier chauffeur',
+        texte: "Cliquez sur « Nouveau chauffeur » : la fiche à remplir s'ouvre.",
+        cible: 'chauffeurs-nouveau',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-chauffeur-prenom',
+        titre: 'Le prénom',
+        texte: "Saisissez le prénom du chauffeur. Puis cliquez sur « Suivant ».",
+        cible: 'chauffeur-prenom',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-chauffeur-nom',
+        titre: 'Le nom',
+        texte: 'Saisissez maintenant son nom de famille.',
+        cible: 'chauffeur-nom',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-chauffeur-permis',
+        titre: "L'expiration du permis",
+        // Alimente les echeances et les alertes « Permis » (DriverPermitExpiries).
+        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance. Vous ne l'avez pas sous la main ? Cliquez sur « Suivant ».",
+        cible: 'chauffeur-permis-expiration',
+        action: 'valeur',
+        facultatif: true
+      },
+      {
+        id: 'tuto-chauffeur-vehicule',
+        titre: 'Son véhicule',
+        texte: "Choisissez le « Véhicule » qu'il conduit. Il n'y est pas ? Cliquez sur « Suivant ».",
+        cible: 'chauffeur-vehicule',
+        action: 'valeur',
+        facultatif: true
+      },
+      {
+        id: 'tuto-chauffeur-creer',
+        titre: 'Enregistrez le chauffeur',
+        // « Modifier » n'est pas un libelle visible : c'est le crayon de la ligne.
+        texte: "Le reste est facultatif : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Créer le chauffeur ».",
+        cible: 'chauffeur-creer',
         action: 'disparition'
       }
     ]
