@@ -1181,10 +1181,10 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         id: 'tuto-chauffeur-permis',
         titre: "L'expiration du permis",
         // Alimente les echeances et les alertes « Permis » (DriverPermitExpiries).
-        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance. Vous ne l'avez pas sous la main ? Cliquez sur « Suivant ».",
+        // OBLIGATOIRE dans le tutoriel : Karim, 24/09/2026, « la Date d'expiration est importante ».
+        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance.",
         cible: 'chauffeur-permis-expiration',
-        action: 'valeur',
-        facultatif: true
+        action: 'valeur'
       },
       {
         id: 'tuto-chauffeur-vehicule',

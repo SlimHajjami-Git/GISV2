@@ -658,7 +658,10 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     await remplir('chauffeur-prenom', 'Jean'); await suivant();
     await remplir('chauffeur-nom', 'Dupont'); await suivant();
     expect(etape()).toBe('tuto-chauffeur-permis');
-    await suivant();                                   // date du permis laissée vide
+    // Obligatoire (Karim, 24/09/2026 : « la Date d'expiration est importante »).
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('chauffeur-permis-expiration', '2028-05-31');
+    await suivant();
     expect(etape()).toBe('tuto-chauffeur-vehicule');
     await suivant();                                   // « Aucun véhicule »
     expect(etape()).toBe('tuto-chauffeur-creer');
@@ -680,7 +683,7 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     await remplir('chauffeur-prenom', 'Jean'); await suivant();
     expect(bouton('Suivant')!.disabled).toBe(true);
     await remplir('chauffeur-nom', 'Dupont'); await suivant();
-    await suivant();
+    await remplir('chauffeur-permis-expiration', '2028-05-31'); await suivant();
     expect(etape()).toBe('tuto-chauffeur-vehicule');
     expect(guide.componentInstance.valeurSaisie).toBe(false);   // « Aucun véhicule » = rien choisi
     await remplir('chauffeur-vehicule', '1: 5');
