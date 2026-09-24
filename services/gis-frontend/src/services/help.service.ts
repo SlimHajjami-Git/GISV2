@@ -1,9 +1,9 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, isDevMode } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
 import { AuthService } from './auth.service';
 import { PermissionService, ModuleKey } from './permission.service';
-import { HelpArticle, HelpModule, GuideEtape } from './help-content.model';
-import { ARTICLES_AIDE, ETAPES_GUIDE } from './help-content';
+import { HelpArticle, HelpModule, GuideEtape, VisiteEcran } from './help-content.model';
+import { ARTICLES_AIDE, ETAPES_GUIDE, VISITES_ECRANS } from './help-content';
 
 /** Cle localStorage : on versionne pour pouvoir rejouer la visite apres une refonte. */
 const CLE_ETAT = 'calypso_aide_v1';
@@ -29,6 +29,14 @@ interface EtatAide {
   /** La visite guidee a ete terminee OU passee volontairement. */
   guideTermine?: boolean;
   dateFin?: string;
+  /**
+   * Premiere connexion du compte vue dans ce navigateur : c'est un nouvel
+   * utilisateur, les guides des ecrans lui sont presentes. Retenu ici parce que
+   * le drapeau de la connexion disparait au premier rafraichissement du jeton.
+   */
+  nouvelUtilisateur?: boolean;
+  /** Guides d'ecran passes ou termines (VisiteEcran.id). */
+  ecransVus?: string[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -166,9 +174,20 @@ export class HelpService {
 
   /** Etapes pertinentes pour ce client : on saute les modules non souscrits. */
   etapesGuide(): GuideEtape[] {
-    return ETAPES_GUIDE.filter(e =>
-      (!e.module || this.moduleAutorise(e.module))
-      && (!e.sauf || !this.moduleAutorise(e.sauf)));
+    return ETAPES_GUIDE.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
+  }
+
+  /** Etape reservee a l'administrateur : meme regle que le bouton vise (vehicles.component.ts, isAdmin). */
+  private pourCeProfil(e: GuideEtape): boolean {
+    if (!e.adminSeulement) return true;
+    const u = this.auth.getCurrentUserSync();
+    return !!u?.isCompanyAdmin || !!u?.isSystemAdmin;
+  }
+
+  /** Module requis present, module exclu (`sauf`) absent : vaut pour une etape comme pour un guide d'ecran. */
+  private pourCetteOffre(e: { module?: HelpModule; sauf?: HelpModule }): boolean {
+    return (!e.module || this.moduleAutorise(e.module))
+      && (!e.sauf || !this.moduleAutorise(e.sauf));
   }
 
   /**
@@ -216,15 +235,107 @@ export class HelpService {
     this.guideOuvertSource.next(false);
     if (termine) {
       this.termineeEnMemoire.add(this.cleUtilisateur());
-      this.ecrireEtat({ guideTermine: true, dateFin: new Date().toISOString() });
+      this.modifierEtat({ guideTermine: true, dateFin: new Date().toISOString() });
     }
   }
 
-  /** Permet au client de refaire la visite depuis le bouton "?". */
+  /** Permet au client de refaire la visite depuis le bouton "?". Les guides d'ecran vus le restent. */
   reinitialiserGuide(): void {
     this.termineeEnMemoire.delete(this.cleUtilisateur());
-    this.ecrireEtat({});
+    this.modifierEtat({ guideTermine: false, dateFin: undefined });
     this.ouvrirGuide();
+  }
+
+  // ------------------------------------------------------- Guides des ecrans
+
+  /** Memes filets que termineeEnMemoire, quand localStorage refuse d'ecrire. */
+  private nouveauxEnMemoire = new Set<string>();
+  private ecransVusEnMemoire = new Set<string>();
+
+  /**
+   * Nouvel utilisateur = premiere connexion (Karim, 24/09/2026). Le drapeau vient
+   * de la reponse de /auth/login ; on le retient des qu'on le voit, car le
+   * rafraichissement du jeton reecrit l'utilisateur sans lui. Un client deja
+   * installe (last_login_at rempli en base) n'est donc jamais concerne.
+   */
+  estNouvelUtilisateur(): boolean {
+    const cle = this.cleUtilisateur();
+    if (this.auth.getCurrentUserSync()?.firstLogin && !this.nouveauxEnMemoire.has(cle)) {
+      this.nouveauxEnMemoire.add(cle);
+      this.modifierEtat({ nouvelUtilisateur: true });
+    }
+    return this.nouveauxEnMemoire.has(cle)
+      || !!this.lireEtat().nouvelUtilisateur
+      || this.derogationPilote();
+  }
+
+  /**
+   * PROVISOIRE (Karim, 24/09/2026) : « applique-le provisoirement sur le compte de
+   * la societe Belive GPA en local, meme si ce n'est pas un nouvel utilisateur ».
+   * isDevMode() est faux dans la compilation de production (Dockerfile.prod,
+   * --configuration=production) : la derogation ne peut pas s'activer sur un
+   * serveur, ou une autre societe porterait-elle ce nom. A retirer quand le guide
+   * sera generalise.
+   */
+  private derogationPilote(): boolean {
+    return isDevMode() && this.auth.getCurrentUserSync()?.companyName === 'Belive GPA';
+  }
+
+  /**
+   * Guide a presenter sur cette page, ou null. A chaque acces tant qu'il n'a ni
+   * ete passe ni termine ; jamais tant que la visite de premiere connexion doit
+   * encore etre proposee — elle passe avant, et les deux ne se superposent pas.
+   */
+  visiteEcranAProposer(url: string): VisiteEcran | null {
+    // En premier : le drapeau de premiere connexion est retenu meme sur une page
+    // sans guide (le tableau de bord, ou la connexion depose le client).
+    const nouveau = this.estNouvelUtilisateur();
+    const chemin = (url || '').split(/[?#]/)[0];
+    const visite = VISITES_ECRANS.find(v => v.route === chemin);
+    if (!visite || !nouveau || !this.guidePourCetteOffre(visite)) return null;
+    if (this.ecranVu(visite.id) || this.doitProposerLeGuide()) return null;
+    const etapes = visite.etapes.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
+    return etapes.length ? { ...visite, etapes } : null;
+  }
+
+  /**
+   * `module` suit les droits de l'utilisateur, comme pour une etape ; `sauf`
+   * reconnait l'offre, donc l'ABONNEMENT. Avec les droits, un utilisateur d'une
+   * societe GPS sans acces a la carte recevait le guide GPA (relecture du 24/09/2026).
+   */
+  private guidePourCetteOffre(v: VisiteEcran): boolean {
+    return (!v.module || this.moduleAutorise(v.module))
+      && (!v.sauf || v.sauf === 'general' || !this.permissions.abonnementComprend(v.sauf as ModuleKey));
+  }
+
+  /**
+   * Ecrans qui ont un guide pour ce client, par leur nom (« Vehicules »). Vide
+   * s'il n'est pas un nouvel utilisateur : le centre d'aide cache alors son bouton.
+   */
+  ecransAvecGuide(): string[] {
+    if (!this.estNouvelUtilisateur()) return [];
+    return VISITES_ECRANS
+      .filter(v => this.guidePourCetteOffre(v))
+      .map(v => v.titre.replace(/^Écran\s+/, ''));
+  }
+
+  private ecranVu(id: string): boolean {
+    return this.ecransVusEnMemoire.has(this.cleUtilisateur() + '|' + id)
+      || (this.lireEtat().ecransVus || []).includes(id);
+  }
+
+  /** « Passer » ou « Terminer » sur le guide d'un ecran : il ne revient plus. */
+  marquerEcranVu(id: string): void {
+    this.ecransVusEnMemoire.add(this.cleUtilisateur() + '|' + id);
+    const vus = this.lireEtat().ecransVus || [];
+    if (!vus.includes(id)) this.modifierEtat({ ecransVus: [...vus, id] });
+  }
+
+  /** Bouton du centre d'aide : chaque guide d'ecran reviendra au prochain acces a son ecran. */
+  reinitialiserEcrans(): void {
+    const prefixe = this.cleUtilisateur() + '|';
+    this.ecransVusEnMemoire.forEach(c => { if (c.startsWith(prefixe)) this.ecransVusEnMemoire.delete(c); });
+    this.modifierEtat({ ecransVus: [] });
   }
 
   // ------------------------------------------------------------------- Etat
@@ -243,11 +354,16 @@ export class HelpService {
     }
   }
 
-  private ecrireEtat(etat: EtatAide): void {
+  /**
+   * Fusionne dans l'etat de l'utilisateur. Il le REMPLACAIT : terminer la visite
+   * guidee aurait efface les guides d'ecran deja vus, et inversement.
+   */
+  private modifierEtat(modification: Partial<EtatAide>): void {
     try {
       const brut = localStorage.getItem(CLE_ETAT);
       const parTout = brut ? (JSON.parse(brut) as Record<string, EtatAide>) : {};
-      parTout[this.cleUtilisateur()] = etat;
+      const cle = this.cleUtilisateur();
+      parTout[cle] = { ...(parTout[cle] || {}), ...modification };
       localStorage.setItem(CLE_ETAT, JSON.stringify(parTout));
     } catch {
       // Navigation privee ou stockage plein : l'aide reste utilisable. Le

@@ -157,6 +157,16 @@ export class PermissionService {
     return module === 'dashboard';
   }
 
+  /**
+   * L'ABONNEMENT de la société comprend-il ce module, quels que soient les droits
+   * de l'utilisateur ? Sert à reconnaître l'offre (GPS si `monitoring`) : un
+   * utilisateur sans accès à la carte, dans une société GPS, reste un client GPS.
+   */
+  abonnementComprend(module: ModuleKey): boolean {
+    const feature = this.moduleMapping[module];
+    return !!feature && this.hasFeature(feature);
+  }
+
   hasFeature(feature: keyof SubscriptionFeatures): boolean {
     const user = this.authService.getCurrentUserSync();
     

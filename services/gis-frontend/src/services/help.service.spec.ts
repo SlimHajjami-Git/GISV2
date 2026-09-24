@@ -131,10 +131,19 @@ describe('HelpService', () => {
 
     it('saute les etapes de visite guidee liees a un module absent', () => {
       modulesAutorises = ['vehicles'];
+      compte = { ...compte, isCompanyAdmin: true }; // « Nouveau véhicule » est réservé à l'administrateur
       const etapes = service.etapesGuide();
       expect(etapes.some(e => e.id === 'ajouter-vehicule')).toBe(true);
       expect(etapes.some(e => e.id === 'voir-la-carte')).toBe(false);
       expect(etapes.some(e => e.id === 'premier-rapport')).toBe(false);
+    });
+
+    // Relecture du 24/09/2026 : un non-administrateur attendait ~3 s devant un
+    // écran assombri, puis l'étape sautait faute de bouton.
+    it('retire d emblee l etape « Ajoutez votre premier vehicule » a un non-administrateur', () => {
+      modulesAutorises = ['vehicles'];
+      compte = { ...compte, isCompanyAdmin: false, isSystemAdmin: false };
+      expect(service.etapesGuide().some(e => e.id === 'ajouter-vehicule')).toBe(false);
     });
   });
 
@@ -259,6 +268,33 @@ describe('HelpService', () => {
         id: 'x', titre: 'x', module: 'general', motsCles: [], resume: '',
         video: { titre: 'demo', url: '/uploads/aide/demo.mp4' }
       })).toBe(true);
+    });
+  });
+
+  // Guides des ecrans (24/09/2026) : l’etat de l aide etait REMPLACE a chaque
+  // ecriture. Terminer la visite guidee aurait efface les guides d’ecran deja vus.
+  describe('guides des ecrans : l’etat se complete, il ne s’ecrase plus', () => {
+    const etat = (id: string) => JSON.parse(localStorage.getItem('calypso_aide_v1') || '{}')[id] || {};
+
+    it('terminer puis revoir la visite guidee garde les guides d’ecran vus', () => {
+      const s = nouvelleSession('u9');
+      s.marquerEcranVu('ecran-vehicules-gpa');
+      s.fermerGuide(true);
+      expect(etat('u9').ecransVus).toEqual(['ecran-vehicules-gpa']);
+      expect(etat('u9').guideTermine).toBe(true);
+
+      s.reinitialiserGuide();
+      expect(etat('u9').ecransVus).toEqual(['ecran-vehicules-gpa']);
+      expect(etat('u9').guideTermine).toBe(false);
+    });
+
+    it('« Revoir les guides des ecrans » les remet tous, sans toucher a la visite guidee', () => {
+      const s = nouvelleSession('u9');
+      s.fermerGuide(true);
+      s.marquerEcranVu('ecran-vehicules-gpa');
+      s.reinitialiserEcrans();
+      expect(etat('u9').ecransVus).toEqual([]);
+      expect(etat('u9').guideTermine).toBe(true);
     });
   });
 });

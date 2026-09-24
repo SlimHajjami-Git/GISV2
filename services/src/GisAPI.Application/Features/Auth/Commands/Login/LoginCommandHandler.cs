@@ -96,6 +96,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
                 .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId, ct);
         }
 
+        // Lu AVANT d'écrire la date du jour : vide, c'est la toute première connexion.
+        var firstLogin = user.LastLoginAt == null;
         user.LastLoginAt = DateTime.UtcNow;
 
         var token = _jwtService.GenerateToken(user);
@@ -161,7 +163,8 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
         return new LoginResponse(
             token,
             refreshTokenStr,
-            BuildUserDto(user, subscriptionFeatures, assignedVehicleIds, userPermissions)
+            BuildUserDto(user, subscriptionFeatures, assignedVehicleIds, userPermissions),
+            FirstLogin: firstLogin
         );
     }
 

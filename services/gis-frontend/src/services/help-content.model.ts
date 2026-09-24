@@ -102,6 +102,21 @@ export interface GuideEtape {
    * sautee automatiquement : la visite ne doit jamais pointer dans le vide.
    */
   cible: string;
+  /**
+   * Cible de repli, visee quand `cible` manque — typiquement le message « liste
+   * vide » d'un nouveau client, qui n'a encore rien saisi — avec son propre texte
+   * (`texteRepli`). Sans repli, une etape dont la cible manque est sautee.
+   * La cible principale est cherchee en premier : ne pas mettre d'etape a repli en
+   * tete d'un guide, ou la liste est encore vide le temps de son chargement.
+   */
+  cibleRepli?: string;
+  texteRepli?: string;
+  /**
+   * Etape reservee aux administrateurs (bouton sous *ngIf="isAdmin") : retiree
+   * d'emblee pour les autres. Sautee faute de cible, elle faisait attendre 3 s
+   * puis affichait « Etape 2 sur 4 » en premiere bulle (relecture du 24/09/2026).
+   */
+  adminSeulement?: boolean;
   /** Module requis pour que l'etape ait un sens. */
   module?: HelpModule;
   /**
@@ -120,4 +135,32 @@ export interface GuideEtape {
    * en direct » pour qu'il voie les siens. « Passer » ne deplace pas.
    */
   routeApresFin?: string;
+}
+
+/**
+ * Guide d'un ecran : quelques bulles presentees a un NOUVEL utilisateur (premiere
+ * connexion) quand il ouvre cet ecran, a chaque acces tant qu'il ne l'a ni passe
+ * ni termine (Karim, 24/09/2026). Il reprend le moteur de la visite guidee — meme
+ * cadre bleu, meme bulle — mais ne change jamais de page.
+ */
+export interface VisiteEcran {
+  /** Identifiant stable : c'est lui que l'on retient comme « vu ». */
+  id: string;
+  /** Nom de l'ecran, affiche au-dessus du compteur d'etapes. */
+  titre: string;
+  /** Chemin exact de l'ecran (sans parametres), par exemple '/vehicles'. */
+  route: string;
+  /** Module requis, comme pour une etape (droits de l'utilisateur compris). */
+  module?: HelpModule;
+  /**
+   * Module dont la presence dans l'ABONNEMENT retire le guide : `monitoring` signe
+   * l'offre GPS. L'abonnement, pas les droits : un utilisateur d'une societe GPS
+   * sans acces a la carte reste un client GPS.
+   */
+  sauf?: HelpModule;
+  /**
+   * Bulles de l'ecran, dans l'ordre. Sans `route` : tout se joue sur l'ecran.
+   * Une etape dont la cible manque (bouton reserve a l'administrateur) est sautee.
+   */
+  etapes: GuideEtape[];
 }

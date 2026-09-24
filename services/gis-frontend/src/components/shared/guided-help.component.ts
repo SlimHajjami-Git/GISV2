@@ -1,10 +1,10 @@
-import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, NgZone, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, ElementRef, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Router } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { NavigationEnd, Router } from '@angular/router';
+import { Subscription, filter } from 'rxjs';
 import { HelpService } from '../../services/help.service';
 import { AuthService } from '../../services/auth.service';
-import { GuideEtape } from '../../services/help-content.model';
+import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
 
 /**
  * Visite guidee de premiere connexion (menu Vehicules -> Ajouter un vehicule
@@ -24,6 +24,13 @@ import { GuideEtape } from '../../services/help-content.model';
  * pendant que l'ancienne, detruite, continuait de naviguer (relecture du
  * 22/09/2026). Monte a la racine, le composant survit aussi a la deconnexion :
  * il se ferme donc de lui-meme quand l'utilisateur n'est plus connecte.
+ *
+ * Deux usages du meme moteur (cadre bleu + bulle) :
+ *  - 'parcours' : la visite de premiere connexion, qui change de page ;
+ *  - 'ecran'    : le guide de l'ecran qui vient de s'ouvrir, presente a un
+ *                 nouvel utilisateur a chaque acces tant qu'il ne l'a ni passe
+ *                 ni termine (Karim, 24/09/2026). Il ne change jamais de page.
+ * Le parcours a toujours la main : aucun guide d'ecran ne demarre pendant lui.
  */
 @Component({
   selector: 'app-guided-help',
@@ -33,16 +40,26 @@ import { GuideEtape } from '../../services/help-content.model';
     @if (actif && etape) {
       <!-- Le voile ne ferme PAS la visite : un clic a cote ne doit pas supprimer
            definitivement un parcours que le client n'a jamais vu. Pour sortir,
-           il y a "Passer" et la touche Echap. -->
+           il y a "Passer" et la touche Echap.
+           Guide d'ecran : rien n'est pose tant que sa cible n'est pas trouvee —
+           le client n'a encore rien demande, un ecran assombri sans bulle le
+           bloquerait pour rien. Le parcours, lui, garde voile et bulle pendant
+           qu'il change de page : sans bulle, le client restait devant un ecran
+           sombre sans aucun bouton (relecture du 24/09/2026). -->
+      @if (cibleTrouvee || mode === 'parcours') {
       <div class="guide-voile"></div>
-      <div class="guide-halo" [style.top.px]="halo.top" [style.left.px]="halo.left"
-           [style.width.px]="halo.width" [style.height.px]="halo.height"></div>
+      @if (cibleTrouvee) {
+        <div class="guide-halo" [style.top.px]="halo.top" [style.left.px]="halo.left"
+             [style.width.px]="halo.width" [style.height.px]="halo.height"></div>
+      }
 
       <div class="guide-bulle" [style.top.px]="bulle.top" [style.left.px]="bulle.left"
            [class.fleche-haut]="flecheEnHaut" role="dialog" aria-live="polite">
-        <div class="guide-compteur">Étape {{ index + 1 }} sur {{ etapes.length }}</div>
+        <div class="guide-compteur">
+          @if (mode === 'ecran' && visiteEcran) { {{ visiteEcran.titre }} · }Étape {{ index + 1 }} sur {{ etapes.length }}
+        </div>
         <h3>{{ etape.titre }}</h3>
-        <p>{{ etape.texte }}</p>
+        <p>{{ texte }}</p>
 
         <div class="guide-points">
           @for (e of etapes; track e.id; let i = $index) {
@@ -53,7 +70,7 @@ import { GuideEtape } from '../../services/help-content.model';
         <div class="guide-actions">
           <button type="button" class="lien" (click)="passer()">Passer</button>
           <span class="espace"></span>
-          @if (index > 0) {
+          @if (aUnePrecedente()) {
             <button type="button" class="secondaire" (click)="precedent()">Précédent</button>
           }
           <button type="button" class="principal" (click)="suivant()">
@@ -61,6 +78,7 @@ import { GuideEtape } from '../../services/help-content.model';
           </button>
         </div>
       </div>
+      }
     }
   `,
   styles: [`
@@ -121,11 +139,38 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private router = inject(Router);
   private cdr = inject(ChangeDetectorRef);
   private zone = inject(NgZone);
+  private hote = inject(ElementRef<HTMLElement>);
 
   actif = false;
   index = 0;
   etapes: GuideEtape[] = [];
   etape: GuideEtape | null = null;
+  /** Texte affiche : celui de l'etape, ou son texte de repli quand c'est la cible de repli qui a ete trouvee. */
+  texte = '';
+  /** Selecteur reellement suivi pour l'etape affichee (cible ou cible de repli). */
+  private cibleSuivie = '';
+  /**
+   * Page ou « Terminer » du parcours vient de deposer le client. Il sort d'une
+   * visite de sept bulles : on ne lui en impose pas une deuxieme sur-le-champ, qui
+   * repeterait en plus l'etape « Ajoutez votre premier vehicule ». Le guide de
+   * l'ecran viendra au prochain acces (relecture du 24/09/2026).
+   */
+  private arriveeFinParcours: string | null = null;
+  /** Hauteur reelle de la bulle, mesuree une fois affichee (les textes longs depassent 210 px). */
+  private hauteurBulle = 210;
+  /** Visite de premiere connexion, ou guide de l'ecran ouvert (visiteEcran). */
+  mode: 'parcours' | 'ecran' = 'parcours';
+  visiteEcran: VisiteEcran | null = null;
+  /** Cible de l'etape affichee trouvee : sans elle, ni cadre ni bulle. */
+  cibleTrouvee = false;
+  /**
+   * Au moins une bulle a ete montree pendant ce guide d'ecran. Un guide dont
+   * toutes les cibles manquaient se ferme seul : il n'est pas marque vu, le
+   * client ne l'a jamais lu.
+   */
+  private etapeMontree = false;
+  /** Etapes sautees faute de cible : « Precedent » les enjambe. */
+  private sautees = new Set<number>();
 
   halo = { top: 0, left: 0, width: 0, height: 0 };
   bulle = { top: 0, left: 0 };
@@ -148,16 +193,50 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.abonnements.push(this.help.guideOuvert$.subscribe(ouvert => {
-      // Une visite deja en cours n'est jamais relancee a l'etape 1 : c'est ce
-      // retour force au debut qui bloquait le client sur la premiere bulle.
-      if (ouvert) { if (!this.actif) { this.demarrer(); } } else { this.arreter(); }
+      if (ouvert) {
+        // Une visite deja en cours n'est jamais relancee a l'etape 1 : c'est ce
+        // retour force au debut qui bloquait le client sur la premiere bulle.
+        // Un guide d'ecran, lui, cede la place (il n'est pas marque vu).
+        if (!this.actif || this.mode === 'ecran') { this.arreter(); this.demarrer(); }
+      } else if (this.mode === 'parcours') {
+        this.arreter();
+      }
       this.cdr.detectChanges();
     }));
     // Deconnexion (volontaire ou jeton expire) : la visite ne doit pas rester
     // posee sur l'ecran de connexion. Elle n'est pas marquee comme vue.
     this.abonnements.push(this.auth.getCurrentUser().subscribe(utilisateur => {
-      if (!utilisateur && this.actif) { this.help.fermerGuide(false); }
+      if (utilisateur || !this.actif) { return; }
+      if (this.mode === 'parcours') { this.help.fermerGuide(false); }
+      else { this.arreter(); this.cdr.detectChanges(); }
     }));
+    this.abonnements.push(this.router.events
+      .pipe(filter((e): e is NavigationEnd => e instanceof NavigationEnd))
+      .subscribe(e => this.auChangementDePage(e.urlAfterRedirects)));
+    // Application rechargee directement sur un ecran : sa navigation peut etre
+    // deja terminee quand ce composant s'abonne.
+    if (this.router.navigated) { this.auChangementDePage(this.router.url); }
+  }
+
+  /**
+   * Chaque page ouverte : son guide, s'il y en a un pour ce nouvel utilisateur.
+   * La visite de premiere connexion navigue elle-meme d'ecran en ecran : pendant
+   * qu'elle tourne, aucun guide d'ecran ne s'intercale.
+   */
+  private auChangementDePage(url: string): void {
+    if (this.detruit || (this.actif && this.mode === 'parcours')) { return; }
+    const arrivee = this.arriveeFinParcours;
+    this.arriveeFinParcours = null;
+    if (arrivee && url.split(/[?#]/)[0] === arrivee.split(/[?#]/)[0]) { return; }
+    if (this.actif && this.mode === 'ecran') {
+      if (this.visiteEcran && url.split(/[?#]/)[0] === this.visiteEcran.route) { return; }
+      // Retour arriere du navigateur pendant un guide : il appartenait a
+      // l'ecran quitte, il s'efface sans etre marque vu.
+      this.arreter();
+    }
+    const visite = this.help.visiteEcranAProposer(url);
+    if (visite) { this.demarrerEcran(visite); }
+    this.cdr.detectChanges();
   }
 
   ngOnDestroy(): void {
@@ -171,11 +250,13 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * elle sera reproposee au prochain chargement de l'application (pas a la page
    * suivante, voir HelpService.dejaProposee). Seuls "Passer" et "Terminer", qui
    * sont des gestes deliberes, valent definitivement non.
+   * Un guide d'ecran ferme par Echap revient au prochain acces a l'ecran.
    */
   @HostListener('window:keydown.escape') auEchap(): void {
     if (!this.actif) { return; }
+    const mode = this.mode;
     this.arreter();
-    this.help.fermerGuide(false);
+    if (mode === 'parcours') { this.help.fermerGuide(false); }
     this.cdr.detectChanges();
   }
 
@@ -183,6 +264,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private arreter(): void {
     this.actif = false;
     this.etape = null;
+    this.cibleTrouvee = false;
     this.generation++;
     this.annulerAttente();
   }
@@ -192,8 +274,20 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   }
 
   private demarrer(): void {
-    this.etapes = this.help.etapesGuide();
+    this.lancer('parcours', null, this.help.etapesGuide());
+  }
+
+  private demarrerEcran(visite: VisiteEcran): void {
+    this.lancer('ecran', visite, visite.etapes);
+  }
+
+  private lancer(mode: 'parcours' | 'ecran', visite: VisiteEcran | null, etapes: GuideEtape[]): void {
+    this.mode = mode;
+    this.visiteEcran = visite;
+    this.etapes = etapes;
     this.index = 0;
+    this.etapeMontree = false;
+    this.sautees.clear();
     this.actif = this.etapes.length > 0;
     if (this.actif) { this.allerA(0); }
   }
@@ -203,22 +297,42 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
       // « Terminer » : on ferme, puis on depose le client la ou son parcours
       // se poursuit (Vehicules en GPA, Suivi en direct en GPS). « Passer », lui,
       // ne deplace pas : le client a voulu s'arreter la ou il est.
-      const arrivee = this.etapes[this.index]?.routeApresFin;
+      const arrivee = this.mode === 'parcours' ? this.etapes[this.index]?.routeApresFin : undefined;
       this.terminer();
-      if (arrivee) { this.router.navigateByUrl(arrivee); }
+      if (arrivee) {
+        this.arriveeFinParcours = arrivee;
+        this.router.navigateByUrl(arrivee);
+      }
       return;
     }
     this.allerA(this.index + 1);
   }
 
-  precedent(): void { if (this.index > 0) { this.allerA(this.index - 1); } }
+  /** Etape montrable avant celle-ci, en enjambant celles sautees faute de cible ; -1 sinon. */
+  private indexPrecedent(): number {
+    let i = this.index - 1;
+    while (i >= 0 && this.sautees.has(i)) { i--; }
+    return i;
+  }
+
+  /** « Precedent » n'apparait que s'il mene quelque part. */
+  aUnePrecedente(): boolean { return this.indexPrecedent() >= 0; }
+
+  precedent(): void {
+    const i = this.indexPrecedent();
+    if (i >= 0) { this.allerA(i); }
+  }
 
   /** "Passer" et "Terminer" ont le meme effet : on ne represente plus la visite. */
   passer(): void { this.terminer(); }
 
   private terminer(): void {
+    const mode = this.mode;
+    const visite = this.visiteEcran;
+    const montree = this.etapeMontree;
     this.arreter();
-    this.help.fermerGuide(true);
+    if (mode === 'parcours') { this.help.fermerGuide(true); }
+    else if (visite && montree) { this.help.marquerEcranVu(visite.id); }
     this.cdr.detectChanges();
   }
 
@@ -227,16 +341,24 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     const generation = ++this.generation;
     this.index = index;
     this.etape = this.etapes[index];
+    this.texte = this.etape.texte;
+    this.cibleTrouvee = false;
     const etape = this.etape;
+    // Premiere etape, ou ecran qui vient d'etre ouvert : la page peut encore se
+    // peindre, on laisse ~3 s a la cible. Sur une page deja affichee, une cible
+    // absente (bouton reserve a l'administrateur) l'est pour de bon : on ne fait
+    // pas attendre le client plus d'une demi-seconde.
+    const navigation = !!etape.route && !this.router.url.startsWith(etape.route);
+    const limite = navigation || index === 0 ? 180 : 30;
     const aller = () => {
       if (this.detruit || generation !== this.generation) { return; }
-      this.attendreCible(etape, 0, generation);
+      this.attendreCible(etape, 0, generation, limite);
     };
 
     // Certaines etapes vivent sur une autre page (ajout d'un vehicule, carte,
     // rapports) : on y navigue avant de chercher l'element.
-    if (etape.route && !this.router.url.startsWith(etape.route)) {
-      this.router.navigateByUrl(etape.route).then(aller);
+    if (navigation) {
+      this.router.navigateByUrl(etape.route!).then(aller);
     } else {
       aller();
     }
@@ -244,30 +366,46 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
 
   /**
    * Un ecran Angular n'est pas peint instantanement apres la navigation : on
-   * laisse jusqu'a ~3 s a l'element pour apparaitre, puis on saute l'etape
-   * plutot que de pointer une zone vide.
+   * laisse jusqu'a ~3 s a l'element pour apparaitre (`limite` images), puis on
+   * saute l'etape plutot que de pointer une zone vide.
    */
-  private attendreCible(etape: GuideEtape, essais: number, generation: number): void {
+  private attendreCible(etape: GuideEtape, essais: number, generation: number, limite = 180): void {
     this.attente = undefined;
     if (this.detruit || generation !== this.generation) { return; }
-    const cible = document.querySelector('[data-guide="' + etape.cible + '"]') as HTMLElement | null;
+    // La cible principale d'abord ; a defaut, la cible de repli (liste vide) et son texte.
+    let selecteur = etape.cible;
+    let cible = this.chercher(selecteur);
+    if (!cible && etape.cibleRepli) {
+      selecteur = etape.cibleRepli;
+      cible = this.chercher(selecteur);
+    }
 
     if (cible) {
+      this.cibleSuivie = selecteur;
+      this.texte = selecteur === etape.cible ? etape.texte : (etape.texteRepli || etape.texte);
+      this.sautees.delete(this.index);
       cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
       this.placer(cible.getBoundingClientRect());
+      this.cibleTrouvee = true;
+      this.etapeMontree = true;
       this.cdr.detectChanges();
       this.imagesStables = 0;
       this.recentree = false;
-      this.suivre(etape, generation);
+      this.suivre(generation);
       return;
     }
 
-    if (essais > 180) { this.sauter(); return; }
-    this.attente = requestAnimationFrame(() => this.attendreCible(etape, essais + 1, generation));
+    if (essais > limite) { this.sauter(); return; }
+    this.attente = requestAnimationFrame(() => this.attendreCible(etape, essais + 1, generation, limite));
+  }
+
+  private chercher(selecteur: string): HTMLElement | null {
+    return document.querySelector('[data-guide="' + selecteur + '"]') as HTMLElement | null;
   }
 
   /** Cible introuvable : on avance sans bloquer le client sur un ecran fige. */
   private sauter(): void {
+    this.sautees.add(this.index);
     if (this.index >= this.etapes.length - 1) { this.terminer(); }
     else { this.allerA(this.index + 1); }
   }
@@ -288,12 +426,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * La boucle tourne hors de la zone Angular : dedans, chaque image relancerait
    * la detection de changements de TOUTE l'application, 60 fois par seconde.
    */
-  private suivre(etape: GuideEtape, generation: number): void {
+  private suivre(generation: number): void {
     this.zone.runOutsideAngular(() => {
       this.attente = requestAnimationFrame(() => {
         this.attente = undefined;
         if (this.detruit || generation !== this.generation) { return; }
-        const cible = document.querySelector('[data-guide="' + etape.cible + '"]') as HTMLElement | null;
+        // Hauteur reelle de la bulle : un texte long la fait depasser les 210 px
+        // supposes, et posee au-dessus de sa cible elle la recouvrait.
+        const h = (this.hote.nativeElement.querySelector('.guide-bulle') as HTMLElement | null)?.offsetHeight;
+        if (h) { this.hauteurBulle = h; }
+        const cible = this.chercher(this.cibleSuivie);
         const r = cible?.getBoundingClientRect();
         // Cible absente ou masquee un instant (liste en cours de rafraichissement) :
         // on garde le cadre ou il est plutot que de l'envoyer dans le coin de l'ecran.
@@ -310,7 +452,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
             cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
           }
         }
-        this.suivre(etape, generation);
+        this.suivre(generation);
       });
     });
   }
@@ -318,12 +460,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   /** Pose le cadre et la bulle sur le rectangle de la cible ; faux si rien n'a bouge. */
   private placer(r: DOMRect): boolean {
     const marge = 6;
+    // Cible pleine largeur (barre des compteurs) : le cadre reste dans la fenetre,
+    // sinon son bord gauche sortait de 6 px et disparaissait.
+    const gauche = Math.max(2, r.left - marge);
+    const droite = Math.min(window.innerWidth - 2, r.right + marge);
     const halo = {
-      top: r.top - marge, left: r.left - marge,
-      width: r.width + marge * 2, height: r.height + marge * 2
+      top: r.top - marge, left: gauche,
+      width: Math.max(0, droite - gauche), height: r.height + marge * 2
     };
 
-    const hauteurBulle = 210;
+    const hauteurBulle = this.hauteurBulle;
     const placeEnDessous = window.innerHeight - r.bottom > hauteurBulle + 20;
     const bulle = {
       top: placeEnDessous ? r.bottom + 16 : Math.max(12, r.top - hauteurBulle - 16),

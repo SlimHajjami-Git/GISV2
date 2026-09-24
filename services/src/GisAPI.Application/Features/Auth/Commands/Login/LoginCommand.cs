@@ -42,10 +42,17 @@ public static class RefreshTokenLifetime
     public static int DaysFor(GisAPI.Domain.Entities.User user) => user.IsDriverAccount ? DriverDays : StaffDays;
 }
 
+/// <param name="FirstLogin">
+/// Toute première connexion du compte (users.last_login_at encore vide). Le site en
+/// déduit qu'il s'agit d'un nouvel utilisateur, à qui chaque écran présente son guide
+/// (Karim, 24/09/2026 : « nouvel utilisateur = première connexion »). Faux pour le
+/// rafraîchissement du jeton et pour « voir en tant que ».
+/// </param>
 public record LoginResponse(
     string Token,
     string RefreshToken,
-    UserDto User
+    UserDto User,
+    bool FirstLogin = false
 );
 
 public record UserDto(

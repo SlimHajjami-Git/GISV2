@@ -25,9 +25,18 @@ import { HelpArticle } from '../services/help-content.model';
           <h1>Centre d'aide</h1>
           <p>Cherchez un mot : « plein », « rapport », « kilométrage », « zone »…</p>
         </div>
-        <button type="button" class="btn-visite" (click)="rejouerLaVisite()">
-          Revoir la visite guidée
-        </button>
+        <div class="aide-boutons">
+          <button type="button" class="btn-visite" (click)="rejouerLaVisite()">
+            Revoir la visite guidée
+          </button>
+          <!-- Seulement s'il existe un guide d'ecran pour ce client (nouvel
+               utilisateur, bonne offre) : ailleurs le bouton ne ferait rien. -->
+          @if (ecransAvecGuide.length) {
+            <button type="button" class="btn-visite" (click)="revoirLesGuidesDesEcrans()">
+              {{ guidesRemis ? "C'est fait : ouvrez l'écran " + ecransAvecGuide.join(', ') : 'Revoir les guides des écrans' }}
+            </button>
+          }
+        </div>
       </header>
 
       <div class="aide-recherche">
@@ -122,6 +131,7 @@ import { HelpArticle } from '../services/help-content.model';
       border: 1px solid #cbd5e1; background: transparent; color: #475569; cursor: pointer;
     }
     .btn-visite:hover { border-color: #2563eb; color: #2563eb; }
+    .aide-boutons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
     .aide-recherche {
       display: flex; align-items: center; gap: 10px; margin: 18px 0 20px;
@@ -224,6 +234,19 @@ export class HelpCenterComponent implements OnInit {
 
   rejouerLaVisite(): void {
     this.help.reinitialiserGuide();
+  }
+
+  /**
+   * Ecrans qui ont un guide pour ce client, lus une fois. Pendant le pilote :
+   * « Vehicules » en GPA, rien en GPS — le bouton n'apparait alors pas.
+   */
+  ecransAvecGuide = this.help.ecransAvecGuide();
+  guidesRemis = false;
+
+  /** Chaque guide d'ecran reviendra a la prochaine ouverture de son ecran. */
+  revoirLesGuidesDesEcrans(): void {
+    this.help.reinitialiserEcrans();
+    this.guidesRemis = true;
   }
 
   /** Capture pas encore produite : on retire l'image plutot qu'afficher un cadre casse. */

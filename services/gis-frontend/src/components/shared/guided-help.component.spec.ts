@@ -236,3 +236,230 @@ describe('Visite guidée — montage', () => {
     expect(layout).toContain('this.help.proposerLeGuide()');
   });
 });
+
+/**
+ * Guides des écrans (Karim, 24/09/2026) : « pour un nouvel utilisateur, on ajoute le
+ * tuto de la page à chaque fois qu'il accède à cette page » — nouvel utilisateur =
+ * première connexion. Pilote : l'écran Véhicules de l'offre GPA.
+ */
+@Component({ standalone: true, template: `
+  <div data-guide="vehicules-recherche">Recherche</div>
+  @if (admin) { <button data-guide="vehicules-nouveau">Nouveau véhicule</button> }
+  <div data-guide="vehicules-compteurs">Compteurs</div>
+  <div data-guide="vehicules-liste">
+    @if (lignes) { <div data-guide="vehicules-ligne">Commercial 01</div> } @else { <div data-guide="vehicules-vide">Aucun véhicule trouvé</div> }
+  </div>` })
+class EcranVehicules {
+  static admin = true; static lignes = true;
+  admin = EcranVehicules.admin; lignes = EcranVehicules.lignes;
+}
+
+@Component({ standalone: true, template: `<p>Tableau de bord</p>` })
+class EcranTableauDeBord {}
+
+describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicules (GPA)', () => {
+  let compte: any;
+  let modulesGps: boolean;
+  let abonnementGps: boolean;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const ouvrir = async (url: string, n = 4) => {
+    await harness.navigateByUrl(url);
+    await images(n);
+    harness.fixture.detectChanges();
+    guide.detectChanges();
+  };
+  const bulle = () => guide.nativeElement.querySelector('.guide-bulle') as HTMLElement | null;
+
+  beforeEach(async () => {
+    localStorage.clear();
+    EcranVehicules.admin = true;
+    EcranVehicules.lignes = true;
+    modulesGps = false;
+    abonnementGps = false;
+    // Première connexion : le drapeau vient de la réponse de /auth/login.
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'vehicles', component: EcranVehicules },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring' || modulesGps,
+          abonnementComprend: (m: string) => m !== 'monitoring' || abonnementGps,
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    // La visite de première connexion est déjà faite : elle passerait avant.
+    help.fermerGuide(true);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('le guide de l\'écran s\'ouvre à l\'arrivée sur Véhicules, avec ses quatre bulles', async () => {
+    await ouvrir('/vehicles');
+
+    const c = guide.componentInstance;
+    expect(c.actif).toBe(true);
+    expect(c.mode).toBe('ecran');
+    expect(c.etapes.map(e => e.cible))
+      .toEqual(['vehicules-nouveau', 'vehicules-compteurs', 'vehicules-ligne', 'vehicules-recherche']);
+    expect(bulle()?.textContent).toContain('Écran Véhicules');
+    expect(bulle()?.textContent).toContain('Ajoutez vos véhicules');
+  });
+
+  it('« Passer » : il ne revient plus, même en rouvrant l\'écran', async () => {
+    await ouvrir('/vehicles');
+    guide.componentInstance.passer();
+
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('« Terminer » au bout des bulles : il ne revient plus non plus', async () => {
+    await ouvrir('/vehicles');
+    for (let i = 0; i < 4; i++) { guide.componentInstance.suivant(); await images(3); }
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('Échap le ferme pour cette fois : il revient au prochain accès à l\'écran', async () => {
+    await ouvrir('/vehicles');
+    guide.componentInstance.auEchap();
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(true);
+    expect(guide.componentInstance.mode).toBe('ecran');
+  });
+
+  it('le drapeau de première connexion est retenu : le rafraîchissement du jeton ne le fait pas perdre', async () => {
+    await ouvrir('/dashboard');            // la connexion dépose le client ici
+    compte = { id: 'u-nouveau', companyName: 'Transports Martin' }; // jeton rafraîchi : plus de firstLogin
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(guide.componentInstance.actif).toBe(true);
+  });
+
+  it('un client déjà installé (pas une première connexion) ne le voit pas', async () => {
+    compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin' };
+    help.fermerGuide(true); // sa visite de première connexion est faite : seul le guide d'écran est en jeu
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('dérogation provisoire : la société « Belive GPA » le voit en local, première connexion ou non', async () => {
+    compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA' };
+    help.fermerGuide(true); // sa visite de première connexion est faite : seul le guide d'écran est en jeu
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(true);
+  });
+
+  it('offre GPS : pas de guide Véhicules pendant le pilote', async () => {
+    modulesGps = true;
+    abonnementGps = true;
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('tant que la visite de première connexion doit être proposée, elle passe avant', async () => {
+    help.reinitialiserGuide();              // la visite repart…
+    help.fermerGuide(false);                // …mais Échap : non vue, et pas reproposée avant rechargement
+    const neuf = TestBed.inject(HelpService);
+    expect(neuf.doitProposerLeGuide()).toBe(false);
+    // Nouvelle session : rien n'a encore été proposé, la visite n'est pas terminée.
+    (neuf as any).dejaProposee.clear();
+    expect(neuf.doitProposerLeGuide()).toBe(true);
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('la visite de première connexion demandée pendant un guide d\'écran prend la main', async () => {
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    help.reinitialiserGuide();
+    guide.detectChanges();
+    expect(guide.componentInstance.mode).toBe('parcours');
+    expect(guide.componentInstance.actif).toBe(true);
+  });
+
+  it("utilisateur non administrateur : la bulle « Nouveau véhicule » est retirée d'emblée — « Étape 1 sur 3 », sans attente", async () => {
+    // Relecture du 24/09/2026 : sautée faute de cible, elle faisait attendre ~3 s
+    // puis affichait « Étape 2 sur 4 » en première bulle.
+    compte = { ...compte, isCompanyAdmin: false };
+    EcranVehicules.admin = false;
+    await ouvrir('/vehicles');
+    const c = guide.componentInstance;
+    expect(c.etapes.map(e => e.cible)).toEqual(['vehicules-compteurs', 'vehicules-ligne', 'vehicules-recherche']);
+    expect(c.etape?.cible).toBe('vehicules-compteurs');
+    expect(bulle()?.textContent).toContain('Étape 1 sur 3');
+    expect(c.aUnePrecedente()).toBe(false);
+  });
+
+  it('liste vide (nouveau client) : la bulle 3 vise « Aucun véhicule trouvé » avec son propre texte', async () => {
+    EcranVehicules.lignes = false;
+    await ouvrir('/vehicles');
+    guide.componentInstance.suivant(); await images(3);
+    guide.componentInstance.suivant(); await images(3);
+    guide.detectChanges();
+    expect(guide.componentInstance.etape?.id).toBe('vehicules-liste-gpa');
+    expect(bulle()?.textContent).toContain("Vos véhicules s'afficheront ici");
+    expect(bulle()?.textContent).not.toContain('Chaque ligne donne la plaque');
+  });
+
+  it('avec des véhicules : la bulle 3 vise la première ligne et décrit les lignes', async () => {
+    await ouvrir('/vehicles');
+    guide.componentInstance.suivant(); await images(3);
+    guide.componentInstance.suivant(); await images(3);
+    guide.detectChanges();
+    expect(bulle()?.textContent).toContain('Chaque ligne donne la plaque');
+  });
+
+  it('« Terminer » du parcours dépose sur Véhicules sans enchaîner le guide ; il vient au prochain accès', async () => {
+    help.reinitialiserGuide();                  // parcours GPA relancé
+    guide.detectChanges();
+    const c = guide.componentInstance;
+    expect(c.mode).toBe('parcours');
+    c.index = c.etapes.length - 1;              // dernière étape : « Recevez vos alertes par e-mail »
+    expect(c.etapes[c.index].routeApresFin).toBe('/vehicles');
+    c.suivant();                                // « Terminer »
+    await images(4);
+    expect(TestBed.inject(Router).url).toBe('/vehicles');
+    expect(c.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(c.actif).toBe(true);
+    expect(c.mode).toBe('ecran');
+  });
+
+  it("société GPS, utilisateur sans accès à la carte : c'est l'abonnement qui compte, pas de guide GPA", async () => {
+    abonnementGps = true;                       // la société a l'offre GPS…
+    modulesGps = false;                         // …mais cet utilisateur n'a pas le droit « Suivi »
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+});
