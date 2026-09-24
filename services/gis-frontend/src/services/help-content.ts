@@ -1062,58 +1062,72 @@ export const ETAPES_GUIDE: GuideEtape[] = [
 ];
 
 /**
- * Guides des ecrans (Karim, 24/09/2026) : pour un NOUVEL utilisateur — celui dont
- * c'est la premiere connexion — chaque ecran ouvert presente ses propres bulles,
- * a chaque acces, tant qu'il ne les a ni passees ni terminees.
+ * Tutoriels des ecrans (Karim, 24/09/2026) : pour un NOUVEL utilisateur — celui
+ * dont c'est la premiere connexion — chaque ecran ouvert propose un tutoriel pas a
+ * pas, a chaque acces, tant qu'il ne l'a ni passe ni termine. Le client fait
+ * lui-meme chaque geste ; la bulle lui dit lequel.
  *
- * Pilote : l'ecran « Vehicules » de l'offre GPA. Si Karim le valide, les autres
- * ecrans suivent sur le meme modele (offres GPA et GPS).
+ * Pilote : l'ecran « Vehicules » de l'offre GPA, a corriger avec Karim avant de
+ * l'appliquer aux autres ecrans. Parcours voulu : « Nouveau vehicule », puis le
+ * nom, la plaque, la marque et le modele, sans insister sur le reste (il pourra
+ * revenir le remplir), puis « Ajouter ».
  */
 export const VISITES_ECRANS: VisiteEcran[] = [
   {
-    id: 'ecran-vehicules-gpa',
+    id: 'tuto-vehicules-gpa',
     titre: 'Écran Véhicules',
     route: '/vehicles',
     module: 'vehicles',
-    // GPA seulement pour le pilote : en GPS, les vehicules arrivent avec leurs
-    // boitiers et l'ecran se lit autrement — son guide viendra avec les autres.
+    // GPA seulement pour le pilote : en GPS, les vehicules sont crees par
+    // l'equipe Belive avec leurs boitiers.
     sauf: 'monitoring',
+    // « Nouveau vehicule » est reserve aux administrateurs (*ngIf="isAdmin").
+    adminSeulement: true,
     etapes: [
       {
-        id: 'vehicules-ajouter',
-        titre: 'Ajoutez vos véhicules',
-        // Bouton reserve aux administrateurs (*ngIf="isAdmin") : etape retiree
-        // d'emblee pour les autres utilisateurs.
-        adminSeulement: true,
-        // Meme phrase d'import que l'etape 'ajouter-vehicule' du parcours : les
-        // cinq feuilles du modele, Karim tient a ce qu'elles soient citees.
-        texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos données dans un fichier ? Importez tout d'un coup — véhicules, entretiens, réparations, pleins de carburant et dépenses : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
-        cible: 'vehicules-nouveau'
+        id: 'tuto-vehicule-nouveau',
+        titre: 'Ajoutez votre premier véhicule',
+        texte: "Cliquez sur « Nouveau véhicule » : la fiche à remplir s'ouvre.",
+        cible: 'vehicules-nouveau',
+        action: 'clic'
       },
       {
-        id: 'vehicules-compteurs',
-        titre: 'Votre parc en un coup d\'œil',
-        texte: "« Total » compte tous vos véhicules ; les trois cases suivantes disent combien sont « Disponibles », « En service » ou en « Maintenance ».",
-        cible: 'vehicules-compteurs'
+        id: 'tuto-vehicule-nom',
+        titre: 'Le nom du véhicule',
+        texte: 'Donnez-lui un nom qui vous parle, par exemple « Camion principal » ou « Clio du commercial ». Puis cliquez sur « Suivant ».',
+        cible: 'vehicule-nom',
+        action: 'valeur'
       },
       {
-        id: 'vehicules-liste-gpa',
-        titre: 'Un véhicule par ligne',
-        // Libelles de la fiche verifies dans vehicles.component.ts le 24/09/2026 :
-        // Specifications, Etat du vehicule, Depenses du mois, Documents & Echeances.
-        // Cible : la PREMIERE ligne. Le conteneur du tableau, plus haut que l'ecran,
-        // faisait defiler la page et sortir le cadre en haut comme en bas.
-        texte: "Chaque ligne donne la plaque, le compteur, le chauffeur et le statut. Cliquez sur une ligne pour ouvrir la fiche du véhicule : ses dépenses du mois, ses documents et leurs échéances. « Modifier », en bout de ligne, corrige ses informations.",
-        cible: 'vehicules-ligne',
-        // Nouveau client : aucun vehicule encore, la liste affiche « Aucun vehicule trouve ».
-        cibleRepli: 'vehicules-vide',
-        texteRepli: "Vos véhicules s'afficheront ici, un par ligne, dès le premier ajouté. Un clic sur une ligne ouvrira la fiche du véhicule : ses dépenses du mois, ses documents et leurs échéances."
+        id: 'tuto-vehicule-plaque',
+        titre: 'La plaque',
+        texte: "Saisissez son immatriculation, telle qu'elle figure sur la carte grise.",
+        cible: 'vehicule-plaque',
+        action: 'valeur'
       },
       {
-        id: 'vehicules-recherche',
-        titre: 'Retrouvez un véhicule',
-        texte: "Tapez un nom, une marque ou une plaque : la liste se réduit au fil de la frappe. Les deux listes voisines filtrent par statut et par type de véhicule.",
-        cible: 'vehicules-recherche'
+        id: 'tuto-vehicule-marque',
+        titre: 'La marque',
+        texte: 'Choisissez la marque dans la liste.',
+        cible: 'vehicule-marque',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-vehicule-modele',
+        titre: 'Le modèle',
+        texte: 'Choisissez maintenant le modèle : la liste suit la marque choisie.',
+        cible: 'vehicule-modele',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-vehicule-ajouter',
+        titre: 'Enregistrez le véhicule',
+        // Les autres champs obligatoires ont une valeur par defaut dans la fiche
+        // (vehicle-popup resetForm : annee en cours, citadine, disponible,
+        // compteur 0, diesel) : les quatre champs ci-dessus suffisent.
+        texte: 'Le reste est facultatif ou déjà prérempli (année, type, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ».',
+        cible: 'vehicule-ajouter',
+        action: 'disparition'
       }
     ]
   }

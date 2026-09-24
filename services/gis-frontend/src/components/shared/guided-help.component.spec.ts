@@ -238,26 +238,39 @@ describe('Visite guidée — montage', () => {
 });
 
 /**
- * Guides des écrans (Karim, 24/09/2026) : « pour un nouvel utilisateur, on ajoute le
- * tuto de la page à chaque fois qu'il accède à cette page » — nouvel utilisateur =
- * première connexion. Pilote : l'écran Véhicules de l'offre GPA.
+ * Tutoriel pas à pas de l'écran Véhicules (Karim, 24/09/2026) : « quand il rentre
+ * dans Véhicule, on lui dit de cliquer sur Nouveau véhicule, puis de renseigner le
+ * nom, la plaque, la marque, le modèle […] puis de cliquer sur Ajouter ». Le client
+ * remplit les champs au fur et à mesure. Nouvel utilisateur = première connexion.
+ *
+ * L'écran de test reproduit la fiche « Nouveau véhicule » : ses quatre champs, la
+ * liste « -- Sélectionner -- » (valeur "null") et un « Ajouter » qui ferme la fiche
+ * quand l'enregistrement réussit.
  */
 @Component({ standalone: true, template: `
-  <div data-guide="vehicules-recherche">Recherche</div>
-  @if (admin) { <button data-guide="vehicules-nouveau">Nouveau véhicule</button> }
-  <div data-guide="vehicules-compteurs">Compteurs</div>
-  <div data-guide="vehicules-liste">
-    @if (lignes) { <div data-guide="vehicules-ligne">Commercial 01</div> } @else { <div data-guide="vehicules-vide">Aucun véhicule trouvé</div> }
-  </div>` })
+  @if (admin) { <button data-guide="vehicules-nouveau" (click)="ouverte = true">Nouveau véhicule</button> }
+  @if (ouverte) {
+    <form>
+      <input data-guide="vehicule-nom">
+      <input data-guide="vehicule-plaque">
+      <select data-guide="vehicule-marque"><option value="null">-- Sélectionner --</option><option value="3">Renault</option></select>
+      <select data-guide="vehicule-modele"><option value="null">-- Sélectionner --</option><option value="7">Clio</option></select>
+      <button type="button" data-guide="vehicule-ajouter" (click)="enregistrer()">Ajouter</button>
+    </form>
+  }` })
 class EcranVehicules {
-  static admin = true; static lignes = true;
-  admin = EcranVehicules.admin; lignes = EcranVehicules.lignes;
+  static admin = true;
+  static refus = false;
+  admin = EcranVehicules.admin;
+  ouverte = false;
+  /** Enregistrement réussi : la fiche se ferme. Refusé (alerte du serveur) : elle reste ouverte. */
+  enregistrer(): void { if (!EcranVehicules.refus) { this.ouverte = false; } }
 }
 
 @Component({ standalone: true, template: `<p>Tableau de bord</p>` })
 class EcranTableauDeBord {}
 
-describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicules (GPA)', () => {
+describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhicules (GPA)', () => {
   let compte: any;
   let modulesGps: boolean;
   let abonnementGps: boolean;
@@ -270,18 +283,43 @@ describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicule
     const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
     requestAnimationFrame(image);
   });
-  const ouvrir = async (url: string, n = 4) => {
-    await harness.navigateByUrl(url);
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges();
     await images(n);
     harness.fixture.detectChanges();
     guide.detectChanges();
   };
+  const ouvrir = async (url: string) => { await harness.navigateByUrl(url); await rafraichir(); };
+  const el = (cible: string) => document.querySelector('[data-guide="' + cible + '"]') as HTMLInputElement;
   const bulle = () => guide.nativeElement.querySelector('.guide-bulle') as HTMLElement | null;
+  const bouton = (libelle: string) => Array.from(guide.nativeElement.querySelectorAll('.guide-bulle button') as NodeListOf<HTMLButtonElement>)
+    .find(b => b.textContent!.trim() === libelle);
+  const etape = () => guide.componentInstance.etape?.id;
+
+  /** Geste du client : clic sur l'élément encadré. */
+  const cliquer = async (cible: string) => { el(cible).click(); await rafraichir(); };
+  /** Geste du client : il remplit le champ encadré (texte ou liste). */
+  const remplir = async (cible: string, valeur: string) => {
+    const champ = el(cible);
+    champ.value = valeur;
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    champ.dispatchEvent(new Event('change', { bubbles: true }));
+    await rafraichir(3);
+  };
+  const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+  /** Les quatre champs remplis : le tutoriel attend le clic sur « Ajouter ». */
+  const jusquAAjouter = async () => {
+    await cliquer('vehicules-nouveau');
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
+    await remplir('vehicule-marque', '3'); await suivant();
+    await remplir('vehicule-modele', '7'); await suivant();
+  };
 
   beforeEach(async () => {
     localStorage.clear();
     EcranVehicules.admin = true;
-    EcranVehicules.lignes = true;
+    EcranVehicules.refus = false;
     modulesGps = false;
     abonnementGps = false;
     // Première connexion : le drapeau vient de la réponse de /auth/login.
@@ -314,32 +352,96 @@ describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicule
 
   afterEach(() => guide.destroy());
 
-  it('le guide de l\'écran s\'ouvre à l\'arrivée sur Véhicules, avec ses quatre bulles', async () => {
+  it('première bulle : « Cliquez sur Nouveau véhicule », le bouton reste cliquable, pas de « Suivant »', async () => {
     await ouvrir('/vehicles');
 
-    const c = guide.componentInstance;
-    expect(c.actif).toBe(true);
-    expect(c.mode).toBe('ecran');
-    expect(c.etapes.map(e => e.cible))
-      .toEqual(['vehicules-nouveau', 'vehicules-compteurs', 'vehicules-ligne', 'vehicules-recherche']);
-    expect(bulle()?.textContent).toContain('Écran Véhicules');
-    expect(bulle()?.textContent).toContain('Ajoutez vos véhicules');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(etape()).toBe('tuto-vehicule-nouveau');
+    expect(bulle()?.textContent).toContain('Écran Véhicules · Étape 1 sur 6');
+    expect(bulle()?.textContent).toContain('Cliquez sur « Nouveau véhicule »');
+    expect(bouton('Suivant')).toBeUndefined();
+    // Le voile entoure le bouton en quatre bandes au lieu de le couvrir.
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande').length).toBe(4);
+    expect(guide.nativeElement.querySelector('.guide-voile:not(.bande)')).toBeNull();
   });
 
-  it('« Passer » : il ne revient plus, même en rouvrant l\'écran', async () => {
+  it('le clic du client sur « Nouveau véhicule » ouvre la fiche et passe au nom, curseur dans le champ', async () => {
     await ouvrir('/vehicles');
-    guide.componentInstance.passer();
+    await cliquer('vehicules-nouveau');
+
+    expect(etape()).toBe('tuto-vehicule-nom');
+    expect(document.activeElement).toBe(el('vehicule-nom'));
+    // Pas de retour vers un bouton déjà cliqué : la fiche est ouverte.
+    expect(bouton('Précédent')).toBeUndefined();
+  });
+
+  it('« Suivant » attend que le champ soit rempli ; Entrée vaut « Suivant » et n\'envoie pas le formulaire', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    expect(bouton('Suivant')!.disabled).toBe(true);
+
+    await remplir('vehicule-nom', 'Camion principal');
+    expect(bouton('Suivant')!.disabled).toBe(false);
+
+    const entree = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    el('vehicule-nom').dispatchEvent(entree);
+    await rafraichir();
+    expect(entree.defaultPrevented).toBe(true);
+    expect(etape()).toBe('tuto-vehicule-plaque');
+  });
+
+  it('marque : la liste restée sur « -- Sélectionner -- » ne compte pas comme remplie', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
+    expect(etape()).toBe('tuto-vehicule-marque');
+
+    await remplir('vehicule-marque', 'null');
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('vehicule-marque', '3');
+    expect(bouton('Suivant')!.disabled).toBe(false);
+  });
+
+  it('parcours complet : le véhicule est ajouté, le tutoriel se termine et ne revient plus', async () => {
+    await ouvrir('/vehicles');
+    await jusquAAjouter();
+
+    expect(etape()).toBe('tuto-vehicule-ajouter');
+    expect(bulle()?.textContent).toContain('Cliquez sur « Ajouter »');
+    expect(bouton('Terminer')).toBeUndefined();   // c'est le clic sur « Ajouter » qui termine
+    expect(bouton('Précédent')).toBeDefined();    // on peut revenir corriger le modèle
+
+    await cliquer('vehicule-ajouter');            // enregistrement réussi : la fiche se ferme
+    await rafraichir();
+    expect(guide.componentInstance.actif).toBe(false);
 
     await ouvrir('/dashboard');
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
   });
 
-  it('« Terminer » au bout des bulles : il ne revient plus non plus', async () => {
+  it('enregistrement refusé par le serveur : la fiche reste ouverte, le tutoriel reste sur « Ajouter »', async () => {
+    EcranVehicules.refus = true;
     await ouvrir('/vehicles');
-    for (let i = 0; i < 4; i++) { guide.componentInstance.suivant(); await images(3); }
-    expect(guide.componentInstance.actif).toBe(false);
+    await jusquAAjouter();
 
+    await cliquer('vehicule-ajouter');
+    await rafraichir();
+    expect(guide.componentInstance.actif).toBe(true);
+    expect(etape()).toBe('tuto-vehicule-ajouter');
+  });
+
+  it('non-administrateur : pas de tutoriel (il n\'a pas le bouton « Nouveau véhicule »)', async () => {
+    compte = { ...compte, isCompanyAdmin: false };
+    EcranVehicules.admin = false;
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('« Passer » : il ne revient plus, même en rouvrant l\'écran', async () => {
+    await ouvrir('/vehicles');
+    guide.componentInstance.passer();
     await ouvrir('/dashboard');
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
@@ -349,55 +451,57 @@ describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicule
     await ouvrir('/vehicles');
     guide.componentInstance.auEchap();
     expect(guide.componentInstance.actif).toBe(false);
-
     await ouvrir('/dashboard');
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(true);
-    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(etape()).toBe('tuto-vehicule-nouveau');
   });
 
   it('le drapeau de première connexion est retenu : le rafraîchissement du jeton ne le fait pas perdre', async () => {
     await ouvrir('/dashboard');            // la connexion dépose le client ici
-    compte = { id: 'u-nouveau', companyName: 'Transports Martin' }; // jeton rafraîchi : plus de firstLogin
+    compte = { id: 'u-nouveau', companyName: 'Transports Martin', isCompanyAdmin: true }; // jeton rafraîchi
     await ouvrir('/vehicles');
-    expect(guide.componentInstance.mode).toBe('ecran');
     expect(guide.componentInstance.actif).toBe(true);
   });
 
   it('un client déjà installé (pas une première connexion) ne le voit pas', async () => {
-    compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin' };
-    help.fermerGuide(true); // sa visite de première connexion est faite : seul le guide d'écran est en jeu
+    compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin', isCompanyAdmin: true };
+    help.fermerGuide(true);
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
   });
 
   it('dérogation provisoire : la société « Belive GPA » le voit en local, première connexion ou non', async () => {
-    compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA' };
-    help.fermerGuide(true); // sa visite de première connexion est faite : seul le guide d'écran est en jeu
+    compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA', isCompanyAdmin: true };
+    help.fermerGuide(true);
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(true);
   });
 
-  it('offre GPS : pas de guide Véhicules pendant le pilote', async () => {
+  it('offre GPS : pas de tutoriel Véhicules pendant le pilote', async () => {
     modulesGps = true;
     abonnementGps = true;
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
   });
 
-  it('tant que la visite de première connexion doit être proposée, elle passe avant', async () => {
-    help.reinitialiserGuide();              // la visite repart…
-    help.fermerGuide(false);                // …mais Échap : non vue, et pas reproposée avant rechargement
-    const neuf = TestBed.inject(HelpService);
-    expect(neuf.doitProposerLeGuide()).toBe(false);
-    // Nouvelle session : rien n'a encore été proposé, la visite n'est pas terminée.
-    (neuf as any).dejaProposee.clear();
-    expect(neuf.doitProposerLeGuide()).toBe(true);
+  it("société GPS, utilisateur sans accès à la carte : c'est l'abonnement qui compte, pas de tutoriel GPA", async () => {
+    abonnementGps = true;
+    modulesGps = false;
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
   });
 
-  it('la visite de première connexion demandée pendant un guide d\'écran prend la main', async () => {
+  it('tant que la visite de première connexion doit être proposée, elle passe avant', async () => {
+    help.reinitialiserGuide();
+    help.fermerGuide(false);                 // Échap : non vue
+    (help as any).dejaProposee.clear();      // nouvelle session : rien encore proposé
+    expect(help.doitProposerLeGuide()).toBe(true);
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('la visite de première connexion demandée pendant le tutoriel prend la main', async () => {
     await ouvrir('/vehicles');
     expect(guide.componentInstance.mode).toBe('ecran');
     help.reinitialiserGuide();
@@ -406,47 +510,14 @@ describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicule
     expect(guide.componentInstance.actif).toBe(true);
   });
 
-  it("utilisateur non administrateur : la bulle « Nouveau véhicule » est retirée d'emblée — « Étape 1 sur 3 », sans attente", async () => {
-    // Relecture du 24/09/2026 : sautée faute de cible, elle faisait attendre ~3 s
-    // puis affichait « Étape 2 sur 4 » en première bulle.
-    compte = { ...compte, isCompanyAdmin: false };
-    EcranVehicules.admin = false;
-    await ouvrir('/vehicles');
-    const c = guide.componentInstance;
-    expect(c.etapes.map(e => e.cible)).toEqual(['vehicules-compteurs', 'vehicules-ligne', 'vehicules-recherche']);
-    expect(c.etape?.cible).toBe('vehicules-compteurs');
-    expect(bulle()?.textContent).toContain('Étape 1 sur 3');
-    expect(c.aUnePrecedente()).toBe(false);
-  });
-
-  it('liste vide (nouveau client) : la bulle 3 vise « Aucun véhicule trouvé » avec son propre texte', async () => {
-    EcranVehicules.lignes = false;
-    await ouvrir('/vehicles');
-    guide.componentInstance.suivant(); await images(3);
-    guide.componentInstance.suivant(); await images(3);
-    guide.detectChanges();
-    expect(guide.componentInstance.etape?.id).toBe('vehicules-liste-gpa');
-    expect(bulle()?.textContent).toContain("Vos véhicules s'afficheront ici");
-    expect(bulle()?.textContent).not.toContain('Chaque ligne donne la plaque');
-  });
-
-  it('avec des véhicules : la bulle 3 vise la première ligne et décrit les lignes', async () => {
-    await ouvrir('/vehicles');
-    guide.componentInstance.suivant(); await images(3);
-    guide.componentInstance.suivant(); await images(3);
-    guide.detectChanges();
-    expect(bulle()?.textContent).toContain('Chaque ligne donne la plaque');
-  });
-
-  it('« Terminer » du parcours dépose sur Véhicules sans enchaîner le guide ; il vient au prochain accès', async () => {
-    help.reinitialiserGuide();                  // parcours GPA relancé
+  it('« Terminer » de la visite dépose sur Véhicules sans enchaîner le tutoriel ; il vient au prochain accès', async () => {
+    help.reinitialiserGuide();
     guide.detectChanges();
     const c = guide.componentInstance;
-    expect(c.mode).toBe('parcours');
-    c.index = c.etapes.length - 1;              // dernière étape : « Recevez vos alertes par e-mail »
+    c.index = c.etapes.length - 1;           // dernière étape : « Recevez vos alertes par e-mail »
     expect(c.etapes[c.index].routeApresFin).toBe('/vehicles');
-    c.suivant();                                // « Terminer »
-    await images(4);
+    c.suivant();                             // « Terminer »
+    await rafraichir();
     expect(TestBed.inject(Router).url).toBe('/vehicles');
     expect(c.actif).toBe(false);
 
@@ -454,12 +525,5 @@ describe('Guides des écrans — un nouvel utilisateur ouvre l\'écran Véhicule
     await ouvrir('/vehicles');
     expect(c.actif).toBe(true);
     expect(c.mode).toBe('ecran');
-  });
-
-  it("société GPS, utilisateur sans accès à la carte : c'est l'abonnement qui compte, pas de guide GPA", async () => {
-    abonnementGps = true;                       // la société a l'offre GPS…
-    modulesGps = false;                         // …mais cet utilisateur n'a pas le droit « Suivi »
-    await ouvrir('/vehicles');
-    expect(guide.componentInstance.actif).toBe(false);
   });
 });

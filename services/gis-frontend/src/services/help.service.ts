@@ -177,8 +177,8 @@ export class HelpService {
     return ETAPES_GUIDE.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
   }
 
-  /** Etape reservee a l'administrateur : meme regle que le bouton vise (vehicles.component.ts, isAdmin). */
-  private pourCeProfil(e: GuideEtape): boolean {
+  /** Etape ou tutoriel reserve a l'administrateur : meme regle que le bouton vise (vehicles.component.ts, isAdmin). */
+  private pourCeProfil(e: { adminSeulement?: boolean }): boolean {
     if (!e.adminSeulement) return true;
     const u = this.auth.getCurrentUserSync();
     return !!u?.isCompanyAdmin || !!u?.isSystemAdmin;
@@ -305,7 +305,8 @@ export class HelpService {
    */
   private guidePourCetteOffre(v: VisiteEcran): boolean {
     return (!v.module || this.moduleAutorise(v.module))
-      && (!v.sauf || v.sauf === 'general' || !this.permissions.abonnementComprend(v.sauf as ModuleKey));
+      && (!v.sauf || v.sauf === 'general' || !this.permissions.abonnementComprend(v.sauf as ModuleKey))
+      && this.pourCeProfil(v);
   }
 
   /**

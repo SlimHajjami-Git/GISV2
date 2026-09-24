@@ -103,14 +103,18 @@ export interface GuideEtape {
    */
   cible: string;
   /**
-   * Cible de repli, visee quand `cible` manque — typiquement le message « liste
-   * vide » d'un nouveau client, qui n'a encore rien saisi — avec son propre texte
-   * (`texteRepli`). Sans repli, une etape dont la cible manque est sautee.
-   * La cible principale est cherchee en premier : ne pas mettre d'etape a repli en
-   * tete d'un guide, ou la liste est encore vide le temps de son chargement.
+   * Etape a FAIRE, pas seulement a lire (tutoriel pas a pas, Karim 24/09/2026).
+   * La cible reste cliquable : le voile l'entoure au lieu de la couvrir.
+   *  - 'clic'        : l'etape se termine quand le client clique la cible
+   *                    (« Nouveau vehicule » ouvre la fiche) ;
+   *  - 'valeur'      : « Suivant » (ou Entree) ne s'active qu'une fois le champ
+   *                    vise rempli ;
+   *  - 'disparition' : l'etape se termine quand la cible quitte l'ecran — le
+   *                    bouton « Ajouter » d'une fiche qui se ferme une fois
+   *                    l'enregistrement reussi. Refuse, la fiche reste ouverte
+   *                    et le client reste sur l'etape.
    */
-  cibleRepli?: string;
-  texteRepli?: string;
+  action?: 'clic' | 'valeur' | 'disparition';
   /**
    * Etape reservee aux administrateurs (bouton sous *ngIf="isAdmin") : retiree
    * d'emblee pour les autres. Sautee faute de cible, elle faisait attendre 3 s
@@ -138,10 +142,11 @@ export interface GuideEtape {
 }
 
 /**
- * Guide d'un ecran : quelques bulles presentees a un NOUVEL utilisateur (premiere
- * connexion) quand il ouvre cet ecran, a chaque acces tant qu'il ne l'a ni passe
- * ni termine (Karim, 24/09/2026). Il reprend le moteur de la visite guidee — meme
- * cadre bleu, meme bulle — mais ne change jamais de page.
+ * Tutoriel d'un ecran : presente a un NOUVEL utilisateur (premiere connexion)
+ * quand il ouvre cet ecran, a chaque acces tant qu'il ne l'a ni passe ni termine
+ * (Karim, 24/09/2026). Pas a pas : le client fait lui-meme chaque geste — cliquer
+ * « Nouveau vehicule », remplir le nom, la plaque… — guide par le moteur de la
+ * visite guidee (meme cadre bleu, meme bulle). Il ne change jamais de page.
  */
 export interface VisiteEcran {
   /** Identifiant stable : c'est lui que l'on retient comme « vu ». */
@@ -159,8 +164,13 @@ export interface VisiteEcran {
    */
   sauf?: HelpModule;
   /**
+   * Tutoriel reserve aux administrateurs : il commence par un bouton qu'eux seuls
+   * ont (« Nouveau vehicule », *ngIf="isAdmin"), sans lequel rien ne s'enchaine.
+   */
+  adminSeulement?: boolean;
+  /**
    * Bulles de l'ecran, dans l'ordre. Sans `route` : tout se joue sur l'ecran.
-   * Une etape dont la cible manque (bouton reserve a l'administrateur) est sautee.
+   * Une etape dont la cible manque est sautee.
    */
   etapes: GuideEtape[];
 }

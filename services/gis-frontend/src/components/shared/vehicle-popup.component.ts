@@ -87,25 +87,25 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="name">Nom du véhicule *</label>
-                  <input type="text" id="name" name="name" [(ngModel)]="formData.name" required placeholder="Ex: Camion principal" />
+                  <input type="text" id="name" name="name" [(ngModel)]="formData.name" required placeholder="Ex: Camion principal" data-guide="vehicule-nom" />
                 </div>
                 <div class="form-group">
                   <label for="plate">Plaque *</label>
-                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" />
+                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" data-guide="vehicule-plaque" />
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label for="brandId">Marque *</label>
-                  <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required>
+                  <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required data-guide="vehicule-marque">
                     <option [value]="null">-- Sélectionner --</option>
                     <option *ngFor="let brand of brands" [value]="brand.id">{{ brand.name }}</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label for="modelId">Modèle *</label>
-                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels">
+                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels" data-guide="vehicule-modele">
                     <option [value]="null">{{ loadingModels ? 'Chargement...' : '-- Sélectionner --' }}</option>
                     <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
                   </select>
@@ -562,7 +562,8 @@ export interface CompanyOption {
         <!-- Panel Footer -->
         <div class="panel-footer">
           <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
-          <button type="button" class="btn-primary" (click)="onSubmit()">
+          <!-- data-guide : dernier geste du tutoriel Véhicules (help-content.ts), en création seulement. -->
+          <button type="button" class="btn-primary" (click)="onSubmit()" [attr.data-guide]="vehicle?.id ? null : 'vehicule-ajouter'">
             {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
           </button>
         </div>

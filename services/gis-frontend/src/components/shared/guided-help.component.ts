@@ -47,7 +47,17 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
            qu'il change de page : sans bulle, le client restait devant un ecran
            sombre sans aucun bouton (relecture du 24/09/2026). -->
       @if (cibleTrouvee || mode === 'parcours') {
-      <div class="guide-voile"></div>
+      @if (etape.action && cibleTrouvee) {
+        <!-- Etape a FAIRE : le voile entoure la cible en quatre bandes au lieu de
+             la couvrir, pour que le client clique le bouton ou remplisse le champ
+             encadre — et rien d'autre. -->
+        @for (b of bandes; track $index) {
+          <div class="guide-voile bande" [style.top.px]="b.top" [style.left.px]="b.left"
+               [style.width.px]="b.width" [style.height.px]="b.height"></div>
+        }
+      } @else {
+        <div class="guide-voile"></div>
+      }
       @if (cibleTrouvee) {
         <div class="guide-halo" [style.top.px]="halo.top" [style.left.px]="halo.left"
              [style.width.px]="halo.width" [style.height.px]="halo.height"></div>
@@ -73,9 +83,14 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
           @if (aUnePrecedente()) {
             <button type="button" class="secondaire" (click)="precedent()">Précédent</button>
           }
-          <button type="button" class="principal" (click)="suivant()">
-            {{ index === etapes.length - 1 ? 'Terminer' : 'Suivant' }}
-          </button>
+          <!-- Etape « clic » ou « disparition » : c'est le geste du client qui fait
+               avancer, pas de bouton. Etape « valeur » : Suivant attend le champ rempli. -->
+          @if (!etape.action || etape.action === 'valeur') {
+            <button type="button" class="principal" (click)="suivant()"
+                    [disabled]="etape.action === 'valeur' && !valeurSaisie">
+              {{ index === etapes.length - 1 ? 'Terminer' : 'Suivant' }}
+            </button>
+          }
         </div>
       </div>
       }
@@ -86,6 +101,8 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
       position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
       z-index: 10000; animation: guide-apparition .18s ease-out;
     }
+    /* Bandes du voile autour d'une cible a manipuler : positionnees une a une. */
+    .guide-voile.bande { inset: auto; animation: none; }
     /* Pas de transition sur le cadre : il suit sa cible image par image (voir
        suivre()), une transition de .2s le ferait trainer derriere le bouton
        pendant chaque defilement. */
@@ -115,6 +132,7 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
     .guide-actions button { font: inherit; font-size: 13px; border-radius: 7px; cursor: pointer; padding: 7px 14px; border: 1px solid transparent; }
     .guide-actions .principal { background: #2563eb; color: #fff; font-weight: 600; }
     .guide-actions .principal:hover { background: #1d4ed8; }
+    .guide-actions .principal:disabled { opacity: .45; cursor: not-allowed; background: #2563eb; }
     .guide-actions .secondaire { background: transparent; border-color: #cbd5e1; color: #475569; }
     .guide-actions .lien { background: none; color: #94a3b8; padding: 7px 4px; text-decoration: underline; }
 
@@ -145,10 +163,19 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   index = 0;
   etapes: GuideEtape[] = [];
   etape: GuideEtape | null = null;
-  /** Texte affiche : celui de l'etape, ou son texte de repli quand c'est la cible de repli qui a ete trouvee. */
+  /** Texte de la bulle affichee. */
   texte = '';
-  /** Selecteur reellement suivi pour l'etape affichee (cible ou cible de repli). */
+  /** Selecteur suivi pour l'etape affichee (data-guide de sa cible). */
   private cibleSuivie = '';
+  /** Etape « valeur » : le champ encadre est rempli, « Suivant » s'active. */
+  valeurSaisie = false;
+  /**
+   * Voile d'une etape a faire, en quatre bandes autour du cadre (haut, bas,
+   * gauche, droite) : la cible reste cliquable, le reste de l'ecran non.
+   */
+  bandes: { top: number; left: number; width: number; height: number }[] = [];
+  /** Taille de fenetre du dernier placement : un redimensionnement recalcule les bandes. */
+  private fenetre = { w: 0, h: 0 };
   /**
    * Page ou « Terminer » du parcours vient de deposer le client. Il sort d'une
    * visite de sept bulles : on ne lui en impose pas une deuxieme sur-le-champ, qui
@@ -216,6 +243,53 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     // Application rechargee directement sur un ecran : sa navigation peut etre
     // deja terminee quand ce composant s'abonne.
     if (this.router.navigated) { this.auChangementDePage(this.router.url); }
+
+    // Tutoriel pas a pas : le geste du client fait avancer. Ecoute en phase de
+    // CAPTURE : un bouton qui arrete la propagation (stopPropagation) ne doit pas
+    // la cacher, et Entree doit etre intercepte avant d'atteindre le formulaire.
+    const auClic = (e: MouseEvent) => this.auClic(e);
+    const auClavier = (e: KeyboardEvent) => this.auClavier(e);
+    document.addEventListener('click', auClic, true);
+    document.addEventListener('keydown', auClavier, true);
+    this.abonnements.push(new Subscription(() => {
+      document.removeEventListener('click', auClic, true);
+      document.removeEventListener('keydown', auClavier, true);
+    }));
+  }
+
+  /** Etape « clic » : le client a clique la cible. Son propre clic suit son cours (la fiche s'ouvre), puis on avance. */
+  private auClic(e: MouseEvent): void {
+    if (!this.actif || this.etape?.action !== 'clic' || !this.cibleTrouvee) { return; }
+    const cible = this.chercher(this.cibleSuivie);
+    if (!cible || !cible.contains(e.target as Node)) { return; }
+    const generation = this.generation;
+    setTimeout(() => {
+      if (this.detruit || generation !== this.generation) { return; }
+      this.suivant();
+      this.cdr.detectChanges();
+    });
+  }
+
+  /**
+   * Etape « valeur » : Entree dans le champ encadre vaut « Suivant ». Laissee
+   * passer, elle enverrait le formulaire de la fiche (ngSubmit) et creerait un
+   * vehicule a moitie rempli au milieu du tutoriel.
+   */
+  private auClavier(e: KeyboardEvent): void {
+    if (e.key !== 'Enter' || !this.actif || this.etape?.action !== 'valeur') { return; }
+    const cible = this.chercher(this.cibleSuivie);
+    if (!cible || !cible.contains(e.target as Node)) { return; }
+    e.preventDefault();
+    e.stopPropagation();
+    this.valeurSaisie = this.champRempli(cible);
+    if (this.valeurSaisie) { this.suivant(); }
+    this.cdr.detectChanges();
+  }
+
+  /** Champ rempli : texte non vide, ou liste positionnee sur autre chose que « -- Selectionner -- » (valeur "null"). */
+  private champRempli(el: HTMLElement): boolean {
+    const v = (el as HTMLInputElement | HTMLSelectElement).value;
+    return typeof v === 'string' && v.trim() !== '' && v !== 'null';
   }
 
   /**
@@ -308,11 +382,17 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.allerA(this.index + 1);
   }
 
-  /** Etape montrable avant celle-ci, en enjambant celles sautees faute de cible ; -1 sinon. */
+  /**
+   * Etape montrable avant celle-ci, en enjambant celles sautees faute de cible ; -1 sinon.
+   * Jamais vers un geste deja fait (bouton clique, fiche fermee) : il ne se rejoue
+   * pas — revenir a « Cliquez sur Nouveau vehicule » avec la fiche deja ouverte
+   * ne menerait nulle part.
+   */
   private indexPrecedent(): number {
     let i = this.index - 1;
     while (i >= 0 && this.sautees.has(i)) { i--; }
-    return i;
+    const action = i >= 0 ? this.etapes[i].action : undefined;
+    return action === 'clic' || action === 'disparition' ? -1 : i;
   }
 
   /** « Precedent » n'apparait que s'il mene quelque part. */
@@ -343,6 +423,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.etape = this.etapes[index];
     this.texte = this.etape.texte;
     this.cibleTrouvee = false;
+    this.valeurSaisie = false;
     const etape = this.etape;
     // Premiere etape, ou ecran qui vient d'etre ouvert : la page peut encore se
     // peindre, on laisse ~3 s a la cible. Sur une page deja affichee, une cible
@@ -372,20 +453,19 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private attendreCible(etape: GuideEtape, essais: number, generation: number, limite = 180): void {
     this.attente = undefined;
     if (this.detruit || generation !== this.generation) { return; }
-    // La cible principale d'abord ; a defaut, la cible de repli (liste vide) et son texte.
-    let selecteur = etape.cible;
-    let cible = this.chercher(selecteur);
-    if (!cible && etape.cibleRepli) {
-      selecteur = etape.cibleRepli;
-      cible = this.chercher(selecteur);
-    }
+    const cible = this.chercher(etape.cible);
 
     if (cible) {
-      this.cibleSuivie = selecteur;
-      this.texte = selecteur === etape.cible ? etape.texte : (etape.texteRepli || etape.texte);
+      this.cibleSuivie = etape.cible;
       this.sautees.delete(this.index);
       cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
       this.placer(cible.getBoundingClientRect());
+      if (etape.action === 'valeur') {
+        // Champ deja rempli (retour par « Precedent ») : Suivant actif d'emblee.
+        // Le curseur y est pose : le client tape sans avoir a cliquer.
+        this.valeurSaisie = this.champRempli(cible);
+        cible.focus?.({ preventScroll: true });
+      }
       this.cibleTrouvee = true;
       this.etapeMontree = true;
       this.cdr.detectChanges();
@@ -436,6 +516,17 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         const h = (this.hote.nativeElement.querySelector('.guide-bulle') as HTMLElement | null)?.offsetHeight;
         if (h) { this.hauteurBulle = h; }
         const cible = this.chercher(this.cibleSuivie);
+        // Etape « disparition » : le bouton « Ajouter » a quitte l'ecran, la fiche
+        // s'est fermee sur un enregistrement reussi. L'etape est faite.
+        if (!cible && this.etape?.action === 'disparition') {
+          this.zone.run(() => { this.suivant(); this.cdr.detectChanges(); });
+          return;
+        }
+        // Etape « valeur » : « Suivant » s'active des que le champ est rempli.
+        if (cible && this.etape?.action === 'valeur') {
+          const rempli = this.champRempli(cible);
+          if (rempli !== this.valeurSaisie) { this.valeurSaisie = rempli; this.cdr.detectChanges(); }
+        }
         const r = cible?.getBoundingClientRect();
         // Cible absente ou masquee un instant (liste en cours de rafraichissement) :
         // on garde le cadre ou il est plutot que de l'envoyer dans le coin de l'ecran.
@@ -477,15 +568,28 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     };
 
     const proche = (a: number, b: number) => Math.abs(a - b) < 0.5;
+    const W = window.innerWidth, H = window.innerHeight;
     if (proche(halo.top, this.halo.top) && proche(halo.left, this.halo.left)
         && proche(halo.width, this.halo.width) && proche(halo.height, this.halo.height)
         && proche(bulle.top, this.bulle.top) && proche(bulle.left, this.bulle.left)
-        && placeEnDessous === this.flecheEnHaut) {
+        && placeEnDessous === this.flecheEnHaut && W === this.fenetre.w && H === this.fenetre.h) {
       return false;
     }
     this.halo = halo;
     this.bulle = bulle;
     this.flecheEnHaut = placeEnDessous;
+    this.fenetre = { w: W, h: H };
+    // Les quatre bandes du voile laissent le cadre a nu (etapes a faire).
+    const haut = Math.min(H, Math.max(0, halo.top));
+    const bas = Math.max(haut, Math.min(H, halo.top + halo.height));
+    const g = Math.min(W, Math.max(0, halo.left));
+    const d = Math.max(g, Math.min(W, halo.left + halo.width));
+    this.bandes = [
+      { top: 0, left: 0, width: W, height: haut },
+      { top: bas, left: 0, width: W, height: H - bas },
+      { top: haut, left: 0, width: g, height: bas - haut },
+      { top: haut, left: d, width: W - d, height: bas - haut },
+    ];
     return true;
   }
 }

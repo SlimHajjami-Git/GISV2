@@ -91,7 +91,7 @@ interface VehicleTrip {
         <div class="vehicles-list-view" @fadeIn>
           <!-- Filter Bar (identique à GPS) -->
           <div class="filter-bar">
-            <div class="search-wrapper" data-guide="vehicules-recherche">
+            <div class="search-wrapper">
               <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
               </svg>
@@ -120,7 +120,7 @@ interface VehicleTrip {
           </div>
 
           <!-- Stats Bar (identique à GPS) -->
-          <div class="stats-bar" data-guide="vehicules-compteurs">
+          <div class="stats-bar">
             <div class="stat-item">
               <div class="stat-icon info">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -187,8 +187,7 @@ interface VehicleTrip {
                 </tr>
               </thead>
               <tbody>
-                <tr class="vehicle-row" *ngFor="let vehicle of filteredVehicles; let i = index" (click)="openVehicleDetail(vehicle)"
-                    [attr.data-guide]="i === 0 ? 'vehicules-ligne' : null">
+                <tr class="vehicle-row" *ngFor="let vehicle of filteredVehicles" (click)="openVehicleDetail(vehicle)">
                   <td class="col-vehicle">
                     <div class="vehicle-cell">
                       <span class="vehicle-type-icon">
@@ -257,7 +256,7 @@ interface VehicleTrip {
               </tbody>
             </table>
             <!-- État vide -->
-            <div class="empty-state" *ngIf="filteredVehicles.length === 0" data-guide="vehicules-vide">
+            <div class="empty-state" *ngIf="filteredVehicles.length === 0">
               <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M7 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
                 <path d="M17 17m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0"/>
