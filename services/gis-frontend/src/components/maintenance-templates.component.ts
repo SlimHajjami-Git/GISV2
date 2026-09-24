@@ -345,13 +345,14 @@ interface FlatRow {
             <button class="panel-close" (click)="closeForm()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="panel-body">
-            <div class="field"><label>Nom *</label><input [(ngModel)]="form.name" placeholder="Ex: Vidange moteur"></div>
+            <div class="field"><label>Nom *</label><input [(ngModel)]="form.name" placeholder="Ex: Vidange moteur" data-guide="entretien-modele-nom"></div>
             <div class="field"><label>Description</label><textarea [(ngModel)]="form.description" rows="2" placeholder="Description..."></textarea></div>
             <div class="field-row">
-              <div class="field"><label>Categorie *</label><select [(ngModel)]="form.category"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
+              <div class="field"><label>Categorie *</label><select [(ngModel)]="form.category" data-guide="entretien-modele-categorie"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
               <div class="field"><label>Priorite</label><select [(ngModel)]="form.priority"><option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select></div>
             </div>
-            <div class="field-row">
+            <!-- data-guide sur la LIGNE : le tutoriel accepte l'un ou l'autre intervalle (km ou mois). -->
+            <div class="field-row" data-guide="entretien-modele-intervalle">
               <div class="field"><label>Intervalle (km)</label><input type="number" [(ngModel)]="form.intervalKm" placeholder="10000"></div>
               <div class="field"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
             </div>
@@ -372,7 +373,7 @@ interface FlatRow {
               <div class="field"><label>Critique (jours restants)</label><input type="number" [(ngModel)]="form.criticalDays" placeholder="0"></div>
             </div>
           </div>
-          <div class="panel-foot"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()">Enregistrer</button></div>
+          <div class="panel-foot"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()" [attr.data-guide]="editing ? null : 'entretien-modele-enregistrer'">Enregistrer</button></div>
         </div>
       </div>
 
@@ -605,7 +606,7 @@ interface FlatRow {
           </div>
           <div class="panel-body">
             <div class="field"><label>Vehicule *</label>
-              <select [(ngModel)]="addToVehicleData.vehicleId" (ngModelChange)="onAssignVehicleChange($event)">
+              <select [(ngModel)]="addToVehicleData.vehicleId" (ngModelChange)="onAssignVehicleChange($event)" data-guide="entretien-affecter-vehicule">
                 <option value="">Choisir un vehicule...</option>
                 <option *ngFor="let v of allVehicles" [value]="v.id">{{ v.name }} - {{ v.plate }}</option>
               </select>
@@ -616,7 +617,7 @@ interface FlatRow {
             </div>
             <div class="tpl-list" *ngIf="addToVehicleData.vehicleId">
               @for (t of getAvailableTemplatesForVehicle(); track t.id) {
-                <div class="tpl-item" [class.selected]="isTemplateSelected(t.id)" (click)="toggleTemplateSelection(t)">
+                <div class="tpl-item" [class.selected]="isTemplateSelected(t.id)" (click)="toggleTemplateSelection(t)" [attr.data-guide]="t.id === dernierModeleCreeId ? 'entretien-affecter-modele' : null">
                   <div class="tpl-check" [class.checked]="isTemplateSelected(t.id)"><svg *ngIf="isTemplateSelected(t.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></div>
                   <div class="tpl-item-info"><span class="tpl-item-name">{{ t.name }}</span><span class="tpl-item-interval">{{ t.intervalKm ? (t.intervalKm | number) + ' km' : '' }}{{ t.intervalKm && t.intervalMonths ? ' / ' : '' }}{{ t.intervalMonths ? t.intervalMonths + ' mois' : '' }}</span></div>
                   <span class="tpl-item-cost">~{{ t.estimatedCost | appCurrency:0 }}</span>
@@ -628,7 +629,7 @@ interface FlatRow {
           <div class="panel-foot">
             <span class="foot-info" *ngIf="addToVehicleData.selectedTemplateIds.length > 0">{{ addToVehicleData.selectedTemplateIds.length }} selectionne(s)</span>
             <button class="btn-cancel" (click)="closeAddToVehicle()">Annuler</button>
-            <button class="btn-save purple" (click)="confirmAddToVehicle()" [disabled]="addToVehicleData.selectedTemplateIds.length === 0 || isAssignSubmitting">{{ isAssignSubmitting ? 'Affectation…' : 'Ajouter' }}</button>
+            <button class="btn-save purple" data-guide="entretien-affecter-ajouter" (click)="confirmAddToVehicle()" [disabled]="addToVehicleData.selectedTemplateIds.length === 0 || isAssignSubmitting">{{ isAssignSubmitting ? 'Affectation…' : 'Ajouter' }}</button>
           </div>
         </div>
       </div>
@@ -1098,6 +1099,13 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   filteredTemplates: MaintenanceTemplate[] = [];
   selected: MaintenanceTemplate | null = null;
   editing: MaintenanceTemplate | null = null;
+  /**
+   * Modele que l'utilisateur vient de creer. Le tutoriel de l'ecran lui fait ensuite
+   * cocher CE programme dans « Affecter des entretiens », pas le premier de la liste
+   * (Karim, 24/09/2026 : « il faut qu'il clique sur le programme qu'il a effectue
+   * dans la phase precedente »).
+   */
+  dernierModeleCreeId: string | null = null;
   isFormOpen = false;
   searchQuery = '';
   categoryFilter = '';
@@ -1359,7 +1367,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.editing) {
       this.apiService.updateMaintenanceTemplate(parseInt(this.editing.id), d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: onError });
     } else {
-      this.apiService.createMaintenanceTemplate(d).pipe(takeUntil(this.destroy$)).subscribe({ next: () => { this.loadTemplates(); this.closeForm(); }, error: onError });
+      this.apiService.createMaintenanceTemplate(d).pipe(takeUntil(this.destroy$)).subscribe({ next: (id) => { this.dernierModeleCreeId = String(id); this.loadTemplates(); this.closeForm(); }, error: onError });
     }
   }
   /**

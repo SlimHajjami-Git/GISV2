@@ -900,3 +900,125 @@ describe('Tutoriel pas à pas — écran Échéances (GPA)', () => {
     expect(etape()).toBe('tuto-echeance-modifier');              // pas marqué vu
   }, 20000);
 });
+
+/**
+ * Tutoriel de l'écran Entretien programmable : créer un programme (nom, catégorie,
+ * intervalle en km OU en mois), l'enregistrer, puis l'affecter à un véhicule (choisir
+ * le véhicule, cocher le programme, « Ajouter »). L'intervalle est une ligne de deux
+ * champs : l'un ou l'autre suffit.
+ */
+@Component({ standalone: true, template: `
+  <button data-guide="entretiens-affecter" (click)="affectation = true">Affecter</button>
+  <button data-guide="entretiens-nouveau-modele" (click)="fiche = true">Nouveau modele</button>
+  @if (fiche) {
+    <input data-guide="entretien-modele-nom" #nom>
+    <select data-guide="entretien-modele-categorie"><option value="">Choisir</option><option value="Moteur">Moteur</option></select>
+    <div data-guide="entretien-modele-intervalle"><input type="number" class="km"><input type="number" class="mois"></div>
+    <button data-guide="entretien-modele-enregistrer" (click)="cree = $any(nom).value; fiche = false">Enregistrer</button>
+  }
+  @if (affectation) {
+    <select data-guide="entretien-affecter-vehicule" (change)="vehicule = $any($event.target).value">
+      <option value="">Choisir un vehicule...</option><option value="7">Clio - AB-123-CD</option>
+    </select>
+    @if (vehicule) {
+      @for (t of ['Vidange existante', cree]; track t) {
+        <div class="tpl-item" [attr.data-guide]="t === cree ? 'entretien-affecter-modele' : null" (click)="coche = t">{{ t }}</div>
+      }
+    }
+    <button data-guide="entretien-affecter-ajouter" (click)="affectation = false">Ajouter</button>
+  }` })
+class EcranEntretiens { fiche = false; affectation = false; vehicule = ''; cree = ''; coche = ''; }
+
+describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  const compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const ouvrir = async (url: string) => { await harness.navigateByUrl(url); await rafraichir(); };
+  const el = (sel: string) => document.querySelector(sel.startsWith('.') ? sel : '[data-guide="' + sel + '"]') as HTMLInputElement;
+  const bouton = (libelle: string) => Array.from(guide.nativeElement.querySelectorAll('.guide-bulle button') as NodeListOf<HTMLButtonElement>)
+    .find(b => b.textContent!.trim() === libelle);
+  const etape = () => guide.componentInstance.etape?.id;
+  const cliquer = async (cible: string) => { el(cible).click(); await rafraichir(); };
+  const remplir = async (sel: string, valeur: string) => {
+    const champ = el(sel);
+    champ.value = valeur;
+    champ.dispatchEvent(new Event('input', { bubbles: true }));
+    champ.dispatchEvent(new Event('change', { bubbles: true }));
+    await rafraichir(3);
+  };
+  const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'entretien-programmable', component: EcranEntretiens },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    TestBed.inject(HelpService).fermerGuide(true);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('programme créé (intervalle en mois seulement) puis affecté à un véhicule, en 9 bulles', async () => {
+    await ouvrir('/entretien-programmable');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Entretien programmable · Étape 1 sur 9');
+
+    await cliquer('entretiens-nouveau-modele');
+    await remplir('entretien-modele-nom', 'Révision annuelle'); await suivant();
+    expect(bouton('Suivant')!.disabled).toBe(true);              // « Choisir » ne compte pas
+    await remplir('entretien-modele-categorie', 'Moteur'); await suivant();
+
+    expect(etape()).toBe('tuto-entretien-intervalle');
+    expect(document.activeElement).toBe(el('.km'));              // curseur dans le premier des deux champs
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('.mois', '12');                                // les mois seuls suffisent
+    expect(bouton('Suivant')!.disabled).toBe(false);
+    await suivant();
+
+    expect(etape()).toBe('tuto-entretien-enregistrer');
+    await cliquer('entretien-modele-enregistrer'); await rafraichir();
+    expect(etape()).toBe('tuto-entretien-affecter');
+
+    await cliquer('entretiens-affecter');
+    await remplir('entretien-affecter-vehicule', '7'); await suivant();
+    expect(etape()).toBe('tuto-entretien-cocher');
+    // Le cadre vise le programme CRÉÉ à l'étape précédente, pas le premier de la liste
+    // (Karim, 24/09/2026).
+    expect(el('entretien-affecter-modele').textContent).toBe('Révision annuelle');
+    await cliquer('entretien-affecter-modele');
+    expect(harness.routeDebugElement!.componentInstance.coche).toBe('Révision annuelle');
+    expect(etape()).toBe('tuto-entretien-ajouter');
+    await cliquer('entretien-affecter-ajouter'); await rafraichir();
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/entretien-programmable');
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+});

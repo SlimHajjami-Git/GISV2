@@ -1289,5 +1289,87 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: 'disparition'
       }
     ]
+  },
+  {
+    // Ecran Entretien programmable (maintenance-templates.component.ts) : creer un
+    // programme (modele d'entretien) PUIS l'affecter a un vehicule. Sans
+    // l'affectation, le tableau reste « Aucun entretien » et le client croit que rien
+    // n'a ete enregistre. Libelles cites tels qu'a l'ecran, sans accents.
+    id: 'tuto-entretiens-gpa',
+    titre: 'Écran Entretien programmable',
+    route: '/entretien-programmable',
+    autresRoutes: ['/maintenance-templates', '/entretiens-maitres'],
+    module: 'maintenance',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-entretien-nouveau',
+        titre: "Créez votre premier programme d'entretien",
+        texte: "Cliquez sur « Nouveau modele » : la fiche à remplir s'ouvre.",
+        cible: 'entretiens-nouveau-modele',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-entretien-nom',
+        titre: "Le nom de l'entretien",
+        texte: "Donnez-lui le nom de l'entretien qui revient, par exemple « Vidange moteur » ou « Révision annuelle ». Puis cliquez sur « Suivant ».",
+        cible: 'entretien-modele-nom',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-entretien-categorie',
+        titre: 'La catégorie',
+        // Liste fixe, jamais vide ; « Moteur » existe cote ecran comme cote API.
+        texte: "Choisissez sa « Categorie » dans la liste, par exemple « Moteur » pour une vidange.",
+        cible: 'entretien-modele-categorie',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-entretien-intervalle',
+        titre: 'Tous les combien ?',
+        // Cible = la ligne des deux champs : l'un OU l'autre suffit (regle de l'ecran et de l'API).
+        texte: 'Indiquez tous les combien revient cet entretien : en kilomètres (par exemple 10000), en mois (par exemple 12), ou les deux.',
+        cible: 'entretien-modele-intervalle',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-entretien-enregistrer',
+        titre: 'Enregistrez le programme',
+        // Pas de bouton cite pour « plus tard » : la modification passe par la roue
+        // « Gerer les modeles », trop loin pour une bulle.
+        texte: "Le reste est facultatif ou déjà prérempli (priorité, coût, seuils d'alerte…) : vous pourrez le compléter plus tard. Cliquez sur « Enregistrer ».",
+        cible: 'entretien-modele-enregistrer',
+        action: 'disparition'
+      },
+      {
+        id: 'tuto-entretien-affecter',
+        titre: 'Appliquez-le à un véhicule',
+        texte: "Votre programme est enregistré. Cliquez sur « Affecter » pour l'appliquer à un véhicule.",
+        cible: 'entretiens-affecter',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-entretien-vehicule',
+        titre: 'Le véhicule',
+        // Obligatoire : sans vehicule, la liste des programmes n'apparait pas.
+        texte: 'Choisissez le véhicule concerné dans la liste.',
+        cible: 'entretien-affecter-vehicule',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-entretien-cocher',
+        titre: 'Le programme',
+        texte: 'Cliquez sur le programme pour le cocher.',
+        cible: 'entretien-affecter-modele',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-entretien-ajouter',
+        titre: "Validez l'affectation",
+        texte: "Cliquez sur « Ajouter » : la prochaine échéance de ce véhicule s'affichera dans le tableau.",
+        cible: 'entretien-affecter-ajouter',
+        action: 'disparition'
+      }
+    ]
   }
 ];

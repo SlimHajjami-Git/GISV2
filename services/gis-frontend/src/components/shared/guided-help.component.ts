@@ -258,11 +258,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     // la cacher, et Entree doit etre intercepte avant d'atteindre le formulaire.
     const auClic = (e: MouseEvent) => this.auClic(e);
     const auClavier = (e: KeyboardEvent) => this.auClavier(e);
+    const aLaSaisie = (e: Event) => this.aLaSaisie(e);
     document.addEventListener('click', auClic, true);
     document.addEventListener('keydown', auClavier, true);
+    document.addEventListener('input', aLaSaisie, true);
+    document.addEventListener('change', aLaSaisie, true);
     this.abonnements.push(new Subscription(() => {
       document.removeEventListener('click', auClic, true);
       document.removeEventListener('keydown', auClavier, true);
+      document.removeEventListener('input', aLaSaisie, true);
+      document.removeEventListener('change', aLaSaisie, true);
     }));
   }
 
@@ -302,13 +307,38 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Etape « valeur » : « Suivant » suit la saisie des qu'elle a lieu. La boucle
+   * d'images (suivre) le fait aussi, mais elle s'arrete quand l'onglet ne se
+   * redessine plus (fenetre en arriere-plan) : une liste choisie laissait alors
+   * « Suivant » grise (constate en verifiant l'ecran Entretien, 24/09/2026).
+   */
+  private aLaSaisie(e: Event): void {
+    if (!this.actif || this.etape?.action !== 'valeur' || !this.cibleTrouvee) { return; }
+    const cible = this.chercher(this.cibleSuivie);
+    if (!cible || !cible.contains(e.target as Node)) { return; }
+    const rempli = this.champRempli(cible);
+    if (rempli !== this.valeurSaisie) { this.valeurSaisie = rempli; this.cdr.detectChanges(); }
+  }
+
+  /**
    * Champ rempli : texte non vide, ou liste positionnee sur un vrai choix. Une option
    * vide vaut "null" avec [value]="null" (fiche vehicule), mais "0: null" avec
    * [ngValue]="null" (« Aucun vehicule » de la fiche chauffeur) : les deux sont vides.
    */
   private champRempli(el: HTMLElement): boolean {
+    // Cible qui regroupe plusieurs champs (intervalle d'entretien : km OU mois) :
+    // remplie des que l'un d'eux l'est.
+    if (!/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) {
+      return Array.from(el.querySelectorAll('input, select, textarea')).some(c => this.champRempli(c as HTMLElement));
+    }
     const v = (el as HTMLInputElement | HTMLSelectElement).value;
     return typeof v === 'string' && v.trim() !== '' && v !== 'null' && !/^\d+:\s*null$/.test(v);
+  }
+
+  /** Champ ou le curseur est pose : la cible elle-meme, ou le premier champ du groupe qu'elle encadre. */
+  private champAFocaliser(el: HTMLElement): HTMLElement {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName)) { return el; }
+    return (el.querySelector('input, select, textarea') as HTMLElement | null) || el;
   }
 
   /**
@@ -489,7 +519,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         // Champ deja rempli (retour par « Precedent ») : Suivant actif d'emblee.
         // Le curseur y est pose : le client tape sans avoir a cliquer.
         this.valeurSaisie = this.champRempli(cible);
-        cible.focus?.({ preventScroll: true });
+        this.champAFocaliser(cible).focus?.({ preventScroll: true });
       }
       this.conteneur = this.conteneurDefilant(cible);
       this.cibleTrouvee = true;
