@@ -167,6 +167,46 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
     expect(naviguer).toHaveBeenCalledTimes(1);
   });
 
+  // Karim, 24/09/2026 : « Nouveau chauffeur » et « Nouveau modele » encadrés
+  // plus bas, dans la colonne Actions. Le cadre était calculé UNE fois, à
+  // l'apparition du bouton, puis la page bougeait encore (défilement doux,
+  // tableau qui se remplit) : il restait là où le bouton ÉTAIT.
+  describe('le cadre bleu reste sur sa cible', () => {
+    const images = (n: number) => new Promise<void>(fin => {
+      let i = 0;
+      const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+      requestAnimationFrame(image);
+    });
+    const rectangle = (top: number) => ({
+      top, left: 900, width: 150, height: 36, bottom: top + 36, right: 1050, x: 900, y: top, toJSON() {}
+    }) as DOMRect;
+    const halo = () => guide.nativeElement.querySelector('.guide-halo') as HTMLElement;
+
+    it('il suit le bouton quand la page bouge après la première mesure', async () => {
+      const bouton = document.querySelector('[data-guide="menu-flotte"]') as HTMLElement;
+      let top = 400;
+      jest.spyOn(bouton, 'getBoundingClientRect').mockImplementation(() => rectangle(top));
+
+      await images(3);
+      expect(halo().style.top).toBe('394px');
+
+      top = 60; // la page s'est tassée : le bouton est remonté
+      await images(3);
+      expect(halo().style.top).toBe('54px');
+      expect(halo().style.left).toBe('894px');
+    });
+
+    it('un bouton resté hors de l\'écran est ramené une seule fois', async () => {
+      const bouton = document.querySelector('[data-guide="menu-flotte"]') as HTMLElement;
+      jest.spyOn(bouton, 'getBoundingClientRect').mockImplementation(() => rectangle(-200));
+      const ramener = jest.fn();
+      bouton.scrollIntoView = ramener;
+
+      await images(45);
+      expect(ramener).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('se ferme à la déconnexion, sans être marquée comme vue', async () => {
     utilisateur.next(null);
     guide.detectChanges();

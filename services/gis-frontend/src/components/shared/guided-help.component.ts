@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, HostListener, ChangeDetectorRef, NgZone, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
@@ -68,11 +68,13 @@ import { GuideEtape } from '../../services/help-content.model';
       position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);
       z-index: 10000; animation: guide-apparition .18s ease-out;
     }
+    /* Pas de transition sur le cadre : il suit sa cible image par image (voir
+       suivre()), une transition de .2s le ferait trainer derriere le bouton
+       pendant chaque defilement. */
     .guide-halo {
       position: fixed; z-index: 10001; pointer-events: none;
       border-radius: 10px; border: 2px solid #2563eb;
       box-shadow: 0 0 0 4px rgba(37, 99, 235, .25);
-      transition: top .2s ease, left .2s ease, width .2s ease, height .2s ease;
     }
     .guide-bulle {
       position: fixed; z-index: 10002; width: 330px; max-width: calc(100vw - 32px);
@@ -118,6 +120,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private auth = inject(AuthService);
   private router = inject(Router);
   private cdr = inject(ChangeDetectorRef);
+  private zone = inject(NgZone);
 
   actif = false;
   index = 0;
@@ -129,7 +132,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   flecheEnHaut = false;
 
   private abonnements: Subscription[] = [];
+  /** Image demandee : recherche de la cible, puis suivi de sa position (suivre). */
   private attente?: number;
+  /** Images consecutives ou la cible n'a pas bouge, et recentrage deja fait pour l'etape. */
+  private imagesStables = 0;
+  private recentree = false;
   /** Pose dans ngOnDestroy : plus aucune navigation ni boucle d'attente ensuite. */
   private detruit = false;
   /**
@@ -159,7 +166,6 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.annulerAttente();
   }
 
-  @HostListener('window:resize') auRedimensionnement(): void { if (this.actif) { this.placer(); } }
   /**
    * Echap ferme la visite pour l'instant, mais ne la marque PAS comme vue :
    * elle sera reproposee au prochain chargement de l'application (pas a la page
@@ -248,8 +254,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
 
     if (cible) {
       cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
-      this.placer(cible);
+      this.placer(cible.getBoundingClientRect());
       this.cdr.detectChanges();
+      this.imagesStables = 0;
+      this.recentree = false;
+      this.suivre(etape, generation);
       return;
     }
 
@@ -263,25 +272,74 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     else { this.allerA(this.index + 1); }
   }
 
-  private placer(element?: HTMLElement | null): void {
-    const cible = element || (this.etape
-      ? document.querySelector('[data-guide="' + this.etape.cible + '"]') as HTMLElement | null
-      : null);
-    if (!cible) { return; }
+  /**
+   * Garde le cadre et la bulle sur la cible tant que l'etape est affichee.
+   *
+   * Le cadre est en position fixe, calcule depuis getBoundingClientRect. Une
+   * mesure unique, prise a l'instant ou la cible apparait, ne tenait pas : la
+   * page bouge encore apres — defilement doux lance juste au-dessus, tableau
+   * qui se remplit, ancienne page pas encore retiree — et le cadre restait la
+   * ou le bouton ETAIT (Karim, 24/09/2026 : « Nouveau chauffeur » et
+   * « Nouveau modele » encadres plus bas, dans la colonne Actions du tableau,
+   * en GPA comme en GPS). On relit donc la position a chaque image et on ne
+   * redessine que si elle a change ; cela couvre aussi le redimensionnement de
+   * la fenetre et la molette de l'utilisateur.
+   *
+   * La boucle tourne hors de la zone Angular : dedans, chaque image relancerait
+   * la detection de changements de TOUTE l'application, 60 fois par seconde.
+   */
+  private suivre(etape: GuideEtape, generation: number): void {
+    this.zone.runOutsideAngular(() => {
+      this.attente = requestAnimationFrame(() => {
+        this.attente = undefined;
+        if (this.detruit || generation !== this.generation) { return; }
+        const cible = document.querySelector('[data-guide="' + etape.cible + '"]') as HTMLElement | null;
+        const r = cible?.getBoundingClientRect();
+        // Cible absente ou masquee un instant (liste en cours de rafraichissement) :
+        // on garde le cadre ou il est plutot que de l'envoyer dans le coin de l'ecran.
+        if (cible && r && (r.width > 0 || r.height > 0)) {
+          if (this.placer(r)) {
+            this.imagesStables = 0;
+            this.cdr.detectChanges();
+          } else if (++this.imagesStables === 15 && !this.recentree
+                     && (r.top < 0 || r.bottom > window.innerHeight)) {
+            // La page s'est tassee apres le premier defilement et a emporte le
+            // bouton hors de l'ecran : on le ramene, une seule fois par etape
+            // pour ne pas lutter contre un client qui fait defiler lui-meme.
+            this.recentree = true;
+            cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+          }
+        }
+        this.suivre(etape, generation);
+      });
+    });
+  }
 
-    const r = cible.getBoundingClientRect();
+  /** Pose le cadre et la bulle sur le rectangle de la cible ; faux si rien n'a bouge. */
+  private placer(r: DOMRect): boolean {
     const marge = 6;
-    this.halo = {
+    const halo = {
       top: r.top - marge, left: r.left - marge,
       width: r.width + marge * 2, height: r.height + marge * 2
     };
 
     const hauteurBulle = 210;
     const placeEnDessous = window.innerHeight - r.bottom > hauteurBulle + 20;
-    this.flecheEnHaut = placeEnDessous;
+    const bulle = {
+      top: placeEnDessous ? r.bottom + 16 : Math.max(12, r.top - hauteurBulle - 16),
+      left: Math.min(Math.max(12, r.left - 10), window.innerWidth - 342)
+    };
 
-    const top = placeEnDessous ? r.bottom + 16 : Math.max(12, r.top - hauteurBulle - 16);
-    const left = Math.min(Math.max(12, r.left - 10), window.innerWidth - 342);
-    this.bulle = { top, left };
+    const proche = (a: number, b: number) => Math.abs(a - b) < 0.5;
+    if (proche(halo.top, this.halo.top) && proche(halo.left, this.halo.left)
+        && proche(halo.width, this.halo.width) && proche(halo.height, this.halo.height)
+        && proche(bulle.top, this.bulle.top) && proche(bulle.left, this.bulle.left)
+        && placeEnDessous === this.flecheEnHaut) {
+      return false;
+    }
+    this.halo = halo;
+    this.bulle = bulle;
+    this.flecheEnHaut = placeEnDessous;
+    return true;
   }
 }
