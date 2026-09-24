@@ -1108,16 +1108,21 @@ export const VISITES_ECRANS: VisiteEcran[] = [
       {
         id: 'tuto-vehicule-marque',
         titre: 'La marque',
-        texte: 'Choisissez la marque dans la liste.',
+        // Facultatif : la marque du client peut manquer au catalogue (pas de saisie libre).
+        texte: "Choisissez la marque dans la liste. Elle n'y est pas ? Cliquez sur « Suivant ».",
         cible: 'vehicule-marque',
-        action: 'valeur'
+        action: 'valeur',
+        facultatif: true
       },
       {
         id: 'tuto-vehicule-modele',
         titre: 'Le modèle',
-        texte: 'Choisissez maintenant le modèle : la liste suit la marque choisie.',
+        // Facultatif : 8 des 27 marques de production n'ont aucun modele actif (liste
+        // vide), et le modele du client peut manquer. Karim, 24/09/2026 : « fais-le passer ».
+        texte: "Choisissez maintenant le modèle : la liste suit la marque choisie. Il n'y est pas, ou la liste est vide ? Cliquez sur « Suivant ».",
         cible: 'vehicule-modele',
-        action: 'valeur'
+        action: 'valeur',
+        facultatif: true
       },
       {
         id: 'tuto-vehicule-ajouter',
@@ -1125,7 +1130,12 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         // Les autres champs obligatoires ont une valeur par defaut dans la fiche
         // (vehicle-popup resetForm : annee en cours, citadine, disponible,
         // compteur 0, diesel) : les quatre champs ci-dessus suffisent.
-        texte: 'Le reste est facultatif ou déjà prérempli (année, type, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ».',
+        // Le « type » n'est pas cite : choisir un modele le remplace par le type du
+        // catalogue (hatchback, van…), absent de la liste Type, qui s'affiche alors
+        // vide (defaut de la fiche signale a Karim le 24/09/2026).
+        // Refus du serveur (plaque deja utilisee…) : une alerte s'affiche et la fiche
+        // reste ouverte ; la bulle dit quoi faire.
+        texte: "Le reste est facultatif ou déjà prérempli (année, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ». Un message d'erreur s'affiche ? Revenez corriger avec « Précédent », puis cliquez à nouveau sur « Ajouter ».",
         cible: 'vehicule-ajouter',
         action: 'disparition'
       }

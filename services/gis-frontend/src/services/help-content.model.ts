@@ -116,6 +116,13 @@ export interface GuideEtape {
    */
   action?: 'clic' | 'valeur' | 'disparition';
   /**
+   * Etape « valeur » qu'on peut laisser vide : « Suivant » reste actif. Pour une
+   * liste dont la bonne reponse peut manquer — marque absente du catalogue, marque
+   * sans aucun modele — sinon le client restait bloque, avec pour seule sortie
+   * « Passer », qui abandonne le tutoriel pour toujours (Karim, 24/09/2026).
+   */
+  facultatif?: boolean;
+  /**
    * Etape reservee aux administrateurs (bouton sous *ngIf="isAdmin") : retiree
    * d'emblee pour les autres. Sautee faute de cible, elle faisait attendre 3 s
    * puis affichait « Etape 2 sur 4 » en premiere bulle (relecture du 24/09/2026).

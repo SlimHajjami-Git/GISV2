@@ -87,7 +87,7 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
                avancer, pas de bouton. Etape « valeur » : Suivant attend le champ rempli. -->
           @if (!etape.action || etape.action === 'valeur') {
             <button type="button" class="principal" (click)="suivant()"
-                    [disabled]="etape.action === 'valeur' && !valeurSaisie">
+                    [disabled]="etape.action === 'valeur' && !etape.facultatif && !valeurSaisie">
               {{ index === etapes.length - 1 ? 'Terminer' : 'Suivant' }}
             </button>
           }
@@ -282,7 +282,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     e.preventDefault();
     e.stopPropagation();
     this.valeurSaisie = this.champRempli(cible);
-    if (this.valeurSaisie) { this.suivant(); }
+    if (this.valeurSaisie || this.etape.facultatif) { this.suivant(); }
     this.cdr.detectChanges();
   }
 

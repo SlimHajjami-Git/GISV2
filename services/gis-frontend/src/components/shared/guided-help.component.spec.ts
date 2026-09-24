@@ -390,17 +390,33 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     expect(etape()).toBe('tuto-vehicule-plaque');
   });
 
-  it('marque : la liste restée sur « -- Sélectionner -- » ne compte pas comme remplie', async () => {
+  it('marque et modèle absents de la liste (ou liste vide) : « Suivant » reste actif, le client continue', async () => {
+    // Karim, 24/09/2026 : « le même problème avec Modèle (il est vide), fais-le
+    // passer pour continuer ». 8 des 27 marques de production n'ont aucun modèle.
     await ouvrir('/vehicles');
     await cliquer('vehicules-nouveau');
     await remplir('vehicule-nom', 'Camion principal'); await suivant();
     await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
     expect(etape()).toBe('tuto-vehicule-marque');
 
-    await remplir('vehicule-marque', 'null');
-    expect(bouton('Suivant')!.disabled).toBe(true);
-    await remplir('vehicule-marque', '3');
+    await remplir('vehicule-marque', 'null');          // rien choisi
     expect(bouton('Suivant')!.disabled).toBe(false);
+    await suivant();
+    expect(etape()).toBe('tuto-vehicule-modele');
+
+    await remplir('vehicule-modele', 'null');          // liste vide ou modèle absent
+    const entree = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    el('vehicule-modele').dispatchEvent(entree);       // Entrée passe aussi
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-ajouter');
+  });
+
+  it('nom et plaque restent obligatoires : « Suivant » grisé tant qu\'ils sont vides', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    expect(bouton('Suivant')!.disabled).toBe(true);
   });
 
   it('parcours complet : le véhicule est ajouté, le tutoriel se termine et ne revient plus', async () => {
