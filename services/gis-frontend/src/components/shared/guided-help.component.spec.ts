@@ -256,6 +256,7 @@ describe('Visite guidée — montage', () => {
       <select data-guide="vehicule-marque"><option value="null">-- Sélectionner --</option><option value="3">Renault</option></select>
       <select data-guide="vehicule-modele"><option value="null">-- Sélectionner --</option><option value="7">Clio</option></select>
       <button type="button" data-guide="vehicule-ajouter" (click)="enregistrer()">Ajouter</button>
+      <button type="button" class="annuler" (click)="ouverte = false">Annuler</button>
     </form>
   }` })
 class EcranVehicules {
@@ -446,6 +447,28 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await rafraichir();
     expect(guide.componentInstance.actif).toBe(true);
     expect(etape()).toBe('tuto-vehicule-ajouter');
+  });
+
+  it('fiche fermée sans cliquer « Ajouter » (Tab puis Entrée sur Annuler) : le tutoriel s\x27arrête sans être marqué vu', async () => {
+    await ouvrir('/vehicles');
+    await jusquAAjouter();
+    (document.querySelector('.annuler') as HTMLElement).click();   // rien d'enregistré
+    await rafraichir(14);
+    expect(guide.componentInstance.actif).toBe(false);
+
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(true);           // il revient
+  });
+
+  it('fiche fermée pendant la saisie du nom : le tutoriel s\x27arrête au lieu de rester sur un voile vide', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    expect(etape()).toBe('tuto-vehicule-nom');
+    (document.querySelector('.annuler') as HTMLElement).click();
+    await rafraichir(14);
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(guide.nativeElement.querySelectorAll('.guide-voile').length).toBe(0);
   });
 
   it('non-administrateur : pas de tutoriel (il n\'a pas le bouton « Nouveau véhicule »)', async () => {

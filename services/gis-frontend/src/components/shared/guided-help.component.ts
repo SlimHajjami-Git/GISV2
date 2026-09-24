@@ -209,6 +209,15 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   /** Images consecutives ou la cible n'a pas bouge, et recentrage deja fait pour l'etape. */
   private imagesStables = 0;
   private recentree = false;
+  /** Etape « disparition » : le client a clique la cible (« Ajouter ») pendant l'etape. */
+  private cibleCliquee = false;
+  /** Images consecutives sans cible pendant une etape a faire : la fiche a ete fermee. */
+  private imagesSansCible = 0;
+  /**
+   * Ancetre qui fait defiler la cible (corps de la fiche) : une cible qui passe sous
+   * son en-tete n'est plus visible, meme si elle reste dans la fenetre.
+   */
+  private conteneur: HTMLElement | null = null;
   /** Pose dans ngOnDestroy : plus aucune navigation ni boucle d'attente ensuite. */
   private detruit = false;
   /**
@@ -257,11 +266,17 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     }));
   }
 
-  /** Etape « clic » : le client a clique la cible. Son propre clic suit son cours (la fiche s'ouvre), puis on avance. */
+  /**
+   * Clic du client sur la cible. Etape « clic » : son propre clic suit son cours
+   * (la fiche s'ouvre), puis on avance. Etape « disparition » : on retient qu'il a
+   * bien clique « Ajouter » — seule une fiche fermee APRES ce clic vaut succes.
+   */
   private auClic(e: MouseEvent): void {
-    if (!this.actif || this.etape?.action !== 'clic' || !this.cibleTrouvee) { return; }
+    const action = this.etape?.action;
+    if (!this.actif || !this.cibleTrouvee || (action !== 'clic' && action !== 'disparition')) { return; }
     const cible = this.chercher(this.cibleSuivie);
     if (!cible || !cible.contains(e.target as Node)) { return; }
+    if (action === 'disparition') { this.cibleCliquee = true; return; }
     const generation = this.generation;
     setTimeout(() => {
       if (this.detruit || generation !== this.generation) { return; }
@@ -424,6 +439,8 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.texte = this.etape.texte;
     this.cibleTrouvee = false;
     this.valeurSaisie = false;
+    this.cibleCliquee = false;
+    this.imagesSansCible = 0;
     const etape = this.etape;
     // Premiere etape, ou ecran qui vient d'etre ouvert : la page peut encore se
     // peindre, on laisse ~3 s a la cible. Sur une page deja affichee, une cible
@@ -466,6 +483,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         this.valeurSaisie = this.champRempli(cible);
         cible.focus?.({ preventScroll: true });
       }
+      this.conteneur = this.conteneurDefilant(cible);
       this.cibleTrouvee = true;
       this.etapeMontree = true;
       this.cdr.detectChanges();
@@ -516,11 +534,23 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         const h = (this.hote.nativeElement.querySelector('.guide-bulle') as HTMLElement | null)?.offsetHeight;
         if (h) { this.hauteurBulle = h; }
         const cible = this.chercher(this.cibleSuivie);
-        // Etape « disparition » : le bouton « Ajouter » a quitte l'ecran, la fiche
-        // s'est fermee sur un enregistrement reussi. L'etape est faite.
-        if (!cible && this.etape?.action === 'disparition') {
+        // Etape « disparition » : le client a clique « Ajouter » et le bouton a quitte
+        // l'ecran — la fiche s'est fermee sur un enregistrement reussi. L'etape est faite.
+        if (!cible && this.etape?.action === 'disparition' && this.cibleCliquee) {
           this.zone.run(() => { this.suivant(); this.cdr.detectChanges(); });
           return;
+        }
+        // Cible d'une etape a faire disparue sans ce clic : la fiche a ete fermee
+        // autrement (Tab jusqu'a « Annuler » puis Entree). Rien n'a ete enregistre :
+        // le tutoriel s'arrete SANS etre marque vu, il reviendra au prochain acces.
+        // Quelques images de patience, au cas ou la fiche se redessine.
+        if (!cible && this.etape?.action) {
+          if (++this.imagesSansCible >= 10) {
+            this.zone.run(() => { this.arreter(); this.cdr.detectChanges(); });
+            return;
+          }
+        } else {
+          this.imagesSansCible = 0;
         }
         // Etape « valeur » : « Suivant » s'active des que le champ est rempli.
         if (cible && this.etape?.action === 'valeur') {
@@ -534,10 +564,9 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
           if (this.placer(r)) {
             this.imagesStables = 0;
             this.cdr.detectChanges();
-          } else if (++this.imagesStables === 15 && !this.recentree
-                     && (r.top < 0 || r.bottom > window.innerHeight)) {
-            // La page s'est tassee apres le premier defilement et a emporte le
-            // bouton hors de l'ecran : on le ramene, une seule fois par etape
+          } else if (++this.imagesStables === 15 && !this.recentree && this.masquee(r)) {
+            // La page s'est tassee apres le premier defilement, ou la fiche a defile,
+            // et la cible n'est plus visible : on la ramene, une seule fois par etape
             // pour ne pas lutter contre un client qui fait defiler lui-meme.
             this.recentree = true;
             cible.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
@@ -546,6 +575,25 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         this.suivre(generation);
       });
     });
+  }
+
+  /**
+   * Cible hors de vue : hors de la fenetre, ou hors de la zone visible de l'ancetre
+   * qui la fait defiler — un champ de la fiche passe sous son en-tete reste dans la
+   * fenetre, mais le client ne le voit plus (relecture du 24/09/2026).
+   */
+  private masquee(r: DOMRect): boolean {
+    if (r.top < 0 || r.bottom > window.innerHeight) { return true; }
+    const c = this.conteneur?.isConnected ? this.conteneur.getBoundingClientRect() : null;
+    return !!c && (r.top < c.top || r.bottom > c.bottom);
+  }
+
+  /** Plus proche ancetre qui defile verticalement (corps d'une fiche), ou null. */
+  private conteneurDefilant(el: HTMLElement): HTMLElement | null {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      if (/(auto|scroll)/.test(getComputedStyle(p).overflowY) && p.scrollHeight > p.clientHeight) { return p; }
+    }
+    return null;
   }
 
   /** Pose le cadre et la bulle sur le rectangle de la cible ; faux si rien n'a bouge. */
