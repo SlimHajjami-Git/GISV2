@@ -192,7 +192,10 @@ function dateSeule(d: string | null | undefined): string {
                fenêtre. L'ombre le cachait sans le sortir de l'ordre de TABULATION — une
                touche Tab (ou un clic dès la fenêtre refermée par erreur) rouvrait un
                formulaire vierge par-dessus la saisie en cours, perdue sans un mot. -->
+          <!-- data-guide : premier geste du tutoriel Réparations, posé seulement s'il y a un véhicule
+               (sans véhicule le tutoriel n'a pas lieu et revient plus tard). -->
           <button class="btn-add" (click)="openAddRepair()"
+                  [attr.data-guide]="vehicles.length ? 'reparations-nouvelle' : null"
                   [disabled]="fenetreOuverte"
                   [title]="fenetreOuverte ? raisonFenetreOuverte : 'Nouvelle réparation'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -456,7 +459,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <h4>Vehicule</h4>
               <div class="vehicle-select-wrapper">
-                <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()">
+                <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()" data-guide="reparation-vehicule">
                   <option value="">Selectionnez un vehicule</option>
                   <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
                 </select>
@@ -501,7 +504,7 @@ function dateSeule(d: string | null | undefined): string {
               <div class="form-row">
                 <div class="form-group">
                   <label>Date *</label>
-                  <input type="date" class="form-control" [(ngModel)]="form.repairDate">
+                  <input type="date" class="form-control" [(ngModel)]="form.repairDate" data-guide="reparation-date">
                 </div>
                 <div class="form-group">
                   <label>Compteur</label>
@@ -517,7 +520,7 @@ function dateSeule(d: string | null | undefined): string {
               </div>
               <div class="form-group">
                 <label>Description</label>
-                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..."></textarea>
+                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..." data-guide="reparation-description"></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -584,7 +587,7 @@ function dateSeule(d: string | null | undefined): string {
               <h4>Main d'oeuvre</h4>
               <div class="form-group">
                 <label>Cout main d'oeuvre ({{ currencyCode }})</label>
-                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
+                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00" data-guide="reparation-main-oeuvre">
               </div>
             </div>
 
@@ -616,7 +619,7 @@ function dateSeule(d: string | null | undefined): string {
           <div class="save-error" *ngIf="getAmountError() || saveError" role="alert">{{ getAmountError() || saveError }}</div>
           <div class="panel-footer">
             <button class="btn-cancel" (click)="closePanel()">Annuler</button>
-            <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()">
+            <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()" [attr.data-guide]="editingRepair ? null : 'reparation-enregistrer'">
               {{ editingRepair ? 'Mettre a jour' : 'Enregistrer' }}
             </button>
           </div>

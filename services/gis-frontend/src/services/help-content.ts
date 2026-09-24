@@ -1371,5 +1371,123 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: 'disparition'
       }
     ]
+  },
+  {
+    // Ecran Reparations (repairs.component.ts). Le menu ouvre /reparations ; le lien
+    // du rapport mene a /repairs. Sans vehicule, le bouton n'est pas encadre : le
+    // tutoriel n'a pas lieu et revient plus tard. Libelles cites tels qu'a l'ecran.
+    id: 'tuto-reparations-gpa',
+    titre: 'Écran Réparations',
+    route: '/reparations',
+    autresRoutes: ['/repairs'],
+    module: 'maintenance',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-reparation-nouvelle',
+        titre: 'Enregistrez votre première réparation',
+        texte: "Cliquez sur « Nouvelle reparation » : la fiche à remplir s'ouvre.",
+        cible: 'reparations-nouvelle',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-reparation-vehicule',
+        titre: 'Le véhicule',
+        texte: "Choisissez dans la liste le véhicule qui a été réparé. Puis cliquez sur « Suivant ».",
+        cible: 'reparation-vehicule',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-reparation-date',
+        titre: 'La date',
+        // Pre-remplie : utile pour saisir une facture ancienne a sa vraie date.
+        texte: 'La date du jour est proposée : changez-la si la réparation a eu lieu un autre jour.',
+        cible: 'reparation-date',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-reparation-description',
+        titre: 'Ce qui a été fait',
+        texte: 'Décrivez la réparation en quelques mots, par exemple « Changement des plaquettes de frein ».',
+        cible: 'reparation-description',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-reparation-cout',
+        titre: 'Le coût',
+        // Prerempli a 0 : « Suivant » est actif d'emblee.
+        texte: "Saisissez le coût de la main-d'œuvre à la place du 0.",
+        cible: 'reparation-main-oeuvre',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-reparation-enregistrer',
+        titre: 'Enregistrez la réparation',
+        // « Modifier » n'est qu'une infobulle : c'est le crayon de la ligne.
+        texte: "Le reste est facultatif ou déjà prérempli (compteur, pièces, fournisseur…) : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Enregistrer ».",
+        cible: 'reparation-enregistrer',
+        action: 'disparition'
+      }
+    ]
+  },
+  {
+    // Ecran Sinistres (accident-reports-list.component.ts) : fenetre « Ajouter un
+    // sinistre manuel », libelle cite tel qu'a l'ecran. Sans vehicule, le bouton
+    // n'est pas encadre : le tutoriel n'a pas lieu. La derniere bulle ne promet
+    // pas de « completer plus tard » : la suite de la fiche est reservee a
+    // l'administrateur, et le lieu ne se modifie plus apres la creation.
+    id: 'tuto-sinistres-gpa',
+    titre: 'Écran Sinistres',
+    route: '/accident-reports',
+    autresRoutes: ['/rapports-accident'],
+    module: 'accidents',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-sinistre-nouveau',
+        titre: 'Déclarez votre premier sinistre',
+        texte: "Cliquez sur « Ajouter un sinistre manuel » : la fiche à remplir s'ouvre.",
+        cible: 'sinistres-nouveau',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-sinistre-vehicule',
+        titre: 'Le véhicule',
+        texte: "Choisissez le véhicule accidenté dans la liste « Véhicule ». Puis cliquez sur « Suivant ».",
+        cible: 'sinistre-vehicule',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-sinistre-date',
+        titre: "La date de l'accident",
+        // Preremplie a maintenant ; ni la date ni le vehicule ne se modifient apres.
+        texte: "La date et l'heure d'aujourd'hui sont préremplies dans « Date / heure » : corrigez-les si l'accident a eu lieu à un autre moment.",
+        cible: 'sinistre-date',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-sinistre-severite',
+        titre: 'La gravité',
+        texte: "Indiquez la gravité des dégâts dans « Sévérité ». Vous ne savez pas encore ? Cliquez sur « Suivant ».",
+        cible: 'sinistre-severite',
+        action: 'valeur',
+        facultatif: true
+      },
+      {
+        id: 'tuto-sinistre-description',
+        titre: 'Les circonstances',
+        texte: "Décrivez en quelques mots ce qui s'est passé dans « Description ». Rien à ajouter pour l'instant ? Cliquez sur « Suivant ».",
+        cible: 'sinistre-description',
+        action: 'valeur',
+        facultatif: true
+      },
+      {
+        id: 'tuto-sinistre-creer',
+        titre: 'Enregistrez le sinistre',
+        texte: "Le reste est facultatif. Cliquez sur « Créer le sinistre ».",
+        cible: 'sinistre-creer',
+        action: 'disparition'
+      }
+    ]
   }
 ];

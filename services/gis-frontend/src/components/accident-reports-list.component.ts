@@ -46,7 +46,8 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <h1>Rapports d'accident</h1>
             <p class="page-sub">Tous les accidents détectés automatiquement ou déclarés manuellement.</p>
           </div>
-          <button class="btn-primary" (click)="openManualForm()">
+          <!-- data-guide : premier geste du tutoriel Sinistres, posé seulement s'il y a un véhicule. -->
+          <button class="btn-primary" (click)="openManualForm()" [attr.data-guide]="vehicles.length ? 'sinistres-nouveau' : null">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
@@ -171,7 +172,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
             <div class="field">
               <label>Véhicule *</label>
-              <select [(ngModel)]="manualForm.vehicleId">
+              <select [(ngModel)]="manualForm.vehicleId" data-guide="sinistre-vehicule">
                 <option [ngValue]="null">Sélectionner...</option>
                 <option *ngFor="let v of vehicles" [ngValue]="v.id">{{ v.name }}<span *ngIf="v.plate"> — {{ v.plate }}</span></option>
               </select>
@@ -180,11 +181,11 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <div class="field-row">
               <div class="field">
                 <label>Date / heure *</label>
-                <input type="datetime-local" [(ngModel)]="manualForm.incidentAt">
+                <input type="datetime-local" [(ngModel)]="manualForm.incidentAt" data-guide="sinistre-date">
               </div>
               <div class="field">
                 <label>Sévérité</label>
-                <select [(ngModel)]="manualForm.severity">
+                <select [(ngModel)]="manualForm.severity" data-guide="sinistre-severite">
                   <option [ngValue]="null">—</option>
                   <option value="minor">Légère</option>
                   <option value="moderate">Modérée</option>
@@ -207,7 +208,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
             <div class="field">
               <label>Description</label>
-              <textarea rows="3" [(ngModel)]="manualForm.description" placeholder="Décrivez les circonstances..."></textarea>
+              <textarea rows="3" [(ngModel)]="manualForm.description" placeholder="Décrivez les circonstances..." data-guide="sinistre-description"></textarea>
             </div>
 
             <div class="field-row">
@@ -230,7 +231,7 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 
             <div class="modal-foot">
               <button class="btn-secondary" (click)="closeManualForm()" [disabled]="manualBusy">Annuler</button>
-              <button class="btn-primary" (click)="submitManual()" [disabled]="manualBusy || !canSubmitManual()">
+              <button class="btn-primary" (click)="submitManual()" [disabled]="manualBusy || !canSubmitManual()" data-guide="sinistre-creer">
                 <span *ngIf="!manualBusy">Créer le sinistre</span>
                 <span *ngIf="manualBusy">Création…</span>
               </button>
