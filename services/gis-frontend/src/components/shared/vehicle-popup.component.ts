@@ -115,11 +115,11 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="year">Année *</label>
-                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" />
+                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" data-guide="vehicule-annee" />
                 </div>
                 <div class="form-group">
                   <label for="type">Type *</label>
-                  <select id="type" name="type" [(ngModel)]="formData.type" required>
+                  <select id="type" name="type" [(ngModel)]="formData.type" required data-guide="vehicule-type">
                     <option value="">Sélectionner</option>
                     <option value="camion">Camion</option>
                     <option value="citadine">Citadine</option>
@@ -133,7 +133,7 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="status">Statut *</label>
-                  <select id="status" name="status" [(ngModel)]="formData.status" required>
+                  <select id="status" name="status" [(ngModel)]="formData.status" required data-guide="vehicule-statut">
                     <option value="">Sélectionner</option>
                     <option value="available">Disponible</option>
                     <option value="in_use">En service</option>
@@ -142,18 +142,18 @@ export interface CompanyOption {
                 </div>
                 <div class="form-group">
                   <label for="mileage">Compteur *</label>
-                  <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" />
+                  <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" data-guide="vehicule-compteur" />
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label for="color">Couleur</label>
-                  <input type="text" id="color" name="color" [(ngModel)]="formData.color" placeholder="Ex: Blanc" />
+                  <input type="text" id="color" name="color" [(ngModel)]="formData.color" placeholder="Ex: Blanc" data-guide="vehicule-couleur" />
                 </div>
                 <div class="form-group">
                   <label for="fuelType">Type de carburant *</label>
-                  <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required>
+                  <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required data-guide="vehicule-carburant">
                     <option value="">Sélectionner</option>
                     <option *ngFor="let ft of fuelTypes" [value]="ft.code">{{ ft.name }}</option>
                   </select>
@@ -163,11 +163,11 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="fuelTankCapacity">Capacité réservoir (L)</label>
-                  <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" />
+                  <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" data-guide="vehicule-reservoir" />
                 </div>
                 <div class="form-group">
                   <label for="registrationDate">Date de mise en circulation</label>
-                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" />
+                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" data-guide="vehicule-mise-en-circulation" />
                 </div>
               </div>
             </div>
@@ -413,21 +413,21 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="acquisitionType">Type d'acquisition</label>
-                  <select id="acquisitionType" name="acquisitionType" [(ngModel)]="formData.acquisitionType">
+                  <select id="acquisitionType" name="acquisitionType" [(ngModel)]="formData.acquisitionType" data-guide="vehicule-acquisition">
                     <option value="purchase">Achat</option>
                     <option value="leasing">Auto-financement</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label for="purchaseDate">Date d'achat</label>
-                  <input type="date" id="purchaseDate" name="purchaseDate" [(ngModel)]="formData.purchaseDate" />
+                  <input type="date" id="purchaseDate" name="purchaseDate" [(ngModel)]="formData.purchaseDate" data-guide="vehicule-date-achat" />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">
-                    <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" />
+                    <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" data-guide="vehicule-prix-achat" />
                     <span class="input-suffix">{{ currencyCode }}</span>
                   </div>
                 </div>
@@ -438,14 +438,14 @@ export interface CompanyOption {
                   <div class="form-group">
                     <label for="leasingMonthlyPayment">Traite mensuelle</label>
                     <div class="input-with-suffix">
-                      <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" />
+                      <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" data-guide="vehicule-traite" />
                       <span class="input-suffix">{{ currencyCode }}/mois</span>
                     </div>
                   </div>
                   <div class="form-group">
                     <label for="leasingDurationMonths">Durée du leasing</label>
                     <div class="input-with-suffix">
-                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="36" />
+                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="36" data-guide="vehicule-duree-leasing" />
                       <span class="input-suffix">mois</span>
                     </div>
                   </div>
@@ -453,11 +453,11 @@ export interface CompanyOption {
                 <div class="form-row">
                   <div class="form-group">
                     <label for="leasingStartDate">Date début leasing</label>
-                    <input type="date" id="leasingStartDate" name="leasingStartDate" [(ngModel)]="formData.leasingStartDate" />
+                    <input type="date" id="leasingStartDate" name="leasingStartDate" [(ngModel)]="formData.leasingStartDate" data-guide="vehicule-debut-leasing" />
                   </div>
                   <div class="form-group">
                     <label for="leasingPaymentDay">Jour de paiement</label>
-                    <select id="leasingPaymentDay" name="leasingPaymentDay" [(ngModel)]="formData.leasingPaymentDay">
+                    <select id="leasingPaymentDay" name="leasingPaymentDay" [(ngModel)]="formData.leasingPaymentDay" data-guide="vehicule-jour-paiement">
                       <option [ngValue]="null">— Choisir —</option>
                       <option *ngFor="let d of paymentDays" [ngValue]="d">{{ d }}</option>
                     </select>

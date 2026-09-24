@@ -255,6 +255,18 @@ describe('Visite guidée — montage', () => {
       <input data-guide="vehicule-plaque">
       <select data-guide="vehicule-marque"><option value="null">-- Sélectionner --</option><option value="3">Renault</option></select>
       <select data-guide="vehicule-modele"><option value="null">-- Sélectionner --</option><option value="7">Clio</option></select>
+      <!-- Le reste de la fiche, prérempli comme la vraie (resetForm) ; le leasing n'est pas affiché en « Achat ». -->
+      <input type="number" data-guide="vehicule-annee" value="2026">
+      <select data-guide="vehicule-type"><option value="citadine" selected>Citadine</option></select>
+      <select data-guide="vehicule-statut"><option value="available" selected>Disponible</option></select>
+      <input type="number" data-guide="vehicule-compteur" value="0">
+      <input data-guide="vehicule-couleur">
+      <select data-guide="vehicule-carburant"><option value="diesel" selected>Diesel</option></select>
+      <input type="number" data-guide="vehicule-reservoir">
+      <input type="date" data-guide="vehicule-mise-en-circulation">
+      <select data-guide="vehicule-acquisition"><option value="purchase" selected>Achat</option></select>
+      <input type="date" data-guide="vehicule-date-achat">
+      <input type="number" data-guide="vehicule-prix-achat">
       <button type="button" data-guide="vehicule-ajouter" (click)="enregistrer()">Ajouter</button>
       <button type="button" class="annuler" (click)="ouverte = false">Annuler</button>
     </form>
@@ -308,6 +320,17 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await rafraichir(3);
   };
   const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+  /**
+   * Une bulle par champ (Karim, 24/09/2026) : les champs absents de l'écran de test sont
+   * sautés par le moteur ; on avance jusqu'à la bulle voulue.
+   */
+  const jusqua = async (id: string, cliquerSuivant = false) => {
+    for (let i = 0; i < 80 && etape() !== id; i++) {
+      const b = bouton('Suivant');
+      if (cliquerSuivant && b && !b.disabled) { b.click(); }
+      await rafraichir(cliquerSuivant ? 4 : 14);
+    }
+  };
   /** Les quatre champs remplis : le tutoriel attend le clic sur « Ajouter ». */
   const jusquAAjouter = async () => {
     await cliquer('vehicules-nouveau');
@@ -315,6 +338,9 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
     await remplir('vehicule-marque', '3'); await suivant();
     await remplir('vehicule-modele', '7'); await suivant();
+    await jusqua('tuto-vehicule-compteur', true);
+    await remplir('vehicule-compteur', '85000');        // 0 prérempli = vide : obligatoire
+    await jusqua('tuto-vehicule-ajouter', true);
   };
 
   beforeEach(async () => {
@@ -358,7 +384,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
 
     expect(guide.componentInstance.mode).toBe('ecran');
     expect(etape()).toBe('tuto-vehicule-nouveau');
-    expect(bulle()?.textContent).toContain('Écran Véhicules · Étape 1 sur 6');
+    expect(bulle()?.textContent).toContain('Écran Véhicules · Étape 1 sur 21');
     expect(bulle()?.textContent).toContain('Cliquez sur « Nouveau véhicule »');
     expect(bouton('Suivant')).toBeUndefined();
     // Le voile entoure le bouton en quatre bandes au lieu de le couvrir.
@@ -409,6 +435,11 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     const entree = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
     el('vehicule-modele').dispatchEvent(entree);       // Entrée passe aussi
     await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-annee');        // puis tous les autres champs
+    await jusqua('tuto-vehicule-compteur', true);
+    expect(bouton('Suivant')!.disabled).toBe(true);     // compteur obligatoire, 0 ne compte pas
+    await remplir('vehicule-compteur', '85000');
+    await jusqua('tuto-vehicule-ajouter', true);
     expect(etape()).toBe('tuto-vehicule-ajouter');
   });
 
@@ -615,6 +646,13 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     await rafraichir(3);
   };
   const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+  /**
+   * Une bulle par champ (Karim, 24/09/2026) : les champs absents de l'écran de test sont
+   * sautés par le moteur ; on avance jusqu'à la bulle voulue.
+   */
+  const jusqua = async (id: string) => {
+    for (let i = 0; i < 40 && etape() !== id; i++) { await rafraichir(14); }
+  };
 
   beforeEach(async () => {
     localStorage.clear();
@@ -651,17 +689,19 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     await ouvrir('/drivers');
     expect(guide.componentInstance.mode).toBe('ecran');
     expect(etape()).toBe('tuto-chauffeur-nouveau');
-    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Chauffeurs · Étape 1 sur 6');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Chauffeurs · Étape 1 sur 14');
 
     await cliquer('chauffeurs-nouveau');
     expect(etape()).toBe('tuto-chauffeur-prenom');
     await remplir('chauffeur-prenom', 'Jean'); await suivant();
     await remplir('chauffeur-nom', 'Dupont'); await suivant();
+    await jusqua('tuto-chauffeur-permis');
     expect(etape()).toBe('tuto-chauffeur-permis');
     // Obligatoire (Karim, 24/09/2026 : « la Date d'expiration est importante »).
     expect(bouton('Suivant')!.disabled).toBe(true);
     await remplir('chauffeur-permis-expiration', '2028-05-31');
     await suivant();
+    await jusqua('tuto-chauffeur-vehicule');
     expect(etape()).toBe('tuto-chauffeur-vehicule');
     await suivant();                                   // « Aucun véhicule »
     expect(etape()).toBe('tuto-chauffeur-creer');
@@ -683,7 +723,9 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     await remplir('chauffeur-prenom', 'Jean'); await suivant();
     expect(bouton('Suivant')!.disabled).toBe(true);
     await remplir('chauffeur-nom', 'Dupont'); await suivant();
+    await jusqua('tuto-chauffeur-permis');
     await remplir('chauffeur-permis-expiration', '2028-05-31'); await suivant();
+    await jusqua('tuto-chauffeur-vehicule');
     expect(etape()).toBe('tuto-chauffeur-vehicule');
     expect(guide.componentInstance.valeurSaisie).toBe(false);   // « Aucun véhicule » = rien choisi
     await remplir('chauffeur-vehicule', '1: 5');
@@ -959,6 +1001,13 @@ describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
     await rafraichir(3);
   };
   const suivant = async () => { bouton('Suivant')!.click(); await rafraichir(); };
+  /**
+   * Une bulle par champ (Karim, 24/09/2026) : les champs absents de l'écran de test sont
+   * sautés par le moteur ; on avance jusqu'à la bulle voulue.
+   */
+  const jusqua = async (id: string) => {
+    for (let i = 0; i < 40 && etape() !== id; i++) { await rafraichir(14); }
+  };
 
   beforeEach(async () => {
     localStorage.clear();
@@ -988,14 +1037,16 @@ describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
 
   afterEach(() => guide.destroy());
 
-  it('programme créé (intervalle en mois seulement) puis affecté à un véhicule, en 9 bulles', async () => {
+  it('programme créé (intervalle en mois seulement) puis affecté à un véhicule, en 17 bulles', async () => {
     await ouvrir('/entretien-programmable');
-    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Entretien programmable · Étape 1 sur 9');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Écran Entretien programmable · Étape 1 sur 17');
 
     await cliquer('entretiens-nouveau-modele');
     await remplir('entretien-modele-nom', 'Révision annuelle'); await suivant();
+    await jusqua('tuto-entretien-categorie');
     expect(bouton('Suivant')!.disabled).toBe(true);              // « Choisir » ne compte pas
     await remplir('entretien-modele-categorie', 'Moteur'); await suivant();
+    await jusqua('tuto-entretien-intervalle');
 
     expect(etape()).toBe('tuto-entretien-intervalle');
     expect(document.activeElement).toBe(el('.km'));              // curseur dans le premier des deux champs
@@ -1003,6 +1054,7 @@ describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
     await remplir('.mois', '12');                                // les mois seuls suffisent
     expect(bouton('Suivant')!.disabled).toBe(false);
     await suivant();
+    await jusqua('tuto-entretien-enregistrer');
 
     expect(etape()).toBe('tuto-entretien-enregistrer');
     await cliquer('entretien-modele-enregistrer'); await rafraichir();

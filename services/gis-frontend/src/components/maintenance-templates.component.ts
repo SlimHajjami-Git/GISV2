@@ -346,10 +346,10 @@ interface FlatRow {
           </div>
           <div class="panel-body">
             <div class="field"><label>Nom *</label><input [(ngModel)]="form.name" placeholder="Ex: Vidange moteur" data-guide="entretien-modele-nom"></div>
-            <div class="field"><label>Description</label><textarea [(ngModel)]="form.description" rows="2" placeholder="Description..."></textarea></div>
+            <div class="field"><label>Description</label><textarea [(ngModel)]="form.description" rows="2" placeholder="Description..." data-guide="entretien-modele-description"></textarea></div>
             <div class="field-row">
               <div class="field"><label>Categorie *</label><select [(ngModel)]="form.category" data-guide="entretien-modele-categorie"><option value="">Choisir</option><option *ngFor="let c of categories" [value]="c">{{c}}</option></select></div>
-              <div class="field"><label>Priorite</label><select [(ngModel)]="form.priority"><option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select></div>
+              <div class="field"><label>Priorite</label><select [(ngModel)]="form.priority" data-guide="entretien-modele-priorite"><option value="low">Faible</option><option value="medium">Moyenne</option><option value="high">Haute</option><option value="critical">Critique</option></select></div>
             </div>
             <!-- data-guide sur la LIGNE : le tutoriel accepte l'un ou l'autre intervalle (km ou mois). -->
             <div class="field-row" data-guide="entretien-modele-intervalle">
@@ -357,20 +357,20 @@ interface FlatRow {
               <div class="field"><label>Intervalle (mois)</label><input type="number" [(ngModel)]="form.intervalMonths" placeholder="12"></div>
             </div>
             <div class="field-row">
-              <div class="field"><label>Cout estime ({{ currencyCode }})</label><input type="number" [(ngModel)]="form.estimatedCost" placeholder="0" min="0" step="0.01"></div>
+              <div class="field"><label>Cout estime ({{ currencyCode }})</label><input type="number" [(ngModel)]="form.estimatedCost" placeholder="0" min="0" step="0.01" data-guide="entretien-modele-cout"></div>
               <div class="field"></div>
             </div>
-            <div class="field toggle"><label><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
+            <div class="field toggle"><label data-guide="entretien-modele-actif"><input type="checkbox" [(ngModel)]="form.isActive"><span class="switch"></span> Actif</label></div>
             <div class="divider"></div>
             <h4 class="sub-title">Seuils d'alerte</h4>
             <p class="sub-hint">Dès que la distance ou le délai restant passe sous ces seuils, une notification est déclenchée.</p>
             <div class="field-row">
-              <div class="field"><label>Alerte (km restants)</label><input type="number" [(ngModel)]="form.warningKm" placeholder="1000"></div>
-              <div class="field"><label>Alerte (jours restants)</label><input type="number" [(ngModel)]="form.warningDays" placeholder="30"></div>
+              <div class="field"><label>Alerte (km restants)</label><input type="number" [(ngModel)]="form.warningKm" placeholder="1000" data-guide="entretien-modele-alerte-km"></div>
+              <div class="field"><label>Alerte (jours restants)</label><input type="number" [(ngModel)]="form.warningDays" placeholder="30" data-guide="entretien-modele-alerte-jours"></div>
             </div>
             <div class="field-row">
-              <div class="field"><label>Critique (km restants)</label><input type="number" [(ngModel)]="form.criticalKm" placeholder="0"></div>
-              <div class="field"><label>Critique (jours restants)</label><input type="number" [(ngModel)]="form.criticalDays" placeholder="0"></div>
+              <div class="field"><label>Critique (km restants)</label><input type="number" [(ngModel)]="form.criticalKm" placeholder="0" data-guide="entretien-modele-critique-km"></div>
+              <div class="field"><label>Critique (jours restants)</label><input type="number" [(ngModel)]="form.criticalDays" placeholder="0" data-guide="entretien-modele-critique-jours"></div>
             </div>
           </div>
           <div class="panel-foot"><button class="btn-cancel" (click)="closeForm()">Annuler</button><button class="btn-save" (click)="saveTemplate()" [disabled]="!isFormValid()" [attr.data-guide]="editing ? null : 'entretien-modele-enregistrer'">Enregistrer</button></div>

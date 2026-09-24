@@ -1067,13 +1067,14 @@ export const ETAPES_GUIDE: GuideEtape[] = [
  * pas, a chaque acces, tant qu'il ne l'a ni passe ni termine. Le client fait
  * lui-meme chaque geste ; la bulle lui dit lequel.
  *
- * Pilote : l'ecran « Vehicules » de l'offre GPA, valide par Karim le 24/09/2026.
- * Parcours voulu : « Nouveau vehicule », puis le nom, la plaque, la marque et le
- * modele, sans insister sur le reste (il pourra revenir le remplir), puis
- * « Ajouter ». Les autres ecrans GPA suivent le meme modele, un par un, chacun
- * valide avec Karim : Chauffeurs d'abord. Libelles cites TELS QU'A L'ECRAN, meme
- * sans accents : corriger les ecrans (partages avec le GPS) attend la fin de la
- * validation GPA (« il faut qu'on valide ensemble GPA et on passe apres »).
+ * Pilote : l'ecran « Vehicules » de l'offre GPA, valide par Karim le 24/09/2026,
+ * puis les autres ecrans GPA sur le meme modele, un par un, chacun valide avec lui.
+ * Regle de Karim (24/09/2026, soir) : le tutoriel passe par TOUS les champs de la
+ * fiche, dans l'ordre ; « Suivant » est grise tant qu'un champ obligatoire est vide,
+ * actif sur un champ facultatif (titre « (facultatif) ») : « c'est a lui de choisir »,
+ * car un client revient rarement completer une fiche plus tard. Libelles cites TELS
+ * QU'A L'ECRAN, meme sans accents : corriger les ecrans (partages avec le GPS)
+ * attend la fin de la validation GPA (« il faut qu'on valide ensemble GPA »).
  */
 export const VISITES_ECRANS: VisiteEcran[] = [
   {
@@ -1086,61 +1087,167 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     sauf: 'monitoring',
     // « Nouveau vehicule » est reserve aux administrateurs (*ngIf="isAdmin").
     adminSeulement: true,
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
     etapes: [
       {
-        id: 'tuto-vehicule-nouveau',
-        titre: 'Ajoutez votre premier véhicule',
+        id: "tuto-vehicule-nouveau",
+        titre: "Ajoutez votre premier véhicule",
         texte: "Cliquez sur « Nouveau véhicule » : la fiche à remplir s'ouvre.",
-        cible: 'vehicules-nouveau',
-        action: 'clic'
+        cible: "vehicules-nouveau",
+        action: "clic"
       },
       {
-        id: 'tuto-vehicule-nom',
-        titre: 'Le nom du véhicule',
-        texte: 'Donnez-lui un nom qui vous parle, par exemple « Camion principal » ou « Clio du commercial ». Puis cliquez sur « Suivant ».',
-        cible: 'vehicule-nom',
-        action: 'valeur'
+        id: "tuto-vehicule-nom",
+        titre: "Le nom du véhicule",
+        texte: "Donnez-lui un nom qui vous parle, par exemple « Camion principal » ou « Clio du commercial ». Puis cliquez sur « Suivant ».",
+        cible: "vehicule-nom",
+        action: "valeur"
       },
       {
-        id: 'tuto-vehicule-plaque',
-        titre: 'La plaque',
+        id: "tuto-vehicule-plaque",
+        titre: "La plaque",
         texte: "Saisissez son immatriculation, telle qu'elle figure sur la carte grise.",
-        cible: 'vehicule-plaque',
-        action: 'valeur'
+        cible: "vehicule-plaque",
+        action: "valeur"
       },
       {
-        id: 'tuto-vehicule-marque',
-        titre: 'La marque',
-        // Facultatif : la marque du client peut manquer au catalogue (pas de saisie libre).
-        texte: "Choisissez la marque dans la liste. Elle n'y est pas ? Cliquez sur « Suivant ».",
-        cible: 'vehicule-marque',
-        action: 'valeur',
+        id: "tuto-vehicule-marque",
+        titre: "La marque (facultatif)",
+        texte: "Choisissez la marque dans la liste.",
+        cible: "vehicule-marque",
+        action: "valeur",
         facultatif: true
       },
       {
-        id: 'tuto-vehicule-modele',
-        titre: 'Le modèle',
-        // Facultatif : 8 des 27 marques de production n'ont aucun modele actif (liste
-        // vide), et le modele du client peut manquer. Karim, 24/09/2026 : « fais-le passer ».
-        texte: "Choisissez maintenant le modèle : la liste suit la marque choisie. Il n'y est pas, ou la liste est vide ? Cliquez sur « Suivant ».",
-        cible: 'vehicule-modele',
-        action: 'valeur',
+        id: "tuto-vehicule-modele",
+        titre: "Le modèle (facultatif)",
+        texte: "Choisissez maintenant le modèle : la liste suit la marque choisie.",
+        cible: "vehicule-modele",
+        action: "valeur",
         facultatif: true
       },
       {
-        id: 'tuto-vehicule-ajouter',
-        titre: 'Enregistrez le véhicule',
-        // Les autres champs obligatoires ont une valeur par defaut dans la fiche
-        // (vehicle-popup resetForm : annee en cours, citadine, disponible,
-        // compteur 0, diesel) : les quatre champs ci-dessus suffisent.
-        // Le « type » n'est pas cite : choisir un modele le remplace par le type du
-        // catalogue (hatchback, van…), absent de la liste Type, qui s'affiche alors
-        // vide (defaut de la fiche signale a Karim le 24/09/2026).
-        // Pas de phrase sur un eventuel refus du serveur : Karim ne veut pas de
-        // message « Un message d'erreur s'affiche ? » dans les bulles (24/09/2026).
-        texte: "Le reste est facultatif ou déjà prérempli (année, compteur…) : vous pourrez le compléter plus tard avec « Modifier ». Cliquez sur « Ajouter ».",
-        cible: 'vehicule-ajouter',
-        action: 'disparition'
+        id: "tuto-vehicule-annee",
+        titre: "L'année",
+        texte: "Indiquez l'« Année » du véhicule. L'année en cours est déjà inscrite : corrigez-la si besoin.",
+        cible: "vehicule-annee",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-type",
+        titre: "Le type",
+        texte: "Choisissez le « Type » du véhicule dans la liste.",
+        cible: "vehicule-type",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-statut",
+        titre: "Le statut",
+        texte: "Choisissez son « Statut » : « Disponible », « En service » ou « En maintenance ».",
+        cible: "vehicule-statut",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-compteur",
+        titre: "Le compteur",
+        texte: "Saisissez le kilométrage affiché au « Compteur » du véhicule.",
+        cible: "vehicule-compteur",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-couleur",
+        titre: "La couleur (facultatif)",
+        texte: "Indiquez sa « Couleur », par exemple « Blanc ».",
+        cible: "vehicule-couleur",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-carburant",
+        titre: "Le carburant",
+        texte: "Choisissez son « Type de carburant » dans la liste.",
+        cible: "vehicule-carburant",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-reservoir",
+        titre: "Le réservoir (facultatif)",
+        texte: "Saisissez la « Capacité réservoir (L) » du véhicule, en litres.",
+        cible: "vehicule-reservoir",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-mise-en-circulation",
+        titre: "La mise en circulation (facultatif)",
+        texte: "Indiquez la « Date de mise en circulation » inscrite sur la carte grise.",
+        cible: "vehicule-mise-en-circulation",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-acquisition",
+        titre: "Le mode d'acquisition (facultatif)",
+        texte: "Choisissez le « Type d'acquisition » : « Achat » ou « Auto-financement ».",
+        cible: "vehicule-acquisition",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-date-achat",
+        titre: "La date d'achat (facultatif)",
+        texte: "Indiquez la « Date d'achat » du véhicule.",
+        cible: "vehicule-date-achat",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-prix-achat",
+        titre: "Le montant (facultatif)",
+        texte: "Saisissez le « Prix d'achat » du véhicule, ou le « Montant Auto-financement » s'il est financé.",
+        cible: "vehicule-prix-achat",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-traite",
+        titre: "La traite mensuelle (facultatif)",
+        texte: "Saisissez le montant de la « Traite mensuelle ».",
+        cible: "vehicule-traite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-duree-leasing",
+        titre: "La durée (facultatif)",
+        texte: "Indiquez la « Durée du leasing », en mois.",
+        cible: "vehicule-duree-leasing",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-debut-leasing",
+        titre: "Le début du leasing (facultatif)",
+        texte: "Indiquez la « Date début leasing ».",
+        cible: "vehicule-debut-leasing",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-jour-paiement",
+        titre: "Le jour de paiement (facultatif)",
+        texte: "Choisissez le « Jour de paiement » de chaque traite dans le mois.",
+        cible: "vehicule-jour-paiement",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-ajouter",
+        titre: "Enregistrez le véhicule",
+        texte: "Cliquez sur « Ajouter » pour enregistrer le véhicule.",
+        cible: "vehicule-ajouter",
+        action: "disparition"
       }
     ]
   },
@@ -1155,52 +1262,115 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     // utilisateur qui a l'ecran Chauffeurs (employees.component.html).
     // Fiche : employee-popup.component.ts. Prenom et Nom suffisent au serveur
     // (CreateDriverCommand) ; rien n'est prerempli d'utile.
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
     etapes: [
       {
-        id: 'tuto-chauffeur-nouveau',
-        titre: 'Ajoutez votre premier chauffeur',
+        id: "tuto-chauffeur-nouveau",
+        titre: "Ajoutez votre premier chauffeur",
         texte: "Cliquez sur « Nouveau chauffeur » : la fiche à remplir s'ouvre.",
-        cible: 'chauffeurs-nouveau',
-        action: 'clic'
+        cible: "chauffeurs-nouveau",
+        action: "clic"
       },
       {
-        id: 'tuto-chauffeur-prenom',
-        titre: 'Le prénom',
+        id: "tuto-chauffeur-prenom",
+        titre: "Le prénom",
         texte: "Saisissez le prénom du chauffeur. Puis cliquez sur « Suivant ».",
-        cible: 'chauffeur-prenom',
-        action: 'valeur'
+        cible: "chauffeur-prenom",
+        action: "valeur"
       },
       {
-        id: 'tuto-chauffeur-nom',
-        titre: 'Le nom',
-        texte: 'Saisissez maintenant son nom de famille.',
-        cible: 'chauffeur-nom',
-        action: 'valeur'
+        id: "tuto-chauffeur-nom",
+        titre: "Le nom",
+        texte: "Saisissez maintenant son nom de famille.",
+        cible: "chauffeur-nom",
+        action: "valeur"
       },
       {
-        id: 'tuto-chauffeur-permis',
-        titre: "L'expiration du permis",
-        // Alimente les echeances et les alertes « Permis » (DriverPermitExpiries).
-        // OBLIGATOIRE dans le tutoriel : Karim, 24/09/2026, « la Date d'expiration est importante ».
-        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance.",
-        cible: 'chauffeur-permis-expiration',
-        action: 'valeur'
-      },
-      {
-        id: 'tuto-chauffeur-vehicule',
-        titre: 'Son véhicule',
-        texte: "Choisissez le « Véhicule » qu'il conduit. Il n'y est pas ? Cliquez sur « Suivant ».",
-        cible: 'chauffeur-vehicule',
-        action: 'valeur',
+        id: "tuto-chauffeur-email",
+        titre: "Son e-mail (facultatif)",
+        texte: "Saisissez l'« Email » du chauffeur.",
+        cible: "chauffeur-email",
+        action: "valeur",
         facultatif: true
       },
       {
-        id: 'tuto-chauffeur-creer',
-        titre: 'Enregistrez le chauffeur',
-        // « Modifier » n'est pas un libelle visible : c'est le crayon de la ligne.
-        texte: "Le reste est facultatif : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Créer le chauffeur ».",
-        cible: 'chauffeur-creer',
-        action: 'disparition'
+        id: "tuto-chauffeur-telephone",
+        titre: "Son téléphone (facultatif)",
+        texte: "Saisissez son numéro de « Téléphone ».",
+        cible: "chauffeur-telephone",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-piece-identite",
+        titre: "Sa pièce d'identité (facultatif)",
+        texte: "Saisissez le « N° de pièce d'identité » du chauffeur.",
+        cible: "chauffeur-piece-identite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-naissance",
+        titre: "Sa date de naissance (facultatif)",
+        texte: "Indiquez sa « Date de naissance ».",
+        cible: "chauffeur-naissance",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-embauche",
+        titre: "Sa date d'embauche (facultatif)",
+        texte: "Indiquez sa « Date d'embauche ».",
+        cible: "chauffeur-embauche",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis-numero",
+        titre: "Le numéro de permis (facultatif)",
+        texte: "Saisissez le « N° Permis » du chauffeur.",
+        cible: "chauffeur-permis-numero",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis-categorie",
+        titre: "La catégorie du permis (facultatif)",
+        texte: "Choisissez la « Catégorie » de son permis : B, C, D…",
+        cible: "chauffeur-permis-categorie",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis",
+        titre: "L'expiration du permis",
+        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance.",
+        cible: "chauffeur-permis-expiration",
+        action: "valeur"
+      },
+      {
+        id: "tuto-chauffeur-permis-rappel",
+        titre: "Le rappel (facultatif)",
+        texte: "Indiquez le nombre de jours du « Rappel avant (jours) » : 30 est proposé par défaut.",
+        cible: "chauffeur-permis-rappel",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-vehicule",
+        titre: "Son véhicule (facultatif)",
+        texte: "Choisissez le « Véhicule » qu'il conduit.",
+        cible: "chauffeur-vehicule",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-creer",
+        titre: "Enregistrez le chauffeur",
+        texte: "Cliquez sur « Créer le chauffeur » pour enregistrer le chauffeur.",
+        cible: "chauffeur-creer",
+        action: "disparition"
       }
     ]
   },
@@ -1301,74 +1471,135 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     autresRoutes: ['/maintenance-templates', '/entretiens-maitres'],
     module: 'maintenance',
     sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
     etapes: [
       {
-        id: 'tuto-entretien-nouveau',
+        id: "tuto-entretien-nouveau",
         titre: "Créez votre premier programme d'entretien",
         texte: "Cliquez sur « Nouveau modele » : la fiche à remplir s'ouvre.",
-        cible: 'entretiens-nouveau-modele',
-        action: 'clic'
+        cible: "entretiens-nouveau-modele",
+        action: "clic"
       },
       {
-        id: 'tuto-entretien-nom',
+        id: "tuto-entretien-nom",
         titre: "Le nom de l'entretien",
         texte: "Donnez-lui le nom de l'entretien qui revient, par exemple « Vidange moteur » ou « Révision annuelle ». Puis cliquez sur « Suivant ».",
-        cible: 'entretien-modele-nom',
-        action: 'valeur'
+        cible: "entretien-modele-nom",
+        action: "valeur"
       },
       {
-        id: 'tuto-entretien-categorie',
-        titre: 'La catégorie',
-        // Liste fixe, jamais vide ; « Moteur » existe cote ecran comme cote API.
+        id: "tuto-entretien-description",
+        titre: "La description (facultatif)",
+        texte: "Décrivez en quelques mots ce que comprend cet entretien, par exemple « Huile et filtre à huile ».",
+        cible: "entretien-modele-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-categorie",
+        titre: "La catégorie",
         texte: "Choisissez sa « Categorie » dans la liste, par exemple « Moteur » pour une vidange.",
-        cible: 'entretien-modele-categorie',
-        action: 'valeur'
+        cible: "entretien-modele-categorie",
+        action: "valeur"
       },
       {
-        id: 'tuto-entretien-intervalle',
-        titre: 'Tous les combien ?',
-        // Cible = la ligne des deux champs : l'un OU l'autre suffit (regle de l'ecran et de l'API).
-        texte: 'Indiquez tous les combien revient cet entretien : en kilomètres (par exemple 10000), en mois (par exemple 12), ou les deux.',
-        cible: 'entretien-modele-intervalle',
-        action: 'valeur'
+        id: "tuto-entretien-priorite",
+        titre: "La priorité (facultatif)",
+        texte: "« Moyenne » est proposée : choisissez une autre « Priorite » si cet entretien est plus ou moins important.",
+        cible: "entretien-modele-priorite",
+        action: "valeur",
+        facultatif: true
       },
       {
-        id: 'tuto-entretien-enregistrer',
-        titre: 'Enregistrez le programme',
-        // Pas de bouton cite pour « plus tard » : la modification passe par la roue
-        // « Gerer les modeles », trop loin pour une bulle.
-        texte: "Le reste est facultatif ou déjà prérempli (priorité, coût, seuils d'alerte…) : vous pourrez le compléter plus tard. Cliquez sur « Enregistrer ».",
-        cible: 'entretien-modele-enregistrer',
-        action: 'disparition'
+        id: "tuto-entretien-intervalle",
+        titre: "Tous les combien ?",
+        texte: "Indiquez tous les combien revient cet entretien : en kilomètres (par exemple 10000), en mois (par exemple 12), ou les deux.",
+        cible: "entretien-modele-intervalle",
+        action: "valeur"
       },
       {
-        id: 'tuto-entretien-affecter',
-        titre: 'Appliquez-le à un véhicule',
+        id: "tuto-entretien-cout",
+        titre: "Le coût estimé (facultatif)",
+        texte: "Indiquez dans « Cout estime » ce que coûte habituellement cet entretien.",
+        cible: "entretien-modele-cout",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-actif",
+        titre: "Programme actif (facultatif)",
+        texte: "Laissez « Actif » activé : c'est ce qui permet d'appliquer ce programme à vos véhicules.",
+        cible: "entretien-modele-actif",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-alerte-km",
+        titre: "L'alerte en kilomètres (facultatif)",
+        texte: "Vous êtes alerté quand il reste ce nombre de kilomètres avant l'entretien : 1000 est proposé, changez-le si besoin.",
+        cible: "entretien-modele-alerte-km",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-alerte-jours",
+        titre: "L'alerte en jours (facultatif)",
+        texte: "Vous êtes alerté quand il reste ce nombre de jours avant l'entretien : 30 est proposé, changez-le si besoin.",
+        cible: "entretien-modele-alerte-jours",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-critique-km",
+        titre: "Le seuil critique en kilomètres (facultatif)",
+        texte: "Indiquez à combien de kilomètres restants l'entretien devient critique, par exemple 300. À 0, ce seuil n'est pas utilisé.",
+        cible: "entretien-modele-critique-km",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-critique-jours",
+        titre: "Le seuil critique en jours (facultatif)",
+        texte: "Indiquez à combien de jours restants l'entretien devient critique, par exemple 7. À 0, ce seuil n'est pas utilisé.",
+        cible: "entretien-modele-critique-jours",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-enregistrer",
+        titre: "Enregistrez le programme",
+        texte: "Cliquez sur « Enregistrer » pour enregistrer votre programme d'entretien.",
+        cible: "entretien-modele-enregistrer",
+        action: "disparition"
+      },
+      {
+        id: "tuto-entretien-affecter",
+        titre: "Appliquez-le à un véhicule",
         texte: "Votre programme est enregistré. Cliquez sur « Affecter » pour l'appliquer à un véhicule.",
-        cible: 'entretiens-affecter',
-        action: 'clic'
+        cible: "entretiens-affecter",
+        action: "clic"
       },
       {
-        id: 'tuto-entretien-vehicule',
-        titre: 'Le véhicule',
-        // Obligatoire : sans vehicule, la liste des programmes n'apparait pas.
-        texte: 'Choisissez le véhicule concerné dans la liste.',
-        cible: 'entretien-affecter-vehicule',
-        action: 'valeur'
+        id: "tuto-entretien-vehicule",
+        titre: "Le véhicule",
+        texte: "Choisissez le véhicule concerné dans la liste.",
+        cible: "entretien-affecter-vehicule",
+        action: "valeur"
       },
       {
-        id: 'tuto-entretien-cocher',
-        titre: 'Le programme',
-        texte: 'Cliquez sur le programme pour le cocher.',
-        cible: 'entretien-affecter-modele',
-        action: 'clic'
+        id: "tuto-entretien-cocher",
+        titre: "Le programme",
+        texte: "Cliquez sur le programme pour le cocher.",
+        cible: "entretien-affecter-modele",
+        action: "clic"
       },
       {
-        id: 'tuto-entretien-ajouter',
+        id: "tuto-entretien-ajouter",
         titre: "Validez l'affectation",
         texte: "Cliquez sur « Ajouter » : la prochaine échéance de ce véhicule s'affichera dans le tableau.",
-        cible: 'entretien-affecter-ajouter',
-        action: 'disparition'
+        cible: "entretien-affecter-ajouter",
+        action: "disparition"
       }
     ]
   },
@@ -1382,67 +1613,128 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     autresRoutes: ['/repairs'],
     module: 'maintenance',
     sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
     etapes: [
       {
-        id: 'tuto-reparation-nouvelle',
-        titre: 'Enregistrez votre première réparation',
+        id: "tuto-reparation-nouvelle",
+        titre: "Enregistrez votre première réparation",
         texte: "Cliquez sur « Nouvelle reparation » : la fiche à remplir s'ouvre.",
-        cible: 'reparations-nouvelle',
-        action: 'clic'
+        cible: "reparations-nouvelle",
+        action: "clic"
       },
       {
-        id: 'tuto-reparation-vehicule',
-        titre: 'Le véhicule',
+        id: "tuto-reparation-vehicule",
+        titre: "Le véhicule",
         texte: "Choisissez dans la liste le véhicule qui a été réparé. Puis cliquez sur « Suivant ».",
-        cible: 'reparation-vehicule',
-        action: 'valeur'
+        cible: "reparation-vehicule",
+        action: "valeur"
       },
       {
-        id: 'tuto-reparation-date',
-        titre: 'La date',
-        // Pre-remplie : utile pour saisir une facture ancienne a sa vraie date.
-        texte: 'La date du jour est proposée : changez-la si la réparation a eu lieu un autre jour.',
-        cible: 'reparation-date',
-        action: 'valeur'
+        id: "tuto-reparation-fournisseur",
+        titre: "Le garage (facultatif)",
+        texte: "Choisissez dans la liste « Fournisseur / Garage » le garage qui a fait la réparation.",
+        cible: "reparation-fournisseur",
+        action: "valeur",
+        facultatif: true
       },
       {
-        id: 'tuto-reparation-description',
-        titre: 'Ce qui a été fait',
-        texte: 'Décrivez la réparation en quelques mots, par exemple « Changement des plaquettes de frein ».',
-        cible: 'reparation-description',
-        action: 'valeur'
+        id: "tuto-reparation-date",
+        titre: "La date",
+        texte: "La date du jour est proposée : changez-la si la réparation a eu lieu un autre jour.",
+        cible: "reparation-date",
+        action: "valeur"
       },
       {
-        id: 'tuto-reparation-piece-ajouter',
-        titre: 'La pièce',
-        // Karim, 24/09/2026 : faire saisir le cout de la PIECE (et non de la main-d'oeuvre).
-        // Une piece se saisit sur une ligne ajoutee par « Ajouter » (quantite 1 par defaut).
+        id: "tuto-reparation-compteur",
+        titre: "Le compteur (facultatif)",
+        texte: "Le kilométrage connu du véhicule est proposé dans « Compteur » : vérifiez qu'il correspond au compteur réel, car il fait avancer celui du véhicule.",
+        cible: "reparation-compteur",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-type",
+        titre: "Le type d'intervention (facultatif)",
+        texte: "Choisissez dans « Type d'intervention » la nature de la réparation, par exemple « Freinage ».",
+        cible: "reparation-type",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-description",
+        titre: "Ce qui a été fait (facultatif)",
+        texte: "Décrivez la réparation en quelques mots, par exemple « Changement des plaquettes de frein ».",
+        cible: "reparation-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-facture",
+        titre: "Le numéro de facture (facultatif)",
+        texte: "Saisissez le numéro de la facture du garage dans « N° Facture ».",
+        cible: "reparation-facture",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-piece-ajouter",
+        titre: "La pièce",
         texte: "Cliquez sur « Ajouter » dans « Pieces detachees » : une ligne s'ajoute pour la pièce.",
-        cible: 'reparation-piece-ajouter',
-        action: 'clic'
+        cible: "reparation-piece-ajouter",
+        action: "clic"
       },
       {
-        id: 'tuto-reparation-piece-nom',
-        titre: 'Le nom de la pièce',
-        texte: 'Saisissez le nom de la pièce, par exemple « Plaquettes de frein ».',
-        cible: 'reparation-piece-nom',
-        action: 'valeur'
+        id: "tuto-reparation-piece-nom",
+        titre: "Le nom de la pièce",
+        texte: "Saisissez le nom de la pièce, par exemple « Plaquettes de frein ».",
+        cible: "reparation-piece-nom",
+        action: "valeur"
       },
       {
-        id: 'tuto-reparation-piece-prix',
-        titre: 'Le coût de la pièce',
-        // Prerempli a 0 : un prix a 0 ne compte pas comme saisi (champRempli).
+        id: "tuto-reparation-piece-reference",
+        titre: "La référence de la pièce (facultatif)",
+        texte: "Saisissez sa référence dans « Reference ».",
+        cible: "reparation-piece-reference",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-piece-quantite",
+        titre: "La quantité",
+        texte: "La quantité est à 1 : changez-la dans « Qte » si plusieurs pièces identiques ont été posées.",
+        cible: "reparation-piece-quantite",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-piece-prix",
+        titre: "Le coût de la pièce",
         texte: "Saisissez son prix dans « Prix unit. ».",
-        cible: 'reparation-piece-prix',
-        action: 'valeur'
+        cible: "reparation-piece-prix",
+        action: "valeur"
       },
       {
-        id: 'tuto-reparation-enregistrer',
-        titre: 'Enregistrez la réparation',
-        // « Modifier » n'est qu'une infobulle : c'est le crayon de la ligne.
-        texte: "Le reste est facultatif ou déjà prérempli (compteur, main-d'œuvre, fournisseur…) : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Enregistrer ».",
-        cible: 'reparation-enregistrer',
-        action: 'disparition'
+        id: "tuto-reparation-main-oeuvre",
+        titre: "La main-d'œuvre (facultatif)",
+        texte: "Saisissez le coût de la main-d'œuvre dans « Cout main d'oeuvre ».",
+        cible: "reparation-main-oeuvre",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-notes",
+        titre: "Les notes (facultatif)",
+        texte: "Ajoutez vos remarques dans « Notes ».",
+        cible: "reparation-notes",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-enregistrer",
+        titre: "Enregistrez la réparation",
+        texte: "Cliquez sur « Enregistrer » pour enregistrer la réparation.",
+        cible: "reparation-enregistrer",
+        action: "disparition"
       }
     ]
   },
@@ -1458,51 +1750,92 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     autresRoutes: ['/rapports-accident'],
     module: 'accidents',
     sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
     etapes: [
       {
-        id: 'tuto-sinistre-nouveau',
-        titre: 'Déclarez votre premier sinistre',
+        id: "tuto-sinistre-nouveau",
+        titre: "Déclarez votre premier sinistre",
         texte: "Cliquez sur « Ajouter un sinistre manuel » : la fiche à remplir s'ouvre.",
-        cible: 'sinistres-nouveau',
-        action: 'clic'
+        cible: "sinistres-nouveau",
+        action: "clic"
       },
       {
-        id: 'tuto-sinistre-vehicule',
-        titre: 'Le véhicule',
+        id: "tuto-sinistre-vehicule",
+        titre: "Le véhicule",
         texte: "Choisissez le véhicule accidenté dans la liste « Véhicule ». Puis cliquez sur « Suivant ».",
-        cible: 'sinistre-vehicule',
-        action: 'valeur'
+        cible: "sinistre-vehicule",
+        action: "valeur"
       },
       {
-        id: 'tuto-sinistre-date',
+        id: "tuto-sinistre-date",
         titre: "La date de l'accident",
-        // Preremplie a maintenant ; ni la date ni le vehicule ne se modifient apres.
         texte: "La date et l'heure d'aujourd'hui sont préremplies dans « Date / heure » : corrigez-les si l'accident a eu lieu à un autre moment.",
-        cible: 'sinistre-date',
-        action: 'valeur'
+        cible: "sinistre-date",
+        action: "valeur"
       },
       {
-        id: 'tuto-sinistre-severite',
-        titre: 'La gravité',
-        texte: "Indiquez la gravité des dégâts dans « Sévérité ». Vous ne savez pas encore ? Cliquez sur « Suivant ».",
-        cible: 'sinistre-severite',
-        action: 'valeur',
+        id: "tuto-sinistre-severite",
+        titre: "La gravité (facultatif)",
+        texte: "Indiquez la gravité des dégâts dans « Sévérité ».",
+        cible: "sinistre-severite",
+        action: "valeur",
         facultatif: true
       },
       {
-        id: 'tuto-sinistre-description',
-        titre: 'Les circonstances',
-        texte: "Décrivez en quelques mots ce qui s'est passé dans « Description ». Rien à ajouter pour l'instant ? Cliquez sur « Suivant ».",
-        cible: 'sinistre-description',
-        action: 'valeur',
+        id: "tuto-sinistre-division",
+        titre: "Le lieu de l'accident (facultatif)",
+        texte: "Indiquez la région où l'accident a eu lieu (gouvernorat, département…).",
+        cible: "sinistre-division",
+        action: "valeur",
         facultatif: true
       },
       {
-        id: 'tuto-sinistre-creer',
-        titre: 'Enregistrez le sinistre',
-        texte: "Le reste est facultatif. Cliquez sur « Créer le sinistre ».",
-        cible: 'sinistre-creer',
-        action: 'disparition'
+        id: "tuto-sinistre-localite",
+        titre: "La ville de l'accident (facultatif)",
+        texte: "Précisez la ville ou la commune de l'accident.",
+        cible: "sinistre-localite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-description",
+        titre: "Les circonstances (facultatif)",
+        texte: "Décrivez en quelques mots ce qui s'est passé dans « Description ».",
+        cible: "sinistre-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-cout",
+        titre: "Le coût estimé (facultatif)",
+        texte: "Indiquez le montant estimé des dégâts dans « Coût estimé ».",
+        cible: "sinistre-cout",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-numero",
+        titre: "Le numéro de sinistre (facultatif)",
+        texte: "Saisissez le numéro donné par votre assurance dans « N° de sinistre (assurance) ».",
+        cible: "sinistre-numero",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-pdf",
+        titre: "Le rapport de l'expert (facultatif)",
+        texte: "Joignez le rapport PDF de l'expert en assurance dans « PDF expert ».",
+        cible: "sinistre-pdf",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-creer",
+        titre: "Enregistrez le sinistre",
+        texte: "Cliquez sur « Créer le sinistre » pour enregistrer votre déclaration.",
+        cible: "sinistre-creer",
+        action: "disparition"
       }
     ]
   }

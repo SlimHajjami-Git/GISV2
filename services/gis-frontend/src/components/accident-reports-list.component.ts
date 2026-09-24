@@ -198,11 +198,11 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <div class="field-row">
               <div class="field">
                 <label>{{ textes.division }}</label>
-                <input type="text" [(ngModel)]="manualForm.locationGovernorate" [placeholder]="textes.exempleDivision">
+                <input type="text" [(ngModel)]="manualForm.locationGovernorate" [placeholder]="textes.exempleDivision" data-guide="sinistre-division">
               </div>
               <div class="field">
                 <label>{{ textes.localite }}</label>
-                <input type="text" [(ngModel)]="manualForm.locationCommune" [placeholder]="textes.exempleLocalite">
+                <input type="text" [(ngModel)]="manualForm.locationCommune" [placeholder]="textes.exempleLocalite" data-guide="sinistre-localite">
               </div>
             </div>
 
@@ -214,17 +214,17 @@ import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
             <div class="field-row">
               <div class="field">
                 <label>Coût estimé ({{ currencyCode }})</label>
-                <input type="number" [(ngModel)]="manualForm.estimatedCost" step="0.01" placeholder="0.00">
+                <input type="number" [(ngModel)]="manualForm.estimatedCost" step="0.01" placeholder="0.00" data-guide="sinistre-cout">
               </div>
               <div class="field">
                 <label>N° de sinistre (assurance)</label>
-                <input type="text" [(ngModel)]="manualForm.claimNumber" placeholder="AAS-2026-0123">
+                <input type="text" [(ngModel)]="manualForm.claimNumber" placeholder="AAS-2026-0123" data-guide="sinistre-numero">
               </div>
             </div>
 
             <div class="field">
               <label>PDF expert (facultatif)</label>
-              <input type="file" accept="application/pdf" (change)="onFile($event)">
+              <input type="file" accept="application/pdf" (change)="onFile($event)" data-guide="sinistre-pdf">
               <p class="hint">Joint au dossier en pièce jointe, visible dans la fiche du sinistre. Le rapport PDF du sinistre, lui, est produit par Calypso.</p>
               <p class="hint" *ngIf="manualPdf">📎 {{ manualPdf.name }} ({{ formatBytes(manualPdf.size) }})</p>
             </div>

@@ -488,7 +488,14 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     // on peut donc attendre ~6 s. L'ecran Echeances enchaine deux appels (vehicules,
     // puis echeances) avant d'afficher sa premiere ligne ; en developpement il
     // depassait les 3 s, et le tutoriel se refermait sans s'etre montre.
-    const limite = this.mode === 'ecran' && index === 0 ? 360 : navigation || index === 0 ? 180 : 30;
+    // Champ suivant d'une meme fiche (une bulle par champ, Karim 24/09/2026) : s'il
+    // n'est pas affiche (champs du leasing quand « Achat » est choisi), il ne le sera
+    // pas — on le saute en ~10 images au lieu de 30, sinon les temps morts s'additionnent.
+    const precedente = index > 0 ? this.etapes[index - 1] : undefined;
+    const limite = this.mode === 'ecran' && index === 0 ? 360
+      : navigation || index === 0 ? 180
+      : this.mode === 'ecran' && precedente?.action === 'valeur' ? 10
+      : 30;
     const aller = () => {
       if (this.detruit || generation !== this.generation) { return; }
       this.attendreCible(etape, 0, generation, limite);

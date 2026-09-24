@@ -474,7 +474,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <h4>Fournisseur / Garage</h4>
               <div class="supplier-select-row">
-                <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1">
+                <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1" data-guide="reparation-fournisseur">
                   <option value="">-- Aucun fournisseur --</option>
                   <option *ngFor="let s of suppliers" [value]="s.id">{{ s.name }} <span *ngIf="s.type">({{ s.type }})</span></option>
                 </select>
@@ -508,12 +508,12 @@ function dateSeule(d: string | null | undefined): string {
                 </div>
                 <div class="form-group">
                   <label>Compteur</label>
-                  <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km">
+                  <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km" data-guide="reparation-compteur">
                 </div>
               </div>
               <div class="form-group">
                 <label>Type d'intervention</label>
-                <select class="form-control" [(ngModel)]="form.repairType">
+                <select class="form-control" [(ngModel)]="form.repairType" data-guide="reparation-type">
                   <option value="">-- Non précisé (déduit de la description) --</option>
                   <option *ngFor="let t of repairTypes" [value]="t.value">{{ t.label }}</option>
                 </select>
@@ -525,7 +525,7 @@ function dateSeule(d: string | null | undefined): string {
               <div class="form-row">
                 <div class="form-group">
                   <label>N° Facture</label>
-                  <input type="text" class="form-control" [(ngModel)]="form.invoiceNumber" placeholder="FAC-XXXX">
+                  <input type="text" class="form-control" [(ngModel)]="form.invoiceNumber" placeholder="FAC-XXXX" data-guide="reparation-facture">
                 </div>
                 <div class="form-group" *ngIf="editingRepair">
                   <label>Statut</label>
@@ -569,8 +569,8 @@ function dateSeule(d: string | null | undefined): string {
                 </div>
                 <div class="parts-row" *ngFor="let part of form.parts; let i = index">
                   <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece" [attr.data-guide]="i === 0 ? 'reparation-piece-nom' : null">
-                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref">
-                  <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)">
+                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref" [attr.data-guide]="i === 0 ? 'reparation-piece-reference' : null">
+                  <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-quantite' : null">
                   <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-prix' : null">
                   <span class="col-subtotal">{{ part.subtotal | appCurrency }}</span>
                   <button class="col-action btn-remove" (click)="removePart(i)">×</button>
@@ -587,7 +587,7 @@ function dateSeule(d: string | null | undefined): string {
               <h4>Main d'oeuvre</h4>
               <div class="form-group">
                 <label>Cout main d'oeuvre ({{ currencyCode }})</label>
-                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
+                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00" data-guide="reparation-main-oeuvre">
               </div>
             </div>
 
@@ -611,7 +611,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <div class="form-group">
                 <label>Notes</label>
-                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..."></textarea>
+                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..." data-guide="reparation-notes"></textarea>
               </div>
             </div>
           </div>

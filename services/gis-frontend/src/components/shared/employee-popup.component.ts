@@ -55,23 +55,23 @@ import { Vehicle } from '../../models/types';
               </div>
               <div class="form-group">
                 <label for="email">Email</label>
-                <input type="email" id="email" name="email" [(ngModel)]="formData.email" placeholder="chauffeur@exemple.com (optionnel)" />
+                <input type="email" id="email" name="email" [(ngModel)]="formData.email" placeholder="chauffeur@exemple.com (optionnel)" data-guide="chauffeur-email" />
               </div>
               <div class="form-group">
                 <label for="phone">Téléphone</label>
-                <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+33 6 12 34 56 78" />
+                <input type="tel" id="phone" name="phone" [(ngModel)]="formData.phone" placeholder="+33 6 12 34 56 78" data-guide="chauffeur-telephone" />
               </div>
               <div class="form-group">
                 <label for="cin">N° de pièce d'identité</label>
-                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12AB34567" />
+                <input type="text" id="cin" name="cin" [(ngModel)]="formData.cin" placeholder="Ex: 12AB34567" data-guide="chauffeur-piece-identite" />
               </div>
               <div class="form-group">
                 <label for="dateOfBirth">Date de naissance</label>
-                <input type="date" id="dateOfBirth" name="dateOfBirth" [(ngModel)]="formData.dateOfBirth" />
+                <input type="date" id="dateOfBirth" name="dateOfBirth" [(ngModel)]="formData.dateOfBirth" data-guide="chauffeur-naissance" />
               </div>
               <div class="form-group">
                 <label for="hireDate">Date d'embauche</label>
-                <input type="date" id="hireDate" name="hireDate" [(ngModel)]="formData.hireDate" />
+                <input type="date" id="hireDate" name="hireDate" [(ngModel)]="formData.hireDate" data-guide="chauffeur-embauche" />
               </div>
             </div>
           </div>
@@ -88,11 +88,11 @@ import { Vehicle } from '../../models/types';
             <div class="form-grid">
               <div class="form-group">
                 <label for="permitNumber">N° Permis</label>
-                <input type="text" id="permitNumber" name="permitNumber" [(ngModel)]="formData.permitNumber" placeholder="Ex: 123456" />
+                <input type="text" id="permitNumber" name="permitNumber" [(ngModel)]="formData.permitNumber" placeholder="Ex: 123456" data-guide="chauffeur-permis-numero" />
               </div>
               <div class="form-group">
                 <label for="permitType">Catégorie</label>
-                <select id="permitType" name="permitType" [(ngModel)]="formData.permitType">
+                <select id="permitType" name="permitType" [(ngModel)]="formData.permitType" data-guide="chauffeur-permis-categorie">
                   <option value="">Sélectionner</option>
                   <option value="B">B - Véhicule léger</option>
                   <option value="C">C - Poids lourd</option>
@@ -107,7 +107,7 @@ import { Vehicle } from '../../models/types';
               </div>
               <div class="form-group">
                 <label for="permitReminderDays">Rappel avant (jours)</label>
-                <input type="number" id="permitReminderDays" name="permitReminderDays" [(ngModel)]="formData.permitReminderDays" placeholder="30" min="1" max="365" />
+                <input type="number" id="permitReminderDays" name="permitReminderDays" [(ngModel)]="formData.permitReminderDays" placeholder="30" min="1" max="365" data-guide="chauffeur-permis-rappel" />
               </div>
             </div>
           </div>
