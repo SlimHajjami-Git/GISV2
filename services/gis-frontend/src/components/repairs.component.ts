@@ -550,7 +550,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <div class="section-header">
                 <h4>Pieces detachees</h4>
-                <button class="btn-add-part" (click)="addPart()">
+                <button class="btn-add-part" (click)="addPart()" data-guide="reparation-piece-ajouter">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
@@ -568,10 +568,10 @@ function dateSeule(d: string | null | undefined): string {
                   <span class="col-action"></span>
                 </div>
                 <div class="parts-row" *ngFor="let part of form.parts; let i = index">
-                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece">
+                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece" [attr.data-guide]="i === 0 ? 'reparation-piece-nom' : null">
                   <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref">
                   <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)">
-                  <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)">
+                  <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-prix' : null">
                   <span class="col-subtotal">{{ part.subtotal | appCurrency }}</span>
                   <button class="col-action btn-remove" (click)="removePart(i)">×</button>
                 </div>
@@ -587,7 +587,7 @@ function dateSeule(d: string | null | undefined): string {
               <h4>Main d'oeuvre</h4>
               <div class="form-group">
                 <label>Cout main d'oeuvre ({{ currencyCode }})</label>
-                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00" data-guide="reparation-main-oeuvre">
+                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
               </div>
             </div>
 

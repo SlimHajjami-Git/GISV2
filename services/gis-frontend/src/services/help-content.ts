@@ -1413,18 +1413,34 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: 'valeur'
       },
       {
-        id: 'tuto-reparation-cout',
-        titre: 'Le coût',
-        // Prerempli a 0 : « Suivant » est actif d'emblee.
-        texte: "Saisissez le coût de la main-d'œuvre à la place du 0.",
-        cible: 'reparation-main-oeuvre',
+        id: 'tuto-reparation-piece-ajouter',
+        titre: 'La pièce',
+        // Karim, 24/09/2026 : faire saisir le cout de la PIECE (et non de la main-d'oeuvre).
+        // Une piece se saisit sur une ligne ajoutee par « Ajouter » (quantite 1 par defaut).
+        texte: "Cliquez sur « Ajouter » dans « Pieces detachees » : une ligne s'ajoute pour la pièce.",
+        cible: 'reparation-piece-ajouter',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-reparation-piece-nom',
+        titre: 'Le nom de la pièce',
+        texte: 'Saisissez le nom de la pièce, par exemple « Plaquettes de frein ».',
+        cible: 'reparation-piece-nom',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-reparation-piece-prix',
+        titre: 'Le coût de la pièce',
+        // Prerempli a 0 : un prix a 0 ne compte pas comme saisi (champRempli).
+        texte: "Saisissez son prix dans « Prix unit. ».",
+        cible: 'reparation-piece-prix',
         action: 'valeur'
       },
       {
         id: 'tuto-reparation-enregistrer',
         titre: 'Enregistrez la réparation',
         // « Modifier » n'est qu'une infobulle : c'est le crayon de la ligne.
-        texte: "Le reste est facultatif ou déjà prérempli (compteur, pièces, fournisseur…) : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Enregistrer ».",
+        texte: "Le reste est facultatif ou déjà prérempli (compteur, main-d'œuvre, fournisseur…) : vous pourrez le compléter plus tard avec le crayon de sa ligne. Cliquez sur « Enregistrer ».",
         cible: 'reparation-enregistrer',
         action: 'disparition'
       }

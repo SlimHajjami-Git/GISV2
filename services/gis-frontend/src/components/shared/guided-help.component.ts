@@ -332,6 +332,9 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
       return Array.from(el.querySelectorAll('input, select, textarea')).some(c => this.champRempli(c as HTMLElement));
     }
     const v = (el as HTMLInputElement | HTMLSelectElement).value;
+    // Un montant prerempli a 0 (prix d'une piece, montant d'une depense) n'est pas
+    // une saisie : « Suivant » attend un vrai prix (Karim, 24/09/2026).
+    if ((el as HTMLInputElement).type === 'number' && Number(v) === 0) { return false; }
     return typeof v === 'string' && v.trim() !== '' && v !== 'null' && !/^\d+:\s*null$/.test(v);
   }
 
@@ -519,7 +522,12 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
         // Champ deja rempli (retour par « Precedent ») : Suivant actif d'emblee.
         // Le curseur y est pose : le client tape sans avoir a cliquer.
         this.valeurSaisie = this.champRempli(cible);
-        this.champAFocaliser(cible).focus?.({ preventScroll: true });
+        const champ = this.champAFocaliser(cible);
+        champ.focus?.({ preventScroll: true });
+        // 0 prerempli : selectionne, la frappe le remplace (sinon « 45 » donnait « 045 »).
+        if ((champ as HTMLInputElement).type === 'number' && Number((champ as HTMLInputElement).value) === 0) {
+          try { (champ as HTMLInputElement).select(); } catch { /* navigateur qui refuse select() sur un nombre */ }
+        }
       }
       this.conteneur = this.conteneurDefilant(cible);
       this.cibleTrouvee = true;

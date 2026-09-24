@@ -1022,3 +1022,28 @@ describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
     expect(guide.componentInstance.actif).toBe(false);
   });
 });
+
+describe('Tutoriels — un montant laissé à 0 n\'est pas une saisie', () => {
+  // Karim, 24/09/2026 : le tutoriel Réparations fait saisir le coût de la pièce,
+  // prérempli à 0 ; « Suivant » doit attendre un vrai prix.
+  it('champ numérique : 0 = vide, 45 = rempli ; un groupe suit la même règle', () => {
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: { getCurrentUserSync: () => null, getCurrentUser: () => new BehaviorSubject<any>(null).asObservable() } },
+        { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => false, hasReportAccess: () => true } }
+      ]
+    });
+    const c = TestBed.createComponent(GuidedHelpComponent).componentInstance as any;
+    const prix = document.createElement('input');
+    prix.type = 'number';
+    prix.value = '0';
+    expect(c.champRempli(prix)).toBe(false);
+    prix.value = '45';
+    expect(c.champRempli(prix)).toBe(true);
+    const texte = document.createElement('input');
+    texte.value = '0';                                  // un texte « 0 » reste une saisie
+    expect(c.champRempli(texte)).toBe(true);
+  });
+});
