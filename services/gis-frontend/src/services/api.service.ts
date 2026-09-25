@@ -56,7 +56,7 @@ export interface PositionDto {
   isRealTime?: boolean;
   temperatureC?: number;
   batteryLevel?: number;
-  /** Decoded volts (PowerVoltage byte * 0.3) — preferred on monitoring. */
+  /** Volts calculés par le serveur — NEMS : minimum du jour de l'octet « Batterie » (34-36). */
   batteryVoltage?: number;
   /** Accelerometer (MEMS) raw values clamped to [-128 ; 127]. Used by the
    * accident report to reconstruct second-shock, sustained tilt (rollover)
@@ -82,6 +82,10 @@ export interface VehicleStatsDto {
   lastMoveTime?: string;
   /** Timestamp of the last frame with ignition_on=true. After this point the engine has been off. */
   engineOffSince?: string;
+  /** NEMS : batteryVoltage/batteryLevel sont le MINIMUM du jour (heure de Tunis), pas la dernière trame. */
+  batteryIsDailyMin?: boolean;
+  /** Fin (exclue, UTC) de la journée de ce minimum : au-delà, il n'est plus affiché. */
+  batteryDayEndUtc?: string;
 }
 
 export interface VehicleWithPositionDto {

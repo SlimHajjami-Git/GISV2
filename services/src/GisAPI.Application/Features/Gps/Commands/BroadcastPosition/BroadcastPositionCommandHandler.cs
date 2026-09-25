@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Domain.Common;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -21,12 +22,13 @@ public record DeviceCacheEntry(
     int FuelTankCapacity,
     int? SpeedLimit,
     bool IsImmobilized,
-    // Verdict de VoltageSensorAuditService. Faux pour la grande majorité des
-    // boîtiers, dont le capteur renvoie une valeur constante sans rapport avec
-    // la batterie : on ne diffuse alors NI tension NI pourcentage, sinon le
+    // Verdict de VoltageSensorAuditService, pour les protocoles autres que NEMS
+    // (Teltonika) : faux → on ne diffuse NI tension NI pourcentage, sinon le
     // temps réel réécrirait par-dessus le silence voulu par le chemin REST.
+    // Les NEMS n'en dépendent plus (voir LiveBattery).
     bool VoltageSensorReliable,
-    DateTime CachedAt
+    DateTime CachedAt,
+    string? ProtocolType = null
 );
 
 /// <summary>
@@ -142,7 +144,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
                 device.Vehicle?.SpeedLimit,
                 device.Vehicle?.IsImmobilized ?? false,
                 device.VoltageSensorReliable == true,
-                DateTime.UtcNow);
+                DateTime.UtcNow,
+                device.ProtocolType);
             _deviceCache[request.DeviceUid] = cached;
         }
 
@@ -167,6 +170,10 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             if (fuelLevel < 0) fuelLevel = 0;
         }
 
+        var (liveBatteryVoltage, liveBatteryPercent) = LiveBattery(
+            cached.ProtocolType, cached.VoltageSensorReliable,
+            request.BatteryRaw, request.BatteryVoltage, request.BatteryPercent);
+
         // Prepare position update DTO
         var positionUpdate = new VehiclePositionUpdateDto
         {
@@ -182,8 +189,8 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             IgnitionOn = ignitionOn,
             IsMoving = ignitionOn && speed >= SPEED_THRESHOLD,
             FuelRaw = fuelLevel,
-            BatteryVoltage = cached.VoltageSensorReliable ? request.BatteryVoltage : null,
-            BatteryPercent = cached.VoltageSensorReliable ? request.BatteryPercent : null,
+            BatteryVoltage = liveBatteryVoltage,
+            BatteryPercent = liveBatteryPercent,
             TemperatureC = request.TemperatureC,
             RecordedAt = request.RecordedAt,
             Timestamp = now
@@ -394,6 +401,35 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
             VehicleId: cached.VehicleId,
             SkipReason: null
         );
+    }
+
+    /// <summary>
+    /// Tension et pourcentage diffusés en temps réel pour une trame.
+    ///
+    /// <para><b>NEMS</b> : calculés depuis l'octet « Batterie » brut de la trame,
+    /// avec le même tri que le monitoring (<see cref="VoltageScale.NemsMeaningfulVolts"/>),
+    /// sans consulter l'audit. Hors plage (octet de cap R00C30d, 0 = pas de mesure,
+    /// octet absent) → rien n'est diffusé, l'écran garde son minimum du jour. Le
+    /// <c>batteryVoltage</c> de Redis n'est pas repris : il recopie la valeur
+    /// précédente quand l'octet vaut 0. L'écran ne fait que BAISSER son minimum avec
+    /// cette valeur (monitoring-battery.helpers.ts).</para>
+    ///
+    /// <para><b>Autres protocoles</b> : inchangé — valeurs reçues, seulement si
+    /// l'audit a validé le capteur.</para>
+    /// </summary>
+    public static (double? Volts, int? Percent) LiveBattery(
+        string? protocolType, bool voltageSensorReliable,
+        int? batteryRaw, double? batteryVoltage, int? batteryPercent)
+    {
+        if (VoltageScale.IsNems(protocolType))
+        {
+            var volts = VoltageScale.NemsMeaningfulVolts(batteryRaw);
+            return volts == null
+                ? (null, null)
+                : (Math.Round(volts.Value, 1), VoltageScale.BatteryPercent(volts.Value));
+        }
+
+        return voltageSensorReliable ? (batteryVoltage, batteryPercent) : (null, null);
     }
 
     private static DeviceCacheEntry? GetCachedDevice(string deviceUid)

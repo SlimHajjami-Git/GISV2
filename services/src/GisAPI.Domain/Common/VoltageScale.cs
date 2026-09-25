@@ -68,6 +68,63 @@ public static class VoltageScale
     /// </summary>
     public const double AlternatorCeilingV = 14.4;
 
+    /// <summary>Le boîtier parle-t-il le protocole NEMS ?</summary>
+    public static bool IsNems(string? protocolType) =>
+        string.Equals(protocolType, NemsProtocol, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Plage des valeurs brutes de l'octet « Batterie » (34-36) qui sont une vraie
+    /// tension : 45 (7,03 V) à 92 (14,375 V).
+    ///
+    /// <para><b>Pourquoi ces bornes, et pourquoi on juge la valeur et plus le
+    /// boîtier</b> (Karim, 25/09/2026). Les firmwares R00C30d recopient l'octet de
+    /// cap dans ce champ : 0 à 44 brut, soit 0 à 6,9 V. Les R00C32a et FMS envoient
+    /// une vraie tension. Relevé sur toute la flotte NEMS TN, 24 h du 24 au 25/09 :
+    /// ≈192 000 trames entre 0 et 44, puis presque rien entre 45 et 69, puis la
+    /// batterie entre 70 et 89 — aucune au-delà. Trier la valeur suffit donc, sans
+    /// connaître le firmware (que la base ne connaît d'ailleurs pas :
+    /// <c>firmware_version</c> vaut « L » partout). Un boîtier qui change de
+    /// firmware dans la journée ne voit pas ses anciennes valeurs polluer son
+    /// minimum.</para>
+    ///
+    /// <para>Conséquence assumée : une batterie réellement sous 7 V s'affiche N/A,
+    /// car elle ne se distingue pas de l'octet de cap. Décision de Karim.</para>
+    /// </summary>
+    public const int NemsBatteryMeaningfulMinRaw = 45;
+    public const int NemsBatteryMeaningfulMaxRaw = 92;
+
+    /// <summary>
+    /// Seuil de l'icône « Anomalie batterie » du monitoring pour les NEMS : minimum
+    /// du jour de l'octet 34-36 sous 11,5 V (Karim, 25/09/2026). Remplace, à
+    /// l'écran seulement, l'alerte calculée sur l'octet 32-34.
+    /// </summary>
+    public const double NemsBatteryLowWarningV = 11.5;
+
+    /// <summary>
+    /// Tension en volts d'une valeur brute de l'octet « Batterie », ou <c>null</c>
+    /// si la valeur n'a pas de sens (absente, 0, octet de cap R00C30d, hors échelle).
+    /// Non arrondie.
+    /// </summary>
+    public static double? NemsMeaningfulVolts(int? raw) =>
+        raw is >= NemsBatteryMeaningfulMinRaw and <= NemsBatteryMeaningfulMaxRaw
+            ? raw.Value * NemsBatteryFactor
+            : null;
+
+    /// <summary>Bornes de l'échelle du pourcentage de charge d'une batterie 12 V.</summary>
+    public const double BatteryEmptyV = 11.0;
+    public const double BatteryFullV = 12.8;
+
+    /// <summary>
+    /// Pourcentage de charge affiché à côté de la tension : 0 % à 11,0 V ou moins,
+    /// 100 % à 12,8 V ou plus, linéaire entre les deux.
+    /// </summary>
+    public static int BatteryPercent(double volts)
+    {
+        if (volts <= BatteryEmptyV) return 0;
+        if (volts >= BatteryFullV) return 100;
+        return (int)Math.Round((volts - BatteryEmptyV) / (BatteryFullV - BatteryEmptyV) * 100.0);
+    }
+
     /// <summary>
     /// Bande plausible pour une batterie 12 V. Hors de cette bande, l'échelle est
     /// fausse (ou le véhicule n'est pas en 12 V) et le pourcentage, calibré

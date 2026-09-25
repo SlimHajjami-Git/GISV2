@@ -182,6 +182,19 @@ public class VehiclesController : ControllerBase
                                                           || vehicle.Stats?.BatteryLevel != null;
                                     if (!batteryDisplayable) cachedVoltage = null;
 
+                                    // NEMS : le handler a calculé le MINIMUM du jour de l'octet
+                                    // « Batterie » (Karim, 25/09/2026). Redis ne porte que la trame
+                                    // courante — parfois même une valeur recopiée quand l'octet vaut 0
+                                    // (redis_cache.rs) : la reprendre remplacerait le minimum par la
+                                    // dernière valeur à chaque rafraîchissement. On garde celui du handler.
+                                    var keepDailyMin = vehicle.Stats?.BatteryIsDailyMin == true;
+                                    int? positionBatteryLevel = keepDailyMin
+                                        ? dbPos?.BatteryLevel ?? vehicle.Stats!.BatteryLevel
+                                        : batteryDisplayable ? (cached.BatteryPercent ?? dbPos?.BatteryLevel) : null;
+                                    double? positionBatteryVoltage = keepDailyMin
+                                        ? dbPos?.BatteryVoltage ?? vehicle.Stats!.BatteryVoltage
+                                        : cachedVoltage;
+
                                     var updatedPosition = new GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.PositionDto(
                                         dbPos?.Id ?? 0,
                                         cached.Latitude,
@@ -192,10 +205,10 @@ public class VehiclesController : ControllerBase
                                         cached.RecordedAt,
                                         cached.FuelRaw != 0 ? cached.FuelRaw : dbPos?.FuelRaw,
                                         (short?)(cached.TemperatureC ?? dbPos?.TemperatureC),
-                                        batteryDisplayable ? (cached.BatteryPercent ?? dbPos?.BatteryLevel) : null,
+                                        positionBatteryLevel,
                                         dbPos?.Address,
                                         cached.OdometerKm ?? dbPos?.OdometerKm,
-                                        cachedVoltage
+                                        positionBatteryVoltage
                                     );
                                     
                                     // Create updated vehicle with cached position
@@ -216,12 +229,16 @@ public class VehiclesController : ControllerBase
                                                 CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
                                                 FuelLevel = updatedFuelLevel,
                                                 Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
-                                                BatteryLevel = batteryDisplayable
-                                                    ? (cached.BatteryPercent ?? vehicle.Stats.BatteryLevel)
-                                                    : null,
-                                                BatteryVoltage = batteryDisplayable
-                                                    ? (cachedVoltage ?? vehicle.Stats.BatteryVoltage)
-                                                    : null,
+                                                BatteryLevel = keepDailyMin
+                                                    ? vehicle.Stats.BatteryLevel
+                                                    : batteryDisplayable
+                                                        ? (cached.BatteryPercent ?? vehicle.Stats.BatteryLevel)
+                                                        : null,
+                                                BatteryVoltage = keepDailyMin
+                                                    ? vehicle.Stats.BatteryVoltage
+                                                    : batteryDisplayable
+                                                        ? (cachedVoltage ?? vehicle.Stats.BatteryVoltage)
+                                                        : null,
                                                 IsMoving = cached.IgnitionOn && cached.SpeedKph > 5,
                                                 IsStopped = !cached.IgnitionOn || cached.SpeedKph <= 5,
                                                 // Fresh frame is ignition-on → engine is currently

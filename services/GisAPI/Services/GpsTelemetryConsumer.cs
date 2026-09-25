@@ -213,7 +213,8 @@ public class GpsTelemetryConsumer : BackgroundService
                 CourseDeg: telemetry.CourseDeg,
                 IgnitionOn: telemetry.IgnitionOn,
                 RecordedAt: telemetry.RecordedAt,
-                AlertType: telemetry.AlertType
+                AlertType: telemetry.AlertType,
+                BatteryRaw: telemetry.BatteryRaw
             );
 
             var result = await mediator.Send(command);
@@ -297,6 +298,12 @@ public class TelemetryMessage
     
     [System.Text.Json.Serialization.JsonPropertyName("alert_type")]
     public string? AlertType { get; set; }
+
+    // Octet « Batterie » (34-36) brut (publisher.rs). Sans lui, une trame arrivée
+    // ici avant sa copie Redis était diffusée sans batterie, et le déduplicateur du
+    // Broadcast écartait ensuite la copie Redis : un nouveau minimum se perdait.
+    [System.Text.Json.Serialization.JsonPropertyName("battery_raw")]
+    public int? BatteryRaw { get; set; }
 }
 
 

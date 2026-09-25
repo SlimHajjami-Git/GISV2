@@ -182,4 +182,58 @@ public class VoltageScaleTests
         VoltageScale.EvaluateSensor("teltonika", drivingMedian: 141, restingMedian: 127,
             drivingFrames, restingFrames).Should().BeNull();
     }
+
+    // ── Tri de la valeur de l'octet « Batterie » (25/09/2026) ───────────────
+    //
+    // Flotte NEMS TN, 24 h du 24 au 25/09 : ≈192 000 trames entre 0 et 44 (octet de
+    // cap des R00C30d), presque rien entre 45 et 69, la batterie entre 70 et 89.
+
+    [Theory]
+    [InlineData("gps_type_1", true)]
+    [InlineData("GPS_TYPE_1", true)]
+    [InlineData("teltonika", false)]
+    [InlineData(null, false)]
+    public void IsNems_ReconnaitLeProtocoleSansTenirCompteDeLaCasse(string? protocol, bool attendu)
+    {
+        VoltageScale.IsNems(protocol).Should().Be(attendu);
+    }
+
+    [Theory]
+    [InlineData(44)]   // plus haute valeur de l'octet de cap (359° / 8)
+    [InlineData(21)]   // cap relevé sur un R00C30d le 24/09
+    [InlineData(0)]    // pas de mesure
+    [InlineData(93)]   // au-delà du plafond d'alternateur
+    [InlineData(255)]
+    public void NemsMeaningfulVolts_ValeurSansSens_RetourneNull(int raw)
+    {
+        VoltageScale.NemsMeaningfulVolts(raw).Should().BeNull();
+    }
+
+    [Fact]
+    public void NemsMeaningfulVolts_OctetAbsent_RetourneNull()
+    {
+        VoltageScale.NemsMeaningfulVolts(null).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(45, 7.031)]    // borne basse incluse
+    [InlineData(74, 11.5625)]
+    [InlineData(80, 12.5)]
+    [InlineData(92, 14.375)]   // borne haute incluse, sous 14,4 V
+    public void NemsMeaningfulVolts_VraieTension_EstConvertieAu40VSur256(int raw, double volts)
+    {
+        VoltageScale.NemsMeaningfulVolts(raw).Should().BeApproximately(volts, 0.001);
+    }
+
+    [Theory]
+    [InlineData(10.9, 0)]
+    [InlineData(11.0, 0)]
+    [InlineData(11.5625, 31)]
+    [InlineData(12.5, 83)]
+    [InlineData(12.8, 100)]
+    [InlineData(13.9, 100)]
+    public void BatteryPercent_EchelleLineaireDe11A12Virgule8V(double volts, int pourcentage)
+    {
+        VoltageScale.BatteryPercent(volts).Should().Be(pourcentage);
+    }
 }

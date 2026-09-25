@@ -205,7 +205,8 @@ public class RabbitMqConsumerService : BackgroundService
                 SpeedKph: msg.SpeedKph,
                 CourseDeg: msg.HeadingDeg,
                 IgnitionOn: msg.IgnitionOn,
-                RecordedAt: msg.RecordedAt
+                RecordedAt: msg.RecordedAt,
+                BatteryRaw: msg.BatteryRaw
             );
 
             var result = await mediator.Send(command, ct);
@@ -275,5 +276,7 @@ public class RabbitMqGpsMessage
     public bool IgnitionOn { get; set; }
     public int FuelRaw { get; set; }
     public double PowerVoltage { get; set; }
+    /// <summary>Octet « Batterie » (34-36) brut, lu en snake_case : « battery_raw ».</summary>
+    public int? BatteryRaw { get; set; }
     public string? RawPayload { get; set; }
 }

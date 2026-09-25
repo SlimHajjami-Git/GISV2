@@ -52,11 +52,10 @@ public record PositionDto(
     int? BatteryLevel,
     string? Address,
     long? OdometerKm,
-    // Decoded battery voltage in volts (PowerVoltage byte * 0.3, the
-    // empirical NEMS L 12V-system calibration). Computed server-side
-    // and exposed alongside BatteryLevel so the frontend can show
-    // either readout — the operator likes V on monitoring but % on
-    // the device-overview screen.
+    // Tension batterie en volts, calculée côté serveur (voir BatteryReadout) :
+    // NEMS = minimum du jour de l'octet « Batterie » (34-36) × 40/256 ;
+    // Teltonika = power_voltage × 0,1 de la dernière trame. Exposée à côté de
+    // BatteryLevel : l'exploitant préfère les volts au monitoring.
     double? BatteryVoltage
 );
 
@@ -80,5 +79,12 @@ public record VehicleStatsDto(
     // Everything after that point the engine has been off — drives the
     // "moteur coupé depuis X min" copy on the monitoring detail panel.
     // Null when the vehicle has no recorded ignition-on frame.
-    DateTime? EngineOffSince
+    DateTime? EngineOffSince,
+    // NEMS : BatteryVoltage/BatteryLevel sont le MINIMUM du jour (minuit →
+    // minuit, heure de Tunis), et non la dernière trame. Le temps réel ne doit
+    // alors que les faire baisser, jamais les remplacer.
+    bool BatteryIsDailyMin = false,
+    // Fin (exclue) de la journée de ce minimum, en UTC. Passé cet instant,
+    // l'écran n'affiche plus le minimum d'hier.
+    DateTime? BatteryDayEndUtc = null
 );

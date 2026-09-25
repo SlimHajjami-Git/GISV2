@@ -19,7 +19,11 @@ public record BroadcastPositionCommand(
     int? FuelRaw = null,
     double? BatteryVoltage = null,
     int? BatteryPercent = null,
-    int? TemperatureC = null
+    int? TemperatureC = null,
+    // Octet « Batterie » (34-36) brut de la trame. Pour un NEMS, c'est lui — et non
+    // BatteryVoltage, que Redis recopie quand l'octet vaut 0 — qui donne la tension
+    // diffusée (voir BroadcastPositionCommandHandler.LiveBattery).
+    int? BatteryRaw = null
 ) : ICommand<BroadcastPositionResult>;
 
 public record BroadcastPositionResult(
