@@ -271,9 +271,8 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private fenetre = { w: 0, h: 0 };
   /**
    * Page ou « Terminer » du parcours vient de deposer le client. Il sort d'une
-   * visite de sept bulles : on ne lui en impose pas une deuxieme sur-le-champ, qui
-   * repeterait en plus l'etape « Ajoutez votre premier vehicule ». Le guide de
-   * l'ecran viendra au prochain acces (relecture du 24/09/2026).
+   * visite de plusieurs bulles : on ne lui en impose pas une deuxieme sur-le-champ.
+   * Le guide de l'ecran viendra au prochain acces (relecture du 24/09/2026).
    */
   private arriveeFinParcours: string | null = null;
   /** Hauteur reelle de la bulle, mesuree une fois affichee (les textes longs depassent 210 px). */
@@ -326,6 +325,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private conteneur: HTMLElement | null = null;
   /** Pose dans ngOnDestroy : plus aucune navigation ni boucle d'attente ensuite. */
   private detruit = false;
+  /**
+   * Premiers pas (GPA) : pause entre la fin du guide d'un ecran et l'ouverture du
+   * suivant, pour que le client voie sa fiche enregistree dans la liste.
+   */
+  delaiEnchainement = 1500;
   /**
    * Numero de l'etape en cours de recherche. Une navigation terminee ou une
    * boucle d'attente lancee pour une etape PRECEDENTE (« Suivant » clique deux
@@ -483,13 +487,15 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * elle sera reproposee au prochain chargement de l'application (pas a la page
    * suivante, voir HelpService.dejaProposee). Seuls "Passer" et "Terminer", qui
    * sont des gestes deliberes, valent definitivement non.
-   * Un guide d'ecran ferme par Echap revient au prochain acces a l'ecran.
+   * Un guide d'ecran ferme par Echap revient au prochain acces a l'ecran ; pendant
+   * les premiers pas, le client n'est plus emmene a l'ecran suivant.
    */
   @HostListener('window:keydown.escape') auEchap(): void {
     if (!this.actif && !this.conseilOuvert) { return; }
     const mode = this.conseilOuvert ? 'parcours' : this.mode;
     this.arreter();
     if (mode === 'parcours') { this.help.fermerGuide(false); }
+    else if (this.help.premiersPasEnCours()) { this.help.arreterPremiersPas(); }
     this.cdr.detectChanges();
   }
 
@@ -518,14 +524,58 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
       setTimeout(() => (this.hote.nativeElement.querySelector('.conseil-bouton') as HTMLElement | null)?.focus());
       return;
     }
+    // GPA : plus de visite, les premiers pas la remplacent (Karim, 25/09/2026).
+    if (this.help.offreGpa()) { this.lancerPremiersPas(); return; }
     this.lancer('parcours', null, this.help.etapesGuide());
   }
 
-  /** « C'est compris, on commence » : le conseil laisse la place a la visite. */
+  /**
+   * « C'est compris, on commence » : en GPA, le client est emmene sur le premier
+   * ecran des premiers pas (Vehicules), ou son guide demarre ; en GPS, la visite.
+   */
   commencerApresConseil(): void {
     this.conseilOuvert = false;
-    this.lancer('parcours', null, this.help.etapesGuide());
+    if (this.help.offreGpa()) { this.lancerPremiersPas(); }
+    else { this.lancer('parcours', null, this.help.etapesGuide()); }
     this.cdr.detectChanges();
+  }
+
+  /**
+   * Premiers pas (GPA) : « on le ramene directement sur le premier ecran "vehicules",
+   * apres "chauffeurs", apres "programme d'entretien" » (Karim, 25/09/2026). Le client
+   * est emmene sur l'ecran du premier guide qu'il lui reste ; la fin de chaque guide
+   * l'emmene au suivant (terminer).
+   */
+  private lancerPremiersPas(): void {
+    const route = this.help.commencerPremiersPas();
+    if (route) { this.allerSurEcran(route); }
+  }
+
+  /**
+   * Ouvre l'ecran d'un guide des premiers pas : son guide demarre a l'arrivee
+   * (auChangementDePage). Deja sur cet ecran, le routeur ne signale aucune
+   * navigation : on le demarre ici.
+   */
+  private allerSurEcran(route: string): void {
+    this.router.navigateByUrl(route).then(() => {
+      if (!this.detruit && !this.actif && !this.conseilOuvert) {
+        this.auChangementDePage(this.router.url);
+      }
+    });
+  }
+
+  /**
+   * Guide d'un ecran des premiers pas termine : l'ecran suivant s'ouvre apres une
+   * courte pause. Rien ne se fait si, entre-temps, un autre guide a demarre ou si
+   * le client a quitte l'ecran de lui-meme (menu, retour du navigateur).
+   */
+  private enchainer(visite: VisiteEcran, route: string): void {
+    const generation = this.generation;
+    setTimeout(() => {
+      if (this.detruit || generation !== this.generation || this.actif || this.conseilOuvert) { return; }
+      if (!this.help.estSurSonEcran(visite, this.router.url)) { return; }
+      this.allerSurEcran(route);
+    }, this.delaiEnchainement);
   }
 
   private demarrerEcran(visite: VisiteEcran): void {
@@ -546,8 +596,8 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   suivant(): void {
     if (this.index >= this.etapes.length - 1) {
       // « Terminer » : on ferme, puis on depose le client la ou son parcours
-      // se poursuit (Vehicules en GPA, Suivi en direct en GPS). « Passer », lui,
-      // ne deplace pas : le client a voulu s'arreter la ou il est.
+      // se poursuit (Suivi en direct en GPS ; en GPA, l'ecran suivant des premiers
+      // pas). « Passer », lui, ne deplace pas : le client a voulu s'arreter la ou il est.
       const arrivee = this.mode === 'parcours' ? this.etapes[this.index]?.routeApresFin : undefined;
       this.terminer();
       if (arrivee) {
@@ -580,8 +630,15 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     if (i >= 0) { this.allerA(i); }
   }
 
-  /** "Passer" et "Terminer" ont le meme effet : on ne represente plus la visite. */
-  passer(): void { this.terminer(); }
+  /**
+   * "Passer" et "Terminer" ont le meme effet : on ne represente plus la visite.
+   * Pendant les premiers pas, « Passer » les arrete aussi : le client reste sur cet
+   * ecran, et le guide de chaque autre ecran l'attendra quand il l'ouvrira.
+   */
+  passer(): void {
+    if (this.mode === 'ecran' && this.help.premiersPasEnCours()) { this.help.arreterPremiersPas(); }
+    this.terminer();
+  }
 
   private terminer(): void {
     const mode = this.mode;
@@ -589,7 +646,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     const montree = this.etapeMontree;
     this.arreter();
     if (mode === 'parcours') { this.help.fermerGuide(true); }
-    else if (visite && montree) { this.help.marquerEcranVu(visite.id); }
+    else if (visite && montree) {
+      this.help.marquerEcranVu(visite.id);
+      const suite = this.help.suiteDesPremiersPas(visite.id);
+      if (suite) { this.enchainer(visite, suite); }
+    }
     this.cdr.detectChanges();
   }
 

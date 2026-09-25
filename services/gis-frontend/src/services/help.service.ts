@@ -3,7 +3,7 @@ import { BehaviorSubject } from 'rxjs';
 import { AuthService } from './auth.service';
 import { PermissionService, ModuleKey } from './permission.service';
 import { HelpArticle, HelpModule, GuideEtape, VisiteEcran } from './help-content.model';
-import { ARTICLES_AIDE, ETAPES_GUIDE, VISITES_ECRANS } from './help-content';
+import { ARTICLES_AIDE, ETAPES_GUIDE, VISITES_ECRANS, PREMIERS_PAS_GPA } from './help-content';
 
 /** Cle localStorage : on versionne pour pouvoir rejouer la visite apres une refonte. */
 const CLE_ETAT = 'calypso_aide_v1';
@@ -39,6 +39,11 @@ interface EtatAide {
   ecransVus?: string[];
   /** Conseil de premiere connexion deja lu : il ne revient plus jamais. */
   conseilVu?: boolean;
+  /**
+   * Premiers pas en cours (offre GPA) : chaque guide termine emmene a l'ecran
+   * suivant. Retenu ici pour survivre a un rafraichissement de la page.
+   */
+  premiersPas?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -174,8 +179,12 @@ export class HelpService {
 
   // ------------------------------------------------------------ Visite guidee
 
-  /** Etapes pertinentes pour ce client : on saute les modules non souscrits. */
+  /**
+   * Etapes pertinentes pour ce client : on saute les modules non souscrits. Aucune
+   * en GPA : les premiers pas y remplacent la visite (Karim, 25/09/2026).
+   */
   etapesGuide(): GuideEtape[] {
+    if (this.offreGpa()) return [];
     return ETAPES_GUIDE.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
   }
 
@@ -217,9 +226,11 @@ export class HelpService {
    */
   doitProposerLeGuide(): boolean {
     const cle = this.cleUtilisateur();
-    return !this.dejaProposee.has(cle)
-      && !this.termineeEnMemoire.has(cle)
-      && !this.lireEtat().guideTermine;
+    if (this.dejaProposee.has(cle)) return false;
+    // GPA : plus de visite (Karim, 25/09/2026). Reste le conseil de premiere
+    // connexion, dont le bouton lance les premiers pas.
+    if (this.offreGpa()) return this.conseilAMontrer();
+    return !this.termineeEnMemoire.has(cle) && !this.lireEtat().guideTermine;
   }
 
   /** Proposition automatique de premiere connexion : sans effet si elle n'a plus lieu d'etre. */
@@ -241,18 +252,26 @@ export class HelpService {
     }
   }
 
-  /** Permet au client de refaire la visite depuis le bouton "?". Les guides d'ecran vus le restent. */
+  /**
+   * Permet au client de refaire la visite depuis l'Aide. Les guides d'ecran vus le
+   * restent — sauf, en GPA, ceux des premiers pas, que ce bouton rejoue.
+   */
   reinitialiserGuide(): void {
-    this.termineeEnMemoire.delete(this.cleUtilisateur());
+    const cle = this.cleUtilisateur();
+    this.termineeEnMemoire.delete(cle);
+    const modification: Partial<EtatAide> = { guideTermine: false, dateFin: undefined };
+    if (this.offreGpa()) {
+      PREMIERS_PAS_GPA.forEach(id => this.ecransVusEnMemoire.delete(cle + '|' + id));
+      modification.ecransVus = (this.lireEtat().ecransVus || []).filter(id => !PREMIERS_PAS_GPA.includes(id));
+    }
     // EN DEVELOPPEMENT SEULEMENT (isDevMode, faux dans l'image de production) : le
     // conseil de premiere connexion revient aussi, pour que Karim puisse le revoir
     // en local (25/09/2026). Chez un client, il reste affiche une seule fois.
     if (this.enDeveloppement()) {
-      this.conseilVuEnMemoire.delete(this.cleUtilisateur());
-      this.modifierEtat({ guideTermine: false, dateFin: undefined, conseilVu: false });
-    } else {
-      this.modifierEtat({ guideTermine: false, dateFin: undefined });
+      this.conseilVuEnMemoire.delete(cle);
+      modification.conseilVu = false;
     }
+    this.modifierEtat(modification);
     this.ouvrirGuide();
   }
 
@@ -326,10 +345,17 @@ export class HelpService {
     // sans guide (le tableau de bord, ou la connexion depose le client).
     const nouveau = this.estNouvelUtilisateur();
     const visite = VISITES_ECRANS.find(v => this.estSurSonEcran(v, url));
-    if (!visite || !nouveau || !this.guidePourCetteOffre(visite)) return null;
-    if (this.ecranVu(visite.id) || this.doitProposerLeGuide()) return null;
-    const etapes = visite.etapes.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
-    return etapes.length ? { ...visite, etapes } : null;
+    if (!visite || !nouveau) return null;
+    const pourLui = this.pourCeClient(visite);
+    if (!pourLui || this.ecranVu(visite.id) || this.doitProposerLeGuide()) return null;
+    return pourLui;
+  }
+
+  /** Le guide tel que ce client le recoit (etapes de son offre et de son profil), ou null s'il n'en a pas. */
+  private pourCeClient(v: VisiteEcran): VisiteEcran | null {
+    if (!this.guidePourCetteOffre(v)) return null;
+    const etapes = v.etapes.filter(e => this.pourCetteOffre(e) && this.pourCeProfil(e));
+    return etapes.length ? { ...v, etapes } : null;
   }
 
   /**
@@ -377,6 +403,67 @@ export class HelpService {
     const prefixe = this.cleUtilisateur() + '|';
     this.ecransVusEnMemoire.forEach(c => { if (c.startsWith(prefixe)) this.ecransVusEnMemoire.delete(c); });
     this.modifierEtat({ ecransVus: [] });
+  }
+
+  // ------------------------------------------------ Premiers pas (offre GPA)
+
+  /**
+   * Offre GPA (gestion de parc sans boitier) : l'abonnement ne comprend pas la carte
+   * en direct. L'abonnement, pas les droits : un utilisateur d'une societe GPS sans
+   * acces a la carte reste un client GPS.
+   */
+  offreGpa(): boolean {
+    return !this.permissions.abonnementComprend('monitoring');
+  }
+
+  /** Meme filet que termineeEnMemoire ; la valeur ecrite en dernier fait foi. */
+  private premiersPasEnMemoire = new Map<string, boolean>();
+
+  /**
+   * Ecrans des premiers pas que ce nouvel utilisateur peut faire, dans l'ordre, vus
+   * ou non. Enjambe ceux qu'il n'a pas : Vehicules est reserve a l'administrateur.
+   */
+  premiersPasDuClient(): VisiteEcran[] {
+    if (!this.offreGpa() || !this.estNouvelUtilisateur()) return [];
+    return PREMIERS_PAS_GPA
+      .map(id => VISITES_ECRANS.find(v => v.id === id))
+      .filter((v): v is VisiteEcran => !!v && !!this.pourCeClient(v));
+  }
+
+  /**
+   * « C'est compris, on commence » : rend l'ecran ou emmener le client — le premier
+   * qu'il n'a pas encore fait —, ou null s'il n'en reste aucun.
+   */
+  commencerPremiersPas(): string | null {
+    const premier = this.premiersPasDuClient().find(v => !this.ecranVu(v.id));
+    if (premier) { this.retenirPremiersPas(true); }
+    return premier ? premier.route : null;
+  }
+
+  /**
+   * Guide d'un ecran termine : l'ecran suivant des premiers pas, ou null. Quand il
+   * n'en reste plus, les premiers pas sont finis.
+   */
+  suiteDesPremiersPas(idTermine: string): string | null {
+    if (!this.premiersPasEnCours() || !PREMIERS_PAS_GPA.includes(idTermine)) return null;
+    const suivant = this.premiersPasDuClient().find(v => !this.ecranVu(v.id));
+    if (!suivant) { this.arreterPremiersPas(); return null; }
+    return suivant.route;
+  }
+
+  premiersPasEnCours(): boolean {
+    const cle = this.cleUtilisateur();
+    return this.premiersPasEnMemoire.has(cle) ? !!this.premiersPasEnMemoire.get(cle) : !!this.lireEtat().premiersPas;
+  }
+
+  /** « Passer » ou Echap : le client n'est plus emmene d'un ecran a l'autre. Chaque guide reste a son ecran. */
+  arreterPremiersPas(): void {
+    this.retenirPremiersPas(false);
+  }
+
+  private retenirPremiersPas(enCours: boolean): void {
+    this.premiersPasEnMemoire.set(this.cleUtilisateur(), enCours);
+    this.modifierEtat({ premiersPas: enCours });
   }
 
   // ------------------------------------------------------------------- Etat

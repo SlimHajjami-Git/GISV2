@@ -26,9 +26,18 @@ import { HelpArticle } from '../services/help-content.model';
           <p>Cherchez un mot : « plein », « rapport », « kilométrage », « zone »…</p>
         </div>
         <div class="aide-boutons">
-          <button type="button" class="btn-visite" (click)="rejouerLaVisite()">
-            Revoir la visite guidée
-          </button>
+          <!-- GPA : plus de visite guidee ; le bouton rejoue les premiers pas
+               (Vehicules, Chauffeurs, Entretien programmable), pour un nouvel
+               utilisateur qui les a (Karim, 25/09/2026). -->
+          @if (!offreGpa) {
+            <button type="button" class="btn-visite" (click)="rejouerLaVisite()">
+              Revoir la visite guidée
+            </button>
+          } @else if (aDesPremiersPas) {
+            <button type="button" class="btn-visite" (click)="rejouerLaVisite()">
+              Revoir les premiers pas
+            </button>
+          }
           <!-- Seulement s'il existe un guide d'ecran pour ce client (nouvel
                utilisateur, bonne offre) : ailleurs le bouton ne ferait rien. -->
           @if (ecransAvecGuide.length) {
@@ -243,6 +252,8 @@ export class HelpCenterComponent implements OnInit {
    * « Vehicules » en GPA, rien en GPS — le bouton n'apparait alors pas.
    */
   ecransAvecGuide = this.help.ecransAvecGuide();
+  offreGpa = this.help.offreGpa();
+  aDesPremiersPas = this.help.premiersPasDuClient().length > 0;
   guidesRemis = false;
 
   /** Chaque guide d'ecran reviendra a la prochaine ouverture de son ecran. */

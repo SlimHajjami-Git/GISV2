@@ -34,6 +34,7 @@ describe('HelpService', () => {
         { provide: AuthService, useValue: { getCurrentUserSync: () => compte } },
         { provide: PermissionService, useValue: {
           hasModuleAccess: (m: string) => modulesAutorises.includes(m),
+          abonnementComprend: (m: string) => modulesAutorises.includes(m),
           hasReportAccess: (r: string) => !rapportsFermes.includes(r)
         } }
       ]
@@ -50,7 +51,7 @@ describe('HelpService', () => {
       providers: [
         HelpService,
         { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id }) } },
-        { provide: PermissionService, useValue: { hasModuleAccess: () => true, hasReportAccess: () => true } }
+        { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => true, hasReportAccess: () => true } }
       ]
     });
     return TestBed.inject(HelpService);
@@ -129,21 +130,19 @@ describe('HelpService', () => {
       expect(visibles.every(a => a.module === 'general')).toBe(true);
     });
 
-    it('saute les etapes de visite guidee liees a un module absent', () => {
-      modulesAutorises = ['vehicles'];
-      compte = { ...compte, isCompanyAdmin: true }; // « Nouveau véhicule » est réservé à l'administrateur
+    it('saute les etapes de visite guidee liees a un module absent (offre GPS)', () => {
+      modulesAutorises = ['monitoring', 'vehicles'];
       const etapes = service.etapesGuide();
-      expect(etapes.some(e => e.id === 'ajouter-vehicule')).toBe(true);
-      expect(etapes.some(e => e.id === 'voir-la-carte')).toBe(false);
-      expect(etapes.some(e => e.id === 'premier-rapport')).toBe(false);
+      expect(etapes.some(e => e.id === 'voir-la-carte')).toBe(true);
+      expect(etapes.some(e => e.id === 'ajouter-chauffeurs')).toBe(false);
+      expect(etapes.some(e => e.id === 'echeances')).toBe(false);
     });
 
-    // Relecture du 24/09/2026 : un non-administrateur attendait ~3 s devant un
-    // écran assombri, puis l'étape sautait faute de bouton.
-    it('retire d emblee l etape « Ajoutez votre premier vehicule » a un non-administrateur', () => {
-      modulesAutorises = ['vehicles'];
-      compte = { ...compte, isCompanyAdmin: false, isSystemAdmin: false };
-      expect(service.etapesGuide().some(e => e.id === 'ajouter-vehicule')).toBe(false);
+    // Karim, 25/09/2026 : en GPA, les premiers pas remplacent la visite guidee.
+    it('offre GPA : plus de visite guidee, ni proposee ni jouee', () => {
+      modulesAutorises = ['vehicles', 'employees', 'maintenance', 'documents', 'users'];
+      expect(service.etapesGuide()).toEqual([]);
+      expect(service.doitProposerLeGuide()).toBe(false);   // client deja installe : pas de conseil non plus
     });
   });
 
@@ -169,7 +168,7 @@ describe('HelpService', () => {
         providers: [
           HelpService,
           { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id: 'u2' }) } },
-          { provide: PermissionService, useValue: { hasModuleAccess: () => true } }
+          { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => true } }
         ]
       });
       expect(TestBed.inject(HelpService).doitProposerLeGuide()).toBe(true);

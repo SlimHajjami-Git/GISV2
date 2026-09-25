@@ -959,25 +959,13 @@ export const CONSEIL_PREMIERE_CONNEXION: {
  * s'adapter a l'abonnement du client, pas montrer des ecrans qu'il n'a pas.
  */
 /*
- * Parcours defini par Karim le 23/09/2026 pour l'offre GPA — l'ordre dans
- * lequel un nouveau client doit s'y prendre pour commencer a travailler :
- * son premier vehicule (ou l'import Excel de tout son parc), ses chauffeurs,
- * les echeances de ses documents, puis un programme d'entretien et son
- * affectation aux vehicules. Le rapport n'en fait plus partie (« le reste on
- * verra si c'est necessaire »). La carte reste reservee aux offres GPS et se
- * place apres les chauffeurs ; ce qu'on ajoute pour le GPS se decidera ensuite.
+ * Offre GPS seulement depuis le 25/09/2026. En GPA, Karim a retire la visite :
+ * « on l'accompagne pour qu'il remplisse les ecrans necessaires au debut » —
+ * le conseil de premiere connexion mene directement aux PREMIERS_PAS_GPA (plus
+ * bas), et chaque autre ecran a son guide. Le GPS garde cette visite tant que
+ * ses propres guides d'ecran ne sont pas faits.
  */
 export const ETAPES_GUIDE: GuideEtape[] = [
-  {
-    id: 'bienvenue',
-    titre: 'Bienvenue dans Calypso',
-    // Étape jouée pour TOUTES les offres : elle ne cite que ce que tout client
-    // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
-    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, un programme d'entretien, puis les adresses qui reçoivent vos alertes par e-mail. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
-    cible: 'menu-flotte',
-    sauf: 'monitoring',
-    route: '/dashboard'
-  },
   // Offre GPS (Karim, 23/09/2026) : « presque la meme chose que GPA », sans
   // l'ajout de vehicule — les vehicules sont crees par l'equipe Belive avec
   // leurs boitiers — plus la carte et les zones. Le module `monitoring` signe
@@ -996,21 +984,6 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Ils ont été ajoutés par notre équipe, avec leurs boîtiers. Vérifiez la liste : cliquez sur une ligne pour ouvrir la fiche d'un véhicule, ou sur « Modifier » pour compléter ses informations — chauffeur, couleur, capacité du réservoir.",
     cible: 'vehicules-liste',
     module: 'monitoring',
-    route: '/vehicles'
-  },
-  {
-    id: 'ajouter-vehicule',
-    titre: 'Ajoutez votre premier véhicule',
-    sauf: 'monitoring',
-    // « Nouveau vehicule » est reserve aux administrateurs : sans ce drapeau, un
-    // non-administrateur restait ~3 s devant un ecran assombri, puis l'etape sautait.
-    adminSeulement: true,
-    // Le modele d'import a cinq feuilles (verifie dans DataPortController le
-    // 23/09/2026) : Vehicules, Entretiens, Reparations, Carburant, Depenses —
-    // toutes lues et creees a l'import. Karim tient a ce que la visite le dise.
-    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos données dans un fichier ? Importez tout d'un coup — véhicules, entretiens, réparations, pleins de carburant et dépenses : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
-    cible: 'vehicules-nouveau',
-    module: 'vehicles',
     route: '/vehicles'
   },
   {
@@ -1053,11 +1026,10 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     module: 'maintenance',
     route: '/entretien-programmable'
   },
-  // Etape ajoutee par Karim le 23/09/2026 pour les deux offres : « une etape
-  // tres importante qu'on a oubliee, l'alerte par mail ». Avant-derniere en
-  // GPS (le rapport suit), derniere en GPA. Le module `users` est dans tous
-  // les plans ; si l'utilisateur n'a pas ce droit, la cible est absente et
-  // l'etape est sautee.
+  // Etape ajoutee par Karim le 23/09/2026 : « une etape tres importante qu'on
+  // a oubliee, l'alerte par mail ». Avant-derniere, le rapport suit. Le module
+  // `users` est dans tous les plans ; si l'utilisateur n'a pas ce droit, la
+  // cible est absente et l'etape est sautee.
   {
     id: 'alertes-email',
     titre: 'Recevez vos alertes par e-mail',
@@ -1066,11 +1038,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Calypso envoie une copie de ses alertes par e-mail — assurance, visite technique, entretien, permis — mais seulement aux adresses inscrites ici. Ouvrez l'onglet « Alertes par email », puis « Ajouter une adresse » : une adresse et un type d'alerte. Sans adresse, personne n'est prévenu par mail.",
     cible: 'alertes-email-onglet',
     module: 'users',
-    route: '/users',
-    // Derniere etape du parcours GPA : « Terminer » depose le client sur
-    // Vehicules, pour qu'il ajoute les siens (Karim, 23/09/2026). En GPS ce
-    // n'est pas la derniere etape, la valeur n'y sert pas.
-    routeApresFin: '/vehicles'
+    route: '/users'
   },
   // Offre GPS seulement (Karim, 23/09/2026 : « ajoute rapport » pour le GPS,
   // retire pour la GPA). Toutes les offres GPS ont le module Rapports ; si un
@@ -1867,3 +1835,12 @@ export const VISITES_ECRANS: VisiteEcran[] = [
     ]
   }
 ];
+
+/**
+ * Premiers pas de l'offre GPA (Karim, 25/09/2026) : « quand il clique sur
+ * "Commencer", on le ramene directement sur le premier ecran "vehicules", apres
+ * "chauffeurs", apres "programme d'entretien" ». Le bouton du conseil de premiere
+ * connexion ouvre le premier de ces ecrans ; chaque guide termine emmene au
+ * suivant. Un ecran que ce client n'a pas (droits, profil) est enjambe.
+ */
+export const PREMIERS_PAS_GPA: string[] = ['tuto-vehicules-gpa', 'tuto-chauffeurs-gpa', 'tuto-entretiens-gpa'];

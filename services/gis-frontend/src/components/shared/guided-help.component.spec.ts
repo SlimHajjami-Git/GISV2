@@ -92,7 +92,7 @@ describe('Visite guidée — elle avance d\'une page à l\'autre', () => {
           getCurrentUserSync: () => utilisateur.value,
           getCurrentUser: () => utilisateur.asObservable()
         } },
-        { provide: PermissionService, useValue: { hasModuleAccess: () => true, hasReportAccess: () => true } }
+        { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => true, hasReportAccess: () => true } }
       ]
     });
     help = TestBed.inject(HelpService);
@@ -548,6 +548,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
   it('dérogation provisoire : la société « Belive GPA » le voit en local, première connexion ou non', async () => {
     compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA', isCompanyAdmin: true };
     help.fermerGuide(true);
+    help.marquerConseilVu();                 // son conseil est déjà lu
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(true);
   });
@@ -566,41 +567,22 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     expect(guide.componentInstance.actif).toBe(false);
   });
 
-  it('tant que la visite de première connexion doit être proposée, elle passe avant', async () => {
-    help.reinitialiserGuide();
-    help.fermerGuide(false);                 // Échap : non vue
-    (help as any).dejaProposee.clear();      // nouvelle session : rien encore proposé
+  it('tant que le conseil de première connexion doit être montré, il passe avant', async () => {
+    compte = { id: 'u-autre', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
     expect(help.doitProposerLeGuide()).toBe(true);
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
   });
 
-  it('la visite de première connexion demandée pendant le tutoriel prend la main', async () => {
+  it('GPA : plus de visite guidée ; relancée depuis l\'Aide, ce sont les premiers pas, à la première bulle de Véhicules', async () => {
     await ouvrir('/vehicles');
-    expect(guide.componentInstance.mode).toBe('ecran');
-    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // la visite, pas le conseil
-    help.reinitialiserGuide();
-    guide.detectChanges();
-    expect(guide.componentInstance.mode).toBe('parcours');
-    expect(guide.componentInstance.actif).toBe(true);
-  });
-
-  it('« Terminer » de la visite dépose sur Véhicules sans enchaîner le tutoriel ; il vient au prochain accès', async () => {
-    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // la visite, pas le conseil
-    help.reinitialiserGuide();
-    guide.detectChanges();
-    const c = guide.componentInstance;
-    c.index = c.etapes.length - 1;           // dernière étape : « Recevez vos alertes par e-mail »
-    expect(c.etapes[c.index].routeApresFin).toBe('/vehicles');
-    c.suivant();                             // « Terminer »
+    guide.componentInstance.passer();
+    expect(help.etapesGuide()).toEqual([]);
+    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // production : pas de conseil
+    help.reinitialiserGuide();                                   // « Revoir les premiers pas »
     await rafraichir();
-    expect(TestBed.inject(Router).url).toBe('/vehicles');
-    expect(c.actif).toBe(false);
-
-    await ouvrir('/dashboard');
-    await ouvrir('/vehicles');
-    expect(c.actif).toBe(true);
-    expect(c.mode).toBe('ecran');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(etape()).toBe('tuto-vehicule-nouveau');
   });
 });
 
@@ -684,6 +666,7 @@ describe('Tutoriel pas à pas — écran Chauffeurs (GPA)', () => {
     });
     help = TestBed.inject(HelpService);
     help.fermerGuide(true);
+    help.marquerConseilVu();                 // le conseil passe avant, il a ses propres tests
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
     harness = await RouterTestingHarness.create('/dashboard');
@@ -805,6 +788,7 @@ describe('Tutoriel pas à pas — alertes par e-mail (GPA)', () => {
       ]
     });
     TestBed.inject(HelpService).fermerGuide(true);
+    TestBed.inject(HelpService).marquerConseilVu();   // le conseil passe avant, il a ses propres tests
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
     harness = await RouterTestingHarness.create('/dashboard');
@@ -906,6 +890,7 @@ describe('Tutoriel pas à pas — écran Échéances (GPA)', () => {
       ]
     });
     TestBed.inject(HelpService).fermerGuide(true);
+    TestBed.inject(HelpService).marquerConseilVu();   // le conseil passe avant, il a ses propres tests
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
     harness = await RouterTestingHarness.create('/dashboard');
@@ -1036,6 +1021,7 @@ describe('Tutoriel pas à pas — écran Entretien programmable (GPA)', () => {
       ]
     });
     TestBed.inject(HelpService).fermerGuide(true);
+    TestBed.inject(HelpService).marquerConseilVu();   // le conseil passe avant, il a ses propres tests
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
     harness = await RouterTestingHarness.create('/dashboard');
@@ -1116,27 +1102,47 @@ describe('Tutoriels — un montant laissé à 0 n\'est pas une saisie', () => {
  */
 describe('Conseil de première connexion', () => {
   let compte: any;
+  let abonnementGps: boolean;
   let guide: ComponentFixture<GuidedHelpComponent>;
   let harness: RouterTestingHarness;
   let help: HelpService;
 
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
   const attendre = async () => {
     for (let i = 0; i < 5; i++) { await harness.fixture.whenStable(); harness.fixture.detectChanges(); guide.detectChanges(); }
+    await images(4);
+    harness.fixture.detectChanges();
+    guide.detectChanges();
   };
   const fenetre = () => guide.nativeElement.querySelector('.guide-conseil') as HTMLElement | null;
+  /**
+   * « C'est compris, on commence ». Image par image : whenStable attendrait la fin de la
+   * recherche de la cible, qui ne peut aboutir sans détection de changements.
+   */
+  const commencer = async () => {
+    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
+    for (let i = 0; i < 3; i++) { harness.fixture.detectChanges(); await images(4); guide.detectChanges(); }
+  };
 
   const monter = async () => {
     TestBed.configureTestingModule({
       imports: [GuidedHelpComponent],
       providers: [
-        provideRouter([{ path: 'dashboard', component: PageTableauDeBord }]),
+        provideRouter([
+          { path: 'dashboard', component: PageTableauDeBord },
+          { path: 'vehicles', component: EcranVehicules },
+        ]),
         { provide: AuthService, useValue: {
           getCurrentUserSync: () => compte,
           getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
         } },
         { provide: PermissionService, useValue: {
-          hasModuleAccess: (m: string) => m !== 'monitoring',
-          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasModuleAccess: (m: string) => m !== 'monitoring' || abonnementGps,
+          abonnementComprend: (m: string) => m !== 'monitoring' || abonnementGps,
           hasReportAccess: () => true
         } }
       ]
@@ -1144,14 +1150,19 @@ describe('Conseil de première connexion', () => {
     help = TestBed.inject(HelpService);
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
-    harness = await RouterTestingHarness.create('/dashboard');   // la page propose la visite
+    harness = await RouterTestingHarness.create('/dashboard');   // la page propose le guide
     await attendre();
   };
 
-  beforeEach(() => { localStorage.clear(); });
+  beforeEach(() => {
+    localStorage.clear();
+    abonnementGps = false;
+    EcranVehicules.admin = true;
+    EcranVehicules.refus = false;
+  });
   afterEach(() => guide.destroy());
 
-  it('nouvel utilisateur : le conseil s\'affiche d\'abord, et son bouton lance la visite', async () => {
+  it('GPA, nouvel utilisateur : le conseil d\'abord ; son bouton ouvre Véhicules et son guide, sans visite guidée', async () => {
     compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
     await monter();
 
@@ -1160,32 +1171,41 @@ describe('Conseil de première connexion', () => {
     expect(fenetre()?.textContent).toContain('Un conseil avant de commencer');
     expect(fenetre()?.textContent).toContain('à l\'écran comme dans vos rapports');
 
-    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
-    await attendre();
+    await commencer();
     expect(fenetre()).toBeNull();
-    expect(guide.componentInstance.actif).toBe(true);
-    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+    expect(TestBed.inject(Router).url).toBe('/vehicles');
+    expect(guide.componentInstance.mode).toBe('ecran');
+    expect(guide.componentInstance.etape?.id).toBe('tuto-vehicule-nouveau');
   });
 
-  it('en production, il ne revient plus jamais, même quand la visite est relancée depuis l\'Aide', async () => {
+  it('GPS : le bouton du conseil lance la visite guidée, qui reste en place', async () => {
+    abonnementGps = true;
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+    expect(guide.componentInstance.conseilOuvert).toBe(true);
+
+    await commencer();
+    expect(guide.componentInstance.mode).toBe('parcours');
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue-gps');
+  });
+
+  it('en production, il ne revient plus jamais, même quand les premiers pas sont relancés depuis l\'Aide', async () => {
     compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
     await monter();
     jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // image de production
-    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
-    await attendre();
+    await commencer();
     guide.componentInstance.passer();
 
-    help.reinitialiserGuide();                                   // « Revoir la visite guidée »
+    help.reinitialiserGuide();                                   // « Revoir les premiers pas »
     await attendre();
     expect(guide.componentInstance.conseilOuvert).toBe(false);
-    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+    expect(guide.componentInstance.etape?.id).toBe('tuto-vehicule-nouveau');
   });
 
-  it('en local (développement), « Revoir la visite guidée » le remontre, pour que Karim puisse le revoir', async () => {
+  it('en local (développement), « Revoir les premiers pas » le remontre, pour que Karim puisse le revoir', async () => {
     compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA', isCompanyAdmin: true };
     await monter();
-    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
-    await attendre();
+    await commencer();
     guide.componentInstance.passer();
 
     help.reinitialiserGuide();
@@ -1201,10 +1221,188 @@ describe('Conseil de première connexion', () => {
     expect(help.conseilAMontrer()).toBe(false);
   });
 
-  it('un client déjà installé (pas une première connexion) ne le voit pas', async () => {
+  it('GPA, client déjà installé (pas une première connexion) : ni conseil, ni visite', async () => {
     compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin', isCompanyAdmin: true };
     await monter();
     expect(guide.componentInstance.conseilOuvert).toBe(false);
-    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(help.doitProposerLeGuide()).toBe(false);
+  });
+
+  it('GPS, client déjà installé : pas de conseil, sa visite guidée reste proposée', async () => {
+    abonnementGps = true;
+    compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+    expect(guide.componentInstance.conseilOuvert).toBe(false);
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue-gps');
+  });
+});
+
+/**
+ * Premiers pas de l'offre GPA (Karim, 25/09/2026) : « quand il clique sur "Commencer",
+ * on le ramène directement sur le premier écran "véhicules", après "chauffeurs", après
+ * "programme d'entretien" » — et plus de visite guidée. Le bouton du conseil ouvre
+ * Véhicules ; chaque guide terminé ouvre l'écran suivant, après une courte pause.
+ */
+describe('Premiers pas (GPA) — Véhicules, puis Chauffeurs, puis Entretien programmable', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const url = () => TestBed.inject(Router).url;
+  const guideOuvert = () => guide.componentInstance.actif ? guide.componentInstance.visiteEcran?.id : undefined;
+  const pause = (ms: number) => new Promise(fin => setTimeout(fin, ms));
+
+  const monter = async () => {
+    harness = await RouterTestingHarness.create('/dashboard');   // la page propose le conseil
+    await rafraichir();
+  };
+  /** Le client lit le conseil et clique « C'est compris, on commence ». */
+  const commencer = async () => {
+    (guide.nativeElement.querySelector('.conseil-bouton') as HTMLElement).click();
+    await rafraichir();
+    await rafraichir();
+  };
+  const premiereBulle = async () => {
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+  };
+  /**
+   * Première bulle affichée, puis le guide mené à son terme. Raccourci : la dernière
+   * bulle, puis sa fin — chaque tutoriel a ses propres tests, geste par geste.
+   */
+  const finirLeGuide = async () => {
+    await premiereBulle();
+    const c = guide.componentInstance;
+    c.index = c.etapes.length - 1;
+    c.suivant();
+    await rafraichir();
+  };
+  /** La pause d'enchaînement, puis l'écran suivant et son guide. */
+  const enchainement = async () => { await pause(250); await rafraichir(); await rafraichir(); };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    EcranVehicules.admin = true;
+    EcranVehicules.refus = false;
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: PageTableauDeBord },
+          { path: 'vehicles', component: EcranVehicules },
+          { path: 'drivers', component: EcranChauffeurs },
+          { path: 'entretien-programmable', component: EcranEntretiens },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.componentInstance.delaiEnchainement = 200;
+    guide.detectChanges();
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('le conseil ouvre Véhicules ; chaque guide terminé ouvre le suivant, jusqu\'au programme d\'entretien', async () => {
+    await monter();
+    expect(guide.componentInstance.conseilOuvert).toBe(true);
+    await commencer();
+    expect(url()).toBe('/vehicles');
+    expect(guideOuvert()).toBe('tuto-vehicules-gpa');
+
+    await finirLeGuide();
+    expect(url()).toBe('/vehicles');                 // il voit d'abord son véhicule dans la liste
+    await enchainement();
+    expect(url()).toBe('/drivers');
+    expect(guideOuvert()).toBe('tuto-chauffeurs-gpa');
+
+    await finirLeGuide();
+    await enchainement();
+    expect(url()).toBe('/entretien-programmable');
+    expect(guideOuvert()).toBe('tuto-entretiens-gpa');
+
+    await finirLeGuide();
+    await enchainement();
+    expect(url()).toBe('/entretien-programmable');   // fin des premiers pas : il reste là
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(help.premiersPasEnCours()).toBe(false);
+  });
+
+  it('non-administrateur : Véhicules lui est fermé, les premiers pas commencent à Chauffeurs', async () => {
+    compte = { ...compte, isCompanyAdmin: false };
+    EcranVehicules.admin = false;
+    await monter();
+    await commencer();
+    expect(url()).toBe('/drivers');
+    expect(guideOuvert()).toBe('tuto-chauffeurs-gpa');
+  });
+
+  it('un écran dont le guide est déjà fait est enjambé', async () => {
+    help.marquerEcranVu('tuto-chauffeurs-gpa');
+    await monter();
+    await commencer();
+    await finirLeGuide();
+    await enchainement();
+    expect(url()).toBe('/entretien-programmable');
+    expect(guideOuvert()).toBe('tuto-entretiens-gpa');
+  });
+
+  it('« Passer » arrête l\'accompagnement : le client reste où il est, le guide Chauffeurs l\'attend à son écran', async () => {
+    await monter();
+    await commencer();
+    await premiereBulle();
+    guide.componentInstance.passer();
+    await enchainement();
+    expect(url()).toBe('/vehicles');
+    expect(help.premiersPasEnCours()).toBe(false);
+
+    await harness.navigateByUrl('/drivers');
+    await rafraichir();
+    expect(guideOuvert()).toBe('tuto-chauffeurs-gpa');
+  });
+
+  it('Échap arrête aussi l\'accompagnement', async () => {
+    await monter();
+    await commencer();
+    await premiereBulle();
+    guide.componentInstance.auEchap();
+    await enchainement();
+    expect(url()).toBe('/vehicles');
+    expect(help.premiersPasEnCours()).toBe(false);
+  });
+
+  it('le client quitte l\'écran pendant la pause : on ne l\'emmène pas ailleurs', async () => {
+    await monter();
+    await commencer();
+    await finirLeGuide();
+    await harness.navigateByUrl('/dashboard');
+    await enchainement();
+    expect(url()).toBe('/dashboard');
+  });
+
+  it('retenus pour la prochaine ouverture de l\'application (page rechargée en cours de route)', async () => {
+    await monter();
+    await commencer();
+    (help as any).premiersPasEnMemoire.clear();      // seule reste la trace dans localStorage
+    expect(help.premiersPasEnCours()).toBe(true);
   });
 });

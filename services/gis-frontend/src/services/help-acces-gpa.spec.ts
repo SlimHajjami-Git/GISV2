@@ -89,19 +89,18 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     expect(aide.articleParId('suivre-en-direct')).toBeUndefined();
   });
 
-  it('la visite guidee saute l’etape "carte en direct" en GPA', () => {
+  it('GPA : plus de visite guidee, les premiers pas la remplacent (Karim, 25/09/2026)', () => {
     const aide = aideAvecCompte({
-      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
+      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true, firstLogin: true,
       subscriptionFeatures: abonnementGpa, userPermissions: null
     });
 
-    const etapes = aide.etapesGuide().map(e => e.id);
-    expect(etapes).not.toContain('voir-la-carte');
-    // Parcours GPA fixe par Karim le 23/09/2026, dans cet ordre : vehicule,
-    // chauffeurs, echeances, programme d'entretien, son affectation, puis les
-    // alertes par e-mail (ajoutees le meme jour : « une etape tres importante »).
-    expect(etapes).toEqual([
-      'bienvenue', 'ajouter-vehicule', 'ajouter-chauffeurs', 'echeances', 'entretien-modele', 'entretien-affecter', 'alertes-email'
+    expect(aide.offreGpa()).toBe(true);
+    expect(aide.etapesGuide()).toEqual([]);
+    // « On le ramene directement sur le premier ecran "vehicules", apres
+    // "chauffeurs", apres "programme d'entretien" ».
+    expect(aide.premiersPasDuClient().map(v => v.id)).toEqual([
+      'tuto-vehicules-gpa', 'tuto-chauffeurs-gpa', 'tuto-entretiens-gpa'
     ]);
   });
 
@@ -121,25 +120,22 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     ]);
   });
 
-  it('les alertes par e-mail sont avant-dernieres en GPS, dernieres en GPA — et jamais sans le droit Utilisateurs', () => {
+  it('les alertes par e-mail sont avant-dernieres en GPS — et jamais sans le droit Utilisateurs', () => {
     const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
     const etapesGps = gps.etapesGuide().map(e => e.id);
     expect(etapesGps[etapesGps.length - 2]).toBe('alertes-email');
-    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
-    const etapesGpa = gpa.etapesGuide().map(e => e.id);
-    expect(etapesGpa[etapesGpa.length - 1]).toBe('alertes-email');
     // Un utilisateur simple sans le droit « Utilisateurs » ne peut pas ouvrir
-    // l'ecran : l'etape est retiree, la visite se termine sur l'affectation.
-    const sansDroit = aideAvecCompte({ id: 'u-sans', isSystemAdmin: false, isCompanyAdmin: false, subscriptionFeatures: abonnementGpa, userPermissions: { canVehicles: true, canEmployees: true, canDocuments: true, canMaintenance: true, canUsers: false } });
-    expect(sansDroit.etapesGuide().map(e => e.id)).not.toContain('alertes-email');
+    // l'ecran : l'etape est retiree.
+    const sansDroit = aideAvecCompte({ id: 'u-sans', isSystemAdmin: false, isCompanyAdmin: false, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: { canVehicles: true, canEmployees: true, canDocuments: true, canMaintenance: true, canUsers: false } });
+    const etapesSansDroit = sansDroit.etapesGuide().map(e => e.id);
+    expect(etapesSansDroit).toContain('echeances');                // ses autres etapes restent
+    expect(etapesSansDroit).not.toContain('alertes-email');
   });
 
-  it('« Terminer » depose le client sur Vehicules en GPA, sur Suivi en direct en GPS', () => {
-    const gpa = aideAvecCompte({ id: 'u-gpa', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: abonnementGpa, userPermissions: null });
+  it('« Terminer » de la visite GPS depose le client sur Suivi en direct', () => {
     const gps = aideAvecCompte({ id: 'u-gps', isSystemAdmin: false, isCompanyAdmin: true, subscriptionFeatures: { ...abonnementGpa, moduleMonitoring: true, moduleGeofences: true, moduleTours: true }, userPermissions: null });
-    const derniere = (etapes: ReturnType<typeof gpa.etapesGuide>) => etapes[etapes.length - 1];
-    expect(derniere(gpa.etapesGuide()).routeApresFin).toBe('/vehicles');
-    expect(derniere(gps.etapesGuide()).routeApresFin).toBe('/monitoring');
+    const etapes = gps.etapesGuide();
+    expect(etapes[etapes.length - 1].routeApresFin).toBe('/monitoring');
   });
 
   it('ADMIN en GPA : aucun article visible ne cite un rapport GPS ferme', () => {
