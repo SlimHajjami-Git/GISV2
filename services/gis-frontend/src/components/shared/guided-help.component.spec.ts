@@ -264,12 +264,20 @@ describe('Visite guidée — montage', () => {
       <select data-guide="vehicule-statut"><option value="available" selected>Disponible</option></select>
       <input type="number" data-guide="vehicule-compteur" value="0">
       <input data-guide="vehicule-couleur">
-      <select data-guide="vehicule-carburant"><option value="diesel" selected>Diesel</option></select>
+      <select data-guide="vehicule-carburant"><option value="" selected>-- Sélectionner --</option><option value="diesel">Diesel</option></select>
       <input type="number" data-guide="vehicule-reservoir">
       <input type="date" data-guide="vehicule-mise-en-circulation">
-      <select data-guide="vehicule-acquisition"><option value="purchase" selected>Achat</option></select>
+      <select data-guide="vehicule-acquisition" (change)="acquisition = $any($event.target).value">
+        <option value="purchase" selected>Achat</option><option value="leasing">Crédit</option>
+      </select>
       <input type="date" data-guide="vehicule-date-achat">
       <input type="number" data-guide="vehicule-prix-achat">
+      @if (acquisition === 'leasing') {
+        <input type="number" data-guide="vehicule-traite">
+        <input type="number" data-guide="vehicule-duree-leasing">
+        <input type="date" data-guide="vehicule-debut-leasing">
+        <select data-guide="vehicule-jour-paiement"><option value="0: null">— Choisir —</option><option value="1: 5">5</option></select>
+      }
       <button type="button" data-guide="vehicule-ajouter" (click)="enregistrer()">Ajouter</button>
       <button type="button" class="annuler" (click)="ouverte = false">Annuler</button>
     </form>
@@ -278,6 +286,7 @@ class EcranVehicules {
   static admin = true;
   static refus = false;
   admin = EcranVehicules.admin;
+  acquisition = 'purchase';
   ouverte = false;
   /** Enregistrement réussi : la fiche se ferme. Refusé (alerte du serveur) : elle reste ouverte. */
   enregistrer(): void { if (!EcranVehicules.refus) { this.ouverte = false; } }
@@ -328,7 +337,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
    * sautés par le moteur ; on avance jusqu'à la bulle voulue.
    */
   const jusqua = async (id: string, cliquerSuivant = false) => {
-    for (let i = 0; i < 80 && etape() !== id; i++) {
+    for (let i = 0; i < (cliquerSuivant ? 80 : 25) && etape() !== id; i++) {
       const b = bouton('Suivant');
       if (cliquerSuivant && b && !b.disabled) { b.click(); }
       await rafraichir(cliquerSuivant ? 4 : 14);
@@ -343,6 +352,8 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await remplir('vehicule-modele', '7'); await suivant();
     await jusqua('tuto-vehicule-compteur', true);
     await remplir('vehicule-compteur', '85000');        // 0 prérempli = vide : obligatoire
+    await jusqua('tuto-vehicule-carburant', true);
+    await remplir('vehicule-carburant', 'diesel');      // obligatoire, rien de pré-choisi
     await jusqua('tuto-vehicule-ajouter', true);
   };
 
@@ -443,6 +454,8 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await jusqua('tuto-vehicule-compteur', true);
     expect(bouton('Suivant')!.disabled).toBe(true);     // compteur obligatoire, 0 ne compte pas
     await remplir('vehicule-compteur', '85000');
+    await jusqua('tuto-vehicule-carburant', true);
+    await remplir('vehicule-carburant', 'diesel');
     await jusqua('tuto-vehicule-ajouter', true);
     expect(etape()).toBe('tuto-vehicule-ajouter');
   });
@@ -471,6 +484,197 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     await ouvrir('/dashboard');
     await ouvrir('/vehicles');
     expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  /** Jusqu'à la bulle « Couleur » (facultative) ; la suivante est « Type de carburant ». */
+  const jusquACouleur = async () => {
+    await cliquer('vehicules-nouveau');
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
+    await jusqua('tuto-vehicule-compteur', true);
+    await remplir('vehicule-compteur', '85000');
+    await jusqua('tuto-vehicule-couleur', true);
+  };
+  /** Couleur passée, carburant choisi : la bulle suivante est « Réservoir ». */
+  const apresCarburant = async () => {
+    await jusquACouleur();
+    await suivant();
+    await remplir('vehicule-carburant', 'diesel');
+    await suivant();
+  };
+  const clic = (b: HTMLButtonElement, detail: number) =>
+    b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail }));
+  const entree = (champ: HTMLElement, repeat = false) => {
+    const ev = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, repeat });
+    champ.dispatchEvent(ev);
+    return ev;
+  };
+  const pause = (ms: number) => new Promise(fin => setTimeout(fin, ms));
+
+  // Karim, 25/09/2026 : « "type de carburant" doit être un champ obligatoire », avec
+  // « Sélectionner » en première ligne comme « Marque ».
+  it('« Type de carburant » : rien de pré-choisi, « Suivant » grisé tant qu\'il n\'est pas choisi', async () => {
+    await ouvrir('/vehicles');
+    await jusquACouleur();
+    await suivant();                                   // couleur : facultative
+    expect(etape()).toBe('tuto-vehicule-carburant');
+    expect(bulle()?.textContent).toContain('Choisissez son « Type de carburant » dans la liste.');
+    expect(bulle()?.textContent).not.toContain('facultatif');
+    expect(el('vehicule-carburant').value).toBe('');
+    expect(bouton('Suivant')!.disabled).toBe(true);
+    await remplir('vehicule-carburant', 'diesel');
+    expect(bouton('Suivant')!.disabled).toBe(false);
+  });
+
+  it('double-clic sur « Suivant » : la bulle suivante, pré-remplie (« Année »), n\'est pas sautée', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
+    await suivant();                                   // marque : facultative
+    expect(etape()).toBe('tuto-vehicule-modele');
+    const b = bouton('Suivant')!;
+    clic(b, 1);
+    clic(b, 2);                                        // second clic du double-clic
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-annee');
+  });
+
+  it('double-clic sur « Précédent » : un seul pas en arrière', async () => {
+    await ouvrir('/vehicles');
+    await cliquer('vehicules-nouveau');
+    await remplir('vehicule-nom', 'Camion principal'); await suivant();
+    await remplir('vehicule-plaque', 'AB-123-CD'); await suivant();
+    await jusqua('tuto-vehicule-type', true);
+    const b = bouton('Précédent')!;
+    clic(b, 1);
+    clic(b, 2);
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-annee');
+  });
+
+  // Relecture du 25/09/2026 : sur Mac, Entrée sur une liste envoie le formulaire qui a
+  // un bouton submit (fiche Chauffeur) — elle est retenue, liste comprise.
+  it('Entrée sur la liste encadrée : retenue ; elle n\'avance que quand un carburant est choisi', async () => {
+    await ouvrir('/vehicles');
+    await jusquACouleur();
+    await suivant();
+    expect(etape()).toBe('tuto-vehicule-carburant');
+    const vide = entree(el('vehicule-carburant'));
+    await rafraichir();
+    expect(vide.defaultPrevented).toBe(true);
+    expect(etape()).toBe('tuto-vehicule-carburant');   // obligatoire, rien de choisi
+    await remplir('vehicule-carburant', 'diesel');
+    entree(el('vehicule-carburant'));
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-reservoir');
+  });
+
+  it('Entrée dans un autre champ que celui encadré : retenue, sans faire avancer', async () => {
+    await ouvrir('/vehicles');
+    await jusquACouleur();
+    await suivant();
+    const ailleurs = entree(el('vehicule-nom'));
+    await rafraichir();
+    expect(ailleurs.defaultPrevented).toBe(true);      // la fiche n'est pas envoyée
+    expect(etape()).toBe('tuto-vehicule-carburant');
+  });
+
+  it('deux Entrée rapprochées, ou la touche maintenue, n\'avancent que d\'une bulle', async () => {
+    await ouvrir('/vehicles');
+    await apresCarburant();
+    expect(etape()).toBe('tuto-vehicule-reservoir');
+    entree(el('vehicule-reservoir'));                  // « Réservoir » (facultatif) : Suivant
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-mise-en-circulation');
+    expect(document.activeElement).toBe(el('vehicule-mise-en-circulation'));
+    entree(el('vehicule-mise-en-circulation'));        // second appui, dans la foulée
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-mise-en-circulation');
+    await pause(GuidedHelpComponent.PAUSE_CLAVIER_MS + 50);
+    entree(el('vehicule-mise-en-circulation'), true);  // touche maintenue : répétition
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-mise-en-circulation');
+    entree(el('vehicule-mise-en-circulation'));        // nouvel appui, plus tard : il avance
+    await rafraichir();
+    expect(etape()).toBe('tuto-vehicule-acquisition');
+  });
+
+  // Contre-vérification du 25/09/2026 : pendant que la bulle suivante cherche sa cible,
+  // le curseur est encore dans le champ précédent, déjà rempli.
+  it('Entrée dans le champ précédent pendant que la bulle suivante cherche sa cible : sans effet', async () => {
+    await ouvrir('/vehicles');
+    await apresCarburant();
+    await jusqua('tuto-vehicule-prix-achat', true);
+    await remplir('vehicule-prix-achat', '20000');
+    bouton('Suivant')!.click();                       // « Traite » : absente en « Achat »
+    expect(etape()).toBe('tuto-vehicule-traite');
+    expect(guide.componentInstance.cibleTrouvee).toBe(false);
+    const acquisition = el('vehicule-acquisition') as unknown as HTMLSelectElement;
+    acquisition.value = 'leasing';                    // la traite va apparaître
+    acquisition.dispatchEvent(new Event('change', { bubbles: true }));
+    const ev = entree(el('vehicule-prix-achat'));
+    await rafraichir();
+    expect(ev.defaultPrevented).toBe(true);
+    expect(etape()).toBe('tuto-vehicule-traite');
+  });
+
+  it('« Ajouter » refusé puis fiche fermée : ce n\'est pas un enregistrement, le tutoriel reviendra', async () => {
+    await ouvrir('/vehicles');
+    await jusquAAjouter();
+    EcranVehicules.refus = true;                      // alerte : la fiche reste ouverte
+    await cliquer('vehicule-ajouter');
+    expect(etape()).toBe('tuto-vehicule-ajouter');
+    document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    (document.querySelector('.annuler') as HTMLElement).click();   // Tab jusqu'à « Annuler », Entrée
+    await rafraichir(14);
+    expect(guide.componentInstance.actif).toBe(false);
+    EcranVehicules.refus = false;
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(true);   // pas marqué vu
+    expect(etape()).toBe('tuto-vehicule-nouveau');
+  });
+
+  // Karim, 25/09/2026 : avec « Crédit », « il y aura d'autres champs à remplir et c'est
+  // très important ». Le montant y devient l'« Apport » (ligne « Apport » de
+  // l'échéancier côté serveur) : facultatif, un crédit peut ne pas en avoir.
+  it('« Crédit » : apport facultatif ; traite, durée, date de début et jour de paiement obligatoires', async () => {
+    await ouvrir('/vehicles');
+    await apresCarburant();
+    await jusqua('tuto-vehicule-acquisition', true);
+    await remplir('vehicule-acquisition', 'leasing');
+    await suivant();
+    expect(etape()).toBe('tuto-vehicule-date-achat');
+    await suivant();                                   // date d'achat : facultative
+    expect(etape()).toBe('tuto-vehicule-prix-achat');
+    expect(bulle()?.textContent).toContain('« Apport »');
+    expect(bouton('Suivant')!.disabled).toBe(false);  // sans apport, on continue
+    await suivant();
+    for (const [id, cible, valeur] of [
+      ['tuto-vehicule-traite', 'vehicule-traite', '1250'],
+      ['tuto-vehicule-duree-leasing', 'vehicule-duree-leasing', '36'],
+      ['tuto-vehicule-debut-leasing', 'vehicule-debut-leasing', '2026-10-01'],
+      ['tuto-vehicule-jour-paiement', 'vehicule-jour-paiement', '1: 5'],
+    ]) {
+      expect(etape()).toBe(id);
+      expect(bulle()?.textContent).not.toContain('facultatif');
+      expect(bouton('Suivant')!.disabled).toBe(true);  // vide : on ne passe pas
+      await remplir(cible, valeur);
+      expect(bouton('Suivant')!.disabled).toBe(false);
+      await suivant();
+    }
+    expect(etape()).toBe('tuto-vehicule-ajouter');
+  });
+
+  it('« Achat » : le prix reste facultatif et les bulles du crédit sont enjambées', async () => {
+    await ouvrir('/vehicles');
+    await apresCarburant();
+    await jusqua('tuto-vehicule-prix-achat', true);
+    expect(bouton('Suivant')!.disabled).toBe(false);
+    await suivant();
+    await jusqua('tuto-vehicule-ajouter');
+    expect(etape()).toBe('tuto-vehicule-ajouter');
   });
 
   it('enregistrement refusé par le serveur : la fiche reste ouverte, le tutoriel reste sur « Ajouter »', async () => {

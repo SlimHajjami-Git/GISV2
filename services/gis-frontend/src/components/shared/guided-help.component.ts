@@ -117,12 +117,12 @@ import { environment } from '../../environments/environment';
           <button type="button" class="lien" (click)="passer()">Passer</button>
           <span class="espace"></span>
           @if (aUnePrecedente()) {
-            <button type="button" class="secondaire" (click)="precedent()">Précédent</button>
+            <button type="button" class="secondaire" (click)="precedentAuClic($event)">Précédent</button>
           }
           <!-- Etape « clic » ou « disparition » : c'est le geste du client qui fait
                avancer, pas de bouton. Etape « valeur » : Suivant attend le champ rempli. -->
           @if (!etape.action || etape.action === 'valeur') {
-            <button type="button" class="principal" (click)="suivant()"
+            <button type="button" class="principal" (click)="suivantAuClic($event)"
                     [disabled]="etape.action === 'valeur' && !etape.facultatif && !valeurSaisie">
               {{ index === etapes.length - 1 ? 'Terminer' : 'Suivant' }}
             </button>
@@ -390,7 +390,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     const action = this.etape?.action;
     if (!this.actif || !this.cibleTrouvee || (action !== 'clic' && action !== 'disparition')) { return; }
     const cible = this.chercher(this.cibleSuivie);
-    if (!cible || !cible.contains(e.target as Node)) { return; }
+    if (!cible || !cible.contains(e.target as Node)) { this.oublierClicRefuse(); return; }
     if (action === 'disparition') { this.cibleCliquee = true; return; }
     const generation = this.generation;
     setTimeout(() => {
@@ -401,19 +401,73 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Etape « valeur » : Entree dans le champ encadre vaut « Suivant ». Laissee
-   * passer, elle enverrait le formulaire de la fiche (ngSubmit) et creerait un
-   * vehicule a moitie rempli au milieu du tutoriel.
+   * « Ajouter » cliqué mais refusé (alerte : champ obligatoire vide, plaque en double) :
+   * la fiche reste ouverte. Tout geste suivant — une touche, un clic ailleurs — annule
+   * ce clic ; sinon, fermer la fiche ensuite (Tab jusqu'a « Annuler », Entree) passait
+   * pour un enregistrement reussi, et les premiers pas enchainaient sans vehicule cree
+   * (relecture du 25/09/2026).
+   */
+  private oublierClicRefuse(): void {
+    if (this.actif && this.etape?.action === 'disparition') { this.cibleCliquee = false; }
+  }
+
+  /**
+   * Etape « valeur » : Entree dans le champ encadre vaut « Suivant ». Laissee passer,
+   * elle enverrait le formulaire de la fiche (ngSubmit) et creerait une fiche a moitie
+   * remplie au milieu du tutoriel — depuis un champ de saisie, et sur Mac depuis une
+   * liste (la fiche Chauffeur a un bouton submit). Pendant une telle etape, elle est
+   * donc retenue dans TOUT champ de fiche, liste comprise.
+   *
+   * Elle n'avance que sur la cible de l'etape AFFICHEE, une fois par appui, et pas
+   * dans la foulee d'une avance au clavier : la bulle suivante est posee — et son
+   * champ focalise — pendant le premier appui, et un second appui rapproche la
+   * passait quand son champ etait deja rempli (« Type de carburant », pre-rempli a
+   * Diesel, Karim 25/09/2026 ; « Quantite », a 1, sur Reparations).
    */
   private auClavier(e: KeyboardEvent): void {
+    this.oublierClicRefuse();
     if (e.key !== 'Enter' || !this.actif || this.etape?.action !== 'valeur') { return; }
-    const cible = this.chercher(this.cibleSuivie);
-    if (!cible || !cible.contains(e.target as Node)) { return; }
+    const champ = e.target as HTMLElement | null;
+    if (!champ || !this.estChampDeFiche(champ)) { return; }
     e.preventDefault();
     e.stopPropagation();
+    const cible = this.cibleTrouvee ? this.chercher(this.etape.cible) : null;
+    if (e.repeat || !cible || !cible.contains(champ)) { return; }
+    if (performance.now() - this.derniereAvanceAuClavier < GuidedHelpComponent.PAUSE_CLAVIER_MS) { return; }
     this.valeurSaisie = this.champRempli(cible);
-    if (this.valeurSaisie || this.etape.facultatif) { this.suivant(); }
+    if (this.valeurSaisie || this.etape.facultatif) {
+      this.derniereAvanceAuClavier = performance.now();
+      this.suivant();
+    }
     this.cdr.detectChanges();
+  }
+
+  /** Delai sous lequel un second appui sur Entree ne fait pas avancer une deuxieme fois. */
+  static readonly PAUSE_CLAVIER_MS = 400;
+  private derniereAvanceAuClavier = 0;
+
+  /**
+   * Champ de fiche ou Entree peut envoyer le formulaire : liste, ou <input> qui n'est
+   * pas un bouton. Zone de texte (retour a la ligne) et boutons gardent leur role.
+   */
+  private estChampDeFiche(el: HTMLElement): boolean {
+    if (el.tagName === 'SELECT') { return true; }
+    return el.tagName === 'INPUT'
+      && !/^(button|submit|reset|image|file)$/i.test((el as HTMLInputElement).type);
+  }
+
+  /**
+   * Boutons de la bulle : le second clic d'un double-clic (detail 2) est ignore — la
+   * bulle suivante est deja posee, et il la passerait si son champ est pre-rempli.
+   */
+  suivantAuClic(e: MouseEvent): void {
+    if (e.detail > 1) { return; }
+    this.suivant();
+  }
+
+  precedentAuClic(e: MouseEvent): void {
+    if (e.detail > 1) { return; }
+    this.precedent();
   }
 
   /**

@@ -291,11 +291,11 @@ interface VehicleTrip {
               <span class="credit-value">{{ creditPopupVehicle.leasingMonthlyPayment | appCurrency }}</span>
             </div>
             <div class="credit-row">
-              <span class="credit-label">Durée du leasing</span>
+              <span class="credit-label">Durée du crédit</span>
               <span class="credit-value">{{ creditPopupVehicle.leasingDurationMonths || 0 }} mois</span>
             </div>
             <div class="credit-row" *ngIf="creditPopupVehicle.leasingStartDate">
-              <span class="credit-label">Début du leasing</span>
+              <span class="credit-label">Date de début du crédit</span>
               <span class="credit-value">{{ creditPopupVehicle.leasingStartDate | date:'dd/MM/yyyy' }}</span>
             </div>
             <!-- Échéancier enregistré (acquisition_payments) : payées / total, reste à payer. -->
@@ -309,7 +309,7 @@ interface VehicleTrip {
               <span class="credit-value">{{ getCreditTotal(creditPopupVehicle) | appCurrency }}</span>
             </div>
             <p class="credit-note" *ngIf="!creditPopupVehicle.leasingMonthlyPayment || !creditPopupVehicle.leasingDurationMonths">
-              Renseignez la mensualité et la durée du leasing dans la fiche véhicule pour voir le détail complet.
+              Renseignez la « Traite mensuelle » et la « Durée du crédit » dans la fiche véhicule pour voir le détail complet.
             </p>
           </div>
           <div class="credit-foot">
@@ -2665,6 +2665,19 @@ export class VehiclesComponent implements OnInit, OnDestroy {
             hasGPS: v.hasGps,
             mileage: v.mileage,
             fuelTankCapacity: v.fuelTankCapacity,
+            // « Modifier » ouvre la fiche sur CETTE ligne : sans le carburant et le
+            // contrat d'acquisition (renvoyés par GET /vehicles), elle s'ouvrait sur
+            // « -- Sélectionner -- » et « Achat », et l'enregistrement repassait un
+            // véhicule en Crédit en Achat, en supprimant ses traites à venir
+            // (relecture du 25/09/2026).
+            fuelType: v.fuelType ?? undefined,
+            acquisitionType: v.acquisitionType ?? undefined,
+            purchasePrice: v.purchasePrice ?? null,
+            purchaseDate: v.purchaseDate ?? null,
+            leasingMonthlyPayment: v.leasingMonthlyPayment ?? null,
+            leasingDurationMonths: v.leasingDurationMonths ?? null,
+            leasingStartDate: v.leasingStartDate ?? null,
+            leasingPaymentDay: v.leasingPaymentDay ?? null,
             assignedDriverId: v.assignedDriverId?.toString(),
             assignedDriverName: v.assignedDriverName,
             // Ni le niveau de carburant ni l'échéance kilométrique ne sont

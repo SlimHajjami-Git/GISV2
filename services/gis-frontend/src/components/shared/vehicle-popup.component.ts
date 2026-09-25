@@ -97,14 +97,14 @@ export interface CompanyOption {
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="brandId">Marque *</label>
+                  <label for="brandId">Marque</label>
                   <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required data-guide="vehicule-marque">
                     <option [value]="null">-- Sélectionner --</option>
                     <option *ngFor="let brand of brands" [value]="brand.id">{{ brand.name }}</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="modelId">Modèle *</label>
+                  <label for="modelId">Modèle</label>
                   <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels" data-guide="vehicule-modele">
                     <option [value]="null">{{ loadingModels ? 'Chargement...' : '-- Sélectionner --' }}</option>
                     <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
@@ -154,7 +154,7 @@ export interface CompanyOption {
                 <div class="form-group">
                   <label for="fuelType">Type de carburant *</label>
                   <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required data-guide="vehicule-carburant">
-                    <option value="">Sélectionner</option>
+                    <option value="">-- Sélectionner --</option>
                     <option *ngFor="let ft of fuelTypes" [value]="ft.code">{{ ft.name }}</option>
                   </select>
                 </div>
@@ -415,7 +415,8 @@ export interface CompanyOption {
                   <label for="acquisitionType">Type d'acquisition</label>
                   <select id="acquisitionType" name="acquisitionType" [(ngModel)]="formData.acquisitionType" data-guide="vehicule-acquisition">
                     <option value="purchase">Achat</option>
-                    <option value="leasing">Auto-financement</option>
+                    <!-- Valeur technique « leasing » inchangée (base, API) ; libellé « Crédit » (Karim, 25/09/2026). -->
+                    <option value="leasing">Crédit</option>
                   </select>
                 </div>
                 <div class="form-group">
@@ -425,7 +426,9 @@ export interface CompanyOption {
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
+                  <!-- En Crédit, ce montant est l'APPORT : le serveur en fait la ligne « Apport » de
+                       l'échéancier, en plus des traites (AcquisitionScheduleSync). -->
+                  <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Apport' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">
                     <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" data-guide="vehicule-prix-achat" />
                     <span class="input-suffix">{{ currencyCode }}</span>
@@ -436,27 +439,27 @@ export interface CompanyOption {
               <ng-container *ngIf="formData.acquisitionType === 'leasing'">
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="leasingMonthlyPayment">Traite mensuelle</label>
+                    <label for="leasingMonthlyPayment">Traite mensuelle *</label>
                     <div class="input-with-suffix">
                       <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" data-guide="vehicule-traite" />
                       <span class="input-suffix">{{ currencyCode }}/mois</span>
                     </div>
                   </div>
                   <div class="form-group">
-                    <label for="leasingDurationMonths">Durée du leasing</label>
+                    <label for="leasingDurationMonths">Durée du crédit *</label>
                     <div class="input-with-suffix">
-                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="36" data-guide="vehicule-duree-leasing" />
+                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="Ex: 36" data-guide="vehicule-duree-leasing" />
                       <span class="input-suffix">mois</span>
                     </div>
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="leasingStartDate">Date début leasing</label>
+                    <label for="leasingStartDate">Date de début du crédit *</label>
                     <input type="date" id="leasingStartDate" name="leasingStartDate" [(ngModel)]="formData.leasingStartDate" data-guide="vehicule-debut-leasing" />
                   </div>
                   <div class="form-group">
-                    <label for="leasingPaymentDay">Jour de paiement</label>
+                    <label for="leasingPaymentDay">Jour de paiement *</label>
                     <select id="leasingPaymentDay" name="leasingPaymentDay" [(ngModel)]="formData.leasingPaymentDay" data-guide="vehicule-jour-paiement">
                       <option [ngValue]="null">— Choisir —</option>
                       <option *ngFor="let d of paymentDays" [ngValue]="d">{{ d }}</option>
@@ -1258,7 +1261,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     mileage: 0,
     fuelTankCapacity: null,
     color: '',
-    fuelType: 'diesel',
+    fuelType: '',
     companyId: null,
     hasGPS: false,
     gpsDeviceId: undefined,
@@ -1899,7 +1902,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       status: 'available',
       mileage: 0,
       color: '',
-      fuelType: 'diesel',
+      fuelType: '',
       companyId: this.defaultCompanyId,
       hasGPS: false,
       gpsDeviceId: undefined,
@@ -1924,7 +1927,39 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     this.gpsMode = 'existing';
   }
 
+  /**
+   * Champs marqués d'une étoile encore vides, par leur libellé. Karim, 25/09/2026 :
+   * l'étoile sur les champs obligatoires, et seulement eux. Le serveur n'exige que le
+   * nom : un carburant vide y devenait « diesel » sans rien dire, et un Crédit sans
+   * durée ni date de début n'avait aucune traite dans l'échéancier.
+   */
+  champsObligatoiresManquants(): string[] {
+    const f = this.formData;
+    const vide = (v: unknown) => v === null || v === undefined || String(v).trim() === '' || String(v) === 'null';
+    const manquants: string[] = [];
+    if (this.companies?.length && vide(f.companyId)) manquants.push('Société');
+    if (vide(f.name)) manquants.push('Nom du véhicule');
+    if (vide(f.plate)) manquants.push('Plaque');
+    if (vide(f.year)) manquants.push('Année');
+    if (vide(f.type)) manquants.push('Type');
+    if (vide(f.status)) manquants.push('Statut');
+    if (vide(f.mileage)) manquants.push('Compteur');
+    if (vide(f.fuelType)) manquants.push('Type de carburant');
+    if (f.acquisitionType === 'leasing') {
+      if (vide(f.leasingMonthlyPayment)) manquants.push('Traite mensuelle');
+      if (vide(f.leasingDurationMonths)) manquants.push('Durée du crédit');
+      if (vide(f.leasingStartDate)) manquants.push('Date de début du crédit');
+      if (vide(f.leasingPaymentDay)) manquants.push('Jour de paiement');
+    }
+    return manquants;
+  }
+
   onSubmit() {
+    const manquants = this.champsObligatoiresManquants();
+    if (manquants.length) {
+      alert('Renseignez les champs obligatoires (*) : ' + manquants.join(', ') + '.');
+      return;
+    }
     // Calypso 7: when the popup runs in non-admin context the GPS section
     // isn't rendered, so the local formData GPS fields might still hold
     // their initial blank values. We MUST NOT emit those — the parent

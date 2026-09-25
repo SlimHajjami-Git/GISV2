@@ -76,7 +76,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Le bouton « Nouveau véhicule » n'apparaît que si vous êtes administrateur de votre société. Un utilisateur standard consulte la liste mais ne crée pas de véhicule.",
       "« Nom du véhicule » est le nom d'usage, celui que vos équipes emploient au quotidien (« Camion principal », « Fourgon atelier »). « Plaque » est l'immatriculation officielle.",
       "Le « Modèle » reste inactif tant que la « Marque » n'est pas choisie : c'est la marque qui détermine les modèles proposés.",
-      "La section « Acquisition & financement » sert à suivre un achat ou un auto-financement. Si vous choisissez « Auto-financement », des champs supplémentaires apparaissent pour la traite mensuelle, la durée et le jour de prélèvement — et Calypso construit l'échéancier."
+      "La section « Acquisition & financement » sert à suivre un achat ou un crédit. Si vous choisissez « Crédit », le montant devient l'« Apport », et des champs supplémentaires apparaissent pour la traite mensuelle, la durée, la date de début et le jour de paiement — Calypso construit l'échéancier."
     ],
     aRetenir: "Une plaque ne peut exister qu'une fois dans votre société. Si le message « Le matricule … est déjà utilisé dans votre société. » s'affiche, le véhicule existe déjà : cherchez-le dans la liste plutôt que d'en créer un second.",
     video: { titre: 'Ajouter un véhicule', url: '' }
@@ -1184,7 +1184,7 @@ export const VISITES_ECRANS: VisiteEcran[] = [
       {
         id: "tuto-vehicule-acquisition",
         titre: "Le mode d'acquisition (facultatif)",
-        texte: "Choisissez le « Type d'acquisition » : « Achat » ou « Auto-financement ».",
+        texte: "Choisissez le « Type d'acquisition » : « Achat » ou « Crédit ».",
         cible: "vehicule-acquisition",
         action: "valeur",
         facultatif: true
@@ -1197,45 +1197,46 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         action: "valeur",
         facultatif: true
       },
+      // Montant facultatif : « Prix d'achat », ou « Apport » en Credit (un credit peut
+      // n'en avoir aucun ; le serveur en fait la ligne « Apport » de l'echeancier).
+      // Credit : les champs qui apparaissent ensuite sont OBLIGATOIRES (Karim,
+      // 25/09/2026 : « c'est tres important ») — ils fondent l'echeancier. Ils
+      // n'existent pas en « Achat » : leurs bulles sont alors enjambees.
       {
         id: "tuto-vehicule-prix-achat",
         titre: "Le montant (facultatif)",
-        texte: "Saisissez le « Prix d'achat » du véhicule, ou le « Montant Auto-financement » s'il est financé.",
+        texte: "Saisissez le « Prix d'achat » du véhicule ou, pour un crédit, l'« Apport ».",
         cible: "vehicule-prix-achat",
         action: "valeur",
         facultatif: true
       },
       {
         id: "tuto-vehicule-traite",
-        titre: "La traite mensuelle (facultatif)",
+        titre: "La traite mensuelle",
         texte: "Saisissez le montant de la « Traite mensuelle ».",
         cible: "vehicule-traite",
-        action: "valeur",
-        facultatif: true
+        action: "valeur"
       },
       {
         id: "tuto-vehicule-duree-leasing",
-        titre: "La durée (facultatif)",
-        texte: "Indiquez la « Durée du leasing », en mois.",
+        titre: "La durée du crédit",
+        texte: "Indiquez la « Durée du crédit », en mois.",
         cible: "vehicule-duree-leasing",
-        action: "valeur",
-        facultatif: true
+        action: "valeur"
       },
       {
         id: "tuto-vehicule-debut-leasing",
-        titre: "Le début du leasing (facultatif)",
-        texte: "Indiquez la « Date début leasing ».",
+        titre: "Le début du crédit",
+        texte: "Indiquez la « Date de début du crédit ».",
         cible: "vehicule-debut-leasing",
-        action: "valeur",
-        facultatif: true
+        action: "valeur"
       },
       {
         id: "tuto-vehicule-jour-paiement",
-        titre: "Le jour de paiement (facultatif)",
+        titre: "Le jour de paiement",
         texte: "Choisissez le « Jour de paiement » de chaque traite dans le mois.",
         cible: "vehicule-jour-paiement",
-        action: "valeur",
-        facultatif: true
+        action: "valeur"
       },
       {
         id: "tuto-vehicule-ajouter",
