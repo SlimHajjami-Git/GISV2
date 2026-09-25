@@ -114,11 +114,11 @@ export interface CompanyOption {
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="year">Année *</label>
+                  <label for="year">Année</label>
                   <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" data-guide="vehicule-annee" />
                 </div>
                 <div class="form-group">
-                  <label for="type">Type *</label>
+                  <label for="type">Type</label>
                   <select id="type" name="type" [(ngModel)]="formData.type" required data-guide="vehicule-type">
                     <option value="">Sélectionner</option>
                     <option value="camion">Camion</option>
@@ -132,7 +132,7 @@ export interface CompanyOption {
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="status">Statut *</label>
+                  <label for="status">Statut</label>
                   <select id="status" name="status" [(ngModel)]="formData.status" required data-guide="vehicule-statut">
                     <option value="">Sélectionner</option>
                     <option value="available">Disponible</option>
@@ -141,7 +141,7 @@ export interface CompanyOption {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="mileage">Compteur *</label>
+                  <label for="mileage">Kilométrage *</label>
                   <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" data-guide="vehicule-compteur" />
                 </div>
               </div>
@@ -1940,10 +1940,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     if (this.companies?.length && vide(f.companyId)) manquants.push('Société');
     if (vide(f.name)) manquants.push('Nom du véhicule');
     if (vide(f.plate)) manquants.push('Plaque');
-    if (vide(f.year)) manquants.push('Année');
-    if (vide(f.type)) manquants.push('Type');
-    if (vide(f.status)) manquants.push('Statut');
-    if (vide(f.mileage)) manquants.push('Compteur');
+    if (vide(f.mileage)) manquants.push('Kilométrage');
     if (vide(f.fuelType)) manquants.push('Type de carburant');
     if (f.acquisitionType === 'leasing') {
       if (vide(f.leasingMonthlyPayment)) manquants.push('Traite mensuelle');

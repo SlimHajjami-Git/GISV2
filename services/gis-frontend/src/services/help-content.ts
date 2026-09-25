@@ -68,7 +68,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     etapes: [
       "Allez dans le menu « Véhicules ».",
       "Cliquez sur « Nouveau véhicule » en haut de la liste.",
-      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Marque », « Modèle », « Année », « Type », « Statut », « Compteur » et « Type de carburant ».",
+      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Kilométrage » et « Type de carburant » — et, pour un crédit, « Traite mensuelle », « Durée du crédit », « Date de début du crédit » et « Jour de paiement ».",
       "Complétez si vous le souhaitez la couleur, la capacité du réservoir et la date de mise en circulation.",
       "Cliquez sur « Ajouter »."
     ],
@@ -115,7 +115,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Validez avec « Corriger »."
     ],
     paragraphes: [
-      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Compteur ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
+      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Kilométrage ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
       "Préférez le bouton « Corriger » dès qu'il s'agit de rattraper une erreur : la correction est horodatée et conservée avec son motif et le nom de son auteur. Ce journal n'est pas consultable depuis l'application — il sert en cas de litige ou de contrôle, et notre support peut le retrouver.",
       "Le bouton « Corriger » n'apparaît que pour les véhicules sans boîtier GPS. Quand un boîtier remonte le kilométrage, c'est lui qui fait foi, et la ligne affiche alors une petite antenne à la place du bouton.",
       "Le bouton « Modifier » refuse une valeur inférieure au compteur actuel, avec le message « Un compteur ne recule pas : vérifiez la valeur. » C'est une protection contre les fautes de frappe.",
@@ -1124,29 +1124,32 @@ export const VISITES_ECRANS: VisiteEcran[] = [
       },
       {
         id: "tuto-vehicule-annee",
-        titre: "L'année",
+        titre: "L'année (facultatif)",
         texte: "Indiquez l'« Année » du véhicule. L'année en cours est déjà inscrite : corrigez-la si besoin.",
         cible: "vehicule-annee",
-        action: "valeur"
+        action: "valeur",
+        facultatif: true
       },
       {
         id: "tuto-vehicule-type",
-        titre: "Le type",
+        titre: "Le type (facultatif)",
         texte: "Choisissez le « Type » du véhicule dans la liste.",
         cible: "vehicule-type",
-        action: "valeur"
+        action: "valeur",
+        facultatif: true
       },
       {
         id: "tuto-vehicule-statut",
-        titre: "Le statut",
+        titre: "Le statut (facultatif)",
         texte: "Choisissez son « Statut » : « Disponible », « En service » ou « En maintenance ».",
         cible: "vehicule-statut",
-        action: "valeur"
+        action: "valeur",
+        facultatif: true
       },
       {
         id: "tuto-vehicule-compteur",
-        titre: "Le compteur",
-        texte: "Saisissez le kilométrage affiché au « Compteur » du véhicule.",
+        titre: "Le kilométrage",
+        texte: "Saisissez le « Kilométrage » affiché au compteur du véhicule.",
         cible: "vehicule-compteur",
         action: "valeur"
       },

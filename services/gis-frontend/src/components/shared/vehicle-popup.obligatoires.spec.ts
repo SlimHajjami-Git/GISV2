@@ -46,12 +46,23 @@ describe('Fiche véhicule — champs obligatoires', () => {
   it('l\'étoile après le libellé, sur les champs obligatoires seulement : ni Marque ni Modèle', async () => {
     await ouvrir();
     const l = libelles();
-    for (const oblig of ['Nom du véhicule *', 'Plaque *', 'Année *', 'Type *', 'Statut *', 'Compteur *', 'Type de carburant *']) {
+    for (const oblig of ['Nom du véhicule *', 'Plaque *', 'Kilométrage *', 'Type de carburant *']) {
       expect(l).toContain(oblig);
     }
-    for (const facultatif of ['Marque', 'Modèle', 'Couleur', 'Capacité réservoir (L)', 'Date de mise en circulation', "Type d'acquisition", "Date d'achat", "Prix d'achat"]) {
+    for (const facultatif of ['Marque', 'Modèle', 'Année', 'Type', 'Statut', 'Couleur', 'Capacité réservoir (L)', 'Date de mise en circulation', "Type d'acquisition", "Date d'achat", "Prix d'achat"]) {
       expect(l).toContain(facultatif);
     }
+  });
+
+  it('Année, Type et Statut vides ne bloquent pas l\'enregistrement (Karim : pas obligatoires)', async () => {
+    await ouvrir();
+    remplirObligatoires();
+    Object.assign(fixture.componentInstance.formData, { year: null, type: '', status: '' });
+    const emis = jest.fn();
+    fixture.componentInstance.saved.subscribe(emis);
+    fixture.componentInstance.onSubmit();
+    expect(alerte).not.toHaveBeenCalled();
+    expect(emis).toHaveBeenCalledTimes(1);
   });
 
   it('« Ajouter » sans carburant : alerte qui le nomme, rien n\'est enregistré', async () => {
