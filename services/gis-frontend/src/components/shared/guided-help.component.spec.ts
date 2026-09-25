@@ -578,6 +578,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
   it('la visite de première connexion demandée pendant le tutoriel prend la main', async () => {
     await ouvrir('/vehicles');
     expect(guide.componentInstance.mode).toBe('ecran');
+    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // la visite, pas le conseil
     help.reinitialiserGuide();
     guide.detectChanges();
     expect(guide.componentInstance.mode).toBe('parcours');
@@ -585,6 +586,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
   });
 
   it('« Terminer » de la visite dépose sur Véhicules sans enchaîner le tutoriel ; il vient au prochain accès', async () => {
+    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // la visite, pas le conseil
     help.reinitialiserGuide();
     guide.detectChanges();
     const c = guide.componentInstance;
@@ -1165,9 +1167,10 @@ describe('Conseil de première connexion', () => {
     expect(guide.componentInstance.etape?.id).toBe('bienvenue');
   });
 
-  it('il ne revient plus jamais, même quand la visite est relancée depuis l\'Aide', async () => {
+  it('en production, il ne revient plus jamais, même quand la visite est relancée depuis l\'Aide', async () => {
     compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
     await monter();
+    jest.spyOn(help, 'enDeveloppement').mockReturnValue(false);  // image de production
     (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
     await attendre();
     guide.componentInstance.passer();
@@ -1176,6 +1179,18 @@ describe('Conseil de première connexion', () => {
     await attendre();
     expect(guide.componentInstance.conseilOuvert).toBe(false);
     expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+  });
+
+  it('en local (développement), « Revoir la visite guidée » le remontre, pour que Karim puisse le revoir', async () => {
+    compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA', isCompanyAdmin: true };
+    await monter();
+    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
+    await attendre();
+    guide.componentInstance.passer();
+
+    help.reinitialiserGuide();
+    await attendre();
+    expect(guide.componentInstance.conseilOuvert).toBe(true);
   });
 
   it('fermé par Échap : il ne revient pas non plus (lu dès son affichage)', async () => {

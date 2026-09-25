@@ -244,7 +244,15 @@ export class HelpService {
   /** Permet au client de refaire la visite depuis le bouton "?". Les guides d'ecran vus le restent. */
   reinitialiserGuide(): void {
     this.termineeEnMemoire.delete(this.cleUtilisateur());
-    this.modifierEtat({ guideTermine: false, dateFin: undefined });
+    // EN DEVELOPPEMENT SEULEMENT (isDevMode, faux dans l'image de production) : le
+    // conseil de premiere connexion revient aussi, pour que Karim puisse le revoir
+    // en local (25/09/2026). Chez un client, il reste affiche une seule fois.
+    if (this.enDeveloppement()) {
+      this.conseilVuEnMemoire.delete(this.cleUtilisateur());
+      this.modifierEtat({ guideTermine: false, dateFin: undefined, conseilVu: false });
+    } else {
+      this.modifierEtat({ guideTermine: false, dateFin: undefined });
+    }
     this.ouvrirGuide();
   }
 
@@ -299,8 +307,13 @@ export class HelpService {
    * serveur, ou une autre societe porterait-elle ce nom. A retirer quand le guide
    * sera generalise.
    */
+  /** isDevMode(), isole pour que les tests puissent jouer le comportement de production. */
+  enDeveloppement(): boolean {
+    return isDevMode();
+  }
+
   private derogationPilote(): boolean {
-    return isDevMode() && this.auth.getCurrentUserSync()?.companyName === 'Belive GPA';
+    return this.enDeveloppement() && this.auth.getCurrentUserSync()?.companyName === 'Belive GPA';
   }
 
   /**
