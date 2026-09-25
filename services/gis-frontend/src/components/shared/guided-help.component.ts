@@ -6,6 +6,8 @@ import { HelpService } from '../../services/help.service';
 import { AuthService } from '../../services/auth.service';
 import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
 import { CONSEIL_PREMIERE_CONNEXION } from '../../services/help-content';
+import { ThemeService } from '../../services/theme.service';
+import { environment } from '../../environments/environment';
 
 /**
  * Visite guidee de premiere connexion (menu Vehicules -> Ajouter un vehicule
@@ -42,19 +44,32 @@ import { CONSEIL_PREMIERE_CONNEXION } from '../../services/help-content';
       <!-- Conseil de premiere connexion, au centre de l'ecran, juste avant la visite. -->
       <div class="guide-voile"></div>
       <div class="guide-conseil" role="dialog" aria-modal="true" aria-labelledby="guide-conseil-titre">
-        <div class="conseil-icone" aria-hidden="true">
-          <!-- Ampoule : c'est un conseil, pas une alerte. -->
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18h6"/><path d="M10 22h4"/>
-            <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>
-          </svg>
+        <!-- En-tete a la marque : le logo Calypso (version du theme), ou le nom de la
+             marque sur un autre deploiement — meme garde-fou que la barre du haut. -->
+        <div class="conseil-entete">
+          @if (estMarqueCalypso) {
+            <img class="conseil-logo" [src]="logoMarque" [alt]="nomMarque" width="504" height="170" draggable="false">
+          } @else {
+            <span class="conseil-marque">{{ nomMarque }}</span>
+          }
         </div>
-        <h3 id="guide-conseil-titre">{{ conseil.titre }}</h3>
-        @for (p of conseil.paragraphes; track $index) {
-          <p>@for (m of p; track $index) {@if (m.gras) {<strong>{{ m.texte }}</strong>} @else {{{ m.texte }}}}</p>
-        }
-        <div class="conseil-actions">
-          <button type="button" class="conseil-bouton" (click)="commencerApresConseil()">{{ conseil.bouton }}</button>
+        <div class="conseil-corps">
+          <div class="conseil-titre">
+            <span class="conseil-icone" aria-hidden="true">
+              <!-- Ampoule : c'est un conseil, pas une alerte. -->
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 18h6"/><path d="M10 22h4"/>
+                <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>
+              </svg>
+            </span>
+            <h3 id="guide-conseil-titre">{{ conseil.titre }}</h3>
+          </div>
+          @for (p of conseil.paragraphes; track $index) {
+            <p>@for (m of p; track $index) {@if (m.gras) {<strong>{{ m.texte }}</strong>} @else {{{ m.texte }}}}</p>
+          }
+          <div class="conseil-actions">
+            <button type="button" class="conseil-bouton" (click)="commencerApresConseil()">{{ conseil.bouton }}</button>
+          </div>
         </div>
       </div>
     }
@@ -147,19 +162,37 @@ import { CONSEIL_PREMIERE_CONNEXION } from '../../services/help-content';
     .guide-conseil {
       position: fixed; z-index: 10002; inset: 0; margin: auto; height: fit-content;
       width: 520px; max-width: calc(100vw - 32px); box-sizing: border-box;
-      background: #fff; color: #0f172a; border-radius: 16px; padding: 28px 30px 24px;
-      box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+      background: #fff; color: #0f172a; border-radius: 16px; overflow: hidden;
+      box-shadow: 0 28px 70px rgba(15, 23, 42, .38), 0 0 0 1px rgba(15, 23, 42, .04);
       font-family: inherit; -webkit-font-smoothing: antialiased;
       animation: guide-apparition .18s ease-out;
     }
     :host-context([data-theme="dark"]) .guide-conseil { background: #1e293b; color: #f1f5f9; }
-    .conseil-icone {
-      width: 44px; height: 44px; border-radius: 50%; margin-bottom: 14px;
-      display: flex; align-items: center; justify-content: center;
-      background: #eff6ff; color: #2563eb;
+    /* Liseré aux couleurs du logo (cyan, bleu, marine). */
+    .guide-conseil::before {
+      content: ''; display: block; height: 4px;
+      background: linear-gradient(90deg, #00adef 0%, #176fc1 55%, #27429f 100%);
     }
-    :host-context([data-theme="dark"]) .conseil-icone { background: rgba(37, 99, 235, .18); color: #93c5fd; }
-    .guide-conseil h3 { margin: 0 0 14px; font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
+    .conseil-entete {
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px 30px 18px;
+      background: linear-gradient(180deg, #f2f8ff 0%, #ffffff 100%);
+      border-bottom: 1px solid #e6eef8;
+    }
+    :host-context([data-theme="dark"]) .conseil-entete {
+      background: linear-gradient(180deg, #1a2b47 0%, #1e293b 100%); border-bottom-color: #334155;
+    }
+    .conseil-logo { display: block; height: 42px; width: auto; }
+    .conseil-marque { font-size: 22px; font-weight: 700; letter-spacing: .02em; color: #176fc1; }
+    .conseil-corps { padding: 22px 30px 24px; }
+    .conseil-titre { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .conseil-icone {
+      flex: none; width: 38px; height: 38px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      background: #fff7e8; color: #f6870f;
+    }
+    :host-context([data-theme="dark"]) .conseil-icone { background: rgba(246, 135, 15, .16); color: #fbbf62; }
+    .guide-conseil h3 { margin: 0; font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
     .guide-conseil p { margin: 0 0 14px; font-size: 16px; line-height: 1.65; color: #1e293b; }
     .guide-conseil p strong { font-weight: 700; color: #0f172a; }
     :host-context([data-theme="dark"]) .guide-conseil p { color: #e2e8f0; }
@@ -173,7 +206,8 @@ import { CONSEIL_PREMIERE_CONNEXION } from '../../services/help-content';
     .conseil-bouton:hover { background: #1d4ed8; }
     .conseil-bouton:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
     @media (max-width: 640px) {
-      .guide-conseil { padding: 22px 20px 18px; }
+      .conseil-entete { padding: 16px 20px 14px; }
+      .conseil-corps { padding: 18px 20px 18px; }
       .guide-conseil p { font-size: 15px; }
       .conseil-bouton { width: 100%; }
     }
@@ -249,6 +283,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   /** Conseil de premiere connexion affiche au centre, avant la premiere bulle de la visite. */
   conseilOuvert = false;
   readonly conseil = CONSEIL_PREMIERE_CONNEXION;
+  /**
+   * Logo du conseil : meme regle que la barre du haut (app-layout). Le logo Calypso
+   * n'est JAMAIS affiche pour un autre deploiement (Bougeo…), qui voit son nom.
+   */
+  readonly nomMarque = environment.brandName;
+  readonly estMarqueCalypso = (environment.brandName || '').trim().toLowerCase() === 'calypso';
+  private theme = inject(ThemeService);
+  get logoMarque(): string {
+    return this.theme.isDarkMode ? '/assets/calypso-logo-sombre.svg' : '/assets/calypso-logo.svg';
+  }
   visiteEcran: VisiteEcran | null = null;
   /** Cible de l'etape affichee trouvee : sans elle, ni cadre ni bulle. */
   cibleTrouvee = false;
