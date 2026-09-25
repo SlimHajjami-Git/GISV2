@@ -37,6 +37,8 @@ interface EtatAide {
   nouvelUtilisateur?: boolean;
   /** Guides d'ecran passes ou termines (VisiteEcran.id). */
   ecransVus?: string[];
+  /** Conseil de premiere connexion deja lu : il ne revient plus jamais. */
+  conseilVu?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -244,6 +246,26 @@ export class HelpService {
     this.termineeEnMemoire.delete(this.cleUtilisateur());
     this.modifierEtat({ guideTermine: false, dateFin: undefined });
     this.ouvrirGuide();
+  }
+
+  // ------------------------------------------- Conseil de premiere connexion
+
+  private conseilVuEnMemoire = new Set<string>();
+
+  /**
+   * Le conseil « renseignez tous les champs » precede la visite une seule fois, pour
+   * un nouvel utilisateur (premiere connexion). Lu, il ne revient plus jamais —
+   * pas meme si la visite est relancee depuis l'Aide (Karim, 25/09/2026).
+   */
+  conseilAMontrer(): boolean {
+    return this.estNouvelUtilisateur()
+      && !this.conseilVuEnMemoire.has(this.cleUtilisateur())
+      && !this.lireEtat().conseilVu;
+  }
+
+  marquerConseilVu(): void {
+    this.conseilVuEnMemoire.add(this.cleUtilisateur());
+    this.modifierEtat({ conseilVu: true });
   }
 
   // ------------------------------------------------------- Guides des ecrans

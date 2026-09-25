@@ -925,6 +925,33 @@ export const ARTICLES_AIDE: HelpArticle[] = [
 ];
 
 /**
+ * Conseil de premiere connexion (Karim, 25/09/2026) : une fenetre au centre de
+ * l'ecran, UNE SEULE FOIS, juste avant la visite guidee — « il ne revient ensuite
+ * plus jamais ». Elle donne la raison des tutoriels qui passent par tous les
+ * champs : des fiches completes, ce sont des chiffres justes et des problemes
+ * reperes, « et meme dans les rapports ». Son bouton lance la visite.
+ */
+export const CONSEIL_PREMIERE_CONNEXION: {
+  titre: string;
+  /** Chaque paragraphe en morceaux, pour mettre l'essentiel en gras sans HTML. */
+  paragraphes: { texte: string; gras?: boolean }[][];
+  bouton: string;
+} = {
+  titre: 'Un conseil avant de commencer',
+  paragraphes: [
+    [
+      { texte: 'Pour que Calypso vous donne des informations justes sur votre parc — coûts réels, échéances, entretiens à venir —, renseignez ' },
+      { texte: 'tous les champs', gras: true },
+      { texte: ' de chaque fiche, même ceux qui sont facultatifs.' }
+    ],
+    [
+      { texte: "Plus vos fiches sont complètes, plus vite vous repérez ce qui ne va pas — une assurance qui expire, un entretien en retard, un véhicule qui coûte trop cher —, à l'écran comme dans vos rapports." }
+    ]
+  ],
+  bouton: "C'est compris, on commence"
+};
+
+/**
  * Visite guidee de premiere connexion.
  *
  * Chaque etape vise un element portant data-guide="...". Si le module n'est pas

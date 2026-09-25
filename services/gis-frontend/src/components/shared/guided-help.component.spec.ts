@@ -23,6 +23,9 @@ import { PermissionService } from '../../services/permission.service';
 declare const require: (m: string) => any;
 declare const __dirname: string;
 
+// Tutoriels « tous les champs » (24/09/2026) : des parcours de 14 à 21 bulles.
+jest.setTimeout(20000);
+
 @Component({ standalone: true, template: `<button data-guide="menu-flotte">Exploitation</button>` })
 class PageTableauDeBord implements OnInit {
   private help = inject(HelpService);
@@ -372,6 +375,7 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     help = TestBed.inject(HelpService);
     // La visite de première connexion est déjà faite : elle passerait avant.
     help.fermerGuide(true);
+    help.marquerConseilVu();                 // le conseil a ses propres tests
     guide = TestBed.createComponent(GuidedHelpComponent);
     guide.detectChanges();
     harness = await RouterTestingHarness.create('/dashboard');
@@ -1100,5 +1104,92 @@ describe('Tutoriels — un montant laissé à 0 n\'est pas une saisie', () => {
     const texte = document.createElement('input');
     texte.value = '0';                                  // un texte « 0 » reste une saisie
     expect(c.champRempli(texte)).toBe(true);
+  });
+});
+
+/**
+ * Conseil de première connexion (Karim, 25/09/2026) : une fenêtre au centre,
+ * « une seule fois, à la première connexion, juste avant la visite guidée. Il ne
+ * revient ensuite plus jamais. »
+ */
+describe('Conseil de première connexion', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+
+  const attendre = async () => {
+    for (let i = 0; i < 5; i++) { await harness.fixture.whenStable(); harness.fixture.detectChanges(); guide.detectChanges(); }
+  };
+  const fenetre = () => guide.nativeElement.querySelector('.guide-conseil') as HTMLElement | null;
+
+  const monter = async () => {
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([{ path: 'dashboard', component: PageTableauDeBord }]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');   // la page propose la visite
+    await attendre();
+  };
+
+  beforeEach(() => { localStorage.clear(); });
+  afterEach(() => guide.destroy());
+
+  it('nouvel utilisateur : le conseil s\'affiche d\'abord, et son bouton lance la visite', async () => {
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+
+    expect(guide.componentInstance.conseilOuvert).toBe(true);
+    expect(guide.componentInstance.actif).toBe(false);          // pas encore de bulle
+    expect(fenetre()?.textContent).toContain('Un conseil avant de commencer');
+    expect(fenetre()?.textContent).toContain('à l\'écran comme dans vos rapports');
+
+    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
+    await attendre();
+    expect(fenetre()).toBeNull();
+    expect(guide.componentInstance.actif).toBe(true);
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+  });
+
+  it('il ne revient plus jamais, même quand la visite est relancée depuis l\'Aide', async () => {
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+    (fenetre()!.querySelector('.conseil-bouton') as HTMLElement).click();
+    await attendre();
+    guide.componentInstance.passer();
+
+    help.reinitialiserGuide();                                   // « Revoir la visite guidée »
+    await attendre();
+    expect(guide.componentInstance.conseilOuvert).toBe(false);
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
+  });
+
+  it('fermé par Échap : il ne revient pas non plus (lu dès son affichage)', async () => {
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+    guide.componentInstance.auEchap();
+    expect(guide.componentInstance.conseilOuvert).toBe(false);
+    expect(help.conseilAMontrer()).toBe(false);
+  });
+
+  it('un client déjà installé (pas une première connexion) ne le voit pas', async () => {
+    compte = { id: 'u-ancien', firstLogin: false, companyName: 'Transports Martin', isCompanyAdmin: true };
+    await monter();
+    expect(guide.componentInstance.conseilOuvert).toBe(false);
+    expect(guide.componentInstance.etape?.id).toBe('bienvenue');
   });
 });

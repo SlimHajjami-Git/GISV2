@@ -5,6 +5,7 @@ import { Subscription, filter } from 'rxjs';
 import { HelpService } from '../../services/help.service';
 import { AuthService } from '../../services/auth.service';
 import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
+import { CONSEIL_PREMIERE_CONNEXION } from '../../services/help-content';
 
 /**
  * Visite guidee de premiere connexion (menu Vehicules -> Ajouter un vehicule
@@ -37,6 +38,26 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
   standalone: true,
   imports: [CommonModule],
   template: `
+    @if (conseilOuvert) {
+      <!-- Conseil de premiere connexion, au centre de l'ecran, juste avant la visite. -->
+      <div class="guide-voile"></div>
+      <div class="guide-conseil" role="dialog" aria-modal="true" aria-labelledby="guide-conseil-titre">
+        <div class="conseil-icone" aria-hidden="true">
+          <!-- Ampoule : c'est un conseil, pas une alerte. -->
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 18h6"/><path d="M10 22h4"/>
+            <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1V18h6v-1.2c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>
+          </svg>
+        </div>
+        <h3 id="guide-conseil-titre">{{ conseil.titre }}</h3>
+        @for (p of conseil.paragraphes; track $index) {
+          <p>@for (m of p; track $index) {@if (m.gras) {<strong>{{ m.texte }}</strong>} @else {{{ m.texte }}}}</p>
+        }
+        <div class="conseil-actions">
+          <button type="button" class="conseil-bouton" (click)="commencerApresConseil()">{{ conseil.bouton }}</button>
+        </div>
+      </div>
+    }
     @if (actif && etape) {
       <!-- Le voile ne ferme PAS la visite : un clic a cote ne doit pas supprimer
            definitivement un parcours que le client n'a jamais vu. Pour sortir,
@@ -118,6 +139,44 @@ import { GuideEtape, VisiteEcran } from '../../services/help-content.model';
       animation: guide-apparition .18s ease-out;
     }
     :host-context([data-theme="dark"]) .guide-bulle { background: #1e293b; color: #e2e8f0; }
+    /* Conseil de premiere connexion. Karim (25/09/2026) : « bon sur le plan
+       ergonomique, avec une police tres claire » — texte en 16 px, presque noir sur
+       blanc (contraste AAA), interligne large, colonne etroite pour une lecture
+       facile, un seul bouton bien visible. Centree sans transform : l'animation
+       d'apparition en utilise deja un. */
+    .guide-conseil {
+      position: fixed; z-index: 10002; inset: 0; margin: auto; height: fit-content;
+      width: 520px; max-width: calc(100vw - 32px); box-sizing: border-box;
+      background: #fff; color: #0f172a; border-radius: 16px; padding: 28px 30px 24px;
+      box-shadow: 0 24px 60px rgba(15, 23, 42, .35);
+      font-family: inherit; -webkit-font-smoothing: antialiased;
+      animation: guide-apparition .18s ease-out;
+    }
+    :host-context([data-theme="dark"]) .guide-conseil { background: #1e293b; color: #f1f5f9; }
+    .conseil-icone {
+      width: 44px; height: 44px; border-radius: 50%; margin-bottom: 14px;
+      display: flex; align-items: center; justify-content: center;
+      background: #eff6ff; color: #2563eb;
+    }
+    :host-context([data-theme="dark"]) .conseil-icone { background: rgba(37, 99, 235, .18); color: #93c5fd; }
+    .guide-conseil h3 { margin: 0 0 14px; font-size: 20px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
+    .guide-conseil p { margin: 0 0 14px; font-size: 16px; line-height: 1.65; color: #1e293b; }
+    .guide-conseil p strong { font-weight: 700; color: #0f172a; }
+    :host-context([data-theme="dark"]) .guide-conseil p { color: #e2e8f0; }
+    :host-context([data-theme="dark"]) .guide-conseil p strong { color: #fff; }
+    .conseil-actions { display: flex; justify-content: flex-end; margin-top: 22px; }
+    .conseil-bouton {
+      font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+      padding: 11px 22px; border-radius: 10px; border: none;
+      background: #2563eb; color: #fff;
+    }
+    .conseil-bouton:hover { background: #1d4ed8; }
+    .conseil-bouton:focus-visible { outline: 3px solid #93c5fd; outline-offset: 2px; }
+    @media (max-width: 640px) {
+      .guide-conseil { padding: 22px 20px 18px; }
+      .guide-conseil p { font-size: 15px; }
+      .conseil-bouton { width: 100%; }
+    }
     .guide-bulle h3 { margin: 6px 0 8px; font-size: 16px; font-weight: 650; }
     .guide-bulle p { margin: 0 0 14px; font-size: 13.5px; line-height: 1.55; color: #475569; }
     :host-context([data-theme="dark"]) .guide-bulle p { color: #cbd5e1; }
@@ -187,6 +246,9 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   private hauteurBulle = 210;
   /** Visite de premiere connexion, ou guide de l'ecran ouvert (visiteEcran). */
   mode: 'parcours' | 'ecran' = 'parcours';
+  /** Conseil de premiere connexion affiche au centre, avant la premiere bulle de la visite. */
+  conseilOuvert = false;
+  readonly conseil = CONSEIL_PREMIERE_CONNEXION;
   visiteEcran: VisiteEcran | null = null;
   /** Cible de l'etape affichee trouvee : sans elle, ni cadre ni bulle. */
   cibleTrouvee = false;
@@ -242,7 +304,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     // Deconnexion (volontaire ou jeton expire) : la visite ne doit pas rester
     // posee sur l'ecran de connexion. Elle n'est pas marquee comme vue.
     this.abonnements.push(this.auth.getCurrentUser().subscribe(utilisateur => {
-      if (utilisateur || !this.actif) { return; }
+      if (utilisateur || (!this.actif && !this.conseilOuvert)) { return; }
       if (this.mode === 'parcours') { this.help.fermerGuide(false); }
       else { this.arreter(); this.cdr.detectChanges(); }
     }));
@@ -350,7 +412,8 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * qu'elle tourne, aucun guide d'ecran ne s'intercale.
    */
   private auChangementDePage(url: string): void {
-    if (this.detruit || (this.actif && this.mode === 'parcours')) { return; }
+    // Ni pendant la visite de premiere connexion, ni pendant le conseil qui la precede.
+    if (this.detruit || this.conseilOuvert || (this.actif && this.mode === 'parcours')) { return; }
     const arrivee = this.arriveeFinParcours;
     this.arriveeFinParcours = null;
     if (arrivee && url.split(/[?#]/)[0] === arrivee.split(/[?#]/)[0]) { return; }
@@ -379,15 +442,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * Un guide d'ecran ferme par Echap revient au prochain acces a l'ecran.
    */
   @HostListener('window:keydown.escape') auEchap(): void {
-    if (!this.actif) { return; }
-    const mode = this.mode;
+    if (!this.actif && !this.conseilOuvert) { return; }
+    const mode = this.conseilOuvert ? 'parcours' : this.mode;
     this.arreter();
     if (mode === 'parcours') { this.help.fermerGuide(false); }
     this.cdr.detectChanges();
   }
 
-  /** Masque la visite et coupe toute recherche de cible encore en cours. */
+  /** Masque la visite (et le conseil qui la precede) et coupe toute recherche de cible. */
   private arreter(): void {
+    this.conseilOuvert = false;
     this.actif = false;
     this.etape = null;
     this.cibleTrouvee = false;
@@ -400,7 +464,24 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   }
 
   private demarrer(): void {
+    // Nouvel utilisateur : le conseil « renseignez tous les champs » passe avant la
+    // visite, une seule fois. Il est marque lu des qu'il s'affiche — ferme par Echap,
+    // il ne revient pas non plus (Karim : « il ne revient ensuite plus jamais »).
+    if (this.help.conseilAMontrer()) {
+      this.help.marquerConseilVu();
+      this.mode = 'parcours';
+      this.conseilOuvert = true;
+      setTimeout(() => (this.hote.nativeElement.querySelector('.conseil-bouton') as HTMLElement | null)?.focus());
+      return;
+    }
     this.lancer('parcours', null, this.help.etapesGuide());
+  }
+
+  /** « C'est compris, on commence » : le conseil laisse la place a la visite. */
+  commencerApresConseil(): void {
+    this.conseilOuvert = false;
+    this.lancer('parcours', null, this.help.etapesGuide());
+    this.cdr.detectChanges();
   }
 
   private demarrerEcran(visite: VisiteEcran): void {
