@@ -9,6 +9,7 @@ import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { environment } from '../../environments/environment';
 import { fuelSensorModeForChosenDevice } from '../../admin/pages/vehicle-gps-save.helpers';
+import { rangerMarques } from '../../services/marques-courantes';
 
 interface Brand {
   id: number;
@@ -100,7 +101,19 @@ export interface CompanyOption {
                   <label for="brandId">Marque</label>
                   <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required data-guide="vehicule-marque">
                     <option [value]="null">-- Sélectionner --</option>
-                    <option *ngFor="let brand of brands" [value]="brand.id">{{ brand.name }}</option>
+                    <!-- Les plus courantes d'abord, puis les autres, chaque groupe par ordre
+                         alphabétique (Karim, 25/09/2026 ; marques-courantes.ts). -->
+                    <ng-container *ngIf="marquesCourantes.length; else toutesLesMarques">
+                      <optgroup label="Marques les plus courantes">
+                        <option *ngFor="let brand of marquesCourantes" [value]="brand.id">{{ brand.name }}</option>
+                      </optgroup>
+                      <optgroup label="Autres marques" *ngIf="autresMarques.length">
+                        <option *ngFor="let brand of autresMarques" [value]="brand.id">{{ brand.name }}</option>
+                      </optgroup>
+                    </ng-container>
+                    <ng-template #toutesLesMarques>
+                      <option *ngFor="let brand of autresMarques" [value]="brand.id">{{ brand.name }}</option>
+                    </ng-template>
                   </select>
                 </div>
                 <div class="form-group">
@@ -1198,6 +1211,9 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   gpsMode: 'existing' | 'new' = 'existing';
 
   brands: Brand[] = [];
+  /** Liste « Marque » : les plus courantes, puis les autres (poserMarques). */
+  marquesCourantes: Brand[] = [];
+  autresMarques: Brand[] = [];
   models: VehicleModel[] = [];
 
   /**
@@ -1694,7 +1710,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   private loadBrandsAndResolve() {
     this.http.get<Brand[]>('/api/brands').subscribe({
       next: (brands) => {
-        this.brands = brands;
+        this.poserMarques(brands);
         // If we have a brand name but no brandId, find the matching brand
         if (this.formData.brand && !this.formData.brandId) {
           const matchingBrand = brands.find(b => 
@@ -1710,19 +1726,27 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.brands = [];
+        this.poserMarques([]);
       }
     });
+  }
+
+  /** Marques reçues de l'API : toutes pour les recherches, rangées pour la liste. */
+  private poserMarques(brands: Brand[]): void {
+    this.brands = brands;
+    const { courantes, autres } = rangerMarques(brands);
+    this.marquesCourantes = courantes;
+    this.autresMarques = autres;
   }
 
   loadBrands() {
     this.http.get<Brand[]>('/api/brands').subscribe({
       next: (brands) => {
-        this.brands = brands;
+        this.poserMarques(brands);
         this.cdr.detectChanges();
       },
       error: () => {
-        this.brands = [];
+        this.poserMarques([]);
       }
     });
   }
