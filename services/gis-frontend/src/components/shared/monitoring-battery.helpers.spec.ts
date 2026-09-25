@@ -7,7 +7,8 @@ import {
  * (34-36), demande de Karim du 25/09/2026. Journée de Tunis du 25/09 : de
  * 2026-09-24T23:00Z à 2026-09-25T23:00Z.
  */
-const FIN_DU_25 = '2026-09-25T23:00:00.000Z';
+// Format réel de l'API (UtcDateTimeConverter) : sans millisecondes.
+const FIN_DU_25 = '2026-09-25T23:00:00Z';
 const nems = (patch: Partial<BatteryStats> = {}): BatteryStats => ({
   batteryVoltage: 12.5, batteryLevel: 83, batteryIsDailyMin: true, batteryDayEndUtc: FIN_DU_25, ...patch
 });
@@ -71,8 +72,24 @@ describe('keepLowerDailyMin — rechargement de la liste', () => {
   });
 
   it('nouvelle journée côté serveur : sa valeur gagne, même plus haute', () => {
-    const serveur = nems({ batteryVoltage: 12.8, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
+    const serveur = nems({ batteryVoltage: 12.8, batteryDayEndUtc: '2026-09-26T23:00:00Z' });
     expect(keepLowerDailyMin(nems({ batteryVoltage: 10.8 }), serveur)).toBe(serveur);
+  });
+
+  it('même journée écrite dans deux formats (navigateur « .000Z », serveur « Z ») : le minimum est gardé', () => {
+    // Après minuit, l'écran a ouvert la journée du 26 en temps réel avec 11,2 V ;
+    // le serveur, pas encore à jour, renvoie 12,6 V pour la même journée.
+    const ecran = nems({ batteryVoltage: 11.2, batteryLevel: 11, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
+    const serveur = nems({ batteryVoltage: 12.6, batteryLevel: 89, batteryDayEndUtc: '2026-09-26T23:00:00Z' });
+    expect(keepLowerDailyMin(ecran, serveur)).toEqual({ ...serveur, batteryVoltage: 11.2, batteryLevel: 11 });
+  });
+
+  it('réponse de la veille (cache serveur calculé avant minuit) : l’écran garde sa nouvelle journée', () => {
+    const ecran = nems({ batteryVoltage: 11.3, batteryLevel: 17, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
+    const serveurDeLaVeille = nems({ batteryVoltage: 10.8, batteryLevel: 0, batteryDayEndUtc: FIN_DU_25 });
+    expect(keepLowerDailyMin(ecran, serveurDeLaVeille)).toEqual({
+      ...serveurDeLaVeille, batteryVoltage: 11.3, batteryLevel: 17, batteryDayEndUtc: '2026-09-26T23:00:00.000Z'
+    });
   });
 
   it('véhicule non NEMS ou premier chargement : la valeur du serveur telle quelle', () => {

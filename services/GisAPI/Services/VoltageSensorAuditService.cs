@@ -35,20 +35,21 @@ namespace GisAPI.Services;
 public class VoltageSensorAuditService : BackgroundService
 {
     // Le comportement d'un capteur ne change pas d'une heure à l'autre : une
-    // passe par jour suffit largement, et la requête balaie 7 jours de
-    // positions pour toute la flotte.
+    // passe par jour suffit largement. Depuis le 25/09/2026, la requête ne lit
+    // que 7 jours de positions des boîtiers hors NEMS (une dizaine de Teltonika
+    // et quelques protocoles sans échelle), par la liste de leurs ids.
     private const int CycleHours = 24;
     private const int StartupDelayMinutes = 6;
 
     // 7 jours — et le verdict est CUMULATIF (voir plus bas), ce qui donne la
     // couverture d'une longue fenêtre sans en payer le prix.
     //
-    // Mesuré sur la base TN : le même agrégat sur 21 jours prend 3 minutes à
-    // cache froid, 45 jours 1 min 15 à chaud. Au-delà du dépassement de délai,
-    // ce balayage complet évince le cache de Postgres — c'est exactement ce qui
-    // avait ralenti toute l'application en juillet (voir /vehicles/with-positions).
-    // Le gain, lui, était de 15 véhicules sur 390 : le marché n'en vaut pas la
-    // peine quand l'accumulation donne le même résultat gratuitement.
+    // Historique : quand la requête balayait toute la flotte (NEMS compris), le
+    // même agrégat sur 21 jours prenait 3 minutes à cache froid, 45 jours 1 min 15
+    // à chaud, et ce balayage évinçait le cache de Postgres — c'est ce qui avait
+    // ralenti toute l'application en juillet (voir /vehicles/with-positions). Le
+    // gain d'une fenêtre plus longue était de 15 véhicules sur 390 : l'accumulation
+    // donne le même résultat gratuitement.
     private const int WindowDays = 7;
 
     // Au-dessus de cette vitesse, le moteur tourne à coup sûr et l'alternateur

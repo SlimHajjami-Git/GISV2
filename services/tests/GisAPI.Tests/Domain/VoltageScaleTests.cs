@@ -74,6 +74,13 @@ public class VoltageScaleTests
     }
 
     [Fact]
+    public void DisplayVolts_Nems_OctetDeCap_NAfficheRien()
+    {
+        // Firmware R00C30d : l'octet « Batterie » recopie le cap (21 = 3,3 V).
+        VoltageScale.DisplayVolts("gps_type_1", batteryRaw: 21, powerVoltage: 43).Should().BeNull();
+    }
+
+    [Fact]
     public void DisplayVolts_Teltonika_LitToujoursPowerVoltage()
     {
         VoltageScale.DisplayVolts("teltonika", batteryRaw: null, powerVoltage: 127)

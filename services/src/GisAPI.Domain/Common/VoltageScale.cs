@@ -45,17 +45,16 @@ public static class VoltageScale
     };
 
     /// <summary>
-    /// Tension à afficher pour un boîtier, ou <c>null</c> s'il n'y a rien de
-    /// fiable à montrer. <paramref name="batteryRaw"/> est l'octet 34-36 (NEMS),
-    /// <paramref name="powerVoltage"/> l'ancien octet 32-34 (Teltonika).
+    /// Tension d'UNE trame, ou <c>null</c> s'il n'y a rien de fiable à montrer.
+    /// <paramref name="batteryRaw"/> est l'octet « Batterie » 34-36 (NEMS), trié
+    /// comme partout ailleurs (<see cref="NemsMeaningfulVolts"/> : l'octet de cap
+    /// des R00C30d donne null) ; <paramref name="powerVoltage"/> est la tension des
+    /// Teltonika. Le monitoring n'affiche plus la dernière trame d'un NEMS mais son
+    /// minimum du jour (BatteryReadout).
     /// </summary>
     public static double? DisplayVolts(string? protocolType, int? batteryRaw, int? powerVoltage)
     {
-        if (string.Equals(protocolType, NemsProtocol, StringComparison.OrdinalIgnoreCase))
-        {
-            if (batteryRaw is not > 0) return null;
-            return batteryRaw.Value * NemsBatteryFactor;
-        }
+        if (IsNems(protocolType)) return NemsMeaningfulVolts(batteryRaw);
 
         var factor = FactorFor(protocolType);
         if (factor == null || powerVoltage is not > 0) return null;

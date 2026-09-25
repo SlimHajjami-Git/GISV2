@@ -87,17 +87,35 @@ export function mergeLiveBattery(
 }
 
 /**
- * Statistiques d'un véhicule après un rechargement de la liste. Si l'écran connaît
- * déjà, pour la même journée, un minimum plus bas que celui du serveur (reçu en
- * temps réel, pas encore en base ou masqué par le cache de 8 s du serveur), on le
- * garde : un minimum ne remonte jamais dans la journée.
+ * Statistiques d'un véhicule après un rechargement de la liste. Le serveur peut
+ * être en retard sur l'écran : trame reçue en temps réel mais pas encore en base,
+ * ou réponse gardée 8 s dans son cache — parfois calculée juste avant minuit.
+ *  - même journée : un minimum plus bas déjà connu de l'écran est gardé, un
+ *    minimum ne remonte jamais dans la journée ;
+ *  - réponse d'une journée PLUS ANCIENNE que celle de l'écran : l'écran garde sa
+ *    batterie (il a déjà ouvert la journée suivante en temps réel) ;
+ *  - réponse d'une journée plus récente : elle gagne.
+ * Les fins de journée se comparent comme des instants, jamais comme du texte :
+ * le serveur les écrit « …T23:00:00Z » et le navigateur « …T23:00:00.000Z ».
  */
 export function keepLowerDailyMin<T extends BatteryStats>(
   previous: BatteryStats | null | undefined,
   fresh: T | null | undefined
 ): T | null | undefined {
   if (!fresh?.batteryIsDailyMin || !previous?.batteryIsDailyMin) return fresh;
-  if (!fresh.batteryDayEndUtc || previous.batteryDayEndUtc !== fresh.batteryDayEndUtc) return fresh;
+  const freshEnd = fresh.batteryDayEndUtc ? Date.parse(fresh.batteryDayEndUtc) : NaN;
+  const previousEnd = previous.batteryDayEndUtc ? Date.parse(previous.batteryDayEndUtc) : NaN;
+  if (Number.isNaN(freshEnd) || Number.isNaN(previousEnd) || freshEnd > previousEnd) return fresh;
+
+  if (freshEnd < previousEnd) {
+    return {
+      ...fresh,
+      batteryVoltage: previous.batteryVoltage ?? null,
+      batteryLevel: previous.batteryLevel ?? null,
+      batteryDayEndUtc: previous.batteryDayEndUtc
+    } as T;
+  }
+
   if (previous.batteryVoltage == null) return fresh;
   if (fresh.batteryVoltage != null && fresh.batteryVoltage <= previous.batteryVoltage) return fresh;
   return { ...fresh, batteryVoltage: previous.batteryVoltage, batteryLevel: previous.batteryLevel ?? null } as T;
