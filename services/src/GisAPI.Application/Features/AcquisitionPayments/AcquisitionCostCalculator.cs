@@ -149,8 +149,8 @@ public static class AcquisitionCostCalculator
             }
 
             // Prix d'achat (comptant) ou apport (contrat), comme le générateur :
-            // seulement s'il est daté.
-            if (v.PurchasePrice > 0 && v.PurchaseDate is not null)
+            // seulement s'il est daté (un apport sans date d'achat l'est du début du crédit).
+            if (v.PurchasePrice > 0 && AcquisitionSchedule.AcquisitionDate(v) is not null)
             {
                 amount += v.PurchasePrice.Value;
                 if (dues == 0) purchased.Add(v.Id);

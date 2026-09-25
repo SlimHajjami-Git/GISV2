@@ -36,7 +36,7 @@ public static class AcquisitionScheduleSync
     /// Lignes attendues pour le contrat courant : une « mensualite » par échéance
     /// de <see cref="AcquisitionSchedule.LeasingDues"/>, plus une ligne « apport »
     /// (leasing) ou « achat » (comptant) datée de la date d'achat si un prix est
-    /// renseigné. Un véhicule repassé en achat comptant qui garde des résidus de
+    /// renseigné — un apport sans date d'achat, du début du crédit. Un véhicule repassé en achat comptant qui garde des résidus de
     /// contrat ne produit AUCUNE mensualité (LeasingDues le garantit).
     /// </summary>
     public static List<Expected> ExpectedLines(Vehicle v)
@@ -47,7 +47,7 @@ public static class AcquisitionScheduleSync
             list.Add(new Expected(AcquisitionPayment.Kinds.Mensualite, index,
                 DateOnly.FromDateTime(due), v.LeasingMonthlyPayment!.Value));
 
-        if (v.PurchasePrice > 0 && v.PurchaseDate is { } purchased)
+        if (v.PurchasePrice > 0 && AcquisitionSchedule.AcquisitionDate(v) is { } purchased)
         {
             var kind = v.AcquisitionType == "leasing"
                 ? AcquisitionPayment.Kinds.Apport
