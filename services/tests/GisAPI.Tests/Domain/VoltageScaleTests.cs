@@ -86,59 +86,6 @@ public class VoltageScaleTests
         VoltageScale.DisplayVolts("noron", batteryRaw: 85, powerVoltage: 43).Should().BeNull();
     }
 
-    // ── Verdict sur le champ « Batterie » des NEMS ──────────────────────────
-
-    [Fact]
-    public void NemsBattery_TensionPlausible_EstAcceptee()
-    {
-        // 234 TU 4624 : 80 au repos = 12,5 V. Une batterie 12 V chargée.
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 136)
-            .Should().BeTrue();
-    }
-
-    [Fact]
-    public void NemsBattery_CopieDeLOctetDeCap_EstRejetee()
-    {
-        // Firmwares R00C30d : le champ recopie le cap (0-44 brut = 0-6,9 V).
-        // 272 boîtiers sur 288 étaient dans ce cas le 17/09.
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 21, restingFrames: 107)
-            .Should().BeFalse("21 × 0,156 = 3,3 V : hors de toute plage 12 V");
-    }
-
-    [Fact]
-    public void NemsBattery_ChampNonRenseigne_EstRejete()
-    {
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 0, restingFrames: 300).Should().BeFalse();
-    }
-
-    [Fact]
-    public void NemsBattery_TensionAberrante_EstRejetee()
-    {
-        // 255 × 0,156 = 39,8 V : l'octet ne porte pas une tension de véhicule.
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 255, restingFrames: 300).Should().BeFalse();
-    }
-
-    [Fact]
-    public void NemsBattery_PasAssezDeTramesAuRepos_ResteIndecis()
-    {
-        // Indécis, pas « en panne » : un véhicule peu à l'arrêt ne doit pas être
-        // déclaré défectueux. En aval, indécis = on n'affiche rien non plus.
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 5).Should().BeNull();
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: null, restingFrames: 300).Should().BeNull();
-    }
-
-    [Fact]
-    public void NemsBattery_NExigePasLAlternateur()
-    {
-        // Point délibéré : sur les 7 boîtiers qui renseignent le champ, l'écart
-        // roulage/repos va de −0,16 à +0,47 V, jamais les ~1,6 V d'une recharge —
-        // le boîtier lisse sa mesure. Exiger l'alternateur rejetterait les 7
-        // boîtiers sains et n'afficherait plus rien.
-        // 236 TU 2192 : 80 au repos, 81 en roulant.
-        VoltageScale.EvaluateNemsBattery(restingMedianRaw: 80, restingFrames: 1103)
-            .Should().BeTrue();
-    }
-
     // ── Verdict Teltonika (inchangé : alternateur exigé) ────────────────────
 
     [Fact]
@@ -168,8 +115,8 @@ public class VoltageScaleTests
     [Fact]
     public void Nems_NePassePlusParEvaluateSensor()
     {
-        // FactorFor ne connaît plus gps_type_1 : ce chemin rend null, et l'audit
-        // aiguille les NEMS vers EvaluateNemsBattery.
+        // FactorFor ne connaît plus gps_type_1 : ce chemin rend null. Depuis le
+        // 25/09/2026, l'audit ne juge d'ailleurs plus du tout les NEMS.
         VoltageScale.EvaluateSensor("gps_type_1", drivingMedian: 47, restingMedian: 42,
             drivingFrames: 500, restingFrames: 300).Should().BeNull();
     }

@@ -255,8 +255,10 @@ de garde ; `settings.local.json` est personnel et ignoré par git.
 - Visibilité véhicules : `if (!isAdmin && userId > 0)` dans les handlers — un admin voit TOUT ; le statut
   admin est un drapeau explicite `IsCompanyAdmin`, jamais déduit de « toutes les permissions cochées ».
 - Les boîtiers NEMS ne répondent pas aux commandes TCP (ils les exécutent en silence) ; confirmation par SMS.
-- `power_voltage` ne mesure rien sur 88 % des boîtiers : l'affichage batterie est verrouillé par
-  `gps_devices.voltage_sensor_reliable` sur les trois chemins (REST, fusion Redis, SignalR).
+- Batterie NEMS (25/09/2026) : `power_voltage` (octet 32-34) ne mesure rien. Le monitoring affiche le
+  MINIMUM DU JOUR (Tunis) de l'octet « Batterie » 34-36, valeurs brutes 45-92 seulement (0-44 = octet de
+  cap des firmwares R00C30d), sans verdict d'audit (`BatteryReadout`). Le temps réel ne fait que le baisser.
+  Teltonika : `power_voltage` × 0,1, verrouillé par `gps_devices.voltage_sensor_reliable`.
 - `gps_alerts` n'accepte que `send_flag` 5..11 côté Rust (liste blanche) ; ne pas réélargir.
 - Jamais `filter + order + First` par groupe sur `gps_positions` en EF : LATERAL « dernière trame » + filtre en C#.
 - Mobile : autorité FileProvider = `${applicationId}.fileprovider` ; `versionCode` strictement croissant ;

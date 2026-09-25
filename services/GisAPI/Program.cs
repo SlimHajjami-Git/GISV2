@@ -165,11 +165,12 @@ builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 // charging, or the saturated-firmware long-silence pattern).
 builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService>();
 
-// Audit du capteur de tension : décide, par boîtier, si sa valeur de batterie
-// est affichable. Le test est l'alternateur — un capteur qui rend la même
-// valeur moteur tournant et moteur éteint ne mesure rien. Sans cet audit,
-// l'interface annonçait « 12,9 V / 100 % » sur un véhicule en panne de
-// batterie (259 TU 4987, 14/08/2026).
+// Audit du capteur de tension : décide, par boîtier NON NEMS (Teltonika), si sa
+// valeur de batterie est affichable. Le test est l'alternateur — un capteur qui
+// rend la même valeur moteur tournant et moteur éteint ne mesure rien. Sans cet
+// audit, l'interface annonçait « 12,9 V / 100 % » sur un véhicule en panne de
+// batterie (259 TU 4987, 14/08/2026). Les NEMS n'y passent plus depuis le
+// 25/09/2026 : minimum du jour de l'octet « Batterie » (BatteryReadout).
 builder.Services.AddHostedService<GisAPI.Services.VoltageSensorAuditService>();
 
 // Détection "véhicule qui ne démarre pas" : lit le DÉMARREUR (tentatives de

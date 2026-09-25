@@ -93,6 +93,10 @@ public class GpsDevice : TenantEntity
     ///
     /// <para><c>null</c> = jamais audité ou données insuffisantes, traité
     /// comme non affichable.</para>
+    ///
+    /// <para>Ne concerne plus les NEMS depuis le 25/09/2026 : leur tension est le
+    /// minimum du jour de l'octet « Batterie », trié valeur par valeur, et ce
+    /// drapeau n'est plus ni écrit ni lu pour eux.</para>
     /// </summary>
     public bool? VoltageSensorReliable { get; set; }
 

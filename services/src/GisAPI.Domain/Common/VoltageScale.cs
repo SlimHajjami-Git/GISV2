@@ -126,15 +126,11 @@ public static class VoltageScale
     }
 
     /// <summary>
-    /// Bande plausible pour une batterie 12 V. Hors de cette bande, l'échelle est
-    /// fausse (ou le véhicule n'est pas en 12 V) et le pourcentage, calibré
-    /// 11,0-12,8 V, n'aurait aucun sens.
-    ///
-    /// <para>C'est ce critère — et non un test d'alternateur — qui sépare les
-    /// boîtiers NEMS qui mesurent de ceux qui recopient l'octet de cap dans le
-    /// champ « Batterie » : ces derniers produisent 0 à 6,9 V, très loin de la
-    /// bande. Voir <see cref="EvaluateNemsBattery"/> pour pourquoi l'alternateur
-    /// n'est plus exigé.</para>
+    /// Bande plausible, au repos, pour une batterie 12 V mesurée par
+    /// <c>power_voltage</c> (Teltonika). Hors de cette bande, l'échelle est fausse
+    /// (ou le véhicule n'est pas en 12 V) et le pourcentage, calibré 11,0-12,8 V,
+    /// n'aurait aucun sens. Les NEMS n'y passent plus : leur octet « Batterie » est
+    /// trié valeur par valeur (<see cref="NemsMeaningfulVolts"/>).
     /// </summary>
     public const double RestingPlausibleMinV = 10.5;
     public const double RestingPlausibleMaxV = 14.4;
@@ -158,33 +154,6 @@ public static class VoltageScale
     /// </summary>
     public const int MinDrivingFrames = 100;
     public const int MinRestingFrames = 50;
-
-    /// <summary>
-    /// Le champ « Batterie » de ce boîtier NEMS porte-t-il une vraie mesure ?
-    ///
-    /// <para><c>true</c> = la médiane au repos tombe dans la bande d'une batterie
-    /// 12 V. <c>false</c> = hors bande : c'est le doublon de l'octet de cap des
-    /// firmwares R00C30d (0 à 6,9 V). <c>null</c> = pas assez de trames pour
-    /// conclure. En aval, <c>null</c> et <c>false</c> se traitent pareil — on
-    /// n'affiche rien.</para>
-    ///
-    /// <para><b>Pourquoi aucun test d'alternateur ici</b>, contrairement à
-    /// l'ancienne règle : sur les 7 boîtiers qui renseignent ce champ, l'écart
-    /// entre roulage et repos va de −0,16 à +0,47 V, jamais les ~1,6 V d'une
-    /// recharge. Le boîtier lisse visiblement sa mesure. Exiger l'alternateur
-    /// rejetterait donc les 7 boîtiers sains et n'afficherait plus rien — alors
-    /// que la bande de plausibilité, elle, sépare exactement les deux familles.
-    /// Conséquence assumée : ce champ renseigne l'état de charge au repos, pas la
-    /// santé de la recharge.</para>
-    /// </summary>
-    public static bool? EvaluateNemsBattery(int? restingMedianRaw, long restingFrames)
-    {
-        if (restingMedianRaw == null || restingFrames < MinRestingFrames) return null;
-        if (restingMedianRaw.Value <= 0) return false;
-
-        var restingV = restingMedianRaw.Value * NemsBatteryFactor;
-        return restingV >= RestingPlausibleMinV && restingV <= RestingPlausibleMaxV;
-    }
 
     /// <summary>
     /// Le capteur de tension d'un boîtier <b>non NEMS</b> (Teltonika) mesure-t-il
