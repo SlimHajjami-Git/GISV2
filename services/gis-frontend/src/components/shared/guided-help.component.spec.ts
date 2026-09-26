@@ -1610,3 +1610,84 @@ describe('Premiers pas (GPA) — Véhicules, puis Chauffeurs, puis Entretien pro
     expect(help.premiersPasEnCours()).toBe(true);
   });
 });
+
+/**
+ * Karim, 26/09/2026 : « pourquoi quand je rentre dans "réparation" le tuto ne s'affiche
+ * pas ? ». Le tutoriel Réparations n'avait pas de test d'ouverture.
+ */
+@Component({ standalone: true, template: `<button data-guide="reparations-nouvelle">Nouvelle réparation</button>` })
+class EcranReparations {}
+
+describe('Tutoriel pas à pas — écran Réparations (GPA) : il démarre à l\'ouverture', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const ouvrir = async (url: string) => {
+    await harness.navigateByUrl(url);
+    for (let i = 0; i < 3; i++) { harness.fixture.detectChanges(); await images(4); guide.detectChanges(); }
+  };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    compte = { id: 'u-karim', firstLogin: false, companyName: 'Belive GPA', isCompanyAdmin: true };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'reparations', component: EcranReparations },
+          { path: 'repairs', component: EcranReparations },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    help.marquerConseilVu();                 // le conseil passe avant, il a ses propres tests
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('« Belive GPA » en local ouvre Réparations (menu : /reparations) : première bulle « Nouvelle réparation »', async () => {
+    await ouvrir('/reparations');
+    expect(guide.componentInstance.actif).toBe(true);
+    expect(guide.componentInstance.visiteEcran?.id).toBe('tuto-reparations-gpa');
+    expect(guide.componentInstance.etape?.id).toBe('tuto-reparation-nouvelle');
+  });
+
+  it('déjà vu : il ne revient pas ; « Revoir les premiers pas » (Belive GPA, local) le remet', async () => {
+    help.marquerEcranVu('tuto-reparations-gpa');
+    await ouvrir('/reparations');
+    expect(guide.componentInstance.actif).toBe(false);
+
+    jest.spyOn(help, 'ouvrirGuide').mockImplementation(() => {});   // sans lancer les premiers pas
+    help.reinitialiserGuide();
+    help.marquerConseilVu();
+    await ouvrir('/dashboard');
+    await ouvrir('/reparations');
+    expect(guide.componentInstance.visiteEcran?.id).toBe('tuto-reparations-gpa');
+  });
+
+  it('conseil de première connexion encore à lire : il passe avant le tutoriel', async () => {
+    compte = { ...compte, id: 'u-neuf' };    // conseil jamais lu
+    await ouvrir('/reparations');
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(help.doitProposerLeGuide()).toBe(true);
+  });
+});
