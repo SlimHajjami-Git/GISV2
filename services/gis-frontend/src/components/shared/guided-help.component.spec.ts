@@ -402,8 +402,10 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     expect(bulle()?.textContent).toContain('Écran Véhicules · Étape 1 sur 21');
     expect(bulle()?.textContent).toContain('Cliquez sur « Nouveau véhicule »');
     expect(bouton('Suivant')).toBeUndefined();
-    // Le voile entoure le bouton en quatre bandes au lieu de le couvrir.
-    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande').length).toBe(4);
+    // Le voile entoure le bouton en quatre bandes au lieu de le couvrir (plus quatre
+    // bandes transparentes sur la marge du cadre : seul le bouton reste cliquable).
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande:not(.vide)').length).toBe(4);
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande.vide').length).toBe(4);
     expect(guide.nativeElement.querySelector('.guide-voile:not(.bande)')).toBeNull();
   });
 
@@ -1003,7 +1005,7 @@ describe('Tutoriel pas à pas — alertes par e-mail (GPA)', () => {
   it('onglet, « Ajouter une adresse » (qui disparaît au clic), adresse, type, « Enregistrer » : l\'adresse est inscrite', async () => {
     await ouvrir('/users');
     expect(etape()).toBe('tuto-alerte-onglet');
-    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Alertes par e-mail · Étape 1 sur 5');
+    expect(guide.nativeElement.querySelector('.guide-compteur')?.textContent).toContain('Alertes par e-mail · Étape 1 sur 6');
 
     await cliquer('alertes-email-onglet');
     expect(etape()).toBe('tuto-alerte-ajouter');
@@ -1023,6 +1025,15 @@ describe('Tutoriel pas à pas — alertes par e-mail (GPA)', () => {
 
     expect(etape()).toBe('tuto-alerte-enregistrer');
     await cliquer('alerte-enregistrer');
+    await rafraichir();
+
+    // Karim, 26/09/2026 : les autres types, et plusieurs adresses pour un même type.
+    expect(etape()).toBe('tuto-alerte-autres');
+    const texte = guide.nativeElement.querySelector('.guide-bulle')?.textContent || '';
+    expect(texte).toContain("les autres types d'alerte");
+    expect(texte).toContain('plusieurs adresses : chacune sera avertie');
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande').length).toBe(0);  // rien à faire : voile plein
+    bouton('Terminer')!.click();
     await rafraichir();
     expect(guide.componentInstance.actif).toBe(false);
 
@@ -1689,5 +1700,211 @@ describe('Tutoriel pas à pas — écran Réparations (GPA) : il démarre à l\'
     await ouvrir('/reparations');
     expect(guide.componentInstance.actif).toBe(false);
     expect(help.doitProposerLeGuide()).toBe(true);
+  });
+});
+
+/**
+ * Passerelle vers les alertes par e-mail (Karim, 26/09/2026) : Chauffeurs, Entretien ou
+ * Échéances terminé, un message invite à renseigner l'adresse des alertes et guide par
+ * la barre du haut — la flèche du menu, « Gestion utilisateurs » — jusqu'à l'onglet
+ * « Alertes par email », dont le guide se termine comme avant.
+ */
+@Component({ standalone: true, selector: 'entete-test', template: `
+  <div data-guide="menu-utilisateur" (click)="ouvert = !ouvert">Karim Hajjami ▾</div>
+  @if (ouvert) { <a data-guide="menu-gestion-utilisateurs" (click)="gestion()">Gestion utilisateurs</a> }` })
+class EnteteTest { ouvert = false; private router = inject(Router); gestion() { this.ouvert = false; this.router.navigateByUrl('/users'); } }
+
+@Component({ standalone: true, imports: [EnteteTest], template: `<entete-test></entete-test><button data-guide="chauffeurs-nouveau">Nouveau chauffeur</button>` })
+class ChauffeursAvecEntete {}
+@Component({ standalone: true, imports: [EnteteTest], template: `<entete-test></entete-test><button data-guide="entretiens-nouveau-modele">Nouveau modele</button>` })
+class EntretiensAvecEntete {}
+@Component({ standalone: true, imports: [EnteteTest], template: `<entete-test></entete-test><button data-guide="echeances-modifier">Modifier</button>` })
+class EcheancesAvecEntete {}
+@Component({ standalone: true, imports: [EnteteTest], template: `<entete-test></entete-test><button data-guide="alertes-email-onglet">Alertes par email</button>` })
+class UtilisateursAvecEntete {}
+
+describe('Passerelle vers les alertes par e-mail — après Chauffeurs, Entretien ou Échéances', () => {
+  let compte: any;
+  let guide: ComponentFixture<GuidedHelpComponent>;
+  let harness: RouterTestingHarness;
+  let help: HelpService;
+
+  const images = (n: number) => new Promise<void>(fin => {
+    let i = 0;
+    const image = () => { if (++i >= n) { fin(); } else { requestAnimationFrame(image); } };
+    requestAnimationFrame(image);
+  });
+  const rafraichir = async (n = 4) => {
+    harness.fixture.detectChanges(); await images(n); harness.fixture.detectChanges(); guide.detectChanges();
+  };
+  const ouvrir = async (url: string) => { await harness.navigateByUrl(url); await rafraichir(); await rafraichir(); };
+  const url = () => TestBed.inject(Router).url;
+  const guideOuvert = () => guide.componentInstance.actif ? guide.componentInstance.visiteEcran?.id : undefined;
+  const etape = () => guide.componentInstance.etape?.id;
+  const el = (cible: string) => document.querySelector('[data-guide="' + cible + '"]') as HTMLElement;
+  const pause = (ms: number) => new Promise(fin => setTimeout(fin, ms));
+  /** Première bulle affichée, puis le guide mené à son terme (raccourci : sa dernière bulle). */
+  const finirLeGuide = async () => {
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    const c = guide.componentInstance;
+    c.index = c.etapes.length - 1;
+    c.suivant();
+    await rafraichir();
+  };
+  const apresLaPause = async () => { await pause(80); await rafraichir(); await rafraichir(); };
+
+  beforeEach(async () => {
+    localStorage.clear();
+    compte = { id: 'u-nouveau', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+    TestBed.configureTestingModule({
+      imports: [GuidedHelpComponent],
+      providers: [
+        provideRouter([
+          { path: 'dashboard', component: EcranTableauDeBord },
+          { path: 'drivers', component: ChauffeursAvecEntete },
+          { path: 'entretien-programmable', component: EntretiensAvecEntete },
+          { path: 'documents', component: EcheancesAvecEntete },
+          { path: 'users', component: UtilisateursAvecEntete },
+        ]),
+        { provide: AuthService, useValue: {
+          getCurrentUserSync: () => compte,
+          getCurrentUser: () => new BehaviorSubject<any>(compte).asObservable()
+        } },
+        { provide: PermissionService, useValue: {
+          hasModuleAccess: (m: string) => m !== 'monitoring',
+          abonnementComprend: (m: string) => m !== 'monitoring',
+          hasReportAccess: () => true
+        } }
+      ]
+    });
+    help = TestBed.inject(HelpService);
+    help.marquerConseilVu();                 // le conseil passe avant, il a ses propres tests
+    guide = TestBed.createComponent(GuidedHelpComponent);
+    guide.componentInstance.delaiEnchainement = 30;
+    guide.detectChanges();
+    harness = await RouterTestingHarness.create('/dashboard');
+  });
+
+  afterEach(() => guide.destroy());
+
+  it('premiers pas : après Chauffeurs, message puis flèche, « Gestion utilisateurs », alertes ; ensuite Entretien', async () => {
+    help.marquerEcranVu('tuto-vehicules-gpa');
+    (help as any).retenirPremiersPas(true);  // Véhicules fait, les premiers pas continuent
+    await ouvrir('/drivers');
+    expect(guideOuvert()).toBe('tuto-chauffeurs-gpa');
+    await finirLeGuide();
+    await apresLaPause();
+
+    expect(url()).toBe('/drivers');          // pas encore Entretien : d'abord les alertes
+    expect(guideOuvert()).toBe('tuto-vers-alertes-gpa');
+    expect(etape()).toBe('tuto-vers-alertes-menu');
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    const bulle = guide.nativeElement.querySelector('.guide-bulle') as HTMLElement;
+    expect(bulle.textContent).toContain("Renseignez l'adresse e-mail qui recevra les alertes");
+    expect(bulle.textContent).toContain('Cliquez sur la flèche');
+
+    el('menu-utilisateur').click();          // la flèche : le menu s'ouvre
+    await rafraichir(); await rafraichir();
+    expect(etape()).toBe('tuto-vers-alertes-utilisateurs');
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    el('menu-gestion-utilisateurs').click(); // « Gestion utilisateurs »
+    await rafraichir(); await rafraichir(); await rafraichir();
+
+    expect(url()).toBe('/users');
+    expect(guideOuvert()).toBe('tuto-alertes-email-gpa');
+    expect(etape()).toBe('tuto-alerte-onglet');   // « Cliquez sur l'onglet Alertes par email »
+
+    await finirLeGuide();                     // adresse enregistrée
+    await apresLaPause();
+    expect(url()).toBe('/entretien-programmable');
+    expect(guideOuvert()).toBe('tuto-entretiens-gpa');
+
+    await finirLeGuide();                     // Entretien : alertes déjà faites, pas de passerelle
+    await apresLaPause();
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(help.premiersPasEnCours()).toBe(false);
+  });
+
+  it('Échéances terminé : la passerelle aussi', async () => {
+    await ouvrir('/documents');
+    expect(guideOuvert()).toBe('tuto-echeances-gpa');
+    await finirLeGuide();
+    await apresLaPause();
+    expect(guideOuvert()).toBe('tuto-vers-alertes-gpa');
+  });
+
+  it('alertes déjà faites : pas de passerelle, Chauffeurs enchaîne directement Entretien', async () => {
+    help.marquerEcranVu('tuto-vehicules-gpa');
+    help.marquerEcranVu('tuto-alertes-email-gpa');
+    (help as any).retenirPremiersPas(true);
+    await ouvrir('/drivers');
+    await finirLeGuide();
+    await apresLaPause();
+    expect(url()).toBe('/entretien-programmable');
+    expect(guideOuvert()).toBe('tuto-entretiens-gpa');
+  });
+
+  it('« Passer » sur Chauffeurs (fiche remplie seul) : pas de passerelle — elle suit un écran TERMINÉ', async () => {
+    await ouvrir('/drivers');
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    guide.componentInstance.passer();
+    await apresLaPause();
+    expect(guide.componentInstance.actif).toBe(false);
+  });
+
+  it('premiers pas : « Passer » sur la passerelle saute les alertes, Entretien s\'ouvre quand même', async () => {
+    help.marquerEcranVu('tuto-vehicules-gpa');
+    (help as any).retenirPremiersPas(true);
+    await ouvrir('/drivers');
+    await finirLeGuide();
+    await apresLaPause();
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    expect(guideOuvert()).toBe('tuto-vers-alertes-gpa');
+    guide.componentInstance.passer();
+    await rafraichir(); await rafraichir();
+    expect(url()).toBe('/entretien-programmable');
+    expect(guideOuvert()).toBe('tuto-entretiens-gpa');
+    expect(help.premiersPasEnCours()).toBe(true);
+  });
+
+  it('premiers pas : Échap sur la passerelle, pareil', async () => {
+    help.marquerEcranVu('tuto-vehicules-gpa');
+    (help as any).retenirPremiersPas(true);
+    await ouvrir('/drivers');
+    await finirLeGuide();
+    await apresLaPause();
+    guide.componentInstance.auEchap();
+    await rafraichir(); await rafraichir();
+    expect(url()).toBe('/entretien-programmable');
+  });
+
+  it('un clic dans la bulle ou sur le voile ne remonte pas au document (le menu ouvert resterait sinon à se refermer)', async () => {
+    await ouvrir('/documents');
+    await finirLeGuide();
+    await apresLaPause();
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    const remonte = jest.fn();
+    guide.nativeElement.addEventListener('click', remonte);   // un écouteur plus haut ne le reçoit pas
+    for (const sel of ['.guide-bulle', '.guide-voile.bande']) {
+      (guide.nativeElement.querySelector(sel) as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+    expect(remonte).not.toHaveBeenCalled();
+    // Seul l'élément encadré est cliquable : quatre bandes sombres, quatre transparentes sur la marge.
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande').length).toBe(8);
+    expect(guide.nativeElement.querySelectorAll('.guide-voile.bande.vide').length).toBe(4);
+  });
+
+  it('« Passer » sur la passerelle : elle ne revient plus après Entretien', async () => {
+    await ouvrir('/documents');
+    await finirLeGuide();
+    await apresLaPause();
+    expect(guideOuvert()).toBe('tuto-vers-alertes-gpa');
+    for (let i = 0; i < 40 && !guide.componentInstance.cibleTrouvee; i++) { await rafraichir(); }
+    guide.componentInstance.passer();
+
+    await ouvrir('/entretien-programmable');
+    await finirLeGuide();
+    await apresLaPause();
+    expect(guide.componentInstance.actif).toBe(false);
   });
 });

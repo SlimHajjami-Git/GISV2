@@ -1,4 +1,4 @@
-import { VISITES_ECRANS } from './help-content';
+import { VISITES_ECRANS, PASSERELLE_ALERTES_GPA, VERS_ALERTES_APRES } from './help-content';
 
 /**
  * Tutoriels des écrans (Karim, 24/09/2026) : garde-fous communs à TOUS les tutoriels,
@@ -25,16 +25,19 @@ describe('Tutoriels des écrans — cohérence du contenu', () => {
   const routes: string = fs.readFileSync(path.join(racine, 'app.routes.ts'), 'utf8');
 
   it('les identifiants de tutoriel et d\'étape sont uniques', () => {
-    const ids = VISITES_ECRANS.flatMap(v => [v.id, ...v.etapes.map(e => e.id)]);
+    const ids = [...VISITES_ECRANS, PASSERELLE_ALERTES_GPA].flatMap(v => [v.id, ...v.etapes.map(e => e.id)]);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
   for (const v of VISITES_ECRANS) {
     describe(v.titre, () => {
       it('commence par un geste (clic) et finit par l\'enregistrement (disparition)', () => {
+        // Après l'enregistrement, seules des bulles d'information (sans geste) peuvent
+        // suivre — « D'autres alertes, d'autres adresses » (Karim, 26/09/2026).
+        const dernierGeste = v.etapes.map(e => !!e.action).lastIndexOf(true);
         expect(v.etapes[0].action).toBe('clic');
-        expect(v.etapes[v.etapes.length - 1].action).toBe('disparition');
-        expect(v.etapes.every(e => !!e.action)).toBe(true);
+        expect(v.etapes[dernierGeste].action).toBe('disparition');
+        expect(v.etapes.slice(0, dernierGeste + 1).every(e => !!e.action)).toBe(true);
       });
 
       it('chaque repère visé existe dans un écran', () => {
@@ -54,4 +57,21 @@ describe('Tutoriels des écrans — cohérence du contenu', () => {
       });
     });
   }
+
+  // Karim, 26/09/2026 : après Chauffeurs, Entretien et Échéances, la passerelle mène à
+  // l'onglet « Alertes par email » par le menu de la barre du haut.
+  describe('Passerelle vers les alertes par e-mail', () => {
+    it('ses repères existent (flèche du menu, « Gestion utilisateurs »), et elle ne fait que des clics', () => {
+      const absents = PASSERELLE_ALERTES_GPA.etapes.map(e => e.cible)
+        .filter(c => !sources.includes('"' + c + '"') && !sources.includes("'" + c + "'"));
+      expect(absents).toEqual([]);
+      expect(PASSERELLE_ALERTES_GPA.etapes.every(e => e.action === 'clic')).toBe(true);
+      expect(sources).toContain('<span>Gestion utilisateurs</span>');   // libellé cité dans la bulle
+    });
+
+    it('elle suit exactement les guides de Chauffeurs, Entretien programmable et Échéances', () => {
+      expect(VERS_ALERTES_APRES.map(id => VISITES_ECRANS.find(v => v.id === id)?.titre))
+        .toEqual(['Écran Chauffeurs', 'Écran Entretien programmable', 'Écran Échéances']);
+    });
+  });
 });

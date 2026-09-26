@@ -3,7 +3,10 @@ import { BehaviorSubject } from 'rxjs';
 import { AuthService } from './auth.service';
 import { PermissionService, ModuleKey } from './permission.service';
 import { HelpArticle, HelpModule, GuideEtape, VisiteEcran } from './help-content.model';
-import { ARTICLES_AIDE, ETAPES_GUIDE, VISITES_ECRANS, PREMIERS_PAS_GPA } from './help-content';
+import { ARTICLES_AIDE, ETAPES_GUIDE, VISITES_ECRANS, PREMIERS_PAS_GPA, VERS_ALERTES_APRES, PASSERELLE_ALERTES_GPA } from './help-content';
+
+/** Guide des alertes par e-mail : la passerelle y mène, et il rend la main aux premiers pas. */
+const ID_TUTO_ALERTES = 'tuto-alertes-email-gpa';
 
 /** Cle localStorage : on versionne pour pouvoir rejouer la visite apres une refonte. */
 const CLE_ETAT = 'calypso_aide_v1';
@@ -455,10 +458,40 @@ export class HelpService {
    * n'en reste plus, les premiers pas sont finis.
    */
   suiteDesPremiersPas(idTermine: string): string | null {
-    if (!this.premiersPasEnCours() || !PREMIERS_PAS_GPA.includes(idTermine)) return null;
+    // Le guide des alertes s'intercale dans les premiers pas (passerelle après Chauffeurs) :
+    // terminé, il rend la main à l'écran suivant.
+    const rendLaMain = PREMIERS_PAS_GPA.includes(idTermine) || idTermine === ID_TUTO_ALERTES;
+    if (!this.premiersPasEnCours() || !rendLaMain) return null;
     const suivant = this.premiersPasDuClient().find(v => !this.ecranVu(v.id));
     if (!suivant) { this.arreterPremiersPas(); return null; }
     return suivant.route;
+  }
+
+  /**
+   * Fin du guide `idTermine` : la passerelle vers les alertes par e-mail, ou null. Après
+   * Chauffeurs, Entretien programmable et Échéances, tant que le guide des alertes n'est
+   * ni fait ni passé, et que ce client a cet écran (Karim, 26/09/2026).
+   */
+  passerelleVersAlertes(idTermine: string): VisiteEcran | null {
+    if (!VERS_ALERTES_APRES.includes(idTermine) || !this.estNouvelUtilisateur()) return null;
+    if (this.ecranVu(PASSERELLE_ALERTES_GPA.id) || this.ecranVu(ID_TUTO_ALERTES)) return null;
+    const alertes = VISITES_ECRANS.find(v => v.id === ID_TUTO_ALERTES);
+    if (!alertes || !this.pourCeClient(alertes)) return null;
+    return this.pourCeClient(PASSERELLE_ALERTES_GPA);
+  }
+
+  /** Passerelle ou guide des alertes : un détour dans les premiers pas, que « Passer » ou Échap sautent sans les arrêter. */
+  estDetourAlertes(id: string | undefined): boolean {
+    return id === PASSERELLE_ALERTES_GPA.id || id === ID_TUTO_ALERTES;
+  }
+
+  estGuideDesAlertes(id: string | undefined): boolean {
+    return id === ID_TUTO_ALERTES;
+  }
+
+  /** Écran où reprendre les premiers pas après le détour des alertes, ou null (pas en cours, ou tous faits). */
+  suiteApresDetourAlertes(): string | null {
+    return this.suiteDesPremiersPas(ID_TUTO_ALERTES);
   }
 
   premiersPasEnCours(): boolean {

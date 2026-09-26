@@ -1419,6 +1419,16 @@ export const VISITES_ECRANS: VisiteEcran[] = [
         texte: 'Cliquez sur « Enregistrer ».',
         cible: 'alerte-enregistrer',
         action: 'disparition'
+      },
+      {
+        // Karim, 26/09/2026 : après « Enregistrer », dire qu'il peut couvrir les autres
+        // types d'alerte, et mettre plusieurs adresses sur un même type. Bulle
+        // d'information (pas de geste) : « Terminer » la ferme. Elle encadre « Ajouter
+        // une adresse », revenu à l'écran une fois l'adresse enregistrée.
+        id: 'tuto-alerte-autres',
+        titre: "D'autres alertes, d'autres adresses",
+        texte: "Votre adresse est enregistrée. Ajoutez de la même façon les autres types d'alerte — Assurance, Taxe Circulation, Visite Technique, Entretien, Permis — et, pour un même type, plusieurs adresses : chacune sera avertie. Tout se fait avec « Ajouter une adresse ».",
+        cible: 'alerte-ajouter'
       }
     ]
   },
@@ -1848,3 +1858,41 @@ export const VISITES_ECRANS: VisiteEcran[] = [
  * suivant. Un ecran que ce client n'a pas (droits, profil) est enjambe.
  */
 export const PREMIERS_PAS_GPA: string[] = ['tuto-vehicules-gpa', 'tuto-chauffeurs-gpa', 'tuto-entretiens-gpa'];
+
+/**
+ * Passerelle vers les alertes par e-mail (Karim, 26/09/2026) : « quand l'utilisateur
+ * termine le remplissage de l'un des écrans suivants (chauffeur, entretiens et
+ * échéances), tu lui fais sortir un message pour lui dire que maintenant il faut
+ * remplir l'adresse mail pour recevoir des alertes, et tu le guides directement (il
+ * clique sur la flèche, puis gestion des utilisateurs, puis alertes par mail) ». Ce
+ * sont les écrans dont les dates déclenchent des alertes (permis, entretiens,
+ * documents). Lancée par le moteur à la fin de l'un de ces guides, tant que celui des
+ * alertes n'est pas fait ; l'arrivée sur l'écran Utilisateurs lance ce dernier, qui se
+ * termine comme avant. Hors de VISITES_ECRANS : elle ne dépend d'aucun écran.
+ */
+export const VERS_ALERTES_APRES: string[] = ['tuto-chauffeurs-gpa', 'tuto-entretiens-gpa', 'tuto-echeances-gpa'];
+
+export const PASSERELLE_ALERTES_GPA: VisiteEcran = {
+  id: 'tuto-vers-alertes-gpa',
+  titre: 'Vers vos alertes par e-mail',
+  // Aucun écran à elle : quitter la page (vers Utilisateurs) la termine.
+  route: '',
+  module: 'users',
+  sauf: 'monitoring',
+  etapes: [
+    {
+      id: 'tuto-vers-alertes-menu',
+      titre: 'Et maintenant, vos alertes par e-mail',
+      texte: "Renseignez l'adresse e-mail qui recevra les alertes. Cliquez sur la flèche à côté de votre nom, en haut à droite.",
+      cible: 'menu-utilisateur',
+      action: 'clic'
+    },
+    {
+      id: 'tuto-vers-alertes-utilisateurs',
+      titre: 'La gestion des utilisateurs',
+      texte: 'Cliquez sur « Gestion utilisateurs ».',
+      cible: 'menu-gestion-utilisateurs',
+      action: 'clic'
+    }
+  ]
+};

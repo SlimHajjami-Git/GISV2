@@ -88,18 +88,22 @@ import { environment } from '../../environments/environment';
              la couvrir, pour que le client clique le bouton ou remplisse le champ
              encadre — et rien d'autre. -->
         @for (b of bandes; track $index) {
-          <div class="guide-voile bande" [style.top.px]="b.top" [style.left.px]="b.left"
-               [style.width.px]="b.width" [style.height.px]="b.height"></div>
+          <div class="guide-voile bande" [class.vide]="b.vide" [style.top.px]="b.top" [style.left.px]="b.left"
+               [style.width.px]="b.width" [style.height.px]="b.height" (click)="$event.stopPropagation()"></div>
         }
       } @else {
-        <div class="guide-voile"></div>
+        <div class="guide-voile" (click)="$event.stopPropagation()"></div>
       }
       @if (cibleTrouvee) {
         <div class="guide-halo" [style.top.px]="halo.top" [style.left.px]="halo.left"
              [style.width.px]="halo.width" [style.height.px]="halo.height"></div>
       }
 
+      <!-- Un clic dans la bulle ou sur le voile ne remonte pas au document : le menu de la
+           barre du haut, ouvert par la passerelle vers les alertes, resterait sinon à se
+           refermer (app-layout, document:click) et sa cible à disparaître. -->
       <div class="guide-bulle" [style.top.px]="bulle.top" [style.left.px]="bulle.left"
+           [style.--fleche-x.px]="flecheX" (click)="$event.stopPropagation()"
            [class.fleche-haut]="flecheEnHaut" role="dialog" aria-live="polite">
         <div class="guide-compteur">
           @if (mode === 'ecran' && visiteEcran) { {{ visiteEcran.titre }} · }Étape {{ index + 1 }} sur {{ etapes.length }}
@@ -139,6 +143,8 @@ import { environment } from '../../environments/environment';
     }
     /* Bandes du voile autour d'une cible a manipuler : positionnees une a une. */
     .guide-voile.bande { inset: auto; animation: none; }
+    /* Marge du cadre (6 px) : non cliquable, mais laissée claire. */
+    .guide-voile.bande.vide { background: transparent; }
     /* Pas de transition sur le cadre : il suit sa cible image par image (voir
        suivre()), une transition de .2s le ferait trainer derriere le bouton
        pendant chaque defilement. */
@@ -230,7 +236,7 @@ import { environment } from '../../environments/environment';
     .guide-actions .lien { background: none; color: #94a3b8; padding: 7px 4px; text-decoration: underline; }
 
     .guide-bulle::before {
-      content: ''; position: absolute; left: 28px; border: 8px solid transparent;
+      content: ''; position: absolute; left: var(--fleche-x, 28px); border: 8px solid transparent;
       bottom: -16px; border-top-color: #fff;
     }
     .guide-bulle.fleche-haut::before { bottom: auto; top: -16px; border-top-color: transparent; border-bottom-color: #fff; }
@@ -266,7 +272,9 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * Voile d'une etape a faire, en quatre bandes autour du cadre (haut, bas,
    * gauche, droite) : la cible reste cliquable, le reste de l'ecran non.
    */
-  bandes: { top: number; left: number; width: number; height: number }[] = [];
+  bandes: { top: number; left: number; width: number; height: number; vide?: boolean }[] = [];
+  /** Position de la pointe de la bulle, sous le centre de la cible (bulle calée au bord droit). */
+  flecheX = 28;
   /** Taille de fenetre du dernier placement : un redimensionnement recalcule les bandes. */
   private fenetre = { w: 0, h: 0 };
   /**
@@ -547,8 +555,10 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
   @HostListener('window:keydown.escape') auEchap(): void {
     if (!this.actif && !this.conseilOuvert) { return; }
     const mode = this.conseilOuvert ? 'parcours' : this.mode;
+    const detour = mode === 'ecran' && this.help.estDetourAlertes(this.visiteEcran?.id);
     this.arreter();
     if (mode === 'parcours') { this.help.fermerGuide(false); }
+    else if (detour) { this.reprendreApresDetour(); }
     else if (this.help.premiersPasEnCours()) { this.help.arreterPremiersPas(); }
     this.cdr.detectChanges();
   }
@@ -690,11 +700,27 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * ecran, et le guide de chaque autre ecran l'attendra quand il l'ouvrira.
    */
   passer(): void {
-    if (this.mode === 'ecran' && this.help.premiersPasEnCours()) { this.help.arreterPremiersPas(); }
-    this.terminer();
+    const detour = this.mode === 'ecran' && this.help.estDetourAlertes(this.visiteEcran?.id);
+    const passerelle = detour && !this.help.estGuideDesAlertes(this.visiteEcran?.id);
+    if (this.mode === 'ecran' && !detour && this.help.premiersPasEnCours()) { this.help.arreterPremiersPas(); }
+    this.terminer(true);
+    // Passerelle sautée : « pas maintenant pour les alertes ». Les premiers pas reprennent
+    // tout de suite (le guide des alertes, lui, les reprend par terminer()).
+    if (passerelle) { this.reprendreApresDetour(); }
   }
 
-  private terminer(): void {
+  /** Détour des alertes sauté ou fermé : l'écran suivant des premiers pas, s'ils sont en cours. */
+  private reprendreApresDetour(): void {
+    const suite = this.help.suiteApresDetourAlertes();
+    if (suite) { this.allerSurEcran(suite); }
+  }
+
+  /**
+   * `passe` : le client a cliqué « Passer ». Chauffeurs, Entretien ou Échéances passé
+   * n'amène pas la passerelle vers les alertes — Karim la veut quand l'utilisateur
+   * « termine le remplissage » (relecture du 26/09/2026).
+   */
+  private terminer(passe = false): void {
     const mode = this.mode;
     const visite = this.visiteEcran;
     const montree = this.etapeMontree;
@@ -702,10 +728,37 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     if (mode === 'parcours') { this.help.fermerGuide(true); }
     else if (visite && montree) {
       this.help.marquerEcranVu(visite.id);
-      const suite = this.help.suiteDesPremiersPas(visite.id);
-      if (suite) { this.enchainer(visite, suite); }
+      // Chauffeurs, Entretien ou Échéances terminé : d'abord l'adresse des alertes par
+      // e-mail (Karim, 26/09/2026) ; son guide rendra la main aux premiers pas.
+      const passerelle = passe ? null : this.help.passerelleVersAlertes(visite.id);
+      const suite = passerelle ? null : this.help.suiteDesPremiersPas(visite.id);
+      if (passerelle) { this.lancerPasserelle(visite, passerelle); }
+      else if (suite) { this.enchainer(visite, suite); }
     }
     this.cdr.detectChanges();
+  }
+
+  /**
+   * Passerelle vers les alertes, sur l'écran qui vient d'être rempli, après la même
+   * courte pause que les premiers pas. Ses bulles visent la barre du haut (flèche du
+   * menu, « Gestion utilisateurs ») ; l'arrivée sur Utilisateurs la termine et lance
+   * le guide des alertes (auChangementDePage).
+   */
+  private lancerPasserelle(depuis: VisiteEcran, passerelle: VisiteEcran): void {
+    const generation = this.generation;
+    setTimeout(() => {
+      if (this.detruit || generation !== this.generation || this.actif || this.conseilOuvert) { return; }
+      if (!this.help.estSurSonEcran(depuis, this.router.url)) { return; }
+      // Pas de barre du haut sur cet écran : pas de passerelle, et les premiers pas
+      // continuent comme avant, plutôt que de s'arrêter sur une bulle introuvable.
+      if (!this.chercher(passerelle.etapes[0].cible)) {
+        const suite = this.help.suiteDesPremiersPas(depuis.id);
+        if (suite) { this.allerSurEcran(suite); }
+        return;
+      }
+      this.demarrerEcran(passerelle);
+      this.cdr.detectChanges();
+    }, this.delaiEnchainement);
   }
 
   private allerA(index: number): void {
@@ -934,12 +987,21 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     const bas = Math.max(haut, Math.min(H, halo.top + halo.height));
     const g = Math.min(W, Math.max(0, halo.left));
     const d = Math.max(g, Math.min(W, halo.left + halo.width));
+    const cHaut = Math.min(bas, Math.max(haut, r.top));
+    const cBas = Math.max(cHaut, Math.min(bas, r.bottom));
+    const cG = Math.min(d, Math.max(g, r.left));
+    const cD = Math.max(cG, Math.min(d, r.right));
     this.bandes = [
       { top: 0, left: 0, width: W, height: haut },
       { top: bas, left: 0, width: W, height: H - bas },
       { top: haut, left: 0, width: g, height: bas - haut },
       { top: haut, left: d, width: W - d, height: bas - haut },
+      { top: haut, left: g, width: d - g, height: cHaut - haut, vide: true },
+      { top: cBas, left: g, width: d - g, height: bas - cBas, vide: true },
+      { top: cHaut, left: g, width: cG - g, height: cBas - cHaut, vide: true },
+      { top: cHaut, left: cD, width: d - cD, height: cBas - cHaut, vide: true },
     ];
+    this.flecheX = Math.min(330 - 28, Math.max(12, r.left + r.width / 2 - bulle.left - 8));
     return true;
   }
 }
