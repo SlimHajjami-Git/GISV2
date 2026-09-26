@@ -296,4 +296,48 @@ describe('HelpService', () => {
       expect(etat('u9').guideTermine).toBe(true);
     });
   });
+
+  // Karim, 26/09/2026 : « sur le compte Belive GPA, prends comme si c'est ma première
+  // connexion à chaque fois que je clique sur Revoir les premiers pas ».
+  describe('« Revoir les premiers pas » en local sur « Belive GPA » : une première connexion', () => {
+    const etat = (id: string) => JSON.parse(localStorage.getItem('calypso_aide_v1') || '{}')[id] || {};
+    const offreGpa = () => { modulesAutorises = ['vehicles', 'employees', 'maintenance', 'documents', 'users', 'accidents']; };
+
+    it('conseil, premiers pas et guides de TOUS les écrans reviennent', () => {
+      offreGpa();
+      compte = { id: 'u-karim', companyName: 'Belive GPA', isCompanyAdmin: true };
+      service.marquerConseilVu();
+      service.marquerEcranVu('tuto-vehicules-gpa');
+      service.marquerEcranVu('tuto-reparations-gpa');
+      service.arreterPremiersPas();
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-karim').ecransVus).toEqual([]);
+      expect(service.conseilAMontrer()).toBe(true);
+      expect(service.visiteEcranAProposer('/reparations')?.id).toBe('tuto-reparations-gpa');
+    });
+
+    it('une autre société : seuls le conseil et les premiers pas reviennent', () => {
+      offreGpa();
+      compte = { id: 'u-autre', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+      service.marquerEcranVu('tuto-vehicules-gpa');
+      service.marquerEcranVu('tuto-reparations-gpa');
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-autre').ecransVus).toEqual(['tuto-reparations-gpa']);
+    });
+
+    it('en production (isDevMode faux), rien de tout cela', () => {
+      offreGpa();
+      compte = { id: 'u-karim', companyName: 'Belive GPA', isCompanyAdmin: true };
+      jest.spyOn(service, 'enDeveloppement').mockReturnValue(false);
+      service.marquerEcranVu('tuto-reparations-gpa');
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-karim').ecransVus).toEqual(['tuto-reparations-gpa']);
+    });
+  });
 });

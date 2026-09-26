@@ -271,6 +271,16 @@ export class HelpService {
       this.conseilVuEnMemoire.delete(cle);
       modification.conseilVu = false;
     }
+    // PROVISOIRE, meme derogation que derogationPilote (dev + « Belive GPA ») : Karim
+    // teste « comme si c'etait ma premiere connexion a chaque fois » (26/09/2026) —
+    // les guides de TOUS les ecrans reviennent, et les premiers pas repartent de zero.
+    if (this.derogationPilote()) {
+      const prefixe = cle + '|';
+      this.ecransVusEnMemoire.forEach(c => { if (c.startsWith(prefixe)) this.ecransVusEnMemoire.delete(c); });
+      this.premiersPasEnMemoire.delete(cle);
+      modification.ecransVus = [];
+      modification.premiersPas = false;
+    }
     this.modifierEtat(modification);
     this.ouvrirGuide();
   }
