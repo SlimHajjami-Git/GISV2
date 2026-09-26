@@ -31,6 +31,10 @@ describe('exemples des écrans clients (marché français)', () => {
   const source = (fichier: string): string =>
     String(readFileSync(join(__dirname, fichier), 'utf8'));
 
+  /** Certains exemples ont quitté les gabarits pour un jeu de textes par pays. */
+  const sourceService = (fichier: string): string =>
+    String(readFileSync(join(__dirname, '..', 'services', fichier), 'utf8'));
+
   /** Gabarits des écrans clients : la racine de components/ sans les fenêtres partagées. */
   const ecrans: string[] = readdirSync(__dirname)
     .filter((f: string) => /\.(ts|html)$/.test(f))
@@ -69,10 +73,11 @@ describe('exemples des écrans clients (marché français)', () => {
     // L'exemple d'assureur « (ex: AXA, Macif...) » a disparu avec le sous-formulaire
     // Assurance de l'écran Dépenses (Karim, 23/09/2026) : l'assurance se règle
     // depuis Échéances. Plus rien à vérifier ici pour cet écran.
-    // L'exemple de tournée dépend du pays depuis le 23/09/2026 (tournees-textes-pays.ts) :
-    // « Lyon - Marseille » pour un compte en euros, « Tunis - Sfax » sinon.
+    // L'exemple de nom de tournée n'est plus en dur dans le gabarit : il suit
+    // désormais la devise du compte (Karim, 23/09/2026 — « Tunis - Sfax » hors
+    // euro). L'exemple français vit dans le jeu de textes, et le gabarit s'y lie.
+    expect(sourceService('tournees-textes-pays.ts')).toContain("exempleNom: 'Ex: Livraison Lyon - Marseille'");
     expect(source('tours.component.ts')).toContain('[placeholder]="textes.exempleNom"');
-    expect(readFileSync(join(__dirname, '..', 'services', 'tournees-textes-pays.ts'), 'utf8')).toContain('Ex: Livraison Lyon - Marseille');
     expect(source('vehicle-loans.component.ts')).toContain('placeholder="Ex: Lyon"');
     expect(source('vehicles.component.ts')).toContain('chez Peugeot Lyon');
   });

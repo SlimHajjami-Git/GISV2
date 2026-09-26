@@ -389,9 +389,11 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     module: 'costs',
     motsCles: ['depense', 'cout', 'facture', 'payer', 'montant', 'amende', 'peage', 'stationnement', 'carte grise', 'saisir'],
     resume: "Les dépenses d'un véhicule qui n'ont pas leur propre écran : péage, stationnement, amende, carte grise…",
-    captures: [
-      { fichier: 'depenses-formulaire.png', legende: "Le formulaire : véhicule, catégorie, date, description et montant." },
-    ],
+    // Capture retirée le 23/09/2026 : « depenses-formulaire.png » montrait la
+    // catégorie « Carburant » et son bloc « Détails carburant », que le même lot
+    // vient de retirer du formulaire. Une illustration qui contredit l'article
+    // est pire que pas d'illustration — à remplacer par une capture du nouveau
+    // formulaire.
     etapes: [
       "Ouvrez « Dépenses » dans le menu Finances.",
       "Cliquez sur « Nouvelle dépense ».",
@@ -984,6 +986,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Ils ont été ajoutés par notre équipe, avec leurs boîtiers. Vérifiez la liste : cliquez sur une ligne pour ouvrir la fiche d'un véhicule, ou sur « Modifier » pour compléter ses informations — chauffeur, couleur, capacité du réservoir.",
     cible: 'vehicules-liste',
     module: 'monitoring',
+    moduleRoute: 'vehicles',
     route: '/vehicles'
   },
   {
@@ -1049,6 +1052,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Choisissez un type de rapport, un véhicule et une période, puis cliquez sur « Exécuter ». L'export Excel, PDF ou CSV se débloque une fois le rapport affiché.",
     cible: 'rapports-type',
     module: 'monitoring',
+    moduleRoute: 'reports',
     route: '/reports',
     // Derniere etape du parcours GPS : « Terminer » depose le client sur
     // « Suivi en direct », pour qu'il voie ses vehicules (Karim, 23/09/2026).

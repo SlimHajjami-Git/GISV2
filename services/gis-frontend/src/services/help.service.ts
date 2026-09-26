@@ -198,9 +198,15 @@ export class HelpService {
     return !!u?.isCompanyAdmin || !!u?.isSystemAdmin;
   }
 
-  /** Module requis present, module exclu (`sauf`) absent : vaut pour une etape comme pour un guide d'ecran. */
-  private pourCetteOffre(e: { module?: HelpModule; sauf?: HelpModule }): boolean {
+  /**
+   * Module requis present, module exclu (`sauf`) absent : vaut pour une etape comme
+   * pour un guide d'ecran. `moduleRoute` (Slim, 23/09/2026) : le droit d'ATTEINDRE la
+   * page quand il differe du module de l'offre — sans lui, un employe tout neuf
+   * finissait sa visite GPS sur « Acces non autorise ».
+   */
+  private pourCetteOffre(e: { module?: HelpModule; moduleRoute?: HelpModule; sauf?: HelpModule }): boolean {
     return (!e.module || this.moduleAutorise(e.module))
+      && (!e.moduleRoute || this.moduleAutorise(e.moduleRoute))
       && (!e.sauf || !this.moduleAutorise(e.sauf));
   }
 
