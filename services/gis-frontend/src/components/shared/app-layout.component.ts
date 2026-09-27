@@ -451,7 +451,8 @@ type NotifBucket = Notification | NotifThreadGroup;
           
           <!-- User Menu -->
           <div class="user-menu-wrapper">
-            <div class="user-menu" (click)="toggleUserMenu($event)">
+            <!-- data-guide : passerelle du tutoriel vers les alertes par e-mail (help-content.ts). -->
+            <div class="user-menu" (click)="toggleUserMenu($event)" data-guide="menu-utilisateur">
               <div class="user-avatar">{{ getUserInitials() }}</div>
               <span class="user-name">{{ getUserName() }}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" [class.rotated]="showUserMenu">
@@ -477,7 +478,7 @@ type NotifBucket = Notification | NotifThreadGroup;
                   </svg>
                   <span>Mon profil</span>
                 </a>
-                <a *ngIf="hasModule('users')" class="dropdown-item" (click)="onUsersClick()">
+                <a *ngIf="hasModule('users')" class="dropdown-item" (click)="onUsersClick()" data-guide="menu-gestion-utilisateurs">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
                     <circle cx="9" cy="7" r="4"/>

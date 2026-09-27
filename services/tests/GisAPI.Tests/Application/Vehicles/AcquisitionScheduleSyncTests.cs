@@ -115,6 +115,26 @@ public class AcquisitionScheduleSyncTests
     }
 
     [Fact]
+    public void Apport_sans_date_d_achat_est_date_du_debut_du_credit()
+    {
+        // Karim, 25/09/2026 : un apport saisi sans « Date d'achat » n'était compté nulle part.
+        var v = Leasing(1, 900, 36, new DateTime(2026, 10, 1), 5, deposit: 5000, purchased: null);
+
+        var apport = AcquisitionScheduleSync.ExpectedLines(v).Single(l => l.Kind == AcquisitionPayment.Kinds.Apport);
+
+        apport.Due.Should().Be(D(2026, 10, 1));
+        apport.Amount.Should().Be(5000m);
+    }
+
+    [Fact]
+    public void Achat_comptant_sans_date_reste_hors_echeancier()
+    {
+        var v = new Vehicle { Id = 1, CompanyId = CompanyId, Name = "V", AcquisitionType = "purchase", PurchasePrice = 20000, LeasingStartDate = new DateTime(2026, 1, 1) };
+
+        AcquisitionScheduleSync.ExpectedLines(v).Should().BeEmpty();
+    }
+
+    [Fact]
     public void Achat_comptant_avec_residus_de_contrat_donne_une_seule_ligne_achat()
     {
         var lines = AcquisitionScheduleSync.ExpectedLines(V368());

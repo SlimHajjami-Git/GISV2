@@ -102,6 +102,32 @@ export interface GuideEtape {
    * sautee automatiquement : la visite ne doit jamais pointer dans le vide.
    */
   cible: string;
+  /**
+   * Etape a FAIRE, pas seulement a lire (tutoriel pas a pas, Karim 24/09/2026).
+   * La cible reste cliquable : le voile l'entoure au lieu de la couvrir.
+   *  - 'clic'        : l'etape se termine quand le client clique la cible
+   *                    (« Nouveau vehicule » ouvre la fiche) ;
+   *  - 'valeur'      : « Suivant » (ou Entree) ne s'active qu'une fois le champ
+   *                    vise rempli ;
+   *  - 'disparition' : l'etape se termine quand la cible quitte l'ecran — le
+   *                    bouton « Ajouter » d'une fiche qui se ferme une fois
+   *                    l'enregistrement reussi. Refuse, la fiche reste ouverte
+   *                    et le client reste sur l'etape.
+   */
+  action?: 'clic' | 'valeur' | 'disparition';
+  /**
+   * Etape « valeur » qu'on peut laisser vide : « Suivant » reste actif. Pour une
+   * liste dont la bonne reponse peut manquer — marque absente du catalogue, marque
+   * sans aucun modele — sinon le client restait bloque, avec pour seule sortie
+   * « Passer », qui abandonne le tutoriel pour toujours (Karim, 24/09/2026).
+   */
+  facultatif?: boolean;
+  /**
+   * Etape reservee aux administrateurs (bouton sous *ngIf="isAdmin") : retiree
+   * d'emblee pour les autres. Sautee faute de cible, elle faisait attendre 3 s
+   * puis affichait « Etape 2 sur 4 » en premiere bulle (relecture du 24/09/2026).
+   */
+  adminSeulement?: boolean;
   /** Module requis pour que l'etape ait un sens. */
   module?: HelpModule;
   /**
@@ -131,4 +157,43 @@ export interface GuideEtape {
    * en direct » pour qu'il voie les siens. « Passer » ne deplace pas.
    */
   routeApresFin?: string;
+}
+
+/**
+ * Tutoriel d'un ecran : presente a un NOUVEL utilisateur (premiere connexion)
+ * quand il ouvre cet ecran, a chaque acces tant qu'il ne l'a ni passe ni termine
+ * (Karim, 24/09/2026). Pas a pas : le client fait lui-meme chaque geste — cliquer
+ * « Nouveau vehicule », remplir le nom, la plaque… — guide par le moteur de la
+ * visite guidee (meme cadre bleu, meme bulle). Il ne change jamais de page.
+ */
+export interface VisiteEcran {
+  /** Identifiant stable : c'est lui que l'on retient comme « vu ». */
+  id: string;
+  /** Nom de l'ecran, affiche au-dessus du compteur d'etapes. */
+  titre: string;
+  /** Chemin exact de l'ecran (sans parametres), par exemple '/vehicles'. */
+  route: string;
+  /**
+   * Autres chemins du meme ecran : Echeances s'ouvre en /documents depuis le menu
+   * et en /echeances depuis la visite de premiere connexion.
+   */
+  autresRoutes?: string[];
+  /** Module requis, comme pour une etape (droits de l'utilisateur compris). */
+  module?: HelpModule;
+  /**
+   * Module dont la presence dans l'ABONNEMENT retire le guide : `monitoring` signe
+   * l'offre GPS. L'abonnement, pas les droits : un utilisateur d'une societe GPS
+   * sans acces a la carte reste un client GPS.
+   */
+  sauf?: HelpModule;
+  /**
+   * Tutoriel reserve aux administrateurs : il commence par un bouton qu'eux seuls
+   * ont (« Nouveau vehicule », *ngIf="isAdmin"), sans lequel rien ne s'enchaine.
+   */
+  adminSeulement?: boolean;
+  /**
+   * Bulles de l'ecran, dans l'ordre. Sans `route` : tout se joue sur l'ecran.
+   * Une etape dont la cible manque est sautee.
+   */
+  etapes: GuideEtape[];
 }

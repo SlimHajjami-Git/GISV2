@@ -34,6 +34,7 @@ describe('HelpService', () => {
         { provide: AuthService, useValue: { getCurrentUserSync: () => compte } },
         { provide: PermissionService, useValue: {
           hasModuleAccess: (m: string) => modulesAutorises.includes(m),
+          abonnementComprend: (m: string) => modulesAutorises.includes(m),
           hasReportAccess: (r: string) => !rapportsFermes.includes(r)
         } }
       ]
@@ -50,7 +51,7 @@ describe('HelpService', () => {
       providers: [
         HelpService,
         { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id }) } },
-        { provide: PermissionService, useValue: { hasModuleAccess: () => true, hasReportAccess: () => true } }
+        { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => true, hasReportAccess: () => true } }
       ]
     });
     return TestBed.inject(HelpService);
@@ -129,12 +130,19 @@ describe('HelpService', () => {
       expect(visibles.every(a => a.module === 'general')).toBe(true);
     });
 
-    it('saute les etapes de visite guidee liees a un module absent', () => {
-      modulesAutorises = ['vehicles'];
+    it('saute les etapes de visite guidee liees a un module absent (offre GPS)', () => {
+      modulesAutorises = ['monitoring', 'vehicles'];
       const etapes = service.etapesGuide();
-      expect(etapes.some(e => e.id === 'ajouter-vehicule')).toBe(true);
-      expect(etapes.some(e => e.id === 'voir-la-carte')).toBe(false);
-      expect(etapes.some(e => e.id === 'premier-rapport')).toBe(false);
+      expect(etapes.some(e => e.id === 'voir-la-carte')).toBe(true);
+      expect(etapes.some(e => e.id === 'ajouter-chauffeurs')).toBe(false);
+      expect(etapes.some(e => e.id === 'echeances')).toBe(false);
+    });
+
+    // Karim, 25/09/2026 : en GPA, les premiers pas remplacent la visite guidee.
+    it('offre GPA : plus de visite guidee, ni proposee ni jouee', () => {
+      modulesAutorises = ['vehicles', 'employees', 'maintenance', 'documents', 'users'];
+      expect(service.etapesGuide()).toEqual([]);
+      expect(service.doitProposerLeGuide()).toBe(false);   // client deja installe : pas de conseil non plus
     });
   });
 
@@ -160,7 +168,7 @@ describe('HelpService', () => {
         providers: [
           HelpService,
           { provide: AuthService, useValue: { getCurrentUserSync: () => ({ id: 'u2' }) } },
-          { provide: PermissionService, useValue: { hasModuleAccess: () => true } }
+          { provide: PermissionService, useValue: { hasModuleAccess: () => true, abonnementComprend: () => true } }
         ]
       });
       expect(TestBed.inject(HelpService).doitProposerLeGuide()).toBe(true);
@@ -259,6 +267,77 @@ describe('HelpService', () => {
         id: 'x', titre: 'x', module: 'general', motsCles: [], resume: '',
         video: { titre: 'demo', url: '/uploads/aide/demo.mp4' }
       })).toBe(true);
+    });
+  });
+
+  // Guides des ecrans (24/09/2026) : l’etat de l aide etait REMPLACE a chaque
+  // ecriture. Terminer la visite guidee aurait efface les guides d’ecran deja vus.
+  describe('guides des ecrans : l’etat se complete, il ne s’ecrase plus', () => {
+    const etat = (id: string) => JSON.parse(localStorage.getItem('calypso_aide_v1') || '{}')[id] || {};
+
+    it('terminer puis revoir la visite guidee garde les guides d’ecran vus', () => {
+      const s = nouvelleSession('u9');
+      s.marquerEcranVu('ecran-vehicules-gpa');
+      s.fermerGuide(true);
+      expect(etat('u9').ecransVus).toEqual(['ecran-vehicules-gpa']);
+      expect(etat('u9').guideTermine).toBe(true);
+
+      s.reinitialiserGuide();
+      expect(etat('u9').ecransVus).toEqual(['ecran-vehicules-gpa']);
+      expect(etat('u9').guideTermine).toBe(false);
+    });
+
+    it('« Revoir les guides des ecrans » les remet tous, sans toucher a la visite guidee', () => {
+      const s = nouvelleSession('u9');
+      s.fermerGuide(true);
+      s.marquerEcranVu('ecran-vehicules-gpa');
+      s.reinitialiserEcrans();
+      expect(etat('u9').ecransVus).toEqual([]);
+      expect(etat('u9').guideTermine).toBe(true);
+    });
+  });
+
+  // Karim, 26/09/2026 : « sur le compte Belive GPA, prends comme si c'est ma première
+  // connexion à chaque fois que je clique sur Revoir les premiers pas ».
+  describe('« Revoir les premiers pas » en local sur « Belive GPA » : une première connexion', () => {
+    const etat = (id: string) => JSON.parse(localStorage.getItem('calypso_aide_v1') || '{}')[id] || {};
+    const offreGpa = () => { modulesAutorises = ['vehicles', 'employees', 'maintenance', 'documents', 'users', 'accidents']; };
+
+    it('conseil, premiers pas et guides de TOUS les écrans reviennent', () => {
+      offreGpa();
+      compte = { id: 'u-karim', companyName: 'Belive GPA', isCompanyAdmin: true };
+      service.marquerConseilVu();
+      service.marquerEcranVu('tuto-vehicules-gpa');
+      service.marquerEcranVu('tuto-reparations-gpa');
+      service.arreterPremiersPas();
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-karim').ecransVus).toEqual([]);
+      expect(service.conseilAMontrer()).toBe(true);
+      expect(service.visiteEcranAProposer('/reparations')?.id).toBe('tuto-reparations-gpa');
+    });
+
+    it('une autre société : seuls le conseil et les premiers pas reviennent', () => {
+      offreGpa();
+      compte = { id: 'u-autre', firstLogin: true, companyName: 'Transports Martin', isCompanyAdmin: true };
+      service.marquerEcranVu('tuto-vehicules-gpa');
+      service.marquerEcranVu('tuto-reparations-gpa');
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-autre').ecransVus).toEqual(['tuto-reparations-gpa']);
+    });
+
+    it('en production (isDevMode faux), rien de tout cela', () => {
+      offreGpa();
+      compte = { id: 'u-karim', companyName: 'Belive GPA', isCompanyAdmin: true };
+      jest.spyOn(service, 'enDeveloppement').mockReturnValue(false);
+      service.marquerEcranVu('tuto-reparations-gpa');
+
+      service.reinitialiserGuide();
+
+      expect(etat('u-karim').ecransVus).toEqual(['tuto-reparations-gpa']);
     });
   });
 });

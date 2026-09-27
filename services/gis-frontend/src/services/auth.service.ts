@@ -77,6 +77,12 @@ export interface AuthUser {
    * l'application mobile (tournées), jamais admis sur le site (voir login()).
    */
   accountType?: string;
+  /**
+   * Cette session est la toute première connexion du compte (réponse de
+   * /auth/login). HelpService la retient : un nouvel utilisateur voit le guide
+   * de chaque écran qu'il ouvre (Karim, 24/09/2026).
+   */
+  firstLogin?: boolean;
 }
 
 /**
@@ -113,6 +119,8 @@ export interface AuthResponse {
     selfServiceSubscription?: boolean;
     accountType?: string;
   };
+  /** Toute première connexion du compte : envoyé par /auth/login seulement. */
+  firstLogin?: boolean;
 }
 
 @Injectable({
@@ -203,7 +211,9 @@ export class AuthService {
           // Sans cette ligne, le drapeau se perdait au rechargement de la page et
           // l'entrée « Abonnement » disparaissait pour un compte qui y a droit.
           selfServiceSubscription: parsed.selfServiceSubscription ?? false,
-          accountType: parsed.accountType
+          accountType: parsed.accountType,
+          // Page rechargee juste apres la premiere connexion : le drapeau doit survivre.
+          firstLogin: parsed.firstLogin === true
         });
         this.applyAccountCurrency(parsed.currency);
       } catch (e) {
@@ -328,7 +338,8 @@ export class AuthService {
           userPermissions: response.user.userPermissions ?? null,
           currency: response.user.currency,
           selfServiceSubscription: response.user.selfServiceSubscription ?? false,
-          accountType: response.user.accountType
+          accountType: response.user.accountType,
+          firstLogin: response.firstLogin === true
         };
         console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
         console.log('AuthService.login - User permissions:', user.userPermissions);
