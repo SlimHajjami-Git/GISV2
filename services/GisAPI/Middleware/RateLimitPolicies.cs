@@ -43,6 +43,15 @@ public static class RateLimitPolicies
         c.Request.Path.StartsWithSegments("/api/auth/register")
         || c.Request.Path.StartsWithSegments("/api/auth/resend-confirmation");
 
+    // Diagnostic d'installation rouvert sans jeton le 28/09/2026 (DeviceCheckController,
+    // action StatutPublic). Sa réponse ne rattache aucun boîtier à un client, mais elle dit
+    // si un IMEI est enregistré : sans plafond, on balaierait l'espace des IMEI pour
+    // cartographier le parc. Un installateur fait quelques recherches par intervention, pas
+    // vingt par minute. La route AUTHENTIFIÉE (/api/devicecheck/lookup) n'est pas visée :
+    // StartsWithSegments compare des SEGMENTS entiers, donc « /status » ne l'attrape pas.
+    public static bool IsPublicDeviceCheck(HttpContext c) =>
+        c.Request.Path.StartsWithSegments("/api/devicecheck/status");
+
     public static void Configure(RateLimiterOptions options, IConfiguration configuration)
     {
         // For /api/assistant we apply a CHAINED limiter (both parts must pass): a per-IP
@@ -84,6 +93,31 @@ public static class RateLimitPolicies
                         {
                             PermitLimit = 30,
                             Window = TimeSpan.FromHours(1),
+                            QueueLimit = 0
+                        })
+                    : RateLimitPartition.GetNoLimiter("open")),
+            // -0,5) diagnostic boîtier public : 20 par minute et par IP, 400 par minute au
+            // total. Le premier plafond suffit à rendre un balayage d'IMEI inexploitable ;
+            // le second borne ce qu'un réseau de machines obtiendrait.
+            PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                IsPublicDeviceCheck(ctx)
+                    ? RateLimitPartition.GetFixedWindowLimiter(
+                        "devicecheck:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 20,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        })
+                    : RateLimitPartition.GetNoLimiter("open")),
+            PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                IsPublicDeviceCheck(ctx)
+                    ? RateLimitPartition.GetFixedWindowLimiter(
+                        "devicecheck-global",
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = 400,
+                            Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0
                         })
                     : RateLimitPartition.GetNoLimiter("open")),

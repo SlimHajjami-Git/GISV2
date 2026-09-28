@@ -149,12 +149,41 @@ public class RateLimitPipelineTests
         }
     }
 
+    /// <summary>
+    /// Le plafond du diagnostic PUBLIC ne doit pas retomber sur le diagnostic AUTHENTIFIÉ :
+    /// les deux partagent le préfixe « /api/devicecheck », et un prédicat écrit avec un
+    /// <c>Contains</c> ou un <c>StartsWith</c> de chaîne aurait puni le gestionnaire connecté
+    /// pour les recherches des installateurs. <c>StartsWithSegments</c> compare des segments
+    /// entiers, donc « /status » n'attrape pas « /lookup » : ce test le prouve.
+    /// </summary>
+    [Fact]
+    public async Task Le_plafond_du_diagnostic_public_n_atteint_pas_la_route_authentifiee()
+    {
+        using var pipeline = new Pipeline();
+
+        for (var i = 0; i < 25; i++)
+            await pipeline.SendAsync("GET", "/api/devicecheck/status");
+
+        var refuse = await pipeline.SendAsync("GET", "/api/devicecheck/status");
+        refuse.Response.StatusCode.Should().Be(429, "20 par minute et par adresse IP");
+
+        for (var i = 0; i < 30; i++)
+        {
+            var http = await pipeline.SendAsync("GET", "/api/devicecheck/lookup");
+            http.Response.StatusCode.Should().NotBe(429,
+                "la route authentifiée n'est pas visée par le plafond public");
+        }
+    }
+
     [Theory]
     [InlineData("/api/auth/forgot-password", 5, AuthController.TooManyPasswordResetRequestsMessage, "3600")]
     [InlineData("/api/auth/register", 3, RateLimitPolicies.TooManyRegistrationsMessage, "3600")]
     [InlineData("/api/auth/resend-confirmation", 3, RateLimitPolicies.TooManyRegistrationsMessage, "3600")]
     [InlineData("/api/assistant/ask", 10, RateLimitPolicies.TooManyQuestionsMessage, "30")]
     [InlineData("/api/costs/scan-invoice", 12, RateLimitPolicies.TooManyRequestsMessage, "60")]
+    // Diagnostic boîtier rouvert sans jeton le 28/09/2026 : sa réponse ne dit rien du client,
+    // mais elle dit si un IMEI est enregistré — sans plafond on balaierait l'espace des IMEI.
+    [InlineData("/api/devicecheck/status", 20, RateLimitPolicies.TooManyRequestsMessage, "60")]
     public async Task Chaque_route_plafonnee_rend_son_propre_message_et_son_delai(
         string path, int allowed, string message, string retryAfter)
     {

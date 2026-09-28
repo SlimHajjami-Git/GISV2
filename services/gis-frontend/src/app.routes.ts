@@ -152,10 +152,14 @@ export const routes: Routes = [
         { path: 'confirmation-email', component: ConfirmEmailComponent }
       ]
     : []),
-  // Diagnostic boîtier : réservé aux comptes connectés depuis le 23/09/2026. L'API
-  // /api/devicecheck n'avait AUCUN [Authorize] et traversait toutes les sociétés ; elle
-  // ne répond plus qu'à un jeton, dans la société et le périmètre de l'appelant.
-  { path: 'device-check', component: DeviceCheckComponent, canActivate: [AuthGuard] },
+  // Diagnostic boîtier : PUBLIQUE, sans AuthGuard (décision de Slim, 28/09/2026). Les
+  // installateurs travaillent sans compte, boîtier en main. Le cloisonnement ne repose pas
+  // sur ce garde mais sur l'API : sans jeton l'écran appelle /devicecheck/status, qui
+  // n'accepte qu'un IMEI et ne rend que « enregistré / remonte des trames » — aucune
+  // position, aucune plaque, aucune société. Avec un jeton il appelle /devicecheck/lookup,
+  // qui garde la réponse complète et la portée de l'appelant. Remettre AuthGuard ici
+  // n'ajouterait aucune sécurité et priverait le terrain de l'outil.
+  { path: 'device-check', component: DeviceCheckComponent },
   // Écran pleine page hors layout : abonnement de la société suspendu/expiré.
   { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },

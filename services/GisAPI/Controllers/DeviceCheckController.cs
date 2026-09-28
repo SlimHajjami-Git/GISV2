@@ -30,12 +30,21 @@ namespace GisAPI.Controllers;
 /// véhicules ; liste VIDE = il ne voit RIEN. L'administrateur sans aucune affectation
 /// (utilisateur 11 de HERTZ) continue donc de tout voir.</para>
 ///
-/// <para><b>Conséquence côté écran, à trancher par Slim :</b> la page Angular
-/// « /device-check » est aujourd'hui publique (aucun <c>AuthGuard</c> sur la route) et
-/// l'intercepteur retire volontairement le jeton des appels « /devicecheck/ ». Tant que le
-/// frontend n'est pas repris, cette page recevra 401. La route n'est pas supprimée : elle a
-/// un usage légitime d'outil interne, mais elle est désormais réservée aux comptes
-/// connectés et au périmètre de l'appelant.</para>
+/// <para><b>Tranché par Slim le 28/09/2026 — DEUX routes, deux réponses.</b> L'écran servait
+/// aux installateurs sur le terrain, et leur imposer un compte n'avait pas de sens. La
+/// classe expose donc :</para>
+/// <list type="bullet">
+/// <item><c>GET lookup</c> — AUTHENTIFIÉE, inchangée : réponse complète (position, plaque,
+/// contact, carburant, compteur), bornée à la société de l'appelant et à sa portée
+/// véhicule. C'est l'outil interne.</item>
+/// <item><c>GET status</c> — PUBLIQUE, par IMEI strict uniquement, et réduite à « cet
+/// appareil est-il enregistré et envoie-t-il des trames ». Aucune donnée qui rattache un
+/// boîtier à un client. Voir <see cref="StatutPublic"/> pour le raisonnement complet.</item>
+/// </list>
+/// <para>Ce découpage en deux actions distinctes est volontaire : une seule action qui
+/// choisirait son contenu selon l'authentification finirait par laisser fuir la réponse
+/// complète au premier oubli de branche. Ici, la route publique n'interroge même pas la
+/// table des véhicules.</para>
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -61,6 +70,107 @@ public class DeviceCheckController : ControllerBase
     /// </summary>
     private ActionResult Introuvable() =>
         Ok(new { found = false, message = "MAT/IMEI introuvable." });
+
+    /// <summary>
+    /// Au-delà de ce silence, on considère que le boîtier ne remonte plus. Une seule
+    /// définition pour les deux routes : la publique et l'authentifiée ne doivent pas
+    /// pouvoir répondre « connecté » et « déconnecté » du même boîtier à la même seconde.
+    /// </summary>
+    public const double SilenceAvantDeconnexionMinutes = 40;
+
+    /// <summary>
+    /// IMEI strict : 15 chiffres, rien d'autre. La route PUBLIQUE n'accepte que cette clé,
+    /// jamais une plaque ni une MAT. C'est la plaque — qui se lit dans la rue — qui faisait
+    /// de l'ancienne route ouverte un traceur de véhicules d'autrui ; un IMEI, lui, se lit
+    /// sur l'étiquette du boîtier que l'installateur tient en main.
+    /// </summary>
+    private static readonly Regex ImeiStrict = new(@"^\d{15}$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// « Ce boîtier remonte-t-il ? » SANS authentification, pour l'installateur sur le
+    /// terrain (décision de Slim du 28/09/2026 : la page redevient publique, mais réduite à
+    /// ce que l'installation exige).
+    ///
+    /// <para><b>Ce que cette route ne dit JAMAIS</b>, et c'est précisément ce qui la rend
+    /// publiable : aucune position, aucune plaque, aucun nom de véhicule ni de société,
+    /// aucun contact moteur, aucun carburant, aucun compteur. Elle répond à une seule
+    /// question — cet appareil est-il enregistré, et envoie-t-il des trames. Connaître un
+    /// IMEI ne permet donc plus de suivre un véhicule, ce qui était le trou de l'ancienne
+    /// route ouverte. La route authentifiée <c>lookup</c> garde, elle, la réponse complète,
+    /// le cloisonnement par société et la portée véhicule de l'appelant.</para>
+    ///
+    /// <para>Elle lève les filtres multi-tenant, et il ne peut en être autrement :
+    /// l'appelant n'a pas de société. C'est sans conséquence ici puisque rien dans la
+    /// réponse ne rattache le boîtier à un client. Le seul reste est qu'elle dit si un IMEI
+    /// est connu : d'où le plafond par adresse IP posé dans <c>RateLimitPolicies</c>, sans
+    /// lequel on balaierait l'espace des IMEI pour cartographier le parc.</para>
+    /// </summary>
+    [AllowAnonymous]
+    [HttpGet("status")]
+    public async Task<ActionResult> StatutPublic([FromQuery] string imei)
+    {
+        var saisie = (imei ?? string.Empty).Trim();
+
+        if (!ImeiStrict.IsMatch(saisie))
+            return BadRequest(new { error = "Saisissez l'IMEI du boîtier : 15 chiffres, sans espace." });
+
+        // Projection explicite : on ne charge QUE les trois champs nécessaires. Aucun
+        // accès à Vehicles, donc aucune plaque ni société ne peut fuir par inadvertance,
+        // même si quelqu'un ajoute un champ à la réponse plus tard.
+        //
+        // IgnoreQueryFilters est ici un choix de COHÉRENCE, pas un contournement : le filtre
+        // de GpsDevices laisse déjà tout passer quand l'appelant n'a pas de société, donc
+        // sans jeton il ne change rien. Mais si un utilisateur connecté appelait cette route
+        // directement, le filtre s'appliquerait et le même IMEI répondrait « trouvé » à l'un
+        // et « inconnu » à l'autre. L'expliciter garantit une réponse identique pour tous.
+        // Le filtre de cette entité est purement multi-locataire (aucune suppression
+        // logique), donc le lever n'exhume rien d'effacé.
+        var boitier = await _context.GpsDevices.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d => d.DeviceUid == saisie)
+            .Select(d => new { d.Id, d.DeviceUid, d.SignalStrength })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        if (boitier == null)
+            return Ok(new { found = false, message = "IMEI inconnu." });
+
+        // TRI SUR recorded_at, JAMAIS SUR id — mesuré sur la production le 28/09/2026.
+        // « ORDER BY id DESC LIMIT 1 » remonte l'index de la clé primaire depuis la trame la
+        // plus récente de TOUTE la flotte en filtrant device_id au passage : pour un boîtier
+        // qui n'a jamais émis, il n'y a rien à trouver et le parcours va jusqu'au bout des
+        // 30 Go — la requête a DÉPASSÉ 120 secondes. Or « le boîtier ne remonte pas » est
+        // précisément le cas que l'installateur vient vérifier, et cette route est publique :
+        // c'était un moyen de saturer la base avec l'IMEI d'un boîtier neuf.
+        // « ORDER BY recorded_at DESC » colle à ix_gps_positions_device_time (device_id,
+        // recorded_at) : 0,072 ms et 4 blocs lus sur le même boîtier.
+        var derniere = await _context.GpsPositions.AsNoTracking()
+            .Where(p => p.DeviceId == boitier.Id)
+            .OrderByDescending(p => p.RecordedAt)
+            .Select(p => new { p.RecordedAt, p.Satellites })
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        if (derniere == null)
+            return Ok(new
+            {
+                found = true,
+                reporting = false,
+                imei = MaskImei(boitier.DeviceUid),
+                message = "Boîtier enregistré, mais aucune trame reçue à ce jour."
+            });
+
+        var minutes = (DateTime.UtcNow - derniere.RecordedAt).TotalMinutes;
+
+        return Ok(new
+        {
+            found = true,
+            reporting = minutes <= SilenceAvantDeconnexionMinutes,
+            imei = MaskImei(boitier.DeviceUid),
+            lastFrameAt = derniere.RecordedAt,
+            minutesSinceLastFrame = Math.Round(minutes, 1),
+            satellites = derniere.Satellites,
+            signalStrength = boitier.SignalStrength
+        });
+    }
 
     /// <summary>
     /// Recherche d'un boîtier par IMEI, par MAT ou par plaque, dans la SOCIÉTÉ DE L'APPELANT
@@ -137,9 +247,14 @@ public class DeviceCheckController : ControllerBase
         // GpsPositions ne porte AUCUN filtre multi-tenant (les trames sont indexées par
         // boîtier, pas par société) : le cloisonnement vient du boîtier résolu ci-dessus,
         // déjà borné à la société et à la portée de l'appelant.
+        // Même correction que sur la route publique, et pour la même raison mesurée le
+        // 28/09/2026 : trié sur « id » cette requête a dépassé 120 secondes pour un boîtier
+        // sans aucune trame — l'écran restait suspendu sur un boîtier fraîchement posé, soit
+        // le cas le plus fréquent d'un technicien. Trié sur recorded_at, elle rend en moins
+        // d'une milliseconde grâce à ix_gps_positions_device_time.
         var lastPosition = await _context.GpsPositions.AsNoTracking()
             .Where(p => p.DeviceId == device.Id)
-            .OrderByDescending(p => p.Id)
+            .OrderByDescending(p => p.RecordedAt)
             .FirstOrDefaultAsync();
 
         if (lastPosition == null)
@@ -177,10 +292,12 @@ public class DeviceCheckController : ControllerBase
             if (fuelPercent < 0) fuelPercent = 0;
         }
 
-        // Connection status: last frame > 40 min = stale (grey)
+        // Connection status: au-delà de SilenceAvantDeconnexionMinutes, le boîtier est
+        // considéré muet (affiché en gris). Même seuil que la route publique : les deux ne
+        // doivent pas se contredire sur le même boîtier.
         var lastFrameTime = lastPosition.RecordedAt;
         var minutesSinceLastFrame = (DateTime.UtcNow - lastFrameTime).TotalMinutes;
-        var isStale = minutesSinceLastFrame > 40;
+        var isStale = minutesSinceLastFrame > SilenceAvantDeconnexionMinutes;
 
         // Calypso 7 — bug technicien : "Odomètre = 0 km" sur /device-check
         // pour un véhicule fraîchement installé alors que /monitoring affiche

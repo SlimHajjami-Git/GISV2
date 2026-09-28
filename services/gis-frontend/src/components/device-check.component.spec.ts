@@ -4,22 +4,26 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Router, provideRouter } from '@angular/router';
 import { DeviceCheckComponent, messageErreurDiagnostic } from './device-check.component';
 import { authInterceptor } from '../services/auth.interceptor';
-import { AuthGuard } from '../guards/auth.guard';
 import { routes } from '../app.routes';
 
 /**
- * Diagnostic boîtier (/device-check) — fermeture du 23/09/2026.
+ * Diagnostic boîtier (/device-check) — deux passes à connaître ensemble.
  *
- * L'API /api/devicecheck était la SEULE route sans [Authorize] : sans jeton, elle
- * rendait position, contact, compteur et carburant de n'importe quel véhicule de
- * n'importe quelle société, à partir d'une plaque lue dans la rue. Elle exige
- * désormais un compte connecté. Côté écran, trois choses devaient suivre :
- *   • la route Angular gardée par AuthGuard ;
- *   • l'intercepteur qui RETIRAIT le jeton de tout appel « /devicecheck/ » ;
- *   • un appel par HttpClient (donc par l'intercepteur, qui rafraîchit le jeton)
- *     au lieu d'un window.fetch nu, et un 401 qui renvoie à la connexion.
+ * 23/09/2026, FERMETURE. L'API /api/devicecheck était la SEULE route sans [Authorize] :
+ * sans jeton, elle rendait position, contact, compteur et carburant de n'importe quel
+ * véhicule de n'importe quelle société, à partir d'une PLAQUE lue dans la rue.
+ *
+ * 28/09/2026, RÉOUVERTURE MESURÉE (décision de Slim). Les installateurs travaillent sur
+ * le terrain sans compte, et leur imposer une connexion n'avait pas de sens. L'écran a
+ * donc deux modes, et c'est le mode qui protège, plus le garde de route :
+ *   • sans session → /devicecheck/status, IMEI strict, réponse réduite à « enregistré /
+ *     remonte des trames ». Aucune position, aucune plaque, aucune société ;
+ *   • avec session → /devicecheck/lookup, réponse complète, bornée à la société de
+ *     l'appelant et à sa portée véhicule.
+ * Ce fichier fige les deux chemins : c'est le seul endroit qui empêche de « simplifier »
+ * l'écran en appelant lookup sans jeton, ce qui rouvrirait le trou mot pour mot.
  */
-describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés', () => {
+describe('DeviceCheckComponent — public réduit, complet pour les comptes connectés', () => {
   let component: DeviceCheckComponent;
   let http: HttpTestingController;
   let router: Router;
@@ -53,13 +57,17 @@ describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés',
     return `x.${charge}.y`;
   }
 
-  it('la route /device-check est gardée par AuthGuard', () => {
+  it("la route /device-check est PUBLIQUE : le cloisonnement est côté API, pas dans un garde", () => {
     const route = routes.find(r => r.path === 'device-check');
     expect(route).toBeDefined();
-    expect(route!.canActivate).toContain(AuthGuard);
+    // Remettre un AuthGuard ici n'ajouterait aucune sécurité — la route publique de l'API
+    // ne rend rien de confidentiel — et priverait le terrain de l'outil.
+    expect(route!.canActivate).toBeUndefined();
   });
 
-  it("l'appel passe par HttpClient ET porte le jeton (l'intercepteur ne l'en retire plus)", () => {
+  // ───────── Avec session : la route complète, inchangée ─────────
+
+  it("connecté : appelle lookup avec la saisie telle quelle ET porte le jeton", () => {
     const jeton = jetonValide();
     localStorage.setItem('auth_token', jeton);
     component.query = '  123 TU 4567 ';
@@ -71,12 +79,14 @@ describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés',
     expect(requete.request.headers.get('Authorization')).toBe(`Bearer ${jeton}`);
 
     requete.flush({ found: true, hasGps: true, connected: true });
+    expect(component.modePublic).toBe(false);
     expect(component.result).toEqual({ found: true, hasGps: true, connected: true });
     expect(component.loading).toBe(false);
     expect(component.error).toBe('');
   });
 
-  it('401 sans session : message clair et renvoi vers la connexion, jamais un échec muet', () => {
+  it('connecté, 401 : message clair et renvoi vers la connexion, jamais un échec muet', () => {
+    localStorage.setItem('auth_token', jetonValide());
     component.query = 'MAT-A';
 
     component.search();
@@ -85,11 +95,10 @@ describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés',
       .flush({ message: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
 
     expect(component.error).toBe(messageErreurDiagnostic(401));
-    expect(component.loading).toBe(false);
     expect(router.navigate).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/device-check' } });
   });
 
-  it('403 : message explicite, pas de redirection', () => {
+  it('connecté, 403 : message explicite, pas de redirection', () => {
     localStorage.setItem('auth_token', jetonValide());
     component.query = 'MAT-A';
 
@@ -102,6 +111,72 @@ describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés',
     expect(router.navigate).not.toHaveBeenCalled();
   });
 
+  // ───────── Sans session : la route publique réduite ─────────
+
+  it("sans session : appelle status avec l'IMEI, et JAMAIS lookup", () => {
+    component.query = ' 351234567890123 ';
+
+    component.search();
+
+    http.expectNone(r => r.url.endsWith('/devicecheck/lookup'));
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
+    expect(requete.request.params.get('imei')).toBe('351234567890123');
+    expect(requete.request.headers.has('Authorization')).toBe(false);
+
+    requete.flush({ found: true, reporting: true, imei: '***0123', minutesSinceLastFrame: 3 });
+    expect(component.modePublic).toBe(true);
+    expect(component.result.reporting).toBe(true);
+    expect(component.error).toBe('');
+  });
+
+  it("sans session : les espaces et tirets de l'étiquette sont retirés de l'IMEI", () => {
+    component.query = '35 1234-5678 90123';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
+    expect(requete.request.params.get('imei')).toBe('351234567890123');
+    requete.flush({ found: false });
+  });
+
+  it('sans session, 400 : le message du serveur est relayé tel quel', () => {
+    component.query = '111 TU 1';
+
+    component.search();
+
+    http.expectOne(r => r.url.endsWith('/devicecheck/status'))
+      .flush({ error: "Saisissez l'IMEI du boîtier : 15 chiffres, sans espace." },
+             { status: 400, statusText: 'Bad Request' });
+
+    expect(component.error).toContain('15 chiffres');
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it("sans session, 401 : aucun renvoi vers la connexion — il n'y a pas de session à retrouver", () => {
+    component.query = '351234567890123';
+
+    component.search();
+
+    http.expectOne(r => r.url.endsWith('/devicecheck/status'))
+      .flush({ message: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
+
+    expect(router.navigate).not.toHaveBeenCalled();
+    expect(component.error).not.toContain('Reconnectez-vous');
+  });
+
+  it('sans session, 429 : le plafond se dit en clair', () => {
+    component.query = '351234567890123';
+
+    component.search();
+
+    http.expectOne(r => r.url.endsWith('/devicecheck/status'))
+      .flush({ message: 'trop' }, { status: 429, statusText: 'Too Many Requests' });
+
+    expect(component.error).toContain('Trop de recherches');
+  });
+
+  // ───────── Communs ─────────
+
   it('une recherche vide ne part pas', () => {
     component.query = '   ';
     component.search();
@@ -109,10 +184,14 @@ describe('DeviceCheckComponent — diagnostic réservé aux comptes connectés',
     expect(component.loading).toBe(false);
   });
 
-  it('chaque statut a un message lisible', () => {
+  it('chaque statut a un message lisible, et 401 dépend du mode', () => {
     expect(messageErreurDiagnostic(401)).toContain('Reconnectez-vous');
+    expect(messageErreurDiagnostic(401, true)).not.toContain('Reconnectez-vous');
     expect(messageErreurDiagnostic(403)).toContain("n'a pas accès");
     expect(messageErreurDiagnostic(0)).toContain('Serveur injoignable');
+    expect(messageErreurDiagnostic(429)).toContain('Trop de recherches');
+    expect(messageErreurDiagnostic(400, true, 'Message du serveur')).toBe('Message du serveur');
+    expect(messageErreurDiagnostic(400, true, '   ')).toContain('15 chiffres');
     expect(messageErreurDiagnostic(500)).toContain('erreur 500');
   });
 });
