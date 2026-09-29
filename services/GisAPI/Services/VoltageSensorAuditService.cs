@@ -93,12 +93,12 @@ public class VoltageSensorAuditService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
 
-        // Les NEMS ne passent plus par l'audit (Karim, 25/09/2026) : le monitoring
-        // affiche le minimum du jour de leur octet « Batterie » (34-36), trié valeur
-        // par valeur (BatteryReadout, VoltageScale.NemsMeaningfulVolts). Leur ancien
-        // octet 32-34 (power_voltage) ne sert plus à rien, et le verdict sur 7 jours
-        // laissait masqué plusieurs jours un boîtier tout juste passé en R00C32a.
-        // Restent les protocoles qui mesurent par power_voltage (Teltonika).
+        // Les NEMS ne passent plus par l'audit (25/09/2026) : leur tension vient de
+        // l'octet « Batterie » (34-36), relevée au démarrage par
+        // BatteryStartReadingService, qui porte sa propre garde « l'octet bouge-t-il »
+        // sur 24 h. Leur ancien octet 32-34 (power_voltage) ne sert plus à rien, et le
+        // verdict sur 7 jours laissait masqué plusieurs jours un boîtier tout juste
+        // reflashé. Restent les protocoles qui mesurent par power_voltage (Teltonika).
         var devices = await context.GpsDevices.IgnoreQueryFilters()
             .Where(d => d.ProtocolType == null || d.ProtocolType.ToLower() != VoltageScale.NemsProtocol)
             .ToListAsync(ct);

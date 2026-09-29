@@ -15,6 +15,7 @@ public interface IGisDbContext
     DbSet<VehicleDocument> VehicleDocuments { get; }
     DbSet<GpsDevice> GpsDevices { get; }
     DbSet<GpsPosition> GpsPositions { get; }
+    DbSet<BatteryStartReading> BatteryStartReadings { get; }
     DbSet<GpsAlert> GpsAlerts { get; }
     DbSet<Geofence> Geofences { get; }
     DbSet<GeofenceVehicle> GeofenceVehicles { get; }

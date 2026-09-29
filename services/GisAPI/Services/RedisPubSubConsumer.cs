@@ -172,8 +172,7 @@ public class RedisPubSubConsumer : BackgroundService
                 FuelRaw: position.FuelRaw,
                 BatteryVoltage: position.BatteryVoltage,
                 BatteryPercent: position.BatteryPercent,
-                TemperatureC: position.TemperatureC,
-                BatteryRaw: position.BatteryRaw
+                TemperatureC: position.TemperatureC
             );
 
             var result = await mediator.Send(command);
@@ -246,8 +245,4 @@ public class RedisPositionMessage
     
     [System.Text.Json.Serialization.JsonPropertyName("temperatureC")]
     public int? TemperatureC { get; set; }
-
-    // Octet « Batterie » (34-36) brut de la trame (redis_cache.rs). 0 = pas de mesure.
-    [System.Text.Json.Serialization.JsonPropertyName("batteryRaw")]
-    public int? BatteryRaw { get; set; }
 }

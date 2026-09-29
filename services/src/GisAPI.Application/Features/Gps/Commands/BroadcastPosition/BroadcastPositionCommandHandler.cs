@@ -172,7 +172,7 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
 
         var (liveBatteryVoltage, liveBatteryPercent) = LiveBattery(
             cached.ProtocolType, cached.VoltageSensorReliable,
-            request.BatteryRaw, request.BatteryVoltage, request.BatteryPercent);
+            request.BatteryVoltage, request.BatteryPercent);
 
         // Prepare position update DTO
         var positionUpdate = new VehiclePositionUpdateDto
@@ -406,28 +406,22 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     /// <summary>
     /// Tension et pourcentage diffusés en temps réel pour une trame.
     ///
-    /// <para><b>NEMS</b> : calculés depuis l'octet « Batterie » brut de la trame,
-    /// avec le même tri que le monitoring (<see cref="VoltageScale.NemsMeaningfulVolts"/>),
-    /// sans consulter l'audit. Hors plage (octet de cap R00C30d, 0 = pas de mesure,
-    /// octet absent) → rien n'est diffusé, l'écran garde son minimum du jour. Le
-    /// <c>batteryVoltage</c> de Redis n'est pas repris : il recopie la valeur
-    /// précédente quand l'octet vaut 0. L'écran ne fait que BAISSER son minimum avec
-    /// cette valeur (monitoring-battery.helpers.ts).</para>
+    /// <para><b>NEMS : rien n'est diffusé.</b> Leur tension affichée est celle
+    /// relevée au DERNIER DÉMARRAGE du véhicule (Slim, 29/09/2026), écrite sur le
+    /// boîtier par <c>BatteryStartReadingService</c> et servie par le chemin REST.
+    /// Une trame courante porte, moteur tournant, l'alternateur (13,5 à 14,4 V) : la
+    /// diffuser écraserait à l'écran la seule valeur qui parle de la batterie. Le
+    /// <c>batteryVoltage</c> de Redis serait de toute façon inexploitable — il
+    /// recopie la valeur précédente quand l'octet vaut 0 (redis_cache.rs).</para>
     ///
     /// <para><b>Autres protocoles</b> : inchangé — valeurs reçues, seulement si
     /// l'audit a validé le capteur.</para>
     /// </summary>
     public static (double? Volts, int? Percent) LiveBattery(
         string? protocolType, bool voltageSensorReliable,
-        int? batteryRaw, double? batteryVoltage, int? batteryPercent)
+        double? batteryVoltage, int? batteryPercent)
     {
-        if (VoltageScale.IsNems(protocolType))
-        {
-            var volts = VoltageScale.NemsMeaningfulVolts(batteryRaw);
-            return volts == null
-                ? (null, null)
-                : (Math.Round(volts.Value, 1), VoltageScale.BatteryPercent(volts.Value));
-        }
+        if (VoltageScale.IsNems(protocolType)) return (null, null);
 
         return voltageSensorReliable ? (batteryVoltage, batteryPercent) : (null, null);
     }

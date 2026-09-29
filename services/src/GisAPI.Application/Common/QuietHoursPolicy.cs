@@ -19,12 +19,16 @@ public static class QuietHoursPolicy
 {
     /// <summary>
     /// Types livrés MÊME pendant la plage (réponse du client, recette du 11/09/2026) :
-    /// un véhicule remorqué ou qui refuse de démarrer n'attend pas le matin. Les accidents
-    /// passent déjà par leur priorité « critical ». Une échéance de document ou un entretien
-    /// dû, même en priorité « high », attendent : ce n'est pas la priorité qui décide.
+    /// un véhicule remorqué n'attend pas le matin. Les accidents passent déjà par leur
+    /// priorité « critical ». Une échéance de document ou un entretien dû, même en
+    /// priorité « high », attendent : ce n'est pas la priorité qui décide.
+    ///
+    /// <para><c>start_failure</c> y figurait ; l'alerte a été retirée le 29/09/2026.
+    /// L'alerte batterie qui la remplace n'entre PAS dans cette liste, et c'est
+    /// voulu : « cette batterie approche de sa fin » se traite le matin, pas à 3 h.</para>
     /// </summary>
     public static readonly IReadOnlySet<string> AlwaysDeliveredTypes =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tow_detected", "accident_tow_detected", "start_failure" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "tow_detected", "accident_tow_detected" };
 
     /// <summary>La notification ignore-t-elle les heures silencieuses ?</summary>
     public static bool BypassesQuietHours(string? type, string? priority) =>

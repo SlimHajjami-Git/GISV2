@@ -50,11 +50,32 @@ public class VehiclesController : ControllerBase
     public async Task<ActionResult<VehicleDetailsDto>> GetVehicle(int id)
     {
         var vehicle = await _mediator.Send(new GetVehicleDetailsQuery(id));
-        
+
         if (vehicle == null)
             return NotFound();
 
         return Ok(vehicle);
+    }
+
+    /// <summary>
+    /// Courbe de tension batterie du véhicule, pour la fenêtre ouverte depuis la
+    /// notification « batterie en fin de vie » : l'admin voit la chute à chaque
+    /// démarrage et le creusement des minima (Slim, 29/09/2026).
+    ///
+    /// <para>Chemin FROID, ouvert à la demande — jamais en polling. Le cloisonnement
+    /// est fait par le handler : un véhicule d'une autre société rend 404.</para>
+    /// </summary>
+    [HttpGet("{id}/battery-history")]
+    public async Task<ActionResult<GisAPI.Application.Features.Vehicles.Queries.GetVehicleBatteryHistory.BatteryHistoryDto>>
+        GetVehicleBatteryHistory(int id, [FromQuery] int days = 7)
+    {
+        var history = await _mediator.Send(
+            new GisAPI.Application.Features.Vehicles.Queries.GetVehicleBatteryHistory
+                .GetVehicleBatteryHistoryQuery(id, days));
+
+        if (history == null) return NotFound();
+
+        return Ok(history);
     }
 
     [HttpPost]
@@ -182,16 +203,17 @@ public class VehiclesController : ControllerBase
                                                           || vehicle.Stats?.BatteryLevel != null;
                                     if (!batteryDisplayable) cachedVoltage = null;
 
-                                    // NEMS : le handler a calculé le MINIMUM du jour de l'octet
-                                    // « Batterie » (Karim, 25/09/2026). Redis ne porte que la trame
-                                    // courante — parfois même une valeur recopiée quand l'octet vaut 0
-                                    // (redis_cache.rs) : la reprendre remplacerait le minimum par la
-                                    // dernière valeur à chaque rafraîchissement. On garde celui du handler.
-                                    var keepDailyMin = vehicle.Stats?.BatteryIsDailyMin == true;
-                                    int? positionBatteryLevel = keepDailyMin
+                                    // NEMS : le handler sert la tension relevée au DERNIER DÉMARRAGE
+                                    // (Slim, 29/09/2026). Redis ne porte que la trame courante, qui
+                                    // moteur tournant donne l'alternateur — parfois même une valeur
+                                    // recopiée quand l'octet vaut 0 (redis_cache.rs). La reprendre
+                                    // effacerait à chaque rafraîchissement la seule valeur qui parle
+                                    // de la batterie. On garde celle du handler.
+                                    var keepStartReading = vehicle.Stats?.BatteryIsStartReading == true;
+                                    int? positionBatteryLevel = keepStartReading
                                         ? dbPos?.BatteryLevel ?? vehicle.Stats!.BatteryLevel
                                         : batteryDisplayable ? (cached.BatteryPercent ?? dbPos?.BatteryLevel) : null;
-                                    double? positionBatteryVoltage = keepDailyMin
+                                    double? positionBatteryVoltage = keepStartReading
                                         ? dbPos?.BatteryVoltage ?? vehicle.Stats!.BatteryVoltage
                                         : cachedVoltage;
 
@@ -229,12 +251,12 @@ public class VehiclesController : ControllerBase
                                                 CurrentSpeed = cached.IgnitionOn ? Math.Round(cached.SpeedKph) : 0,
                                                 FuelLevel = updatedFuelLevel,
                                                 Temperature = (short?)(cached.TemperatureC ?? vehicle.Stats.Temperature),
-                                                BatteryLevel = keepDailyMin
+                                                BatteryLevel = keepStartReading
                                                     ? vehicle.Stats.BatteryLevel
                                                     : batteryDisplayable
                                                         ? (cached.BatteryPercent ?? vehicle.Stats.BatteryLevel)
                                                         : null,
-                                                BatteryVoltage = keepDailyMin
+                                                BatteryVoltage = keepStartReading
                                                     ? vehicle.Stats.BatteryVoltage
                                                     : batteryDisplayable
                                                         ? (cachedVoltage ?? vehicle.Stats.BatteryVoltage)

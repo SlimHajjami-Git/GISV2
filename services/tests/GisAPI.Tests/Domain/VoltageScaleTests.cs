@@ -153,6 +153,8 @@ public class VoltageScaleTests
     }
 
     [Theory]
+    [InlineData(67)]   // 10,47 V : sous le plancher de 10,5 V pose par Slim le 29/09
+    [InlineData(50)]   // 7,8 V : repart aussi souvent qu'un vehicule sain, donc pas la batterie
     [InlineData(44)]   // plus haute valeur de l'octet de cap (359° / 8)
     [InlineData(21)]   // cap relevé sur un R00C30d le 24/09
     [InlineData(0)]    // pas de mesure
@@ -170,7 +172,7 @@ public class VoltageScaleTests
     }
 
     [Theory]
-    [InlineData(45, 7.031)]    // borne basse incluse
+    [InlineData(68, 10.625)]   // borne basse incluse : 10,5 V exige par Slim
     [InlineData(74, 11.5625)]
     [InlineData(80, 12.5)]
     [InlineData(92, 14.375)]   // borne haute incluse, sous 14,4 V

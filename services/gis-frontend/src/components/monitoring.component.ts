@@ -13,7 +13,7 @@ import { UserPreferencesService } from '../services/user-preferences.service';
 import { environment } from '../environments/environment';
 import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
-import { dailyBatteryView, isDailyMinLow, keepLowerDailyMin, mergeLiveBattery } from './shared/monitoring-battery.helpers';
+import { batteryTitle, isStartReadingLow, mergeLiveBattery } from './shared/monitoring-battery.helpers';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
 import qrcode from 'qrcode-generator';
@@ -556,8 +556,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             isMoving: update.isMoving,
             isStopped: !update.isMoving,
             ...(update.fuelRaw != null ? { fuelLevel: update.fuelRaw } : {}),
-            // NEMS : la trame ne peut que faire BAISSER le minimum du jour
-            // (voir monitoring-battery.helpers.ts). Autres : dernière valeur.
+            // NEMS : la trame ne touche PAS à la batterie — la valeur affichée est
+            // celle du dernier démarrage (voir monitoring-battery.helpers.ts).
+            // Autres : dernière valeur reçue.
             ...mergeLiveBattery(vehicle.stats, update, this.embedded),
             ...(update.temperatureC != null ? { temperature: update.temperatureC } : {})
           };
@@ -987,13 +988,8 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         this.ngZone.run(() => {
           console.log('Vehicles loaded:', vehicles.length);
 
-          // Minimum du jour de la batterie (NEMS) : un minimum plus bas déjà reçu
-          // en temps réel ne doit pas remonter au rechargement.
-          const previousStats = new Map<any, any>(this.vehicles.map((x: any) => [x.id, x.stats]));
-
           const mappedVehicles = vehicles.map(v => ({
             ...v,
-            stats: keepLowerDailyMin(previousStats.get(v.id), v.stats) ?? v.stats,
             registration_number: v.plate,
             currentLocation: v.lastPosition ? {
               lat: v.lastPosition.latitude,
@@ -1428,46 +1424,45 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   isBatteryLow(vehicle: any): boolean {
     const stats = this.getVehicleStats(vehicle);
-    if (stats?.batteryIsDailyMin) return isDailyMinLow(stats, Date.now());
+    if (stats?.batteryIsStartReading) return isStartReadingLow(stats);
     return stats?.batteryLevel != null && stats.batteryLevel < 20;
   }
 
   /**
    * Icône et couleur « Anomalie batterie ».
-   *  - NEMS : minimum du jour de l'octet « Batterie » (34-36) sous 11,5 V
-   *    (Karim, 25/09/2026). Recalculé ici, pour suivre le minimum reçu en
-   *    temps réel ; l'alerte de santé batterie, calculée sur l'octet 32-34,
-   *    ne pilote plus l'écran pour eux.
+   *  - NEMS : MÉDIANE des derniers démarrages sous 11,5 V (Slim, 29/09/2026) —
+   *    un démarrage bas isolé, radio oubliée, ne suffit pas. Même seuil et même
+   *    valeur que la notification « batterie en fin de vie » envoyée par le
+   *    serveur : l'admin retrouve le chiffre de son alerte sur la carte.
    *  - Autres : alerte de santé des 7 derniers jours (`hasBatteryHealthAlert`)
    *    ou batterie sous 20 %.
    */
   hasBatteryHealthIssue(vehicle: any): boolean {
-    if (this.getVehicleStats(vehicle)?.batteryIsDailyMin) return this.isBatteryLow(vehicle);
+    if (this.getVehicleStats(vehicle)?.batteryIsStartReading) return this.isBatteryLow(vehicle);
     return !!vehicle?.hasBatteryHealthAlert || this.isBatteryLow(vehicle);
   }
 
   /**
    * Operator preference: monitoring shows the voltage in V (more actionable
    * than a derived %). Falls back to "%" if voltage isn't available, then to
-   * "N/A". For a NEMS it is the day's MINIMUM (see monitoring-battery.helpers.ts),
-   * and "N/A" once midnight has passed without a reload.
+   * "N/A". For a NEMS it is the voltage read at the last engine START (see
+   * monitoring-battery.helpers.ts) — moteur tournant, l'octet porte
+   * l'alternateur et ne dit rien de la batterie.
    */
   getBatteryDisplay(vehicle: any): string {
-    const { voltage, level } = dailyBatteryView(this.getVehicleStats(vehicle), Date.now());
-    if (voltage != null) {
-      return `${voltage.toFixed(1)} V`;
+    const stats = this.getVehicleStats(vehicle);
+    if (stats?.batteryVoltage != null) {
+      return `${stats.batteryVoltage.toFixed(1)} V`;
     }
-    if (level != null) {
-      return `${level} %`;
+    if (stats?.batteryLevel != null) {
+      return `${stats.batteryLevel} %`;
     }
     return 'N/A';
   }
 
-  /** Infobulle de la cellule Batterie : précise qu'un NEMS affiche le minimum du jour. */
+  /** Infobulle de la cellule Batterie : pour un NEMS, DATE la mesure. */
   getBatteryTitle(vehicle: any): string | null {
-    return this.getVehicleStats(vehicle)?.batteryIsDailyMin
-      ? 'Tension minimale depuis minuit (heure de Tunis)'
-      : null;
+    return batteryTitle(this.getVehicleStats(vehicle));
   }
 
   /**

@@ -56,7 +56,7 @@ export interface PositionDto {
   isRealTime?: boolean;
   temperatureC?: number;
   batteryLevel?: number;
-  /** Volts calculés par le serveur — NEMS : minimum du jour de l'octet « Batterie » (34-36). */
+  /** Volts calculés par le serveur — NEMS : octet « Batterie » (34-36) au dernier démarrage. */
   batteryVoltage?: number;
   /** Accelerometer (MEMS) raw values clamped to [-128 ; 127]. Used by the
    * accident report to reconstruct second-shock, sustained tilt (rollover)
@@ -82,10 +82,39 @@ export interface VehicleStatsDto {
   lastMoveTime?: string;
   /** Timestamp of the last frame with ignition_on=true. After this point the engine has been off. */
   engineOffSince?: string;
-  /** NEMS : batteryVoltage/batteryLevel sont le MINIMUM du jour (heure de Tunis), pas la dernière trame. */
-  batteryIsDailyMin?: boolean;
-  /** Fin (exclue, UTC) de la journée de ce minimum : au-delà, il n'est plus affiché. */
-  batteryDayEndUtc?: string;
+  /** NEMS : batteryVoltage/batteryLevel sont la tension relevée au DERNIER DÉMARRAGE, pas la dernière trame. */
+  batteryIsStartReading?: boolean;
+  /** Instant (UTC) de ce démarrage : la valeur peut avoir plusieurs jours. */
+  batteryMeasuredAt?: string;
+  /** Médiane des derniers démarrages : c'est elle qui allume le témoin, pas la dernière mesure. */
+  batteryMedianVoltage?: number;
+}
+
+/** Une tranche de la courbe batterie : creux et sommet de la tranche, jamais une moyenne. */
+export interface BatteryHistoryPointDto {
+  atUtc: string;
+  minV: number;
+  maxV: number;
+}
+
+/** Un démarrage posé sur la courbe — ce sont ces points-là que l'alerte juge. */
+export interface BatteryStartPointDto {
+  atUtc: string;
+  voltsV: number;
+  low: boolean;
+}
+
+/** Courbe de tension batterie d'un véhicule (GET /vehicles/{id}/battery-history). */
+export interface BatteryHistoryDto {
+  vehicleId: number;
+  plate?: string | null;
+  /** Faux sans boîtier NEMS : la courbe n'existe pas, l'écran doit le dire. */
+  supported: boolean;
+  days: number;
+  thresholdV: number;
+  medianV?: number | null;
+  points: BatteryHistoryPointDto[];
+  starts: BatteryStartPointDto[];
 }
 
 export interface VehicleWithPositionDto {
@@ -312,6 +341,18 @@ export class ApiService {
 
   getVehiclesWithPositions(): Observable<any[]> {
     return this.http.get<any[]>(`${this.getMonitoringApiUrl()}/vehicles/with-positions`, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Courbe de tension batterie d'un véhicule (boîtiers NEMS). Alimente la fenêtre
+   * ouverte depuis la notification « batterie en fin de vie » : l'exploitant y voit
+   * la chute à chaque démarrage et le creusement des minima.
+   * Chemin FROID, appelé à l'ouverture de la fenêtre — jamais en polling.
+   */
+  getVehicleBatteryHistory(vehicleId: number, days = 7): Observable<BatteryHistoryDto> {
+    return this.http.get<BatteryHistoryDto>(
+      `${this.API_URL}/vehicles/${vehicleId}/battery-history?days=${days}`,
+      { headers: this.getHeaders() });
   }
 
   getVehicle(id: number): Observable<any> {

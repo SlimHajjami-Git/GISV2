@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Interfaces;
@@ -192,12 +191,7 @@ CROSS JOIN LATERAL (
             lastIgnitionOn = rows.ToDictionary(r => r.DeviceId, r => r.LastOn);
         }
 
-        // Journée de Tunis en cours : borne du minimum journalier de la batterie.
-        // Minuit à Tunis tombe toujours dans les 24 dernières heures, donc le
-        // minimum se calcule sur des lignes que la requête de stats lit déjà.
-        var (dayStartUtc, dayEndUtc) = LocalDay.Window(DateTime.UtcNow, QuietHoursPolicy.ResolveTimeZone(null));
-
-        var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount, int? BatteryMinRawToday)>();
+        var deviceStats = new Dictionary<int, (double MaxSpeed, double MovingMinutes, double StoppedMinutes, int TotalCount)>();
         if (deviceIds.Count > 0)
         {
             // Fenêtre LAG : pour chaque trame, écart avec la précédente (plafonné
@@ -205,23 +199,21 @@ CROSS JOIN LATERAL (
             // mouvement/arrêt selon la vitesse de la trame précédente — exactement
             // l'ancienne logique .NET, mais exécutée par Postgres et agrégée.
             //
-            // BatteryMinRawToday : plus petite valeur SENSÉE de l'octet « Batterie »
-            // (34-36) depuis minuit, heure de Tunis (voir BatteryReadout). Les
-            // valeurs hors plage — octet de cap des R00C30d (0 à 44) — sont
-            // écartées ici, pour qu'un boîtier passé en R00C32a dans la journée
-            // n'affiche pas son ancienne valeur comme minimum. Mesuré le 25/09/2026
-            // sur les 307 véhicules HERTZ : 0,41 s → 0,72 s par calcul, sans
-            // requête supplémentaire (la ligne était déjà lue : Heap Fetches = lignes).
+            // LA BATTERIE N'EST PAS CALCULÉE ICI, et c'est délibéré. Une version
+            // intermédiaire y agrégeait l'octet « Batterie » sur la journée ; mesuré
+            // le 28/09/2026 sur les 307 véhicules HERTZ, cela coûtait 674 ms → 788 à
+            // 944 ms par appel, sur un chemin pollé toutes les ~30 s par page et par
+            // utilisateur. La tension retenue au démarrage est désormais un ÉTAT du
+            // boîtier (gps_devices.battery_start_raw, écrit par
+            // BatteryStartReadingService) : elle arrive avec le véhicule, gratuitement.
             const string statsSql = @"
 SELECT device_id AS ""DeviceId"",
        COALESCE(MAX(speed_kph), 0)::double precision AS ""MaxSpeed"",
        (COALESCE(SUM(CASE WHEN prev_speed > 5 THEN gap ELSE 0 END), 0) / 60.0)::double precision AS ""MovingMinutes"",
        (COALESCE(SUM(CASE WHEN prev_speed <= 5 OR prev_speed IS NULL THEN gap ELSE 0 END), 0) / 60.0)::double precision AS ""StoppedMinutes"",
-       COUNT(*)::int AS ""TotalCount"",
-       (MIN(battery_raw) FILTER (WHERE recorded_at >= {2} AND recorded_at < {3}
-                                   AND battery_raw BETWEEN {4} AND {5}))::int AS ""BatteryMinRawToday""
+       COUNT(*)::int AS ""TotalCount""
 FROM (
-    SELECT device_id, speed_kph, recorded_at, battery_raw,
+    SELECT device_id, speed_kph, recorded_at,
            LEAST(GREATEST(EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)), 0), 600) AS gap,
            LAG(speed_kph) OVER w AS prev_speed
     FROM gps_positions
@@ -231,12 +223,10 @@ FROM (
 GROUP BY device_id;
 ";
             var statRows = await _context.Database
-                .SqlQueryRaw<DeviceStatRow>(statsSql, deviceIds.ToArray(), since,
-                    dayStartUtc, dayEndUtc,
-                    VoltageScale.NemsBatteryMeaningfulMinRaw, VoltageScale.NemsBatteryMeaningfulMaxRaw)
+                .SqlQueryRaw<DeviceStatRow>(statsSql, deviceIds.ToArray(), since)
                 .ToListAsync(ct);
             foreach (var r in statRows)
-                deviceStats[r.DeviceId] = (r.MaxSpeed, r.MovingMinutes, r.StoppedMinutes, r.TotalCount, r.BatteryMinRawToday);
+                deviceStats[r.DeviceId] = (r.MaxSpeed, r.MovingMinutes, r.StoppedMinutes, r.TotalCount);
         }
 
         var result = vehicles.Select(v =>
@@ -247,8 +237,8 @@ GROUP BY device_id;
             var lastComm = v.GpsDevice?.LastCommunication;
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 41;
             // Tension et niveau de batterie (voir BatteryReadout) :
-            // - NEMS : minimum du jour de l'octet « Batterie » (34-36), N/A si
-            //   aucune valeur sensée depuis minuit (Karim, 25/09/2026) ;
+            // - NEMS : tension retenue au DERNIER DÉMARRAGE (Slim, 29/09/2026), lue
+            //   sur le boîtier, N/A tant qu'aucun démarrage exploitable n'est connu ;
             // - Teltonika : dernière trame, seulement si l'audit a validé le
             //   capteur. Sur 243 véhicules TN, 213 renvoyaient la même valeur
             //   moteur tournant et éteint (259 TU 4987 affiché « 12,9 V / 100 % »
@@ -260,20 +250,22 @@ GROUP BY device_id;
                 v.GpsDevice?.BatteryLevel,
                 position?.BatteryRaw,
                 position?.PowerVoltage,
-                stats.BatteryMinRawToday);
+                v.GpsDevice?.BatteryStartRaw,
+                v.GpsDevice?.BatteryStartAt,
+                v.GpsDevice?.BatteryStartMedianRaw);
             var batteryLevel = battery.Percent;
             var batteryVoltageV = battery.Volts;
 
             // Icône « Anomalie batterie ».
-            // - NEMS : minimum du jour de l'octet 34-36 sous 11,5 V (Karim,
-            //   25/09/2026). L'alerte de santé batterie, calculée sur l'octet
-            //   32-34, ne pilote plus l'écran pour eux ; elle reste envoyée aux
-            //   clients tant que Slim n'en a pas décidé autrement.
+            // - NEMS : tension du dernier démarrage sous 11,5 V (Slim, 29/09/2026).
+            //   C'est exactement ce que juge la notification « batterie en fin de
+            //   vie » (VoltageHealthMonitoringService) : l'écran et l'alerte disent
+            //   désormais la même chose, à partir de la même valeur.
             // - Autres : drapeau collant de l'alerte de santé des 7 derniers jours,
             //   au-delà des 48 h de silence du détecteur, pour qu'un admin qui a
             //   manqué la notification voie quand même l'avertissement.
             var batteryAlertCutoff = DateTime.UtcNow.AddDays(-7);
-            var hasBatteryHealthAlert = battery.IsDailyMin
+            var hasBatteryHealthAlert = battery.IsStartReading
                 ? battery.LowWarning
                 : v.GpsDevice?.LastVoltageHealthAlertAt.HasValue == true
                   && v.GpsDevice.LastVoltageHealthAlertAt.Value >= batteryAlertCutoff;
@@ -393,8 +385,9 @@ GROUP BY device_id;
                     isMoving
                         ? null
                         : (lastIgnitionOn.TryGetValue(deviceId, out var lastOn) ? lastOn : (DateTime?)null),
-                    BatteryIsDailyMin: battery.IsDailyMin,
-                    BatteryDayEndUtc: battery.IsDailyMin ? dayEndUtc : null
+                    BatteryIsStartReading: battery.IsStartReading,
+                    BatteryMeasuredAt: battery.MeasuredAt,
+                    BatteryMedianVoltage: battery.MedianVolts
                 ),
                 // Firmware "L": use GPS odometer_km directly, otherwise use vehicle mileage
                 (v.GpsDevice?.FirmwareVersion != null
@@ -431,8 +424,6 @@ GROUP BY device_id;
         public double MovingMinutes { get; set; }
         public double StoppedMinutes { get; set; }
         public int TotalCount { get; set; }
-        /// <summary>Plus petite valeur sensée de l'octet « Batterie » depuis minuit (Tunis), ou null.</summary>
-        public int? BatteryMinRawToday { get; set; }
     }
 }
 

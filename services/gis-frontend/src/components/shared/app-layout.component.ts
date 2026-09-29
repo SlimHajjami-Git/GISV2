@@ -16,6 +16,7 @@ import { SubscriptionStatusService, SubscriptionBanner } from '../../services/su
 import { ChatComponent } from './chat.component';
 import { AccidentDecisionModalComponent } from './accident-decision-modal.component';
 import { OfflineVehiclesBellComponent } from './offline-vehicles-bell.component';
+import { BatteryHistoryModalComponent } from './battery-history-modal.component';
 import { HelpService } from '../../services/help.service';
 import * as L from 'leaflet';
 
@@ -42,7 +43,7 @@ type NotifBucket = Notification | NotifThreadGroup;
 @Component({
   selector: 'app-layout',
   standalone: true,
-  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent],
+  imports: [CommonModule, RouterModule, ChatComponent, AccidentDecisionModalComponent, OfflineVehiclesBellComponent, BatteryHistoryModalComponent],
   template: `
     <div class="app-container">
       <!-- Bandeau nouvelle version : un déploiement a eu lieu, l'onglet tourne sur un vieux bundle -->
@@ -563,6 +564,14 @@ type NotifBucket = Notification | NotifThreadGroup;
            s'ouvrait chez TOUT le monde — l'utilisateur se retrouvait devant un
            choix qu'il n'avait plus le droit d'enregistrer. -->
       <app-accident-decision-modal *ngIf="hasModule('accidents')"></app-accident-decision-modal>
+
+      <!-- Santé de la batterie : s'ouvre depuis la notification « batterie en fin de
+           vie », sur n'importe quelle page. Le graphe montre la chute de tension à
+           chaque démarrage et le creusement des minima (Slim, 29/09/2026). -->
+      <app-battery-history-modal
+        [vehicleId]="batteryModalVehicleId"
+        [vehicleLabel]="batteryModalLabel"
+        (close)="closeBatteryModal()"></app-battery-history-modal>
 
       <!-- Global Geofence Event Modal (opens from notification click on any page) -->
       <div class="gf-modal-overlay" *ngIf="showGeofenceModal" (click)="closeGeofenceModal()">
@@ -1616,6 +1625,10 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   // Geofence event modal (global, available on any page)
+  /** Véhicule dont la fenêtre « santé de la batterie » est ouverte, ou null. */
+  batteryModalVehicleId: number | null = null;
+  batteryModalLabel: string | null = null;
+
   showGeofenceModal = false;
   gfModalData: {
     geofenceName: string; vehicleName: string; address: string;
@@ -2113,7 +2126,17 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     this.showNotifications = false;
 
     // Navigate based on type with specific handling
-    if (notif.type === 'geofence_event' || notif.type === 'geofence') {
+    if (notif.type === 'battery_health') {
+      // Une notification batterie ne se lit pas : elle se REGARDE. La fenêtre trace la
+      // tension sur la période, et la chute à chaque arrêt rend la panne évidente sans
+      // qu'on ait à expliquer ce qu'est un octet 34-36 (Slim, 29/09/2026).
+      const vehicleId = Number(notif.metadata?.vehicleId ?? notif.referenceId);
+      if (Number.isFinite(vehicleId) && vehicleId > 0) {
+        this.openBatteryModal(vehicleId, this.plateFromTitle(notif.title));
+      } else if (notif.actionUrl) {
+        this.router.navigateByUrl(notif.actionUrl);
+      }
+    } else if (notif.type === 'geofence_event' || notif.type === 'geofence') {
       // Open geofence modal in-place (no page navigation)
       const meta = notif.metadata;
       if (meta?.latitude && meta?.longitude) {
@@ -2257,6 +2280,28 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   // ─── Geofence Event Modal (global, opens from notification on any page) ───
+
+  openBatteryModal(vehicleId: number, label: string | null) {
+    this.batteryModalLabel = label;
+    this.batteryModalVehicleId = vehicleId;
+    this.cdr.detectChanges();
+  }
+
+  closeBatteryModal() {
+    this.batteryModalVehicleId = null;
+    this.batteryModalLabel = null;
+    this.cdr.detectChanges();
+  }
+
+  /**
+   * Plaque lue dans le titre « Batterie en fin de vie — 262 TU 9816 », pour afficher
+   * quelque chose pendant que la courbe se charge. La réponse du serveur la remplace.
+   */
+  private plateFromTitle(title?: string | null): string | null {
+    const parts = (title || '').split('—');
+    const tail = parts.length > 1 ? parts[parts.length - 1].trim() : '';
+    return tail || null;
+  }
 
   openGeofenceEventModal(geofenceId: number, vehicleId: number, lat: number, lng: number, timestamp?: string, eventType?: string) {
     // Format timestamp

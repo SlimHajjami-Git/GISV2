@@ -29,7 +29,11 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.Property(e => e.LastOfflineAlertAt).HasColumnName("last_offline_alert_at");
         builder.Property(e => e.VoltageSensorReliable).HasColumnName("voltage_sensor_reliable");
         builder.Property(e => e.VoltageSensorCheckedAt).HasColumnName("voltage_sensor_checked_at");
-        builder.Property(e => e.LastStartFailureAlertAt).HasColumnName("last_start_failure_alert_at");
+        builder.Property(e => e.BatteryStartRaw).HasColumnName("battery_start_raw");
+        builder.Property(e => e.BatteryStartAt).HasColumnName("battery_start_at");
+        builder.Property(e => e.BatteryStartMedianRaw).HasColumnName("battery_start_median_raw");
+        // last_start_failure_alert_at n'est plus mappée : l'alerte « véhicule qui ne
+        // démarre pas » a été retirée le 29/09/2026. La colonne reste en base.
         builder.Property(e => e.BatteryLevel).HasColumnName("battery_level");
         builder.Property(e => e.SignalStrength).HasColumnName("signal_strength");
         builder.Property(e => e.FuelSensorMode).HasColumnName("fuel_sensor_mode").HasMaxLength(20).HasDefaultValue("raw_255");

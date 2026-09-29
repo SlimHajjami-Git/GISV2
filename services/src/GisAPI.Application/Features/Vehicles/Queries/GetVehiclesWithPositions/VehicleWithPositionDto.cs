@@ -53,7 +53,7 @@ public record PositionDto(
     string? Address,
     long? OdometerKm,
     // Tension batterie en volts, calculée côté serveur (voir BatteryReadout) :
-    // NEMS = minimum du jour de l'octet « Batterie » (34-36) × 40/256 ;
+    // NEMS = octet « Batterie » (34-36) × 40/256 au dernier démarrage ;
     // Teltonika = power_voltage × 0,1 de la dernière trame. Exposée à côté de
     // BatteryLevel : l'exploitant préfère les volts au monitoring.
     double? BatteryVoltage
@@ -80,11 +80,16 @@ public record VehicleStatsDto(
     // "moteur coupé depuis X min" copy on the monitoring detail panel.
     // Null when the vehicle has no recorded ignition-on frame.
     DateTime? EngineOffSince,
-    // NEMS : BatteryVoltage/BatteryLevel sont le MINIMUM du jour (minuit →
-    // minuit, heure de Tunis), et non la dernière trame. Le temps réel ne doit
-    // alors que les faire baisser, jamais les remplacer.
-    bool BatteryIsDailyMin = false,
-    // Fin (exclue) de la journée de ce minimum, en UTC. Passé cet instant,
-    // l'écran n'affiche plus le minimum d'hier.
-    DateTime? BatteryDayEndUtc = null
+    // NEMS : BatteryVoltage/BatteryLevel sont la tension retenue au DERNIER
+    // DÉMARRAGE du véhicule, et non la dernière trame — moteur tournant, l'octet
+    // porte l'alternateur, pas la batterie. Le temps réel ne doit donc pas les
+    // remplacer : la valeur ne change qu'au démarrage suivant.
+    bool BatteryIsStartReading = false,
+    // Instant (UTC) de ce démarrage, pour dater la mesure à l'écran : elle peut
+    // avoir plusieurs jours sur un véhicule qui n'a pas redémarré.
+    DateTime? BatteryMeasuredAt = null,
+    // Médiane des derniers démarrages : c'est ELLE qui allume le témoin, pas la
+    // mesure ci-dessus. Affichée en infobulle pour que l'écart s'explique. Null tant
+    // qu'on n'a pas assez de démarrages pour conclure — et alors, pas de témoin.
+    double? BatteryMedianVoltage = null
 );

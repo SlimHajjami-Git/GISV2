@@ -1,126 +1,132 @@
 import {
-  BatteryStats, dailyBatteryView, isDailyMinLow, keepLowerDailyMin, mergeLiveBattery
+  BatteryStats,
+  NEMS_BATTERY_LOW_WARNING_V,
+  batteryTitle,
+  isStartReadingLow,
+  mergeLiveBattery
 } from './monitoring-battery.helpers';
 
 /**
- * Monitoring — tension batterie d'un NEMS = minimum du jour de l'octet « Batterie »
- * (34-36), demande de Karim du 25/09/2026. Journée de Tunis du 25/09 : de
- * 2026-09-24T23:00Z à 2026-09-25T23:00Z.
+ * Monitoring — batterie d'un NEMS = tension relevée au DERNIER DÉMARRAGE, gardée
+ * jusqu'au suivant (Slim, 29/09/2026). Le temps réel ne doit jamais la remplacer :
+ * moteur tournant, l'octet 34-36 porte l'alternateur (13,5 à 14,4 V) et ne dit rien
+ * de la batterie.
  */
-// Format réel de l'API (UtcDateTimeConverter) : sans millisecondes.
-const FIN_DU_25 = '2026-09-25T23:00:00Z';
-const nems = (patch: Partial<BatteryStats> = {}): BatteryStats => ({
-  batteryVoltage: 12.5, batteryLevel: 83, batteryIsDailyMin: true, batteryDayEndUtc: FIN_DU_25, ...patch
-});
-const trame = (volts: number | null, recordedAt = '2026-09-25T10:00:00Z', percent: number | null = null) =>
-  ({ batteryVoltage: volts, batteryPercent: percent, recordedAt });
+describe('monitoring-battery.helpers', () => {
+  const demarrage: BatteryStats = {
+    batteryVoltage: 12.3,
+    batteryLevel: 72,
+    batteryIsStartReading: true,
+    batteryMeasuredAt: '2026-09-29T06:12:00Z',
+    batteryMedianVoltage: 12.3
+  };
 
-describe('mergeLiveBattery — trame temps réel', () => {
-  it('NEMS : une trame plus basse dans la journée devient le minimum', () => {
-    expect(mergeLiveBattery(nems(), trame(11.4, '2026-09-25T10:00:00Z', 22)))
-      .toEqual({ batteryVoltage: 11.4, batteryLevel: 22 });
-  });
+  const teltonika: BatteryStats = {
+    batteryVoltage: 12.7,
+    batteryLevel: 94,
+    batteryIsStartReading: false
+  };
 
-  it('NEMS : une trame plus haute ne remplace pas le minimum (c’était le défaut : dernière trame affichée)', () => {
-    expect(mergeLiveBattery(nems(), trame(13.1))).toEqual({});
-  });
+  describe('mergeLiveBattery', () => {
+    it('ne touche pas à la tension de démarrage d’un NEMS', () => {
+      // Une trame à 14,1 V : c'est l'alternateur. La reprendre effacerait la seule
+      // valeur qui parle de la batterie.
+      expect(mergeLiveBattery(demarrage, { batteryVoltage: 14.1, batteryPercent: 100 })).toEqual({});
+    });
 
-  it('NEMS : une trame sans tension (octet de cap, 0) ne change rien', () => {
-    expect(mergeLiveBattery(nems(), trame(null))).toEqual({});
-  });
+    it('ne touche à rien non plus quand la trame n’apporte pas de batterie', () => {
+      expect(mergeLiveBattery(demarrage, {})).toEqual({});
+    });
 
-  it('NEMS : premier minimum de la journée quand le serveur n’en avait pas (N/A)', () => {
-    expect(mergeLiveBattery(nems({ batteryVoltage: null, batteryLevel: null }), trame(12.3, undefined, 72)))
-      .toEqual({ batteryVoltage: 12.3, batteryLevel: 72 });
-  });
+    it('remplace la valeur des autres véhicules (comportement historique)', () => {
+      expect(mergeLiveBattery(teltonika, { batteryVoltage: 12.1, batteryPercent: 61 }))
+        .toEqual({ batteryVoltage: 12.1, batteryLevel: 61 });
+    });
 
-  it('NEMS : après minuit, la trame ouvre une nouvelle journée même si elle est plus haute', () => {
-    expect(mergeLiveBattery(nems({ batteryVoltage: 10.8 }), trame(12.6, '2026-09-26T05:00:00Z', 89)))
-      .toEqual({ batteryVoltage: 12.6, batteryLevel: 89, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
-  });
+    it('ne comble pas un trou : une trame sans tension laisse la valeur en place', () => {
+      expect(mergeLiveBattery(teltonika, { batteryPercent: 61 })).toEqual({ batteryLevel: 61 });
+      expect(mergeLiveBattery(teltonika, { batteryVoltage: 12.1 })).toEqual({ batteryVoltage: 12.1 });
+    });
 
-  it('NEMS : sans rechargement depuis deux jours, la fin de journée avance jusqu’à dépasser la trame', () => {
-    const r = mergeLiveBattery(nems(), trame(12.4, '2026-09-27T08:00:00Z'));
-    expect(r.batteryDayEndUtc).toBe('2026-09-27T23:00:00.000Z');
-    expect(dailyBatteryView({ ...nems(), ...r }, Date.parse('2026-09-27T08:00:30Z')).voltage).toBe(12.4);
-  });
+    it('ne recopie rien dans le monitoring admin (embedded) : son API n’envoie pas de batterie', () => {
+      expect(mergeLiveBattery(teltonika, { batteryVoltage: 12.1, batteryPercent: 61 }, true)).toEqual({});
+    });
 
-  it('NEMS : une trame d’hier arrivée en retard est ignorée', () => {
-    expect(mergeLiveBattery(nems(), trame(9.9, '2026-09-24T20:00:00Z'))).toEqual({});
-  });
-
-  it('monitoring admin (embarqué) : rien, son API ne renvoie pas de batterie', () => {
-    expect(mergeLiveBattery({ batteryVoltage: null }, trame(12.1, undefined, 61), true)).toEqual({});
-  });
-
-  it('Teltonika : la dernière valeur remplace la précédente, comme avant', () => {
-    expect(mergeLiveBattery({ batteryVoltage: 12.1, batteryLevel: 61 }, trame(13.9, undefined, 100)))
-      .toEqual({ batteryVoltage: 13.9, batteryLevel: 100 });
-  });
-});
-
-describe('keepLowerDailyMin — rechargement de la liste', () => {
-  it('garde un minimum plus bas reçu en temps réel, pas encore vu par le serveur', () => {
-    const avant = nems({ batteryVoltage: 11.2, batteryLevel: 11 });
-    const serveur = nems({ batteryVoltage: 12.5, batteryLevel: 83 });
-    expect(keepLowerDailyMin(avant, serveur)).toEqual(nems({ batteryVoltage: 11.2, batteryLevel: 11 }));
-  });
-
-  it('prend la valeur du serveur si elle est plus basse ou égale', () => {
-    const serveur = nems({ batteryVoltage: 10.9, batteryLevel: 0 });
-    expect(keepLowerDailyMin(nems({ batteryVoltage: 11.2 }), serveur)).toBe(serveur);
-  });
-
-  it('nouvelle journée côté serveur : sa valeur gagne, même plus haute', () => {
-    const serveur = nems({ batteryVoltage: 12.8, batteryDayEndUtc: '2026-09-26T23:00:00Z' });
-    expect(keepLowerDailyMin(nems({ batteryVoltage: 10.8 }), serveur)).toBe(serveur);
-  });
-
-  it('même journée écrite dans deux formats (navigateur « .000Z », serveur « Z ») : le minimum est gardé', () => {
-    // Après minuit, l'écran a ouvert la journée du 26 en temps réel avec 11,2 V ;
-    // le serveur, pas encore à jour, renvoie 12,6 V pour la même journée.
-    const ecran = nems({ batteryVoltage: 11.2, batteryLevel: 11, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
-    const serveur = nems({ batteryVoltage: 12.6, batteryLevel: 89, batteryDayEndUtc: '2026-09-26T23:00:00Z' });
-    expect(keepLowerDailyMin(ecran, serveur)).toEqual({ ...serveur, batteryVoltage: 11.2, batteryLevel: 11 });
-  });
-
-  it('réponse de la veille (cache serveur calculé avant minuit) : l’écran garde sa nouvelle journée', () => {
-    const ecran = nems({ batteryVoltage: 11.3, batteryLevel: 17, batteryDayEndUtc: '2026-09-26T23:00:00.000Z' });
-    const serveurDeLaVeille = nems({ batteryVoltage: 10.8, batteryLevel: 0, batteryDayEndUtc: FIN_DU_25 });
-    expect(keepLowerDailyMin(ecran, serveurDeLaVeille)).toEqual({
-      ...serveurDeLaVeille, batteryVoltage: 11.3, batteryLevel: 17, batteryDayEndUtc: '2026-09-26T23:00:00.000Z'
+    it('sans statistiques connues, traite le véhicule comme non NEMS', () => {
+      expect(mergeLiveBattery(null, { batteryVoltage: 12.1, batteryPercent: 61 }))
+        .toEqual({ batteryVoltage: 12.1, batteryLevel: 61 });
     });
   });
 
-  it('véhicule non NEMS ou premier chargement : la valeur du serveur telle quelle', () => {
-    const teltonika = { batteryVoltage: 12.9, batteryLevel: 100 };
-    expect(keepLowerDailyMin({ batteryVoltage: 11 }, teltonika)).toBe(teltonika);
-    expect(keepLowerDailyMin(undefined, nems())).toEqual(nems());
+  describe('isStartReadingLow', () => {
+    it('allume l’icône quand la MÉDIANE passe sous 11,5 V', () => {
+      expect(isStartReadingLow({ ...demarrage, batteryMedianVoltage: 11.4 })).toBe(true);
+    });
+
+    it('ne l’allume pas au seuil exact', () => {
+      expect(isStartReadingLow({ ...demarrage, batteryMedianVoltage: NEMS_BATTERY_LOW_WARNING_V }))
+        .toBe(false);
+    });
+
+    it('ignore un creux isolé : la dernière mesure est basse, la médiane non', () => {
+      // 251 TU 8789 : 10,9 V au dernier démarrage (radio oubliée), 12,3 V de médiane.
+      expect(isStartReadingLow({ ...demarrage, batteryVoltage: 10.9, batteryMedianVoltage: 12.3 }))
+        .toBe(false);
+    });
+
+    it('allume même si le dernier démarrage était bon, quand la médiane est basse', () => {
+      // 235 TU 5540 : 13,1 V après un long trajet, mais 11,3 V de médiane.
+      expect(isStartReadingLow({ ...demarrage, batteryVoltage: 13.1, batteryMedianVoltage: 11.3 }))
+        .toBe(true);
+    });
+
+    it('ne l’allume pas tant qu’il n’y a pas assez de démarrages', () => {
+      expect(isStartReadingLow({ ...demarrage, batteryVoltage: 10.9, batteryMedianVoltage: null }))
+        .toBe(false);
+    });
+
+    it('ne juge pas les véhicules non NEMS — leur icône vient de l’alerte de santé', () => {
+      expect(isStartReadingLow({ batteryMedianVoltage: 10.2, batteryIsStartReading: false })).toBe(false);
+      expect(isStartReadingLow(null)).toBe(false);
+    });
   });
-});
 
-describe('dailyBatteryView / isDailyMinLow — affichage', () => {
-  const pendantLaJournee = Date.parse('2026-09-25T15:00:00Z');
-  const apresMinuit = Date.parse('2026-09-25T23:30:00Z');
+  describe('batteryTitle', () => {
+    it('date la mesure et donne la médiane', () => {
+      // La valeur peut avoir plusieurs jours : 14 boîtiers sur 226 n'avaient pas
+      // redémarré depuis plus de 24 h sur TN le 29/09/2026.
+      const titre = batteryTitle(demarrage);
+      expect(titre).toContain('au démarrage du');
+      expect(titre).toContain('29/09');
+      expect(titre).toContain('médiane');
+      expect(titre).toContain('12.3 V');
+    });
 
-  it('affiche le minimum pendant sa journée', () => {
-    expect(dailyBatteryView(nems({ batteryVoltage: 11.4, batteryLevel: 22 }), pendantLaJournee))
-      .toEqual({ voltage: 11.4, level: 22 });
-  });
+    it('explique pourquoi le témoin reste éteint malgré une mesure basse', () => {
+      const titre = batteryTitle({ ...demarrage, batteryVoltage: 10.9, batteryMedianVoltage: 12.3 });
+      expect(titre).toContain('12.3 V');
+    });
 
-  it('n’affiche plus le minimum d’hier après minuit (N/A jusqu’au prochain rechargement)', () => {
-    expect(dailyBatteryView(nems(), apresMinuit)).toEqual({ voltage: null, level: null });
-  });
+    it('dit qu’on n’a pas encore assez de démarrages', () => {
+      expect(batteryTitle({ ...demarrage, batteryMedianVoltage: null }))
+        .toContain('pas encore assez de démarrages');
+    });
 
-  it('Teltonika : pas de notion de journée', () => {
-    expect(dailyBatteryView({ batteryVoltage: 12.7, batteryLevel: 94 }, apresMinuit))
-      .toEqual({ voltage: 12.7, level: 94 });
-  });
+    it('dit clairement quand aucun démarrage n’a été relevé', () => {
+      expect(batteryTitle({ ...demarrage, batteryVoltage: null }))
+        .toBe('Aucun démarrage exploitable relevé');
+    });
 
-  it('icône « Anomalie batterie » : minimum sous 11,5 V', () => {
-    expect(isDailyMinLow(nems({ batteryVoltage: 11.4 }), pendantLaJournee)).toBe(true);
-    expect(isDailyMinLow(nems({ batteryVoltage: 11.5 }), pendantLaJournee)).toBe(false);
-    expect(isDailyMinLow(nems({ batteryVoltage: null }), pendantLaJournee)).toBe(false);
-    expect(isDailyMinLow(nems({ batteryVoltage: 10.8 }), apresMinuit)).toBe(false);
+    it('reste lisible si la date est absente ou illisible', () => {
+      expect(batteryTitle({ ...demarrage, batteryMeasuredAt: null }))
+        .toContain('Tension relevée au dernier démarrage');
+      expect(batteryTitle({ ...demarrage, batteryMeasuredAt: 'pas une date' }))
+        .toContain('Tension relevée au dernier démarrage');
+    });
+
+    it('n’ajoute pas d’infobulle aux autres véhicules', () => {
+      expect(batteryTitle(teltonika)).toBeNull();
+      expect(batteryTitle(null)).toBeNull();
+    });
   });
 });

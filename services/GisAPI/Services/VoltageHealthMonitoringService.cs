@@ -1,4 +1,5 @@
 using GisAPI.Application.Features.Notifications.Events;
+using GisAPI.Domain.Common;
 using GisAPI.Domain.Entities;
 using GisAPI.Infrastructure.Persistence;
 using MediatR;
@@ -7,70 +8,56 @@ using Microsoft.EntityFrameworkCore;
 namespace GisAPI.Services;
 
 /// <summary>
-/// Battery-death watcher for NEMS L (<c>protocol_type = 'gps_type_1'</c>)
-/// devices. Single, deliberately conservative signal: notify only when
-/// the vehicle's battery is <b>actually dead</b> — not weakening, not
-/// charging slowly, not silent. Just dead.
+/// Prévient les admins quand la batterie d'un véhicule équipé NEMS
+/// (<c>protocol_type = 'gps_type_1'</c>) est en train de mourir.
 ///
-/// <para>The rule: when ≥20 % of recent (last 7 d) ignition-off frames
-/// report voltage <b>below 11.9 V</b>, the battery has lost the
-/// ability to hold charge and cold-cranking is essentially impossible
-/// (lead-acid industry threshold — Midtronics, Optima, AAMCO). That is
-/// the only condition we push a notification for.</para>
+/// <para><b>Le signal : la tension au démarrage</b> (Slim, 29/09/2026). L'octet
+/// « Batterie » (34-36) des trames NEMS mélange deux grandeurs — moteur tournant
+/// il porte l'alternateur (13,5 à 14,4 V), qui ne dit rien de la batterie. Seul
+/// l'instant du démarrage la montre. <c>BatteryStartReadingService</c> retient
+/// cette tension sur le boîtier ; ce service ne fait que la lire et la comparer à
+/// <see cref="VoltageScale.NemsBatteryLowWarningV"/>. L'écran du monitoring juge
+/// EXACTEMENT la même valeur : un admin qui reçoit la notification retrouve le
+/// même chiffre sur la carte.</para>
 ///
-/// <para><b>What we deliberately do NOT do</b>:</para>
-/// <list type="bullet">
-///   <item><description>No "saturated silence" alert. A vehicle silent
-///     for 24 h+ might genuinely have a dead boîtier — or it might be in
-///     a long-term parking, in the workshop, or at the dealership
-///     waiting for sale. The frontend already has a passive
-///     "Véhicules hors ligne" bell for that; pushing FCM notifications
-///     for it created false alarms on perfectly healthy parked
-///     vehicles.</description></item>
-///   <item><description>No "alternator suspect" / "charging voltage low"
-///     signal. The firmware saturates at ~12.9 V so we cannot reliably
-///     measure charging behaviour from this sensor.</description></item>
-///   <item><description>No "resting voltage decline" / "battery aging"
-///     signal. With a saturated firmware the baseline is always 12.9 V,
-///     so the delta-from-baseline check never fires meaningfully.</description></item>
-/// </list>
+/// <para><b>Ce qui a changé le 29/09/2026.</b> Le service lisait
+/// <c>power_voltage</c> (octet 32-34, facteur 0,3) sur les trames moteur coupé
+/// des 7 derniers jours. Or le 25/09 cet octet a été prouvé muet : 281 boîtiers
+/// sur 288 y renvoyaient la même valeur moteur tournant et moteur éteint. Le
+/// service tournait donc à vide — 2 boîtiers signalés sur 308 jugeables au
+/// 29/09/2026. Il ne lit plus aucune position : la valeur est déjà sur le boîtier.</para>
 ///
-/// <para><b>Cooldown</b>: 48 h via <c>GpsDevice.LastVoltageHealthAlertAt</c>.
-/// <b>Fan-out</b>: <see cref="BatteryHealthAlertEvent"/> via MediatR.
-/// <b>Vehicle filter</b>: skips vehicles where <c>Vehicle.IsImmobilized = true</c>
-/// (operator-set "out of service" flag — see Vehicle entity).</para>
+/// <para><b>Pourquoi 11,5 V et non les 11,9 V du manuel plomb-acide.</b> Mesuré
+/// sur la production TN le 29/09/2026, sur les 226 boîtiers ayant démarré dans les
+/// 48 h : médiane de la flotte 12,19 V au démarrage, premier quartile 11,72 V. À
+/// 11,9 V l'alerte visait 84 boîtiers (37 % du parc) ; à 11,5 V elle en vise 34
+/// (15 %). Seuil retenu par Slim.</para>
+///
+/// <para><b>Ce qu'on ne fait toujours PAS</b> : pas d'alerte « silence prolongé »
+/// (un véhicule muet 24 h peut dormir au parking ou être au garage — la cloche
+/// « Véhicules hors ligne » couvre déjà ce cas passivement, et les notifications
+/// poussées dessus ont produit deux fausses alertes sur des véhicules de location
+/// stationnés) ; pas d'alerte alternateur (c'est l'alternateur, pas la batterie).</para>
+///
+/// <para><b>Temporisation</b> : 48 h via <c>GpsDevice.LastVoltageHealthAlertAt</c>.
+/// <b>Diffusion</b> : <see cref="BatteryHealthAlertEvent"/> par MediatR.
+/// <b>Filtre véhicule</b> : les véhicules marqués <c>IsImmobilized</c> (hors
+/// service, drapeau posé par l'exploitant) sont ignorés.</para>
 /// </summary>
 public class VoltageHealthMonitoringService : BackgroundService
 {
-    // Raw byte → volts conversion (matches the Rust ingest's 0.3 factor
-    // in redis_cache.rs).
-    private const double RawToVoltsFactor = 0.3;
-
-    // Industry "battery dead" threshold: below 11.9 V at rest a 12 V
-    // lead-acid battery cannot reliably crank the engine.
-    // 11.9 V / 0.3 = 39.67 → byte ≤ 39 means voltage ≤ 11.7 V which is
-    // strictly under 11.9 V. Byte 40 corresponds to 12.0 V which we
-    // consider weak but not yet dead.
-    private const int RestingDeadByteThreshold = 39;       // 11.7 V
-
-    // A handful of bad readings doesn't condemn a battery — we need a
-    // sustained pattern. Empirical: a healthy vehicle with one cold
-    // morning shows < 5 low readings on a 7-day window; a dead battery
-    // shows 30 %+ low.
-    private const int MinDeadFramesForAlert = 10;
-    private const double DeadFramesMinShare = 0.20;
-
-    // Statistical floor — don't fire on a device that has barely streamed.
-    private const int MinRestingFrames = 50;
-
-    // Recent-window for the analysis.
-    private const int RecentDays = 7;
-
-    // Service cadence.
+    // Cadence du service. La tension au démarrage ne change qu'au démarrage
+    // suivant : une passe par heure suffit largement.
     private const int CycleMinutes = 60;
     private const int StartupDelayMinutes = 3;
     private const int CooldownHours = 48;
-    private const string NemsLProtocol = "gps_type_1";
+
+    // Au-delà de cet âge, la tension retenue ne dit plus rien de l'état ACTUEL de
+    // la batterie : le véhicule n'a pas redémarré depuis, et une notification
+    // « batterie en fin de vie » sur une mesure vieille d'une semaine serait au
+    // mieux inutile, au pire fausse (batterie déjà remplacée). L'écran, lui,
+    // continue de l'afficher datée — c'est une information, pas une alerte.
+    private const int MaxReadingAgeDays = 3;
 
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<VoltageHealthMonitoringService> _logger;
@@ -89,8 +76,8 @@ public class VoltageHealthMonitoringService : BackgroundService
         catch (TaskCanceledException) { return; }
 
         _logger.LogInformation(
-            "VoltageHealthMonitoringService started (cycle={CycleMin}min, cooldown={Cooldown}h, threshold<11.9V)",
-            CycleMinutes, CooldownHours);
+            "VoltageHealthMonitoringService started (cycle={CycleMin}min, cooldown={Cooldown}h, seuil<{Threshold}V au démarrage)",
+            CycleMinutes, CooldownHours, VoltageScale.NemsBatteryLowWarningV);
 
         while (!ct.IsCancellationRequested)
         {
@@ -116,52 +103,57 @@ public class VoltageHealthMonitoringService : BackgroundService
 
         var now = DateTime.UtcNow;
         var cooldownCutoff = now.AddHours(-CooldownHours);
+        var readingCutoff = now.AddDays(-MaxReadingAgeDays);
 
+        // Tout le filtrage tient en SQL : plus aucune lecture de gps_positions.
         var candidates = await context.GpsDevices
             .IgnoreQueryFilters()
             .Include(d => d.Vehicle)
-            .Where(d => d.ProtocolType == NemsLProtocol
+            .Where(d => d.ProtocolType == VoltageScale.NemsProtocol
                      && d.Vehicle != null
                      && !d.Vehicle.IsImmobilized
+                     && d.BatteryStartMedianRaw != null
+                     && d.BatteryStartAt != null
+                     && d.BatteryStartAt >= readingCutoff
                      && (d.LastVoltageHealthAlertAt == null
                          || d.LastVoltageHealthAlertAt < cooldownCutoff))
             .ToListAsync(ct);
 
         if (candidates.Count == 0) return;
 
-        _logger.LogDebug(
-            "VoltageHealthMonitoringService: scanning {Count} NEMS L device(s)",
-            candidates.Count);
-
         int flagged = 0;
         foreach (var device in candidates)
         {
             try
             {
-                var hit = await EvaluateAsync(context, device, now, ct);
-                if (hit == null) continue;
+                var volts = DyingBatteryVolts(device.BatteryStartMedianRaw);
+                if (volts == null) continue;
 
                 device.LastVoltageHealthAlertAt = now;
                 device.UpdatedAt = now;
                 await context.SaveChangesAsync(ct);
                 flagged++;
 
+                var measuredAt = device.BatteryStartAt!.Value;
+
                 _logger.LogInformation(
-                    "VoltageHealth: {Signal} on device {DeviceId} ({Plate}) — observed={Observed:F2}V",
-                    hit.SignalKind, device.Id,
-                    VehicleLabel(device.Vehicle) ?? "?",
-                    hit.VoltageObservedV ?? 0);
+                    "VoltageHealth: batterie faible sur le boîtier {DeviceId} ({Plate}) — médiane {Volts:F1} V, dernier démarrage le {MeasuredAt:u}",
+                    device.Id, VehicleLabel(device.Vehicle) ?? "?", volts.Value, measuredAt);
 
                 await mediator.Publish(new BatteryHealthAlertEvent(
                     CompanyId: device.CompanyId,
                     DeviceId: device.Id,
                     VehicleId: device.Vehicle?.Id,
                     VehicleName: VehicleLabel(device.Vehicle),
-                    SignalKind: hit.SignalKind,
-                    Severity: hit.Severity,
-                    Description: hit.Description,
-                    VoltageObservedV: hit.VoltageObservedV,
-                    VoltageBaselineV: hit.VoltageBaselineV,
+                    SignalKind: "battery_dead",
+                    Severity: "critical",
+                    Description:
+                        $"Batterie en fin de vie : {volts.Value:F1} V de médiane sur les " +
+                        $"{VoltageScale.StartHistoryWindow} derniers démarrages (seuil " +
+                        $"{VoltageScale.NemsBatteryLowWarningV:F1} V), dernier le " +
+                        $"{measuredAt:dd/MM/yyyy à HH:mm} UTC",
+                    VoltageObservedV: VoltageScale.RoundVolts(volts.Value),
+                    VoltageBaselineV: null,
                     DetectedAt: now
                 ), ct);
             }
@@ -182,68 +174,17 @@ public class VoltageHealthMonitoringService : BackgroundService
     }
 
     /// <summary>
-    /// Single signal: ≥20 % of recent resting frames show voltage strictly
-    /// under 11.9 V. Returns null when the battery is healthy (or there's
-    /// not enough data to decide).
+    /// Tension en volts si cette valeur brute désigne une batterie en fin de vie,
+    /// <c>null</c> sinon (batterie saine, ou valeur qui n'est pas une tension).
+    ///
+    /// <para>Le tri de la bande 68-92 (<see cref="VoltageScale.NemsMeaningfulVolts"/>)
+    /// écarte l'octet de cap des firmwares R00C30d : hors bande, ce n'est pas une
+    /// tension, et une valeur absurde ne doit surtout pas devenir une alerte.</para>
     /// </summary>
-    private static async Task<HealthHit?> EvaluateAsync(
-        GisDbContext context,
-        GpsDevice device,
-        DateTime now,
-        CancellationToken ct)
+    public static double? DyingBatteryVolts(short? batteryStartRaw)
     {
-        var deviceId = device.Id;
-        var recentStart = now.AddDays(-RecentDays);
-
-        // Count BOTH the total resting frames and the subset reporting
-        // ≤ 11.7 V (byte ≤ 39 = strictly under the 11.9 V "dead" threshold).
-        var counts = await context.GpsPositions
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= recentStart
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage!.Value <= RestingDeadByteThreshold)
-            .Select(g => new { IsDead = g.Key, Count = g.Count() })
-            .ToListAsync(ct);
-
-        var totalRest = counts.Sum(c => c.Count);
-        var deadRest = counts.FirstOrDefault(c => c.IsDead)?.Count ?? 0;
-
-        if (totalRest < MinRestingFrames
-            || deadRest < MinDeadFramesForAlert
-            || (double)deadRest / totalRest < DeadFramesMinShare)
-        {
-            return null;
-        }
-
-        // Pick the median voltage among the dead frames so the operator
-        // sees how far gone the battery is, not just the threshold.
-        var deadVoltagesRaw = await context.GpsPositions
-            .IgnoreQueryFilters()
-            .AsNoTracking()
-            .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= recentStart
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0
-                     && p.PowerVoltage.Value <= RestingDeadByteThreshold)
-            .Select(p => p.PowerVoltage!.Value)
-            .ToListAsync(ct);
-
-        var medianDeadV = Median(deadVoltagesRaw) * RawToVoltsFactor;
-        var sharePct = 100.0 * deadRest / totalRest;
-
-        return new HealthHit(
-            SignalKind: "battery_dead",
-            Severity: "critical",
-            Description:
-                $"Batterie morte: {deadRest}/{totalRest} trames sous 11.9 V " +
-                $"({sharePct:F0}%), médiane {medianDeadV:F2} V",
-            VoltageObservedV: medianDeadV,
-            VoltageBaselineV: null);
+        var volts = VoltageScale.NemsMeaningfulVolts(batteryStartRaw);
+        return volts < VoltageScale.NemsBatteryLowWarningV ? volts : null;
     }
 
     private static string? VehicleLabel(Vehicle? vehicle)
@@ -253,26 +194,4 @@ public class VoltageHealthMonitoringService : BackgroundService
         if (!string.IsNullOrWhiteSpace(vehicle.Name)) return vehicle.Name;
         return null;
     }
-
-    /// <summary>
-    /// Median of an unsorted integer list. Robust to spike outliers in a
-    /// way that <c>Average()</c> isn't — a single byte=5 glitch can't
-    /// shift a median computed over dozens of byte=38 readings.
-    /// </summary>
-    private static double Median(IReadOnlyList<int> values)
-    {
-        if (values.Count == 0) return 0;
-        var sorted = values.OrderBy(v => v).ToArray();
-        int mid = sorted.Length / 2;
-        return sorted.Length % 2 == 0
-            ? (sorted[mid - 1] + sorted[mid]) / 2.0
-            : sorted[mid];
-    }
-
-    private sealed record HealthHit(
-        string SignalKind,
-        string Severity,
-        string Description,
-        double? VoltageObservedV,
-        double? VoltageBaselineV);
 }
