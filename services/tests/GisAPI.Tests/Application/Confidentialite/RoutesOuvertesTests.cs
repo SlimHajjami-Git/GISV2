@@ -101,6 +101,14 @@ public class RoutesOuvertesTests
     private const int BoitierPublicDesordre = 17;
     private const string ImeiDesordre = "350000000000002";
 
+    // Matricules de boîtier : alphanumériques et SANS espace, comme les 439 de la
+    // production (type « NR08G1075 »). Ceux du reste du jeu de données portent un tiret
+    // (« MAT-A »), forme qui n'existe pas en base et que le filtre public refuse.
+    private const string MatriculeQuiRemonte = "NRPUB0001";
+    private const string MatriculeEnDouble = "NRDUP0009";
+    private const int BoitierDouble1 = 20;
+    private const int BoitierDouble2 = 21;
+
     private const string PlaqueA = "111 TU 1";
     private const string PlaqueB = "222 TU 2";
     private const string PlaqueAutreSociete = "999 TU 9";
@@ -222,7 +230,10 @@ public class RoutesOuvertesTests
             // route publique n'a pas de société d'appelant, donc elle ne cloisonne pas — ce
             // qui n'est acceptable que parce que sa réponse ne dit rien du client. Les tests
             // ci-dessous vérifient exactement cela.
-            new GpsDevice { Id = BoitierPublicQuiRemonte, DeviceUid = ImeiQuiRemonte, Mat = "MAT-PUB-1", Label = "Pose du jour", SimNumber = "21600014", CompanyId = AutreSociete, Status = "active", SignalStrength = 24 },
+            new GpsDevice { Id = BoitierPublicQuiRemonte, DeviceUid = ImeiQuiRemonte, Mat = MatriculeQuiRemonte, Label = "Pose du jour", SimNumber = "21600014", CompanyId = AutreSociete, Status = "active", SignalStrength = 24 },
+            // Deux boîtiers, un seul matricule : le cas ambigu, réel sur la production.
+            new GpsDevice { Id = BoitierDouble1, DeviceUid = "350000000000010", Mat = MatriculeEnDouble, Label = "Double A", SimNumber = "21600020", CompanyId = Societe, Status = "active" },
+            new GpsDevice { Id = BoitierDouble2, DeviceUid = "350000000000011", Mat = MatriculeEnDouble, Label = "Double B", SimNumber = "21600021", CompanyId = AutreSociete, Status = "active" },
             new GpsDevice { Id = BoitierPublicMuet, DeviceUid = ImeiMuet, Mat = "MAT-PUB-2", Label = "Muet", SimNumber = "21600015", CompanyId = Societe, Status = "active", SignalStrength = 9 },
             new GpsDevice { Id = BoitierPublicSansTrame, DeviceUid = ImeiSansTrame, Mat = "MAT-PUB-3", Label = "Jamais vu", SimNumber = "21600016", CompanyId = Societe, Status = "unassigned" },
             new GpsDevice { Id = BoitierPublicDesordre, DeviceUid = ImeiDesordre, Mat = "MAT-PUB-4", Label = "Trames en désordre", SimNumber = "21600017", CompanyId = Societe, Status = "active" });
@@ -395,19 +406,27 @@ public class RoutesOuvertesTests
     // ───────── B1 bis — la route publique rouverte le 28/09/2026 ─────────
 
     /// <summary>
-    /// La clé publique est l'IMEI, et RIEN d'autre. C'est le cœur de la décision : une
-    /// plaque se lit dans la rue, un IMEI se lit sur l'étiquette du boîtier qu'on tient en
-    /// main. Accepter la plaque ici rouvrirait mot pour mot le trou du 23/09.
+    /// Les clés publiques sont l'IMEI et le MATRICULE DU BOÎTIER — jamais la plaque.
+    ///
+    /// <para>Les deux premières sont imprimées sur l'appareil que l'installateur tient en
+    /// main ; la plaque, elle, se lit dans la rue, et c'est ce qui transformait l'ancienne
+    /// route ouverte en traceur de véhicules d'autrui. Le matricule a été ajouté le
+    /// 29/09/2026 : les techniciens ont rapporté qu'ils lisent le matricule de l'étiquette,
+    /// pas l'IMEI.</para>
+    ///
+    /// <para><b>C'est l'ESPACE qui trie.</b> Une plaque tunisienne s'écrit « 233 TU 5102 »
+    /// et ne franchit pas le filtre. Un matricule n'a jamais d'espace : vérifié sur la
+    /// production, 0 des 440 matricules en contient. Et même collée, une plaque ne
+    /// trouverait rien : cette route n'interroge QUE la table des boîtiers.</para>
     /// </summary>
     [Theory]
-    [InlineData("111 TU 1")]        // une plaque
-    [InlineData("MAT-A")]           // une MAT
-    [InlineData("IMEI-A")]          // l'identifiant interne non numérique
-    [InlineData("35123456789012")]  // 14 chiffres
-    [InlineData("3512345678901234")]// 16 chiffres
-    [InlineData("35123456789012a")] // 15 caractères dont une lettre
+    [InlineData("111 TU 1")]         // une plaque, avec ses espaces
+    [InlineData("233 TU 5102")]      // une vraie plaque de la flotte
+    [InlineData("NR08 G1075")]       // un matricule mal recopié, avec un espace
+    [InlineData("MAT-A")]            // ponctuation : ni IMEI ni matricule
+    [InlineData("AB")]               // trop court pour être un matricule
     [InlineData("")]
-    public async Task Statut_public_n_accepte_que_l_IMEI_a_15_chiffres(string saisie)
+    public async Task Statut_public_refuse_tout_ce_qui_n_est_ni_IMEI_ni_matricule(string saisie)
     {
         using var parc = await ParcAsync();
         var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
@@ -415,6 +434,111 @@ public class RoutesOuvertesTests
         (await anonyme.StatutPublic(saisie)).Should().BeOfType<BadRequestObjectResult>(
             "la recherche par plaque sans jeton est précisément ce qui transformait cette route "
             + "en traceur de véhicules d'autrui");
+    }
+
+    /// <summary>
+    /// Une plaque saisie SANS ses espaces franchit le filtre de forme — et ne trouve
+    /// toujours rien, parce que la route ne regarde que les boîtiers. C'est la garantie de
+    /// fond : le filtre de forme est une commodité, le vrai verrou est qu'aucune requête ne
+    /// touche la table des véhicules.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_une_plaque_collee_passe_le_format_mais_ne_trouve_rien()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic("111TU1"));
+
+        Champ<bool>(corps, "found").Should().BeFalse(
+            "aucun boîtier ne porte cette chaîne, et les véhicules ne sont jamais interrogés ici");
+    }
+
+    [Fact]
+    public async Task Statut_public_trouve_un_boitier_par_son_MATRICULE()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte));
+
+        Champ<bool>(corps, "found").Should().BeTrue();
+        Champ<bool>(corps, "reporting").Should().BeTrue();
+
+        Champs(corps).Should().NotIntersectWith(new[] { "plate", "vehicleName", "mat", "lastPosition" },
+            "la réponse reste la même qu'en cherchant par IMEI : rien qui rattache le boîtier à un client");
+    }
+
+    /// <summary>
+    /// L'IMEI n'est RENVOYÉ QUE si l'appelant l'a lui-même saisi.
+    ///
+    /// <para>Les matricules suivent un gabarit très étroit — 423 des 440 de la production
+    /// s'écrivent « NR08G » + 4 chiffres, soit 10 000 possibilités contre 10^15 pour un
+    /// IMEI — et le plafond de débit borne la vitesse, pas le volume : le parc entier se
+    /// balaie en moins d'une heure. Renvoyer les 4 derniers chiffres de l'IMEI à chaque
+    /// touche permettait donc de le reconstituer pour presque tout le parc, 406 boîtiers
+    /// partageant le même préfixe constructeur. Or l'IMEI est l'identifiant que
+    /// l'ingestion GPS accepte : le déduire d'un matricule devinable revenait à publier la
+    /// clé d'entrée des trames.</para>
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_ne_rend_PAS_l_IMEI_quand_on_cherche_par_matricule()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var parMatricule = CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte));
+        Champ<string?>(parMatricule, "imei").Should().BeNull(
+            "un matricule se devine ; l'IMEI qu'il désigne ne doit pas se déduire de la réponse");
+
+        var parImei = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+        Champ<string?>(parImei, "imei").Should().NotBeNull(
+            "là, l'appelant l'a saisi lui-même : on ne lui apprend rien");
+    }
+
+    /// <summary>
+    /// Une recherche par IMEI ne regarde que <c>device_uid</c>, unique et indexé : elle ne
+    /// peut donc jamais être déclarée ambiguë parce qu'un matricule vaudrait l'IMEI d'un
+    /// autre boîtier, et elle garde son index.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_une_recherche_par_IMEI_n_est_jamais_ambigue()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+
+        Champs(corps).Should().NotContain("ambiguous");
+        Champ<bool>(corps, "reporting").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Statut_public_le_matricule_se_cherche_sans_tenir_compte_de_la_casse()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        Champ<bool>(CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte.ToLowerInvariant())), "found")
+            .Should().BeTrue("un technicien recopie l'étiquette comme il la lit");
+    }
+
+    /// <summary>
+    /// Deux boîtiers peuvent porter le même matricule — 2 cas sur 438 en production. On le
+    /// DIT, au lieu d'en choisir un au hasard : annoncer « ça remonte » d'après le boîtier
+    /// d'un autre véhicule ferait repartir le technicien sur une pose qui ne marche pas.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_un_matricule_ambigu_est_signale_et_non_tranche()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(MatriculeEnDouble));
+
+        Champ<bool>(corps, "ambiguous").Should().BeTrue();
+        Champs(corps).Should().NotContain("reporting",
+            "aucun état de connexion ne doit être annoncé tant qu'on ne sait pas de quel boîtier on parle");
     }
 
     /// <summary>

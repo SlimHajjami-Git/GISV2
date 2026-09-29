@@ -45,10 +45,19 @@ public static class RateLimitPolicies
 
     // Diagnostic d'installation rouvert sans jeton le 28/09/2026 (DeviceCheckController,
     // action StatutPublic). Sa réponse ne rattache aucun boîtier à un client, mais elle dit
-    // si un IMEI est enregistré : sans plafond, on balaierait l'espace des IMEI pour
-    // cartographier le parc. Un installateur fait quelques recherches par intervention, pas
-    // vingt par minute. La route AUTHENTIFIÉE (/api/devicecheck/lookup) n'est pas visée :
-    // StartsWithSegments compare des SEGMENTS entiers, donc « /status » ne l'attrape pas.
+    // si un identifiant est enregistré. Un installateur fait quelques recherches par
+    // intervention, pas vingt par minute. La route AUTHENTIFIÉE (/api/devicecheck/lookup)
+    // n'est pas visée : StartsWithSegments compare des SEGMENTS entiers, donc « /status »
+    // ne l'attrape pas.
+    //
+    // CE PLAFOND NE REND PAS UN BALAYAGE IMPOSSIBLE, et il ne faut pas le croire (corrigé
+    // le 29/09/2026). Depuis que le matricule est accepté, l'espace de clés n'est plus
+    // celui des IMEI : 423 des 440 matricules s'écrivent « NR08G » + 4 chiffres, soit
+    // 10 000 valeurs — balayables en moins d'une heure malgré ces plafonds, qui bornent le
+    // débit et non le volume. Ce qui protège vraiment est ailleurs, dans la réponse
+    // elle-même : elle ne rattache le boîtier à aucun client, et depuis cette même date
+    // elle ne renvoie plus l'IMEI quand la recherche s'est faite par matricule — sans quoi
+    // l'IMEI, clé d'entrée de l'ingestion, se reconstituait pour presque tout le parc.
     public static bool IsPublicDeviceCheck(HttpContext c) =>
         c.Request.Path.StartsWithSegments("/api/devicecheck/status");
 

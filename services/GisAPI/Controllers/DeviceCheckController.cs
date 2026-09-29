@@ -37,9 +37,11 @@ namespace GisAPI.Controllers;
 /// <item><c>GET lookup</c> — AUTHENTIFIÉE, inchangée : réponse complète (position, plaque,
 /// contact, carburant, compteur), bornée à la société de l'appelant et à sa portée
 /// véhicule. C'est l'outil interne.</item>
-/// <item><c>GET status</c> — PUBLIQUE, par IMEI strict uniquement, et réduite à « cet
-/// appareil est-il enregistré et envoie-t-il des trames ». Aucune donnée qui rattache un
-/// boîtier à un client. Voir <see cref="StatutPublic"/> pour le raisonnement complet.</item>
+/// <item><c>GET status</c> — PUBLIQUE, par IMEI ou par MATRICULE DE BOÎTIER, et réduite à
+/// « cet appareil est-il enregistré et envoie-t-il des trames ». Aucune donnée qui
+/// rattache un boîtier à un client. La PLAQUE du véhicule n'y est jamais acceptée : c'est
+/// elle, lisible dans la rue, qui faisait le danger. Voir <see cref="StatutPublic"/> pour
+/// le raisonnement complet.</item>
 /// </list>
 /// <para>Ce découpage en deux actions distinctes est volontaire : une seule action qui
 /// choisirait son contenu selon l'authentification finirait par laisser fuir la réponse
@@ -87,6 +89,21 @@ public class DeviceCheckController : ControllerBase
     private static readonly Regex ImeiStrict = new(@"^\d{15}$", RegexOptions.Compiled);
 
     /// <summary>
+    /// Matricule de boîtier : lettres et chiffres collés, rien d'autre. Relevé sur la
+    /// production le 29/09/2026 : 439 des 440 matricules sont de cette forme (type
+    /// « NR08G1075 », 10 caractères au plus), le dernier est un IMEI à 15 chiffres, et
+    /// AUCUN ne contient d'espace.
+    ///
+    /// <para><b>C'est l'absence d'espace qui protège.</b> Une plaque tunisienne s'écrit
+    /// « 233 TU 5102 », avec des espaces : elle ne franchit pas ce filtre. Et même saisie
+    /// collée, elle ne trouverait rien, puisque cette route n'interroge QUE la table des
+    /// boîtiers — jamais celle des véhicules. La plaque, qui se lit dans la rue, reste
+    /// donc hors de portée d'un visiteur anonyme, ce qui était tout l'objet de la
+    /// fermeture du 23/09.</para>
+    /// </summary>
+    private static readonly Regex MatriculeStrict = new(@"^[A-Za-z0-9]{4,20}$", RegexOptions.Compiled);
+
+    /// <summary>
     /// « Ce boîtier remonte-t-il ? » SANS authentification, pour l'installateur sur le
     /// terrain (décision de Slim du 28/09/2026 : la page redevient publique, mais réduite à
     /// ce que l'installation exige).
@@ -99,6 +116,16 @@ public class DeviceCheckController : ControllerBase
     /// route ouverte. La route authentifiée <c>lookup</c> garde, elle, la réponse complète,
     /// le cloisonnement par société et la portée véhicule de l'appelant.</para>
     ///
+    /// <para><b>Deux clés depuis le 29/09/2026 : l'IMEI ET le matricule du boîtier.</b>
+    /// Les techniciens ont rapporté que sur le terrain ils lisent le MATRICULE de
+    /// l'étiquette, pas l'IMEI — et le champ, restreint aux chiffres, leur présentait un
+    /// pavé numérique sur lequel un matricule alphanumérique est intaisissable. Les deux
+    /// clés sont sur l'appareil qu'ils tiennent en main, donc le risque est le même ;
+    /// c'est la PLAQUE, lisible dans la rue, qui reste exclue. Un matricule pouvant être
+    /// porté par deux boîtiers (2 cas sur 438 en production), l'ambiguïté est DITE et non
+    /// tranchée au hasard : annoncer « ça remonte » d'après le boîtier d'un autre véhicule
+    /// ferait repartir le technicien sur une pose qui ne marche pas.</para>
+    ///
     /// <para>Elle lève les filtres multi-tenant, et il ne peut en être autrement :
     /// l'appelant n'a pas de société. C'est sans conséquence ici puisque rien dans la
     /// réponse ne rattache le boîtier à un client. Le seul reste est qu'elle dit si un IMEI
@@ -107,12 +134,23 @@ public class DeviceCheckController : ControllerBase
     /// </summary>
     [AllowAnonymous]
     [HttpGet("status")]
-    public async Task<ActionResult> StatutPublic([FromQuery] string imei)
+    public async Task<ActionResult> StatutPublic([FromQuery] string? q = null, [FromQuery] string? imei = null)
     {
-        var saisie = (imei ?? string.Empty).Trim();
+        // Deux noms pour la même chose : « q » depuis le 29/09/2026, « imei » gardé pour
+        // qu'un navigateur n'ayant pas encore rechargé son JavaScript continue de marcher
+        // pendant la bascule. Sans cet alias, le technicien qui a la page ouverte au moment
+        // du déploiement reçoit un refus de format sans comprendre pourquoi.
+        var saisie = (q ?? imei ?? string.Empty).Trim();
 
-        if (!ImeiStrict.IsMatch(saisie))
-            return BadRequest(new { error = "Saisissez l'IMEI du boîtier : 15 chiffres, sans espace." });
+        var estImei = ImeiStrict.IsMatch(saisie);
+        var estMatricule = MatriculeStrict.IsMatch(saisie);
+
+        if (!estImei && !estMatricule)
+            return BadRequest(new
+            {
+                error = "Saisissez l'IMEI (15 chiffres) ou le matricule du boîtier, "
+                      + "sans espace. La plaque du véhicule n'est pas acceptée ici."
+            });
 
         // Projection explicite : on ne charge QUE les trois champs nécessaires. Aucun
         // accès à Vehicles, donc aucune plaque ni société ne peut fuir par inadvertance,
@@ -125,14 +163,60 @@ public class DeviceCheckController : ControllerBase
         // et « inconnu » à l'autre. L'expliciter garantit une réponse identique pour tous.
         // Le filtre de cette entité est purement multi-locataire (aucune suppression
         // logique), donc le lever n'exhume rien d'effacé.
-        var boitier = await _context.GpsDevices.AsNoTracking()
-            .IgnoreQueryFilters()
-            .Where(d => d.DeviceUid == saisie)
-            .Select(d => new { d.Id, d.DeviceUid, d.SignalStrength })
-            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+        // Le matricule se compare sans tenir compte de la casse : il est écrit en
+        // majuscules en base, et un technicien qui le recopie de l'étiquette tape souvent
+        // en minuscules. L'IMEI, lui, n'a que des chiffres : la casse n'a pas de sens.
+        var saisieMinuscule = saisie.ToLowerInvariant();
 
-        if (boitier == null)
-            return Ok(new { found = false, message = "IMEI inconnu." });
+        // Une recherche par IMEI ne regarde QUE device_uid, qui est unique et indexé : elle
+        // garde son index, et ne peut pas être déclarée « ambiguë » parce qu'un matricule
+        // vaudrait l'IMEI d'un autre boîtier. Une recherche par matricule ne regarde que
+        // mat. Deux résultats au plus suffisent à détecter l'ambiguïté et bornent la
+        // lecture : sur la production, 2 matricules sur 438 sont portés par deux boîtiers.
+        var correspondances = await _context.GpsDevices.AsNoTracking()
+            .IgnoreQueryFilters()
+            .Where(d => estImei
+                ? d.DeviceUid == saisie
+                : d.Mat != null && d.Mat.ToLower() == saisieMinuscule)
+            .OrderBy(d => d.Id)
+            .Select(d => new { d.Id, d.DeviceUid, d.SignalStrength })
+            .Take(2)
+            .ToListAsync(HttpContext.RequestAborted);
+
+        if (correspondances.Count == 0)
+            return Ok(new
+            {
+                found = false,
+                message = estImei ? "IMEI inconnu." : "Matricule inconnu."
+            });
+
+        // Ambiguïté DITE, jamais tranchée au hasard : répondre « ce boîtier remonte » en
+        // ayant regardé celui d'un autre véhicule enverrait le technicien repartir alors
+        // que sa pose ne fonctionne pas. L'IMEI, lui, est unique.
+        if (correspondances.Count > 1)
+            return Ok(new
+            {
+                found = true,
+                ambiguous = true,
+                message = "Plusieurs boîtiers portent ce matricule. "
+                        + "Cherchez par IMEI pour lever le doute."
+            });
+
+        var boitier = correspondances[0];
+
+        // L'IMEI n'est RENVOYÉ QUE si l'appelant l'a lui-même saisi — auquel cas on ne lui
+        // apprend rien. Cherché par matricule, il n'est pas renvoyé du tout.
+        //
+        // Pourquoi c'est important, et pourquoi ce n'était pas évident : les matricules
+        // suivent un gabarit très étroit — 423 des 440 de la production s'écrivent
+        // « NR08G » suivi de quatre chiffres, soit 10 000 possibilités, contre 10^15 pour
+        // un IMEI. Le plafond de débit borne la vitesse, pas le volume : le parc entier se
+        // balaie en moins d'une heure. Renvoyer les 4 derniers chiffres de l'IMEI à chaque
+        // touche permettait alors de le RECONSTITUER pour presque tout le parc, puisque
+        // 406 boîtiers partagent le même préfixe constructeur. Or l'IMEI est l'identifiant
+        // que l'ingestion GPS accepte : le laisser se déduire d'un matricule devinable
+        // revenait à publier la clé d'entrée des trames.
+        var imeiAEcho = estImei ? MaskImei(boitier.DeviceUid) : null;
 
         // TRI SUR recorded_at, JAMAIS SUR id — mesuré sur la production le 28/09/2026.
         // « ORDER BY id DESC LIMIT 1 » remonte l'index de la clé primaire depuis la trame la
@@ -154,7 +238,7 @@ public class DeviceCheckController : ControllerBase
             {
                 found = true,
                 reporting = false,
-                imei = MaskImei(boitier.DeviceUid),
+                imei = imeiAEcho,
                 message = "Boîtier enregistré, mais aucune trame reçue à ce jour."
             });
 
@@ -164,7 +248,7 @@ public class DeviceCheckController : ControllerBase
         {
             found = true,
             reporting = minutes <= SilenceAvantDeconnexionMinutes,
-            imei = MaskImei(boitier.DeviceUid),
+            imei = imeiAEcho,
             lastFrameAt = derniere.RecordedAt,
             minutesSinceLastFrame = Math.Round(minutes, 1),
             satellites = derniere.Satellites,

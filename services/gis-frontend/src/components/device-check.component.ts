@@ -22,7 +22,8 @@ export function messageErreurDiagnostic(
   // Le serveur dit précisément ce qu'il attend (un IMEI de 15 chiffres) : le relayer vaut
   // mieux que le paraphraser et risquer de diverger de la règle réelle.
   if (statut === 400) {
-    return messageServeur?.trim() || "Saisissez l'IMEI du boîtier : 15 chiffres, sans espace.";
+    return messageServeur?.trim()
+      || "Saisissez l'IMEI (15 chiffres) ou le matricule du boîtier, sans espace.";
   }
   if (statut === 429) {
     return 'Trop de recherches en peu de temps. Patientez une minute avant de réessayer.';
@@ -53,7 +54,7 @@ export function messageErreurDiagnostic(
             <h1>Diagnostic Boîtier GPS</h1>
           </div>
           <p class="subtitle" *ngIf="connecte">Vérifiez l'état de connexion d'un boîtier en saisissant son IMEI ou la matricule du véhicule</p>
-          <p class="subtitle" *ngIf="!connecte">Saisissez l'IMEI inscrit sur l'étiquette du boîtier pour vérifier qu'il remonte bien. Connectez-vous pour le diagnostic complet.</p>
+          <p class="subtitle" *ngIf="!connecte">Saisissez l'IMEI ou le matricule inscrit sur l'étiquette du boîtier pour vérifier qu'il remonte bien. Connectez-vous pour le diagnostic complet.</p>
         </div>
 
         <!-- Search -->
@@ -61,12 +62,15 @@ export function messageErreurDiagnostic(
           <div class="input-row">
             <div class="input-group">
               <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <!-- PAS d'inputmode numérique sur ce champ. Il y en avait un en mode public
+                   tant que seul l'IMEI était accepté ; les techniciens, qui lisent le
+                   MATRICULE de l'étiquette, se retrouvaient devant un pavé de chiffres sur
+                   lequel « NR08G1075 » est intaisissable (signalé le 29/09/2026). -->
               <input
                 type="text"
                 [(ngModel)]="query"
                 (keyup.enter)="search()"
-                [placeholder]="connecte ? 'IMEI ou Matricule...' : 'IMEI du boîtier (15 chiffres)...'"
-                [attr.inputmode]="connecte ? null : 'numeric'"
+                [placeholder]="connecte ? 'IMEI, matricule ou plaque...' : 'IMEI ou matricule du boîtier...'"
                 class="search-input"
                 [disabled]="loading"
                 autocomplete="off"
@@ -92,11 +96,18 @@ export function messageErreurDiagnostic(
              [class.no-gps]="!result.found">
 
           <div *ngIf="!result.found" class="status-block not-found">
-            <h2>IMEI inconnu</h2>
-            <p>Aucun boîtier enregistré sous cet IMEI. Vérifiez les 15 chiffres de l'étiquette.</p>
+            <h2>Boîtier inconnu</h2>
+            <p>{{ result.message || 'Aucun boîtier enregistré sous cet identifiant.' }} Vérifiez l'IMEI ou le matricule sur l'étiquette.</p>
           </div>
 
-          <div *ngIf="result.found" class="status-block" [class.has-data]="result.reporting" [class.no-frames]="!result.reporting">
+          <!-- Deux boîtiers peuvent porter le même matricule : on le DIT, au lieu d'en
+               choisir un au hasard et d'annoncer « ça remonte » d'après un autre véhicule. -->
+          <div *ngIf="result.found && result.ambiguous" class="status-block no-frames">
+            <h2>Matricule ambigu</h2>
+            <p>{{ result.message }}</p>
+          </div>
+
+          <div *ngIf="result.found && !result.ambiguous" class="status-block" [class.has-data]="result.reporting" [class.no-frames]="!result.reporting">
             <h2>{{ result.reporting ? 'Le boîtier remonte' : 'Le boîtier ne remonte pas' }}</h2>
             <p *ngIf="result.message">{{ result.message }}</p>
             <div class="info-row"><span class="label">IMEI</span><span class="value mono">{{ result.imei }}</span></div>
@@ -475,14 +486,29 @@ export class DeviceCheckComponent {
     const connecte = this.auth.isAuthenticated();
     this.modePublic = !connecte;
 
-    // Les étiquettes d'IMEI se lisent souvent avec des espaces : on les retire plutôt que
-    // de renvoyer l'installateur à un message de format pour une saisie correcte.
+    // Normalisation appliquée aux DEUX chemins depuis le 29/09/2026. Elle ne l'était qu'au
+    // chemin public, et c'était un vrai défaut, mesuré le 28/09 avec un compte qui voit
+    // toute la plate-forme : « 860141076687244 » trouvait le boîtier, « 8601 4107 6687 244 »
+    // rendait « introuvable ». Les étiquettes s'impriment avec des espaces, et personne ne
+    // devinait qu'il fallait les retirer.
+    //
+    // La règle diffère selon le chemin, et ce n'est pas un caprice :
+    //   • sans session, la plaque n'est JAMAIS une clé valide, donc on peut nettoyer
+    //     largement — cela rattrape « NR08 G1075 » mal recopié aussi bien qu'un IMEI ;
+    //   • avec session, la plaque EST une clé, et ses espaces sont signifiants (ils sont
+    //     en base tels quels). On ne nettoie donc que si le résultat est exactement un
+    //     IMEI de 15 chiffres. Nettoyer plus largement casserait une plaque entièrement
+    //     numérique — forme inexistante en Tunisie mais courante ailleurs, et le produit
+    //     a déjà un déploiement algérien.
+    const sansSeparateurs = q.replace(/[\s-]/g, '');
+    const nettoye = connecte
+      ? (/^\d{15}$/.test(sansSeparateurs) ? sansSeparateurs : q)
+      : sansSeparateurs;
+
     const url = connecte
       ? `${environment.apiUrl}/devicecheck/lookup`
       : `${environment.apiUrl}/devicecheck/status`;
-    const params = connecte
-      ? new HttpParams().set('q', q)
-      : new HttpParams().set('imei', q.replace(/[\s-]/g, ''));
+    const params = new HttpParams().set('q', nettoye);
 
     const public_ = this.modePublic;
 

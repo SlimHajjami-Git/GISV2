@@ -120,7 +120,7 @@ describe('DeviceCheckComponent — public réduit, complet pour les comptes conn
 
     http.expectNone(r => r.url.endsWith('/devicecheck/lookup'));
     const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
-    expect(requete.request.params.get('imei')).toBe('351234567890123');
+    expect(requete.request.params.get('q')).toBe('351234567890123');
     expect(requete.request.headers.has('Authorization')).toBe(false);
 
     requete.flush({ found: true, reporting: true, imei: '***0123', minutesSinceLastFrame: 3 });
@@ -135,8 +135,88 @@ describe('DeviceCheckComponent — public réduit, complet pour les comptes conn
     component.search();
 
     const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
-    expect(requete.request.params.get('imei')).toBe('351234567890123');
+    expect(requete.request.params.get('q')).toBe('351234567890123');
     requete.flush({ found: false });
+  });
+
+  // ───────── Le matricule, clé réelle des techniciens (29/09/2026) ─────────
+
+  it("sans session : un MATRICULE alphanumérique part tel quel, sans être charcuté", () => {
+    component.query = ' NR08G1075 ';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
+    // Le nettoyage ne vise que les IMEI recopiés avec des espaces : un matricule
+    // alphanumérique doit arriver intact au serveur.
+    expect(requete.request.params.get('q')).toBe('NR08G1075');
+    requete.flush({ found: true, reporting: true, imei: '***********1075' });
+    expect(component.result.reporting).toBe(true);
+  });
+
+  it('connecté : une PLAQUE garde ses espaces, qui sont signifiants en base', () => {
+    localStorage.setItem('auth_token', jetonValide());
+    component.query = '  233 TU 5102 ';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/lookup'));
+    expect(requete.request.params.get('q')).toBe('233 TU 5102');
+    requete.flush({ found: true, hasGps: true, connected: true });
+  });
+
+  it("connecté : un IMEI recopié AVEC des espaces est nettoyé lui aussi", () => {
+    localStorage.setItem('auth_token', jetonValide());
+    component.query = '8601 4107 6687 244';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/lookup'));
+    // Mesuré le 28/09 sur la production : avec les espaces, la route authentifiée
+    // répondait « introuvable » même à un compte qui voit toute la plate-forme.
+    expect(requete.request.params.get('q')).toBe('860141076687244');
+    requete.flush({ found: true, hasGps: true, connected: true });
+  });
+
+  it("connecté : une plaque ENTIÈREMENT NUMÉRIQUE garde ses espaces", () => {
+    localStorage.setItem('auth_token', jetonValide());
+    component.query = '123 4567';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/lookup'));
+    // Cette forme de plaque n'existe pas en Tunisie mais ailleurs si, et le produit a
+    // déjà un déploiement algérien : la nettoyer collerait les chiffres et ne trouverait
+    // plus rien. Sur le chemin authentifié on ne nettoie donc que les IMEI de 15 chiffres.
+    expect(requete.request.params.get('q')).toBe('123 4567');
+    requete.flush({ found: false });
+  });
+
+  it("sans session : un matricule mal recopié avec un espace est rattrapé", () => {
+    component.query = 'NR08 G1075';
+
+    component.search();
+
+    const requete = http.expectOne(r => r.url.endsWith('/devicecheck/status'));
+    // Sans session la plaque n'est jamais une clé valide : on peut nettoyer largement.
+    expect(requete.request.params.get('q')).toBe('NR08G1075');
+    requete.flush({ found: true, reporting: true });
+  });
+
+  it("sans session : un matricule porté par deux boîtiers est signalé, pas tranché", () => {
+    component.query = 'NR08G0885';
+
+    component.search();
+
+    http.expectOne(r => r.url.endsWith('/devicecheck/status')).flush({
+      found: true,
+      ambiguous: true,
+      message: 'Plusieurs boîtiers portent ce matricule. Cherchez par IMEI pour lever le doute.'
+    });
+
+    expect(component.result.ambiguous).toBe(true);
+    // Ce n'est pas une erreur : c'est une réponse légitime, à afficher telle quelle.
+    expect(component.error).toBe('');
   });
 
   it('sans session, 400 : le message du serveur est relayé tel quel', () => {
