@@ -340,4 +340,49 @@ describe('HelpService', () => {
       expect(etat('u-karim').ecransVus).toEqual(['tuto-reparations-gpa']);
     });
   });
+
+  // Karim, 28/09/2026 : « pour la production, ajoute le bouton Revoir les guides des
+  // écrans dans Aide » — pour un client déjà installé, pas seulement à la première connexion.
+  describe('« Revoir les guides des écrans » pour un client déjà installé (production)', () => {
+    const etat = (id: string) => JSON.parse(localStorage.getItem('calypso_aide_v1') || '{}')[id] || {};
+    const offreGpa = () => { modulesAutorises = ['vehicles', 'employees', 'maintenance', 'documents', 'users', 'accidents']; };
+
+    it('le bouton a ses écrans en GPA, même sans première connexion ; aucun en GPS', () => {
+      jest.spyOn(service, 'enDeveloppement').mockReturnValue(false);   // image de production
+      offreGpa();
+      compte = { id: 'u-installe', companyName: 'Transports Martin', isCompanyAdmin: true };
+      expect(service.ecransAvecGuide()).toContain('Réparations');
+      expect(service.ecransAvecGuide()).toContain('Véhicules');
+
+      modulesAutorises = [...modulesAutorises, 'monitoring'];          // offre GPS
+      expect(service.ecransAvecGuide()).toEqual([]);
+    });
+
+    it('un non-administrateur n\'a pas « Véhicules » (réservé à l\'administrateur)', () => {
+      jest.spyOn(service, 'enDeveloppement').mockReturnValue(false);
+      offreGpa();
+      compte = { id: 'u-employe', companyName: 'Transports Martin', isCompanyAdmin: false };
+      expect(service.ecransAvecGuide()).not.toContain('Véhicules');
+      expect(service.ecransAvecGuide()).toContain('Chauffeurs');
+    });
+
+    it('le clic rejoue les guides des écrans, sans conseil de première connexion ni premiers pas', () => {
+      jest.spyOn(service, 'enDeveloppement').mockReturnValue(false);
+      offreGpa();
+      compte = { id: 'u-installe', companyName: 'Transports Martin', isCompanyAdmin: true };
+      expect(service.visiteEcranAProposer('/reparations')).toBeNull();   // client installé : rien
+
+      service.reinitialiserEcrans();                                     // « Revoir les guides des écrans »
+
+      expect(etat('u-installe').guidesRejoues).toBe(true);
+      expect(service.visiteEcranAProposer('/reparations')?.id).toBe('tuto-reparations-gpa');
+      expect(service.visiteEcranAProposer('/vehicles')?.id).toBe('tuto-vehicules-gpa');
+      expect(service.conseilAMontrer()).toBe(false);
+      expect(service.doitProposerLeGuide()).toBe(false);
+      expect(service.premiersPasDuClient()).toEqual([]);
+
+      service.marquerEcranVu('tuto-reparations-gpa');                   // guide passé ou terminé
+      expect(service.visiteEcranAProposer('/reparations')).toBeNull();
+    });
+  });
 });
