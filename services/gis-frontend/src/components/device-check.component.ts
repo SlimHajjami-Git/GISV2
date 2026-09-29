@@ -110,7 +110,9 @@ export function messageErreurDiagnostic(
           <div *ngIf="result.found && !result.ambiguous" class="status-block" [class.has-data]="result.reporting" [class.no-frames]="!result.reporting">
             <h2>{{ result.reporting ? 'Le boîtier remonte' : 'Le boîtier ne remonte pas' }}</h2>
             <p *ngIf="result.message">{{ result.message }}</p>
-            <div class="info-row"><span class="label">IMEI</span><span class="value mono">{{ result.imei }}</span></div>
+            <!-- L'IMEI n'est renvoyé que si l'appelant l'a saisi : cherché par matricule,
+                 il vaut null et cette ligne doit disparaître au lieu de s'afficher vide. -->
+            <div class="info-row" *ngIf="result.imei"><span class="label">IMEI</span><span class="value mono">{{ result.imei }}</span></div>
             <div class="info-row" *ngIf="result.lastFrameAt">
               <span class="label">Dernière trame</span>
               <span class="value">{{ formatDate(result.lastFrameAt) }}</span>
