@@ -75,9 +75,12 @@ export interface CompanyOption {
               <h3 class="section-title">🏢 Société</h3>
               <div class="form-group">
                 <label for="companyId">Société *</label>
+                <!-- trackBy obligatoire : sans lui, une liste qui change d'identité
+                     détruit et recrée toutes les options, et le select retombe sur sa
+                     première entrée en perdant le choix de l'utilisateur (29/09/2026). -->
                 <select id="companyId" name="companyId" [(ngModel)]="formData.companyId" required>
                   <option [value]="null" disabled>-- Sélectionner une société --</option>
-                  <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
+                  <option *ngFor="let company of companies; trackBy: suiviSociete" [value]="company.id">{{ company.name }}</option>
                 </select>
               </div>
             </div>
@@ -1195,6 +1198,16 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   @Input() isOpen = false;
   @Input() vehicle: Vehicle | null = null;
   @Input() companies: CompanyOption[] = [];
+
+  /**
+   * Identité d'une société pour le *ngFor des options. Suivre l'identifiant, et non
+   * la référence de l'objet, laisse Angular RÉUTILISER les &lt;option&gt; existantes :
+   * le &lt;select&gt; garde alors la sélection de l'utilisateur même si le tableau est
+   * recréé. C'est ce qui manquait le 29/09/2026, quand la liste des sociétés était
+   * remappée à chaque cycle de détection et que le choix retombait sans cesse sur la
+   * première société.
+   */
+  suiviSociete = (_: number, societe: CompanyOption) => societe.id;
   @Input() defaultCompanyId: number | null = null;
   /**
    * Calypso 7: GPS hardware management (assign / new device / SIM / fuel sensor mode)

@@ -86,3 +86,73 @@ describe('AdminVehiclesComponent — fenêtre de suppression', () => {
     expect(texteFenetre()).not.toContain('4 reparation(s)');
   });
 });
+
+/**
+ * Liste déroulante des sociétés du formulaire « Nouveau véhicule ».
+ *
+ * <p>Signalement de Slim le 29/09/2026 : « la liste reste figée sur la première société,
+ * peu importe celle que je choisis ». Cause : `companiesForPopup` était un GETTER qui
+ * refaisait `map()` à chaque lecture, donc à chaque cycle de détection de changements.
+ * L'entrée `[companies]` du popup changeait d'identité en permanence, le `*ngFor` des
+ * `&lt;option&gt;` les détruisait et les recréait, et le `&lt;select&gt;` perdait la
+ * sélection pour retomber sur sa première entrée — celle passée en société par défaut.</p>
+ *
+ * <p>Un getter qui alloue est invisible à la lecture du code ; dans un gabarit il
+ * s'exécute des dizaines de fois par seconde. Ce test le rend visible : il échouait
+ * avant le correctif et interdit d'y revenir.</p>
+ */
+describe('AdminVehiclesComponent — liste des sociétés du popup', () => {
+  let component: AdminVehiclesComponent;
+
+  const societes = [
+    { id: 7, name: 'salah ben ali' },
+    { id: 4, name: 'HERTZ' },
+    { id: 1, name: 'BELIVE' },
+  ];
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, AdminVehiclesComponent],
+      providers: [AdminService, ApiService],
+    }).compileComponents();
+
+    const admin = TestBed.inject(AdminService);
+    jest.spyOn(admin, 'isAuthenticated').mockReturnValue(true);
+    jest.spyOn(admin, 'getVehicles').mockReturnValue(of([]));
+    jest.spyOn(admin, 'getClients').mockReturnValue(of(societes as any));
+
+    component = TestBed.createComponent(AdminVehiclesComponent).componentInstance;
+    component.ngOnInit();
+  });
+
+  it("garde la MÊME identité de tableau entre deux lectures", () => {
+    const premiere = component.companiesForPopup;
+    const seconde = component.companiesForPopup;
+
+    expect(seconde).toBe(premiere);
+  });
+
+  it("garde la même identité pour chaque société, ce qui permet à trackBy de réutiliser les options", () => {
+    const premiere = component.companiesForPopup[0];
+    const seconde = component.companiesForPopup[0];
+
+    expect(seconde).toBe(premiere);
+  });
+
+  it('contient bien toutes les sociétés chargées, dans leur ordre', () => {
+    expect(component.companiesForPopup).toEqual([
+      { id: 7, name: 'salah ben ali' },
+      { id: 4, name: 'HERTZ' },
+      { id: 1, name: 'BELIVE' },
+    ]);
+  });
+
+  it("retombe sur une liste vide quand le chargement échoue, sans lever d'erreur", async () => {
+    const admin = TestBed.inject(AdminService);
+    jest.spyOn(admin, 'getClients').mockReturnValue(throwError(() => new Error('réseau')));
+
+    component.ngOnInit();
+
+    expect(component.companiesForPopup).toEqual([]);
+  });
+});
