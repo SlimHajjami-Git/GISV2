@@ -91,6 +91,17 @@ public class AcquisitionScheduleTests
     }
 
     [Fact]
+    public void Un_apport_sans_date_d_achat_compte_au_debut_du_credit()
+    {
+        // Karim, 25/09/2026 : daté du début du crédit (01/03/2026), il entre dans l'année 2026.
+        var v = Leasing(500, 12, new DateTime(2026, 3, 1), 1, deposit: 4000, purchased: null);
+
+        var cost = AcquisitionSchedule.Cost(new[] { v }, new DateTime(2026, 1, 1), new DateTime(2026, 12, 31), Now);
+
+        cost.Should().Be(4000m + 7 * 500m, "apport au 01/03 + mensualités du 01/03 au 01/09");
+    }
+
+    [Fact]
     public void Un_apport_hors_periode_n_est_pas_compte()
     {
         // 225 TU 4836 : apport 3 000 daté du 02/09/2025 → hors de l'année 2026.

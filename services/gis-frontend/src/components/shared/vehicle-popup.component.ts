@@ -9,6 +9,7 @@ import { USER_PREF_PIPES } from '../../pipes/user-preference-pipes';
 import { trigger, transition, style, animate } from '@angular/animations';
 import { environment } from '../../environments/environment';
 import { fuelSensorModeForChosenDevice } from '../../admin/pages/vehicle-gps-save.helpers';
+import { rangerMarques } from '../../services/marques-courantes';
 
 interface Brand {
   id: number;
@@ -74,9 +75,12 @@ export interface CompanyOption {
               <h3 class="section-title">🏢 Société</h3>
               <div class="form-group">
                 <label for="companyId">Société *</label>
+                <!-- trackBy obligatoire : sans lui, une liste qui change d'identité
+                     détruit et recrée toutes les options, et le select retombe sur sa
+                     première entrée en perdant le choix de l'utilisateur (29/09/2026). -->
                 <select id="companyId" name="companyId" [(ngModel)]="formData.companyId" required>
                   <option [value]="null" disabled>-- Sélectionner une société --</option>
-                  <option *ngFor="let company of companies" [value]="company.id">{{ company.name }}</option>
+                  <option *ngFor="let company of companies; trackBy: suiviSociete" [value]="company.id">{{ company.name }}</option>
                 </select>
               </div>
             </div>
@@ -87,25 +91,37 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="name">Nom du véhicule *</label>
-                  <input type="text" id="name" name="name" [(ngModel)]="formData.name" required placeholder="Ex: Camion principal" />
+                  <input type="text" id="name" name="name" [(ngModel)]="formData.name" required placeholder="Ex: Camion principal" data-guide="vehicule-nom" />
                 </div>
                 <div class="form-group">
                   <label for="plate">Plaque *</label>
-                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" />
+                  <input type="text" id="plate" name="plate" [(ngModel)]="formData.plate" required placeholder="Ex: AB-123-CD" data-guide="vehicule-plaque" />
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="brandId">Marque *</label>
-                  <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required>
+                  <label for="brandId">Marque</label>
+                  <select id="brandId" name="brandId" [(ngModel)]="formData.brandId" (ngModelChange)="onBrandChange($event)" required data-guide="vehicule-marque">
                     <option [value]="null">-- Sélectionner --</option>
-                    <option *ngFor="let brand of brands" [value]="brand.id">{{ brand.name }}</option>
+                    <!-- Les plus courantes d'abord, puis les autres, chaque groupe par ordre
+                         alphabétique (Karim, 25/09/2026 ; marques-courantes.ts). -->
+                    <ng-container *ngIf="marquesCourantes.length; else toutesLesMarques">
+                      <optgroup label="Marques les plus courantes">
+                        <option *ngFor="let brand of marquesCourantes" [value]="brand.id">{{ brand.name }}</option>
+                      </optgroup>
+                      <optgroup label="Autres marques" *ngIf="autresMarques.length">
+                        <option *ngFor="let brand of autresMarques" [value]="brand.id">{{ brand.name }}</option>
+                      </optgroup>
+                    </ng-container>
+                    <ng-template #toutesLesMarques>
+                      <option *ngFor="let brand of autresMarques" [value]="brand.id">{{ brand.name }}</option>
+                    </ng-template>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="modelId">Modèle *</label>
-                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels">
+                  <label for="modelId">Modèle</label>
+                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels" data-guide="vehicule-modele">
                     <option [value]="null">{{ loadingModels ? 'Chargement...' : '-- Sélectionner --' }}</option>
                     <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
                   </select>
@@ -114,12 +130,12 @@ export interface CompanyOption {
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="year">Année *</label>
-                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" />
+                  <label for="year">Année</label>
+                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" data-guide="vehicule-annee" />
                 </div>
                 <div class="form-group">
-                  <label for="type">Type *</label>
-                  <select id="type" name="type" [(ngModel)]="formData.type" required>
+                  <label for="type">Type</label>
+                  <select id="type" name="type" [(ngModel)]="formData.type" required data-guide="vehicule-type">
                     <option value="">Sélectionner</option>
                     <option value="camion">Camion</option>
                     <option value="citadine">Citadine</option>
@@ -132,8 +148,8 @@ export interface CompanyOption {
 
               <div class="form-row">
                 <div class="form-group">
-                  <label for="status">Statut *</label>
-                  <select id="status" name="status" [(ngModel)]="formData.status" required>
+                  <label for="status">Statut</label>
+                  <select id="status" name="status" [(ngModel)]="formData.status" required data-guide="vehicule-statut">
                     <option value="">Sélectionner</option>
                     <option value="available">Disponible</option>
                     <option value="in_use">En service</option>
@@ -141,20 +157,20 @@ export interface CompanyOption {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label for="mileage">Compteur *</label>
-                  <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" />
+                  <label for="mileage">Kilométrage *</label>
+                  <input type="number" id="mileage" name="mileage" [(ngModel)]="formData.mileage" required min="0" placeholder="Ex: 50000" data-guide="vehicule-compteur" />
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label for="color">Couleur</label>
-                  <input type="text" id="color" name="color" [(ngModel)]="formData.color" placeholder="Ex: Blanc" />
+                  <input type="text" id="color" name="color" [(ngModel)]="formData.color" placeholder="Ex: Blanc" data-guide="vehicule-couleur" />
                 </div>
                 <div class="form-group">
                   <label for="fuelType">Type de carburant *</label>
-                  <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required>
-                    <option value="">Sélectionner</option>
+                  <select id="fuelType" name="fuelType" [(ngModel)]="formData.fuelType" required data-guide="vehicule-carburant">
+                    <option value="">-- Sélectionner --</option>
                     <option *ngFor="let ft of fuelTypes" [value]="ft.code">{{ ft.name }}</option>
                   </select>
                 </div>
@@ -163,11 +179,11 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="fuelTankCapacity">Capacité réservoir (L)</label>
-                  <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" />
+                  <input type="number" id="fuelTankCapacity" name="fuelTankCapacity" [(ngModel)]="formData.fuelTankCapacity" min="0" placeholder="Ex: 60" data-guide="vehicule-reservoir" />
                 </div>
                 <div class="form-group">
                   <label for="registrationDate">Date de mise en circulation</label>
-                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" />
+                  <input type="date" id="registrationDate" name="registrationDate" [(ngModel)]="formData.registrationDate" data-guide="vehicule-mise-en-circulation" />
                 </div>
               </div>
             </div>
@@ -413,21 +429,24 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="acquisitionType">Type d'acquisition</label>
-                  <select id="acquisitionType" name="acquisitionType" [(ngModel)]="formData.acquisitionType">
+                  <select id="acquisitionType" name="acquisitionType" [(ngModel)]="formData.acquisitionType" data-guide="vehicule-acquisition">
                     <option value="purchase">Achat</option>
-                    <option value="leasing">Auto-financement</option>
+                    <!-- Valeur technique « leasing » inchangée (base, API) ; libellé « Crédit » (Karim, 25/09/2026). -->
+                    <option value="leasing">Crédit</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label for="purchaseDate">Date d'achat</label>
-                  <input type="date" id="purchaseDate" name="purchaseDate" [(ngModel)]="formData.purchaseDate" />
+                  <input type="date" id="purchaseDate" name="purchaseDate" [(ngModel)]="formData.purchaseDate" data-guide="vehicule-date-achat" />
                 </div>
               </div>
               <div class="form-row">
                 <div class="form-group">
-                  <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Montant Auto-financement' : "Prix d'achat" }}</label>
+                  <!-- En Crédit, ce montant est l'APPORT : le serveur en fait la ligne « Apport » de
+                       l'échéancier, en plus des traites (AcquisitionScheduleSync). -->
+                  <label for="purchasePrice">{{ formData.acquisitionType === 'leasing' ? 'Apport' : "Prix d'achat" }}</label>
                   <div class="input-with-suffix">
-                    <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" />
+                    <input type="number" id="purchasePrice" name="purchasePrice" [(ngModel)]="formData.purchasePrice" min="0" placeholder="0.00" data-guide="vehicule-prix-achat" />
                     <span class="input-suffix">{{ currencyCode }}</span>
                   </div>
                 </div>
@@ -436,28 +455,28 @@ export interface CompanyOption {
               <ng-container *ngIf="formData.acquisitionType === 'leasing'">
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="leasingMonthlyPayment">Traite mensuelle</label>
+                    <label for="leasingMonthlyPayment">Traite mensuelle *</label>
                     <div class="input-with-suffix">
-                      <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" />
+                      <input type="number" id="leasingMonthlyPayment" name="leasingMonthlyPayment" [(ngModel)]="formData.leasingMonthlyPayment" min="0" placeholder="0.00" data-guide="vehicule-traite" />
                       <span class="input-suffix">{{ currencyCode }}/mois</span>
                     </div>
                   </div>
                   <div class="form-group">
-                    <label for="leasingDurationMonths">Durée du leasing</label>
+                    <label for="leasingDurationMonths">Durée du crédit *</label>
                     <div class="input-with-suffix">
-                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="36" />
+                      <input type="number" id="leasingDurationMonths" name="leasingDurationMonths" [(ngModel)]="formData.leasingDurationMonths" min="1" max="120" placeholder="Ex: 36" data-guide="vehicule-duree-leasing" />
                       <span class="input-suffix">mois</span>
                     </div>
                   </div>
                 </div>
                 <div class="form-row">
                   <div class="form-group">
-                    <label for="leasingStartDate">Date début leasing</label>
-                    <input type="date" id="leasingStartDate" name="leasingStartDate" [(ngModel)]="formData.leasingStartDate" />
+                    <label for="leasingStartDate">Date de début du crédit *</label>
+                    <input type="date" id="leasingStartDate" name="leasingStartDate" [(ngModel)]="formData.leasingStartDate" data-guide="vehicule-debut-leasing" />
                   </div>
                   <div class="form-group">
-                    <label for="leasingPaymentDay">Jour de paiement</label>
-                    <select id="leasingPaymentDay" name="leasingPaymentDay" [(ngModel)]="formData.leasingPaymentDay">
+                    <label for="leasingPaymentDay">Jour de paiement *</label>
+                    <select id="leasingPaymentDay" name="leasingPaymentDay" [(ngModel)]="formData.leasingPaymentDay" data-guide="vehicule-jour-paiement">
                       <option [ngValue]="null">— Choisir —</option>
                       <option *ngFor="let d of paymentDays" [ngValue]="d">{{ d }}</option>
                     </select>
@@ -562,7 +581,8 @@ export interface CompanyOption {
         <!-- Panel Footer -->
         <div class="panel-footer">
           <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
-          <button type="button" class="btn-primary" (click)="onSubmit()">
+          <!-- data-guide : dernier geste du tutoriel Véhicules (help-content.ts), en création seulement. -->
+          <button type="button" class="btn-primary" (click)="onSubmit()" [attr.data-guide]="vehicle?.id ? null : 'vehicule-ajouter'">
             {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
           </button>
         </div>
@@ -1178,6 +1198,16 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   @Input() isOpen = false;
   @Input() vehicle: Vehicle | null = null;
   @Input() companies: CompanyOption[] = [];
+
+  /**
+   * Identité d'une société pour le *ngFor des options. Suivre l'identifiant, et non
+   * la référence de l'objet, laisse Angular RÉUTILISER les &lt;option&gt; existantes :
+   * le &lt;select&gt; garde alors la sélection de l'utilisateur même si le tableau est
+   * recréé. C'est ce qui manquait le 29/09/2026, quand la liste des sociétés était
+   * remappée à chaque cycle de détection et que le choix retombait sans cesse sur la
+   * première société.
+   */
+  suiviSociete = (_: number, societe: CompanyOption) => societe.id;
   @Input() defaultCompanyId: number | null = null;
   /**
    * Calypso 7: GPS hardware management (assign / new device / SIM / fuel sensor mode)
@@ -1194,6 +1224,9 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   gpsMode: 'existing' | 'new' = 'existing';
 
   brands: Brand[] = [];
+  /** Liste « Marque » : les plus courantes, puis les autres (poserMarques). */
+  marquesCourantes: Brand[] = [];
+  autresMarques: Brand[] = [];
   models: VehicleModel[] = [];
 
   /**
@@ -1257,7 +1290,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     mileage: 0,
     fuelTankCapacity: null,
     color: '',
-    fuelType: 'diesel',
+    fuelType: '',
     companyId: null,
     hasGPS: false,
     gpsDeviceId: undefined,
@@ -1690,7 +1723,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   private loadBrandsAndResolve() {
     this.http.get<Brand[]>('/api/brands').subscribe({
       next: (brands) => {
-        this.brands = brands;
+        this.poserMarques(brands);
         // If we have a brand name but no brandId, find the matching brand
         if (this.formData.brand && !this.formData.brandId) {
           const matchingBrand = brands.find(b => 
@@ -1706,19 +1739,27 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.cdr.detectChanges();
       },
       error: () => {
-        this.brands = [];
+        this.poserMarques([]);
       }
     });
+  }
+
+  /** Marques reçues de l'API : toutes pour les recherches, rangées pour la liste. */
+  private poserMarques(brands: Brand[]): void {
+    this.brands = brands;
+    const { courantes, autres } = rangerMarques(brands);
+    this.marquesCourantes = courantes;
+    this.autresMarques = autres;
   }
 
   loadBrands() {
     this.http.get<Brand[]>('/api/brands').subscribe({
       next: (brands) => {
-        this.brands = brands;
+        this.poserMarques(brands);
         this.cdr.detectChanges();
       },
       error: () => {
-        this.brands = [];
+        this.poserMarques([]);
       }
     });
   }
@@ -1898,7 +1939,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       status: 'available',
       mileage: 0,
       color: '',
-      fuelType: 'diesel',
+      fuelType: '',
       companyId: this.defaultCompanyId,
       hasGPS: false,
       gpsDeviceId: undefined,
@@ -1923,7 +1964,36 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     this.gpsMode = 'existing';
   }
 
+  /**
+   * Champs marqués d'une étoile encore vides, par leur libellé. Karim, 25/09/2026 :
+   * l'étoile sur les champs obligatoires, et seulement eux. Le serveur n'exige que le
+   * nom : un carburant vide y devenait « diesel » sans rien dire, et un Crédit sans
+   * durée ni date de début n'avait aucune traite dans l'échéancier.
+   */
+  champsObligatoiresManquants(): string[] {
+    const f = this.formData;
+    const vide = (v: unknown) => v === null || v === undefined || String(v).trim() === '' || String(v) === 'null';
+    const manquants: string[] = [];
+    if (this.companies?.length && vide(f.companyId)) manquants.push('Société');
+    if (vide(f.name)) manquants.push('Nom du véhicule');
+    if (vide(f.plate)) manquants.push('Plaque');
+    if (vide(f.mileage)) manquants.push('Kilométrage');
+    if (vide(f.fuelType)) manquants.push('Type de carburant');
+    if (f.acquisitionType === 'leasing') {
+      if (vide(f.leasingMonthlyPayment)) manquants.push('Traite mensuelle');
+      if (vide(f.leasingDurationMonths)) manquants.push('Durée du crédit');
+      if (vide(f.leasingStartDate)) manquants.push('Date de début du crédit');
+      if (vide(f.leasingPaymentDay)) manquants.push('Jour de paiement');
+    }
+    return manquants;
+  }
+
   onSubmit() {
+    const manquants = this.champsObligatoiresManquants();
+    if (manquants.length) {
+      alert('Renseignez les champs obligatoires (*) : ' + manquants.join(', ') + '.');
+      return;
+    }
     // Calypso 7: when the popup runs in non-admin context the GPS section
     // isn't rendered, so the local formData GPS fields might still hold
     // their initial blank values. We MUST NOT emit those — the parent

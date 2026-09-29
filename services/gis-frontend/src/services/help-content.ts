@@ -1,4 +1,4 @@
-import { HelpArticle, GuideEtape } from './help-content.model';
+import { HelpArticle, GuideEtape, VisiteEcran } from './help-content.model';
 
 /**
  * Aide integree Calypso - TOUT le texte vu par le client est ici.
@@ -68,7 +68,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     etapes: [
       "Allez dans le menu « Véhicules ».",
       "Cliquez sur « Nouveau véhicule » en haut de la liste.",
-      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Marque », « Modèle », « Année », « Type », « Statut », « Compteur » et « Type de carburant ».",
+      "Renseignez les champs obligatoires, repérables à l'étoile : « Nom du véhicule », « Plaque », « Kilométrage » et « Type de carburant » — et, pour un crédit, « Traite mensuelle », « Durée du crédit », « Date de début du crédit » et « Jour de paiement ».",
       "Complétez si vous le souhaitez la couleur, la capacité du réservoir et la date de mise en circulation.",
       "Cliquez sur « Ajouter »."
     ],
@@ -76,7 +76,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Le bouton « Nouveau véhicule » n'apparaît que si vous êtes administrateur de votre société. Un utilisateur standard consulte la liste mais ne crée pas de véhicule.",
       "« Nom du véhicule » est le nom d'usage, celui que vos équipes emploient au quotidien (« Camion principal », « Fourgon atelier »). « Plaque » est l'immatriculation officielle.",
       "Le « Modèle » reste inactif tant que la « Marque » n'est pas choisie : c'est la marque qui détermine les modèles proposés.",
-      "La section « Acquisition & financement » sert à suivre un achat ou un auto-financement. Si vous choisissez « Auto-financement », des champs supplémentaires apparaissent pour la traite mensuelle, la durée et le jour de prélèvement — et Calypso construit l'échéancier."
+      "La section « Acquisition & financement » sert à suivre un achat ou un crédit. Si vous choisissez « Crédit », le montant devient l'« Apport », et des champs supplémentaires apparaissent pour la traite mensuelle, la durée, la date de début et le jour de paiement — Calypso construit l'échéancier."
     ],
     aRetenir: "Une plaque ne peut exister qu'une fois dans votre société. Si le message « Le matricule … est déjà utilisé dans votre société. » s'affiche, le véhicule existe déjà : cherchez-le dans la liste plutôt que d'en créer un second.",
     video: { titre: 'Ajouter un véhicule', url: '' }
@@ -115,7 +115,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       "Validez avec « Corriger »."
     ],
     paragraphes: [
-      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Compteur ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
+      "Il existe un second chemin : le bouton « Modifier » ouvre le formulaire du véhicule, où figure aussi un champ « Kilométrage ». Il fonctionne, mais il ne demande aucun motif et ne laisse donc aucune trace de la raison du changement.",
       "Préférez le bouton « Corriger » dès qu'il s'agit de rattraper une erreur : la correction est horodatée et conservée avec son motif et le nom de son auteur. Ce journal n'est pas consultable depuis l'application — il sert en cas de litige ou de contrôle, et notre support peut le retrouver.",
       "Le bouton « Corriger » n'apparaît que pour les véhicules sans boîtier GPS. Quand un boîtier remonte le kilométrage, c'est lui qui fait foi, et la ligne affiche alors une petite antenne à la place du bouton.",
       "Le bouton « Modifier » refuse une valeur inférieure au compteur actuel, avec le message « Un compteur ne recule pas : vérifiez la valeur. » C'est une protection contre les fautes de frappe.",
@@ -927,6 +927,33 @@ export const ARTICLES_AIDE: HelpArticle[] = [
 ];
 
 /**
+ * Conseil de premiere connexion (Karim, 25/09/2026) : une fenetre au centre de
+ * l'ecran, UNE SEULE FOIS, juste avant la visite guidee — « il ne revient ensuite
+ * plus jamais ». Elle donne la raison des tutoriels qui passent par tous les
+ * champs : des fiches completes, ce sont des chiffres justes et des problemes
+ * reperes, « et meme dans les rapports ». Son bouton lance la visite.
+ */
+export const CONSEIL_PREMIERE_CONNEXION: {
+  titre: string;
+  /** Chaque paragraphe en morceaux, pour mettre l'essentiel en gras sans HTML. */
+  paragraphes: { texte: string; gras?: boolean }[][];
+  bouton: string;
+} = {
+  titre: 'Un conseil avant de commencer',
+  paragraphes: [
+    [
+      { texte: 'Pour que Calypso vous donne des informations justes sur votre parc — coûts réels, échéances, entretiens à venir —, renseignez ' },
+      { texte: 'tous les champs', gras: true },
+      { texte: ' de chaque fiche, même ceux qui sont facultatifs.' }
+    ],
+    [
+      { texte: "Plus vos fiches sont complètes, plus vite vous repérez ce qui ne va pas — une assurance qui expire, un entretien en retard, un véhicule qui coûte trop cher —, à l'écran comme dans vos rapports." }
+    ]
+  ],
+  bouton: "C'est compris, on commence"
+};
+
+/**
  * Visite guidee de premiere connexion.
  *
  * Chaque etape vise un element portant data-guide="...". Si le module n'est pas
@@ -934,25 +961,13 @@ export const ARTICLES_AIDE: HelpArticle[] = [
  * s'adapter a l'abonnement du client, pas montrer des ecrans qu'il n'a pas.
  */
 /*
- * Parcours defini par Karim le 23/09/2026 pour l'offre GPA — l'ordre dans
- * lequel un nouveau client doit s'y prendre pour commencer a travailler :
- * son premier vehicule (ou l'import Excel de tout son parc), ses chauffeurs,
- * les echeances de ses documents, puis un programme d'entretien et son
- * affectation aux vehicules. Le rapport n'en fait plus partie (« le reste on
- * verra si c'est necessaire »). La carte reste reservee aux offres GPS et se
- * place apres les chauffeurs ; ce qu'on ajoute pour le GPS se decidera ensuite.
+ * Offre GPS seulement depuis le 25/09/2026. En GPA, Karim a retire la visite :
+ * « on l'accompagne pour qu'il remplisse les ecrans necessaires au debut » —
+ * le conseil de premiere connexion mene directement aux PREMIERS_PAS_GPA (plus
+ * bas), et chaque autre ecran a son guide. Le GPS garde cette visite tant que
+ * ses propres guides d'ecran ne sont pas faits.
  */
 export const ETAPES_GUIDE: GuideEtape[] = [
-  {
-    id: 'bienvenue',
-    titre: 'Bienvenue dans Calypso',
-    // Étape jouée pour TOUTES les offres : elle ne cite que ce que tout client
-    // a — pas de nombre d'étapes non plus, il change avec l'abonnement.
-    texte: "Quelques étapes pour démarrer, dans l'ordre : votre premier véhicule, vos chauffeurs, les échéances de vos documents, un programme d'entretien, puis les adresses qui reçoivent vos alertes par e-mail. Votre parc se trouve dans le menu « Exploitation ». Vous pouvez arrêter à tout moment et reprendre depuis la rubrique « Aide » du menu.",
-    cible: 'menu-flotte',
-    sauf: 'monitoring',
-    route: '/dashboard'
-  },
   // Offre GPS (Karim, 23/09/2026) : « presque la meme chose que GPA », sans
   // l'ajout de vehicule — les vehicules sont crees par l'equipe Belive avec
   // leurs boitiers — plus la carte et les zones. Le module `monitoring` signe
@@ -972,18 +987,6 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     cible: 'vehicules-liste',
     module: 'monitoring',
     moduleRoute: 'vehicles',
-    route: '/vehicles'
-  },
-  {
-    id: 'ajouter-vehicule',
-    titre: 'Ajoutez votre premier véhicule',
-    sauf: 'monitoring',
-    // Le modele d'import a cinq feuilles (verifie dans DataPortController le
-    // 23/09/2026) : Vehicules, Entretiens, Reparations, Carburant, Depenses —
-    // toutes lues et creees a l'import. Karim tient a ce que la visite le dise.
-    texte: "« Nouveau véhicule » ouvre la fiche à remplir ; seuls les champs marqués d'une étoile sont obligatoires. Vous avez déjà vos données dans un fichier ? Importez tout d'un coup — véhicules, entretiens, réparations, pleins de carburant et dépenses : menu Paramètres, onglet « Données », « Télécharger le modèle » puis « Importer un fichier Excel ».",
-    cible: 'vehicules-nouveau',
-    module: 'vehicles',
     route: '/vehicles'
   },
   {
@@ -1026,11 +1029,10 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     module: 'maintenance',
     route: '/entretien-programmable'
   },
-  // Etape ajoutee par Karim le 23/09/2026 pour les deux offres : « une etape
-  // tres importante qu'on a oubliee, l'alerte par mail ». Avant-derniere en
-  // GPS (le rapport suit), derniere en GPA. Le module `users` est dans tous
-  // les plans ; si l'utilisateur n'a pas ce droit, la cible est absente et
-  // l'etape est sautee.
+  // Etape ajoutee par Karim le 23/09/2026 : « une etape tres importante qu'on
+  // a oubliee, l'alerte par mail ». Avant-derniere, le rapport suit. Le module
+  // `users` est dans tous les plans ; si l'utilisateur n'a pas ce droit, la
+  // cible est absente et l'etape est sautee.
   {
     id: 'alertes-email',
     titre: 'Recevez vos alertes par e-mail',
@@ -1039,11 +1041,7 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     texte: "Calypso envoie une copie de ses alertes par e-mail — assurance, visite technique, entretien, permis — mais seulement aux adresses inscrites ici. Ouvrez l'onglet « Alertes par email », puis « Ajouter une adresse » : une adresse et un type d'alerte. Sans adresse, personne n'est prévenu par mail.",
     cible: 'alertes-email-onglet',
     module: 'users',
-    route: '/users',
-    // Derniere etape du parcours GPA : « Terminer » depose le client sur
-    // Vehicules, pour qu'il ajoute les siens (Karim, 23/09/2026). En GPS ce
-    // n'est pas la derniere etape, la valeur n'y sert pas.
-    routeApresFin: '/vehicles'
+    route: '/users'
   },
   // Offre GPS seulement (Karim, 23/09/2026 : « ajoute rapport » pour le GPS,
   // retire pour la GPA). Toutes les offres GPS ont le module Rapports ; si un
@@ -1061,3 +1059,844 @@ export const ETAPES_GUIDE: GuideEtape[] = [
     routeApresFin: '/monitoring'
   }
 ];
+
+/**
+ * Tutoriels des ecrans (Karim, 24/09/2026) : pour un NOUVEL utilisateur — celui
+ * dont c'est la premiere connexion — chaque ecran ouvert propose un tutoriel pas a
+ * pas, a chaque acces, tant qu'il ne l'a ni passe ni termine. Le client fait
+ * lui-meme chaque geste ; la bulle lui dit lequel.
+ *
+ * Pilote : l'ecran « Vehicules » de l'offre GPA, valide par Karim le 24/09/2026,
+ * puis les autres ecrans GPA sur le meme modele, un par un, chacun valide avec lui.
+ * Regle de Karim (24/09/2026, soir) : le tutoriel passe par TOUS les champs de la
+ * fiche, dans l'ordre ; « Suivant » est grise tant qu'un champ obligatoire est vide,
+ * actif sur un champ facultatif (titre « (facultatif) ») : « c'est a lui de choisir »,
+ * car un client revient rarement completer une fiche plus tard. Libelles cites TELS
+ * QU'A L'ECRAN, meme sans accents : corriger les ecrans (partages avec le GPS)
+ * attend la fin de la validation GPA (« il faut qu'on valide ensemble GPA »).
+ */
+export const VISITES_ECRANS: VisiteEcran[] = [
+  {
+    id: 'tuto-vehicules-gpa',
+    titre: 'Écran Véhicules',
+    route: '/vehicles',
+    module: 'vehicles',
+    // GPA seulement pour le pilote : en GPS, les vehicules sont crees par
+    // l'equipe Belive avec leurs boitiers.
+    sauf: 'monitoring',
+    // « Nouveau vehicule » est reserve aux administrateurs (*ngIf="isAdmin").
+    adminSeulement: true,
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
+    etapes: [
+      {
+        id: "tuto-vehicule-nouveau",
+        titre: "Ajoutez votre premier véhicule",
+        texte: "Cliquez sur « Nouveau véhicule » : la fiche à remplir s'ouvre.",
+        cible: "vehicules-nouveau",
+        action: "clic"
+      },
+      {
+        id: "tuto-vehicule-nom",
+        titre: "Le nom du véhicule",
+        texte: "Donnez-lui un nom qui vous parle, par exemple « Camion principal » ou « Clio du commercial ». Puis cliquez sur « Suivant ».",
+        cible: "vehicule-nom",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-plaque",
+        titre: "La plaque",
+        texte: "Saisissez son immatriculation, telle qu'elle figure sur la carte grise.",
+        cible: "vehicule-plaque",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-marque",
+        titre: "La marque (facultatif)",
+        texte: "Choisissez la marque dans la liste.",
+        cible: "vehicule-marque",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-modele",
+        titre: "Le modèle (facultatif)",
+        texte: "Choisissez maintenant le modèle : la liste suit la marque choisie.",
+        cible: "vehicule-modele",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-annee",
+        titre: "L'année (facultatif)",
+        texte: "Indiquez l'« Année » du véhicule. L'année en cours est déjà inscrite : corrigez-la si besoin.",
+        cible: "vehicule-annee",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-type",
+        titre: "Le type (facultatif)",
+        texte: "Choisissez le « Type » du véhicule dans la liste.",
+        cible: "vehicule-type",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-statut",
+        titre: "Le statut (facultatif)",
+        texte: "Choisissez son « Statut » : « Disponible », « En service » ou « En maintenance ».",
+        cible: "vehicule-statut",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-compteur",
+        titre: "Le kilométrage",
+        texte: "Saisissez le « Kilométrage » affiché au compteur du véhicule.",
+        cible: "vehicule-compteur",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-couleur",
+        titre: "La couleur (facultatif)",
+        texte: "Indiquez sa « Couleur », par exemple « Blanc ».",
+        cible: "vehicule-couleur",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-carburant",
+        titre: "Le carburant",
+        texte: "Choisissez son « Type de carburant » dans la liste.",
+        cible: "vehicule-carburant",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-reservoir",
+        titre: "Le réservoir (facultatif)",
+        texte: "Saisissez la « Capacité réservoir (L) » du véhicule, en litres.",
+        cible: "vehicule-reservoir",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-mise-en-circulation",
+        titre: "La mise en circulation (facultatif)",
+        texte: "Indiquez la « Date de mise en circulation » inscrite sur la carte grise.",
+        cible: "vehicule-mise-en-circulation",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-acquisition",
+        titre: "Le mode d'acquisition (facultatif)",
+        texte: "Choisissez le « Type d'acquisition » : « Achat » ou « Crédit ».",
+        cible: "vehicule-acquisition",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-date-achat",
+        titre: "La date d'achat (facultatif)",
+        texte: "Indiquez la « Date d'achat » du véhicule.",
+        cible: "vehicule-date-achat",
+        action: "valeur",
+        facultatif: true
+      },
+      // Montant facultatif : « Prix d'achat », ou « Apport » en Credit (un credit peut
+      // n'en avoir aucun ; le serveur en fait la ligne « Apport » de l'echeancier).
+      // Credit : les champs qui apparaissent ensuite sont OBLIGATOIRES (Karim,
+      // 25/09/2026 : « c'est tres important ») — ils fondent l'echeancier. Ils
+      // n'existent pas en « Achat » : leurs bulles sont alors enjambees.
+      {
+        id: "tuto-vehicule-prix-achat",
+        titre: "Le montant (facultatif)",
+        texte: "Saisissez le « Prix d'achat » du véhicule ou, pour un crédit, l'« Apport ».",
+        cible: "vehicule-prix-achat",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-vehicule-traite",
+        titre: "La traite mensuelle",
+        texte: "Saisissez le montant de la « Traite mensuelle ».",
+        cible: "vehicule-traite",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-duree-leasing",
+        titre: "La durée du crédit",
+        texte: "Indiquez la « Durée du crédit », en mois.",
+        cible: "vehicule-duree-leasing",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-debut-leasing",
+        titre: "Le début du crédit",
+        texte: "Indiquez la « Date de début du crédit ».",
+        cible: "vehicule-debut-leasing",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-jour-paiement",
+        titre: "Le jour de paiement",
+        texte: "Choisissez le « Jour de paiement » de chaque traite dans le mois.",
+        cible: "vehicule-jour-paiement",
+        action: "valeur"
+      },
+      {
+        id: "tuto-vehicule-ajouter",
+        titre: "Enregistrez le véhicule",
+        texte: "Cliquez sur « Ajouter » pour enregistrer le véhicule.",
+        cible: "vehicule-ajouter",
+        action: "disparition"
+      }
+    ]
+  },
+  {
+    id: 'tuto-chauffeurs-gpa',
+    titre: 'Écran Chauffeurs',
+    route: '/drivers',
+    module: 'employees',
+    // GPA seulement pendant la validation avec Karim (le GPS viendra ensuite).
+    sauf: 'monitoring',
+    // Pas reserve a l'administrateur : « Nouveau chauffeur » est ouvert a tout
+    // utilisateur qui a l'ecran Chauffeurs (employees.component.html).
+    // Fiche : employee-popup.component.ts. Prenom et Nom suffisent au serveur
+    // (CreateDriverCommand) ; rien n'est prerempli d'utile.
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
+    etapes: [
+      {
+        id: "tuto-chauffeur-nouveau",
+        titre: "Ajoutez votre premier chauffeur",
+        texte: "Cliquez sur « Nouveau chauffeur » : la fiche à remplir s'ouvre.",
+        cible: "chauffeurs-nouveau",
+        action: "clic"
+      },
+      {
+        id: "tuto-chauffeur-prenom",
+        titre: "Le prénom",
+        texte: "Saisissez le prénom du chauffeur. Puis cliquez sur « Suivant ».",
+        cible: "chauffeur-prenom",
+        action: "valeur"
+      },
+      {
+        id: "tuto-chauffeur-nom",
+        titre: "Le nom",
+        texte: "Saisissez maintenant son nom de famille.",
+        cible: "chauffeur-nom",
+        action: "valeur"
+      },
+      {
+        id: "tuto-chauffeur-email",
+        titre: "Son e-mail (facultatif)",
+        texte: "Saisissez l'« Email » du chauffeur.",
+        cible: "chauffeur-email",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-telephone",
+        titre: "Son téléphone (facultatif)",
+        texte: "Saisissez son numéro de « Téléphone ».",
+        cible: "chauffeur-telephone",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-piece-identite",
+        titre: "Sa pièce d'identité (facultatif)",
+        texte: "Saisissez le « N° de pièce d'identité » du chauffeur.",
+        cible: "chauffeur-piece-identite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-naissance",
+        titre: "Sa date de naissance (facultatif)",
+        texte: "Indiquez sa « Date de naissance ».",
+        cible: "chauffeur-naissance",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-embauche",
+        titre: "Sa date d'embauche (facultatif)",
+        texte: "Indiquez sa « Date d'embauche ».",
+        cible: "chauffeur-embauche",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis-numero",
+        titre: "Le numéro de permis (facultatif)",
+        texte: "Saisissez le « N° Permis » du chauffeur.",
+        cible: "chauffeur-permis-numero",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis-categorie",
+        titre: "La catégorie du permis (facultatif)",
+        texte: "Choisissez la « Catégorie » de son permis : B, C, D…",
+        cible: "chauffeur-permis-categorie",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-permis",
+        titre: "L'expiration du permis",
+        texte: "Indiquez la « Date d'expiration » de son permis : vous serez prévenu avant l'échéance.",
+        cible: "chauffeur-permis-expiration",
+        action: "valeur"
+      },
+      {
+        id: "tuto-chauffeur-permis-rappel",
+        titre: "Le rappel (facultatif)",
+        texte: "Indiquez le nombre de jours du « Rappel avant (jours) » : 30 est proposé par défaut.",
+        cible: "chauffeur-permis-rappel",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-vehicule",
+        titre: "Son véhicule (facultatif)",
+        texte: "Choisissez le « Véhicule » qu'il conduit.",
+        cible: "chauffeur-vehicule",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-chauffeur-creer",
+        titre: "Enregistrez le chauffeur",
+        texte: "Cliquez sur « Créer le chauffeur » pour enregistrer le chauffeur.",
+        cible: "chauffeur-creer",
+        action: "disparition"
+      }
+    ]
+  },
+  {
+    // Karim, 24/09/2026 : « il faut ajouter alertes par mail ». Ecran Utilisateurs,
+    // onglet « Alertes par email » (alert-emails.component.ts). Sans adresse
+    // inscrite ici, personne n'est prevenu par e-mail.
+    id: 'tuto-alertes-email-gpa',
+    titre: 'Alertes par e-mail',
+    route: '/users',
+    module: 'users',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-alerte-onglet',
+        titre: 'Recevez vos alertes par e-mail',
+        texte: "Cliquez sur l'onglet « Alertes par email ».",
+        cible: 'alertes-email-onglet',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-alerte-ajouter',
+        titre: 'Ajoutez une adresse',
+        texte: 'Cliquez sur « Ajouter une adresse ».',
+        cible: 'alerte-ajouter',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-alerte-adresse',
+        titre: "L'adresse e-mail",
+        // La premiere fois, l'ecran propose l'adresse de l'utilisateur (toggleAddForm).
+        texte: "Saisissez l'adresse qui recevra les alertes. Puis cliquez sur « Suivant ».",
+        cible: 'alerte-adresse',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-alerte-type',
+        titre: "Le type d'alerte",
+        // Une ligne = une adresse + UN type (ALERT_TYPES ; « Accident » masque en GPA).
+        texte: "Choisissez le « Type d'alerte » : Assurance, Visite Technique, Entretien, Permis… Pour recevoir plusieurs types, vous ajouterez une ligne par type.",
+        cible: 'alerte-type',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-alerte-enregistrer',
+        titre: "Enregistrez l'adresse",
+        texte: 'Cliquez sur « Enregistrer ».',
+        cible: 'alerte-enregistrer',
+        action: 'disparition'
+      },
+      {
+        // Karim, 26/09/2026 : après « Enregistrer », dire qu'il peut couvrir les autres
+        // types d'alerte, et mettre plusieurs adresses sur un même type. Bulle
+        // d'information (pas de geste) : « Terminer » la ferme. Elle encadre « Ajouter
+        // une adresse », revenu à l'écran une fois l'adresse enregistrée.
+        id: 'tuto-alerte-autres',
+        titre: "D'autres alertes, d'autres adresses",
+        texte: "Votre adresse est enregistrée. Ajoutez de la même façon les autres types d'alerte — Assurance, Taxe Circulation, Visite Technique, Entretien, Permis — et, pour un même type, plusieurs adresses : chacune sera avertie. Tout se fait avec « Ajouter une adresse ».",
+        cible: 'alerte-ajouter'
+      }
+    ]
+  },
+  {
+    // Ecran Echeances (documents.component.ts) : pas de bouton de creation, les lignes
+    // existent d'office (assurance, visite technique, vignette par vehicule, « Non
+    // renseignee » chez un nouveau client). On passe par le crayon « Modifier
+    // l'echeance » (simple date), pas par « Renouveler » (date de paiement et montant
+    // qui cree une depense). Sans vehicule, aucune ligne : le tutoriel n'a pas lieu.
+    id: 'tuto-echeances-gpa',
+    titre: 'Écran Échéances',
+    route: '/documents',
+    autresRoutes: ['/echeances'],
+    module: 'documents',
+    sauf: 'monitoring',
+    etapes: [
+      {
+        id: 'tuto-echeance-modifier',
+        titre: 'Renseignez vos échéances',
+        texte: "Chaque véhicule a trois lignes : assurance, visite technique et vignette. Cliquez sur le crayon « Modifier l'échéance » : la fenêtre de saisie s'ouvre.",
+        cible: 'echeances-modifier',
+        action: 'clic'
+      },
+      {
+        id: 'tuto-echeance-date',
+        titre: "La date d'expiration",
+        // Annee sur 4 chiffres dans l'exemple : « 27 » tape seul donne 0027.
+        texte: "Saisissez la date de fin de validité du document indiqué en haut de la fenêtre, par exemple 15/08/2027. Puis cliquez sur « Suivant ».",
+        cible: 'echeance-date',
+        action: 'valeur'
+      },
+      {
+        id: 'tuto-echeance-enregistrer',
+        titre: "Enregistrez l'échéance",
+        texte: "Cliquez sur « Enregistrer ». Les autres lignes se remplissent de la même façon, avec leur crayon.",
+        cible: 'echeance-enregistrer',
+        action: 'disparition'
+      }
+    ]
+  },
+  {
+    // Ecran Entretien programmable (maintenance-templates.component.ts) : creer un
+    // programme (modele d'entretien) PUIS l'affecter a un vehicule. Sans
+    // l'affectation, le tableau reste « Aucun entretien » et le client croit que rien
+    // n'a ete enregistre. Libelles cites tels qu'a l'ecran, sans accents.
+    id: 'tuto-entretiens-gpa',
+    titre: 'Écran Entretien programmable',
+    route: '/entretien-programmable',
+    autresRoutes: ['/maintenance-templates', '/entretiens-maitres'],
+    module: 'maintenance',
+    sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
+    etapes: [
+      {
+        id: "tuto-entretien-nouveau",
+        titre: "Créez votre premier programme d'entretien",
+        texte: "Cliquez sur « Nouveau modele » : la fiche à remplir s'ouvre.",
+        cible: "entretiens-nouveau-modele",
+        action: "clic"
+      },
+      {
+        id: "tuto-entretien-nom",
+        titre: "Le nom de l'entretien",
+        texte: "Donnez-lui le nom de l'entretien qui revient, par exemple « Vidange moteur » ou « Révision annuelle ». Puis cliquez sur « Suivant ».",
+        cible: "entretien-modele-nom",
+        action: "valeur"
+      },
+      {
+        id: "tuto-entretien-description",
+        titre: "La description (facultatif)",
+        texte: "Décrivez en quelques mots ce que comprend cet entretien, par exemple « Huile et filtre à huile ».",
+        cible: "entretien-modele-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-categorie",
+        titre: "La catégorie",
+        texte: "Choisissez sa « Categorie » dans la liste, par exemple « Moteur » pour une vidange.",
+        cible: "entretien-modele-categorie",
+        action: "valeur"
+      },
+      {
+        id: "tuto-entretien-priorite",
+        titre: "La priorité (facultatif)",
+        texte: "« Moyenne » est proposée : choisissez une autre « Priorite » si cet entretien est plus ou moins important.",
+        cible: "entretien-modele-priorite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-intervalle",
+        titre: "Tous les combien ?",
+        texte: "Indiquez tous les combien revient cet entretien : en kilomètres (par exemple 10000), en mois (par exemple 12), ou les deux.",
+        cible: "entretien-modele-intervalle",
+        action: "valeur"
+      },
+      {
+        id: "tuto-entretien-cout",
+        titre: "Le coût estimé (facultatif)",
+        texte: "Indiquez dans « Cout estime » ce que coûte habituellement cet entretien.",
+        cible: "entretien-modele-cout",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-actif",
+        titre: "Programme actif (facultatif)",
+        texte: "Laissez « Actif » activé : c'est ce qui permet d'appliquer ce programme à vos véhicules.",
+        cible: "entretien-modele-actif",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-alerte-km",
+        titre: "L'alerte en kilomètres (facultatif)",
+        texte: "Vous êtes alerté quand il reste ce nombre de kilomètres avant l'entretien : 1000 est proposé, changez-le si besoin.",
+        cible: "entretien-modele-alerte-km",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-alerte-jours",
+        titre: "L'alerte en jours (facultatif)",
+        texte: "Vous êtes alerté quand il reste ce nombre de jours avant l'entretien : 30 est proposé, changez-le si besoin.",
+        cible: "entretien-modele-alerte-jours",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-critique-km",
+        titre: "Le seuil critique en kilomètres (facultatif)",
+        texte: "Indiquez à combien de kilomètres restants l'entretien devient critique, par exemple 300. À 0, ce seuil n'est pas utilisé.",
+        cible: "entretien-modele-critique-km",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-critique-jours",
+        titre: "Le seuil critique en jours (facultatif)",
+        texte: "Indiquez à combien de jours restants l'entretien devient critique, par exemple 7. À 0, ce seuil n'est pas utilisé.",
+        cible: "entretien-modele-critique-jours",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-entretien-enregistrer",
+        titre: "Enregistrez le programme",
+        texte: "Cliquez sur « Enregistrer » pour enregistrer votre programme d'entretien.",
+        cible: "entretien-modele-enregistrer",
+        action: "disparition"
+      },
+      {
+        id: "tuto-entretien-affecter",
+        titre: "Appliquez-le à un véhicule",
+        texte: "Votre programme est enregistré. Cliquez sur « Affecter » pour l'appliquer à un véhicule.",
+        cible: "entretiens-affecter",
+        action: "clic"
+      },
+      {
+        id: "tuto-entretien-vehicule",
+        titre: "Le véhicule",
+        texte: "Choisissez le véhicule concerné dans la liste.",
+        cible: "entretien-affecter-vehicule",
+        action: "valeur"
+      },
+      {
+        id: "tuto-entretien-cocher",
+        titre: "Le programme",
+        texte: "Cliquez sur le programme pour le cocher.",
+        cible: "entretien-affecter-modele",
+        action: "clic"
+      },
+      {
+        id: "tuto-entretien-ajouter",
+        titre: "Validez l'affectation",
+        texte: "Cliquez sur « Ajouter » : la prochaine échéance de ce véhicule s'affichera dans le tableau.",
+        cible: "entretien-affecter-ajouter",
+        action: "disparition"
+      }
+    ]
+  },
+  {
+    // Ecran Reparations (repairs.component.ts). Le menu ouvre /reparations ; le lien
+    // du rapport mene a /repairs. Sans vehicule, le bouton n'est pas encadre : le
+    // tutoriel n'a pas lieu et revient plus tard. Libelles cites tels qu'a l'ecran.
+    id: 'tuto-reparations-gpa',
+    titre: 'Écran Réparations',
+    route: '/reparations',
+    autresRoutes: ['/repairs'],
+    module: 'maintenance',
+    sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
+    etapes: [
+      {
+        id: "tuto-reparation-nouvelle",
+        titre: "Enregistrez votre première réparation",
+        texte: "Cliquez sur « Nouvelle reparation » : la fiche à remplir s'ouvre.",
+        cible: "reparations-nouvelle",
+        action: "clic"
+      },
+      {
+        id: "tuto-reparation-vehicule",
+        titre: "Le véhicule",
+        texte: "Choisissez dans la liste le véhicule qui a été réparé. Puis cliquez sur « Suivant ».",
+        cible: "reparation-vehicule",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-fournisseur",
+        titre: "Le garage (facultatif)",
+        texte: "Choisissez dans la liste « Fournisseur / Garage » le garage qui a fait la réparation.",
+        cible: "reparation-fournisseur",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-date",
+        titre: "La date",
+        texte: "La date du jour est proposée : changez-la si la réparation a eu lieu un autre jour.",
+        cible: "reparation-date",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-compteur",
+        titre: "Le compteur (facultatif)",
+        texte: "Le kilométrage connu du véhicule est proposé dans « Compteur » : vérifiez qu'il correspond au compteur réel, car il fait avancer celui du véhicule.",
+        cible: "reparation-compteur",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-type",
+        titre: "Le type d'intervention (facultatif)",
+        texte: "Choisissez dans « Type d'intervention » la nature de la réparation, par exemple « Freinage ».",
+        cible: "reparation-type",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-description",
+        titre: "Ce qui a été fait (facultatif)",
+        texte: "Décrivez la réparation en quelques mots, par exemple « Changement des plaquettes de frein ».",
+        cible: "reparation-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-facture",
+        titre: "Le numéro de facture (facultatif)",
+        texte: "Saisissez le numéro de la facture du garage dans « N° Facture ».",
+        cible: "reparation-facture",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-piece-ajouter",
+        titre: "La pièce",
+        texte: "Cliquez sur « Ajouter » dans « Pieces detachees » : une ligne s'ajoute pour la pièce.",
+        cible: "reparation-piece-ajouter",
+        action: "clic"
+      },
+      {
+        id: "tuto-reparation-piece-nom",
+        titre: "Le nom de la pièce",
+        texte: "Saisissez le nom de la pièce, par exemple « Plaquettes de frein ».",
+        cible: "reparation-piece-nom",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-piece-reference",
+        titre: "La référence de la pièce (facultatif)",
+        texte: "Saisissez sa référence dans « Reference ».",
+        cible: "reparation-piece-reference",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-piece-quantite",
+        titre: "La quantité",
+        texte: "La quantité est à 1 : changez-la dans « Qte » si plusieurs pièces identiques ont été posées.",
+        cible: "reparation-piece-quantite",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-piece-prix",
+        titre: "Le coût de la pièce",
+        texte: "Saisissez son prix dans « Prix unit. ».",
+        cible: "reparation-piece-prix",
+        action: "valeur"
+      },
+      {
+        id: "tuto-reparation-main-oeuvre",
+        titre: "La main-d'œuvre (facultatif)",
+        texte: "Saisissez le coût de la main-d'œuvre dans « Cout main d'oeuvre ».",
+        cible: "reparation-main-oeuvre",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-notes",
+        titre: "Les notes (facultatif)",
+        texte: "Ajoutez vos remarques dans « Notes ».",
+        cible: "reparation-notes",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-reparation-enregistrer",
+        titre: "Enregistrez la réparation",
+        texte: "Cliquez sur « Enregistrer » pour enregistrer la réparation.",
+        cible: "reparation-enregistrer",
+        action: "disparition"
+      }
+    ]
+  },
+  {
+    // Ecran Sinistres (accident-reports-list.component.ts) : fenetre « Ajouter un
+    // sinistre manuel », libelle cite tel qu'a l'ecran. Sans vehicule, le bouton
+    // n'est pas encadre : le tutoriel n'a pas lieu. La derniere bulle ne promet
+    // pas de « completer plus tard » : la suite de la fiche est reservee a
+    // l'administrateur, et le lieu ne se modifie plus apres la creation.
+    id: 'tuto-sinistres-gpa',
+    titre: 'Écran Sinistres',
+    route: '/accident-reports',
+    autresRoutes: ['/rapports-accident'],
+    module: 'accidents',
+    sauf: 'monitoring',
+    // Une bulle par champ, dans l'ordre de la fiche (Karim, 24/09/2026 : « passer par
+    // tous les champs […] désactiver Suivant pour les champs obligatoires »).
+    etapes: [
+      {
+        id: "tuto-sinistre-nouveau",
+        titre: "Déclarez votre premier sinistre",
+        texte: "Cliquez sur « Ajouter un sinistre manuel » : la fiche à remplir s'ouvre.",
+        cible: "sinistres-nouveau",
+        action: "clic"
+      },
+      {
+        id: "tuto-sinistre-vehicule",
+        titre: "Le véhicule",
+        texte: "Choisissez le véhicule accidenté dans la liste « Véhicule ». Puis cliquez sur « Suivant ».",
+        cible: "sinistre-vehicule",
+        action: "valeur"
+      },
+      {
+        id: "tuto-sinistre-date",
+        titre: "La date de l'accident",
+        texte: "La date et l'heure d'aujourd'hui sont préremplies dans « Date / heure » : corrigez-les si l'accident a eu lieu à un autre moment.",
+        cible: "sinistre-date",
+        action: "valeur"
+      },
+      {
+        id: "tuto-sinistre-severite",
+        titre: "La gravité (facultatif)",
+        texte: "Indiquez la gravité des dégâts dans « Sévérité ».",
+        cible: "sinistre-severite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-division",
+        titre: "Le lieu de l'accident (facultatif)",
+        texte: "Indiquez la région où l'accident a eu lieu (gouvernorat, département…).",
+        cible: "sinistre-division",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-localite",
+        titre: "La ville de l'accident (facultatif)",
+        texte: "Précisez la ville ou la commune de l'accident.",
+        cible: "sinistre-localite",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-description",
+        titre: "Les circonstances (facultatif)",
+        texte: "Décrivez en quelques mots ce qui s'est passé dans « Description ».",
+        cible: "sinistre-description",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-cout",
+        titre: "Le coût estimé (facultatif)",
+        texte: "Indiquez le montant estimé des dégâts dans « Coût estimé ».",
+        cible: "sinistre-cout",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-numero",
+        titre: "Le numéro de sinistre (facultatif)",
+        texte: "Saisissez le numéro donné par votre assurance dans « N° de sinistre (assurance) ».",
+        cible: "sinistre-numero",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-pdf",
+        titre: "Le rapport de l'expert (facultatif)",
+        texte: "Joignez le rapport PDF de l'expert en assurance dans « PDF expert ».",
+        cible: "sinistre-pdf",
+        action: "valeur",
+        facultatif: true
+      },
+      {
+        id: "tuto-sinistre-creer",
+        titre: "Enregistrez le sinistre",
+        texte: "Cliquez sur « Créer le sinistre » pour enregistrer votre déclaration.",
+        cible: "sinistre-creer",
+        action: "disparition"
+      }
+    ]
+  }
+];
+
+/**
+ * Premiers pas de l'offre GPA (Karim, 25/09/2026) : « quand il clique sur
+ * "Commencer", on le ramene directement sur le premier ecran "vehicules", apres
+ * "chauffeurs", apres "programme d'entretien" ». Le bouton du conseil de premiere
+ * connexion ouvre le premier de ces ecrans ; chaque guide termine emmene au
+ * suivant. Un ecran que ce client n'a pas (droits, profil) est enjambe.
+ */
+export const PREMIERS_PAS_GPA: string[] = ['tuto-vehicules-gpa', 'tuto-chauffeurs-gpa', 'tuto-entretiens-gpa'];
+
+/**
+ * Passerelle vers les alertes par e-mail (Karim, 26/09/2026) : « quand l'utilisateur
+ * termine le remplissage de l'un des écrans suivants (chauffeur, entretiens et
+ * échéances), tu lui fais sortir un message pour lui dire que maintenant il faut
+ * remplir l'adresse mail pour recevoir des alertes, et tu le guides directement (il
+ * clique sur la flèche, puis gestion des utilisateurs, puis alertes par mail) ». Ce
+ * sont les écrans dont les dates déclenchent des alertes (permis, entretiens,
+ * documents). Lancée par le moteur à la fin de l'un de ces guides, tant que celui des
+ * alertes n'est pas fait ; l'arrivée sur l'écran Utilisateurs lance ce dernier, qui se
+ * termine comme avant. Hors de VISITES_ECRANS : elle ne dépend d'aucun écran.
+ */
+export const VERS_ALERTES_APRES: string[] = ['tuto-chauffeurs-gpa', 'tuto-entretiens-gpa', 'tuto-echeances-gpa'];
+
+export const PASSERELLE_ALERTES_GPA: VisiteEcran = {
+  id: 'tuto-vers-alertes-gpa',
+  titre: 'Vers vos alertes par e-mail',
+  // Aucun écran à elle : quitter la page (vers Utilisateurs) la termine.
+  route: '',
+  module: 'users',
+  sauf: 'monitoring',
+  etapes: [
+    {
+      id: 'tuto-vers-alertes-menu',
+      titre: 'Et maintenant, vos alertes par e-mail',
+      texte: "Renseignez l'adresse e-mail qui recevra les alertes. Cliquez sur la flèche à côté de votre nom, en haut à droite.",
+      cible: 'menu-utilisateur',
+      action: 'clic'
+    },
+    {
+      id: 'tuto-vers-alertes-utilisateurs',
+      titre: 'La gestion des utilisateurs',
+      texte: 'Cliquez sur « Gestion utilisateurs ».',
+      cible: 'menu-gestion-utilisateurs',
+      action: 'clic'
+    }
+  ]
+};

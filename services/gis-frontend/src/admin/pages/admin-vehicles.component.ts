@@ -553,8 +553,22 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   }
 
   // Getter to convert companies for the popup
-  get companiesForPopup(): { id: number; name: string }[] {
-    return this.companies.map(c => ({ id: c.id, name: c.name }));
+  /**
+   * Liste passée au popup, CALCULÉE UNE FOIS au chargement des sociétés.
+   *
+   * <p>C'était un getter qui refaisait `map()` à chaque lecture, donc à chaque cycle
+   * de détection de changements : l'entrée `[companies]` changeait d'identité en
+   * permanence, le `*ngFor` des `<option>` (sans trackBy) détruisait et recréait
+   * toutes les options, et le `<select>` perdait sa sélection pour retomber sur sa
+   * première entrée — c'est-à-dire la société par défaut. Symptôme vu par Slim le
+   * 29/09/2026 : « la liste déroulante des sociétés reste figée sur la première,
+   * peu importe celle que je choisis ». Un getter qui alloue est invisible à la
+   * lecture ; dans un gabarit, il s'exécute des dizaines de fois par seconde.</p>
+   */
+  companiesForPopup: { id: number; name: string }[] = [];
+
+  private majCompaniesForPopup(): void {
+    this.companiesForPopup = this.companies.map(c => ({ id: c.id, name: c.name }));
   }
 
   vehicleForm = {
@@ -611,10 +625,12 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
       next: (clients) => {
         console.log('Loaded companies for vehicle assignment:', clients.length);
         this.companies = clients;
+        this.majCompaniesForPopup();
       },
       error: (err) => {
         console.error('Error loading companies:', err);
         this.companies = [];
+        this.majCompaniesForPopup();
       }
     });
   }

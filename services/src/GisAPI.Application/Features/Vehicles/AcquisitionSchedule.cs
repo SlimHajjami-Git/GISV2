@@ -19,6 +19,15 @@ namespace GisAPI.Application.Features.Vehicles;
 public static class AcquisitionSchedule
 {
     /// <summary>
+    /// Date de l'apport (contrat) ou de l'achat comptant : la « Date d'achat ». Un
+    /// apport saisi sans elle est daté du début du crédit (Karim, 25/09/2026) : non
+    /// daté, il n'était compté nulle part — ni échéancier, ni Dépenses, ni coût
+    /// d'achats. Un achat comptant sans date reste, lui, hors calcul.
+    /// </summary>
+    public static DateTime? AcquisitionDate(Vehicle v) =>
+        v.PurchaseDate ?? (v.AcquisitionType == "leasing" ? v.LeasingStartDate : null);
+
+    /// <summary>
     /// Dates d'échéance des mensualités d'un contrat de crédit/leasing, dans
     /// l'ordre. Vide si le véhicule n'est pas financé ou si le contrat est
     /// incomplet. Le type d'acquisition fait foi : un véhicule repassé en achat
@@ -66,7 +75,7 @@ public static class AcquisitionSchedule
 
             // Apport (contrat) ou prix d'achat (comptant) : une dépense datée
             // du jour de l'acquisition, quel que soit le mode de financement.
-            if (v.PurchasePrice > 0 && v.PurchaseDate is { } purchased)
+            if (v.PurchasePrice > 0 && AcquisitionDate(v) is { } purchased)
             {
                 var pd = purchased.Date;
                 if (pd >= fromDate && pd <= toDate && pd <= now.Date)

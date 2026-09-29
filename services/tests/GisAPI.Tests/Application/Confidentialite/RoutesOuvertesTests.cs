@@ -86,6 +86,29 @@ public class RoutesOuvertesTests
     private const int BoitierStock = 13;               // en stock, rattaché à AUCUN véhicule
     private const int BoitierAutreSociete = 19;
 
+    // Boîtiers à IMEI NUMÉRIQUE (15 chiffres) : la route publique n'accepte que cette
+    // forme, et les identifiants « IMEI-A » du reste du jeu de données ne la franchissent
+    // pas. Trois cas distincts pour les trois réponses possibles.
+    private const int BoitierPublicQuiRemonte = 14;
+    private const int BoitierPublicMuet = 15;          // trame vieille de plusieurs heures
+    private const int BoitierPublicSansTrame = 16;     // enregistré, jamais vu une trame
+    private const string ImeiQuiRemonte = "351234567890123";
+    private const string ImeiMuet = "359876543210987";
+    private const string ImeiSansTrame = "350000000000001";
+    private const string ImeiInconnu = "351111111111119";
+
+    /// <summary>Boîtier dont la trame au plus grand « id » est la PLUS ANCIENNE.</summary>
+    private const int BoitierPublicDesordre = 17;
+    private const string ImeiDesordre = "350000000000002";
+
+    // Matricules de boîtier : alphanumériques et SANS espace, comme les 439 de la
+    // production (type « NR08G1075 »). Ceux du reste du jeu de données portent un tiret
+    // (« MAT-A »), forme qui n'existe pas en base et que le filtre public refuse.
+    private const string MatriculeQuiRemonte = "NRPUB0001";
+    private const string MatriculeEnDouble = "NRDUP0009";
+    private const int BoitierDouble1 = 20;
+    private const int BoitierDouble2 = 21;
+
     private const string PlaqueA = "111 TU 1";
     private const string PlaqueB = "222 TU 2";
     private const string PlaqueAutreSociete = "999 TU 9";
@@ -202,13 +225,32 @@ public class RoutesOuvertesTests
             new GpsDevice { Id = BoitierA, DeviceUid = "IMEI-A", Mat = "MAT-A", Label = "Boîtier A", SimNumber = "21600001", CompanyId = Societe, Status = "active" },
             new GpsDevice { Id = BoitierB, DeviceUid = "IMEI-B", Mat = "MAT-B", Label = "Boîtier B", SimNumber = "21600002", CompanyId = Societe, Status = "active" },
             new GpsDevice { Id = BoitierStock, DeviceUid = "IMEI-STOCK", Mat = "MAT-STOCK", Label = "Stock", SimNumber = "21600003", CompanyId = Societe, Status = "unassigned" },
-            new GpsDevice { Id = BoitierAutreSociete, DeviceUid = "IMEI-SICOAC", Mat = "MAT-SICOAC", Label = "Boîtier SICOAC", SimNumber = "21600009", CompanyId = AutreSociete, Status = "active" });
+            new GpsDevice { Id = BoitierAutreSociete, DeviceUid = "IMEI-SICOAC", Mat = "MAT-SICOAC", Label = "Boîtier SICOAC", SimNumber = "21600009", CompanyId = AutreSociete, Status = "active" },
+            // Le boîtier qui remonte appartient à l'AUTRE société, et c'est volontaire : la
+            // route publique n'a pas de société d'appelant, donc elle ne cloisonne pas — ce
+            // qui n'est acceptable que parce que sa réponse ne dit rien du client. Les tests
+            // ci-dessous vérifient exactement cela.
+            new GpsDevice { Id = BoitierPublicQuiRemonte, DeviceUid = ImeiQuiRemonte, Mat = MatriculeQuiRemonte, Label = "Pose du jour", SimNumber = "21600014", CompanyId = AutreSociete, Status = "active", SignalStrength = 24 },
+            // Deux boîtiers, un seul matricule : le cas ambigu, réel sur la production.
+            new GpsDevice { Id = BoitierDouble1, DeviceUid = "350000000000010", Mat = MatriculeEnDouble, Label = "Double A", SimNumber = "21600020", CompanyId = Societe, Status = "active" },
+            new GpsDevice { Id = BoitierDouble2, DeviceUid = "350000000000011", Mat = MatriculeEnDouble, Label = "Double B", SimNumber = "21600021", CompanyId = AutreSociete, Status = "active" },
+            new GpsDevice { Id = BoitierPublicMuet, DeviceUid = ImeiMuet, Mat = "MAT-PUB-2", Label = "Muet", SimNumber = "21600015", CompanyId = Societe, Status = "active", SignalStrength = 9 },
+            new GpsDevice { Id = BoitierPublicSansTrame, DeviceUid = ImeiSansTrame, Mat = "MAT-PUB-3", Label = "Jamais vu", SimNumber = "21600016", CompanyId = Societe, Status = "unassigned" },
+            new GpsDevice { Id = BoitierPublicDesordre, DeviceUid = ImeiDesordre, Mat = "MAT-PUB-4", Label = "Trames en désordre", SimNumber = "21600017", CompanyId = Societe, Status = "active" });
 
         semis.GpsPositions.AddRange(
             new GpsPosition { Id = 1, DeviceId = BoitierA, RecordedAt = Jour, Latitude = 36.80, Longitude = 10.18, SpeedKph = 50, IgnitionOn = true, IsValid = true },
             new GpsPosition { Id = 2, DeviceId = BoitierB, RecordedAt = Jour, Latitude = 35.82, Longitude = 10.63, SpeedKph = 70, IgnitionOn = true, IsValid = true },
             new GpsPosition { Id = 3, DeviceId = BoitierStock, RecordedAt = Jour, Latitude = 36.00, Longitude = 10.00, SpeedKph = 0, IgnitionOn = false, IsValid = true },
-            new GpsPosition { Id = 4, DeviceId = BoitierAutreSociete, RecordedAt = Jour, Latitude = 34.74, Longitude = 10.76, SpeedKph = 90, IgnitionOn = true, IsValid = true });
+            new GpsPosition { Id = 4, DeviceId = BoitierAutreSociete, RecordedAt = Jour, Latitude = 34.74, Longitude = 10.76, SpeedKph = 90, IgnitionOn = true, IsValid = true },
+            // « Remonte » se juge par rapport à l'heure COURANTE dans le contrôleur : ces deux
+            // trames sont donc datées relativement à maintenant, et non au Jour figé.
+            new GpsPosition { Id = 5, DeviceId = BoitierPublicQuiRemonte, RecordedAt = DateTime.UtcNow.AddMinutes(-3), Latitude = 36.85, Longitude = 10.20, SpeedKph = 12, IgnitionOn = true, IsValid = true, Satellites = 11 },
+            new GpsPosition { Id = 6, DeviceId = BoitierPublicMuet, RecordedAt = DateTime.UtcNow.AddHours(-5), Latitude = 36.86, Longitude = 10.21, SpeedKph = 0, IgnitionOn = false, IsValid = true, Satellites = 6 },
+            // Trames en DÉSORDRE : le plus grand « id » porte l'horodatage le plus ANCIEN.
+            // Trié sur id, ce boîtier passerait pour muet alors qu'il vient d'émettre.
+            new GpsPosition { Id = 7, DeviceId = BoitierPublicDesordre, RecordedAt = DateTime.UtcNow.AddMinutes(-2), Latitude = 36.87, Longitude = 10.22, SpeedKph = 30, IgnitionOn = true, IsValid = true, Satellites = 10 },
+            new GpsPosition { Id = 8, DeviceId = BoitierPublicDesordre, RecordedAt = DateTime.UtcNow.AddHours(-10), Latitude = 36.88, Longitude = 10.23, SpeedKph = 0, IgnitionOn = false, IsValid = true, Satellites = 4 });
 
         semis.DeviceEvents.AddRange(
             new DeviceEvent { Id = 1, DeviceId = BoitierA, VehicleId = VehiculeA, CompanyId = Societe, EventType = "disconnect", EventAt = Jour, LastKnownLat = 36.8, LastKnownLon = 10.1 },
@@ -247,6 +289,35 @@ public class RoutesOuvertesTests
 
     private static DeviceCheckController Boitier(ContexteControleur ctx, ICurrentTenantService t) =>
         new(ctx, t) { ControllerContext = Contexte(t) };
+
+    /// <summary>
+    /// L'appelant de la route PUBLIQUE : aucune société, aucun utilisateur, non authentifié.
+    /// C'est l'état réel d'un installateur qui ouvre la page sans compte, et il faut le
+    /// reproduire pour prouver que la réponse ne dépend d'aucun contexte de locataire.
+    /// </summary>
+    private static ICurrentTenantService TenantAnonyme()
+    {
+        var m = new Mock<ICurrentTenantService>();
+        m.Setup(x => x.CompanyId).Returns((int?)null);
+        m.Setup(x => x.UserId).Returns((int?)null);
+        m.Setup(x => x.UserRoles).Returns(Array.Empty<string>());
+        m.Setup(x => x.IsAuthenticated).Returns(false);
+        m.Setup(x => x.IsSystemAdmin).Returns(false);
+        return m.Object;
+    }
+
+    private static DeviceCheckController BoitierAnonyme(ContexteControleur ctx) =>
+        new(ctx, TenantAnonyme())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) }
+            }
+        };
+
+    /// <summary>Noms des propriétés réellement présentes dans le corps rendu.</summary>
+    private static string[] Champs(object corps) =>
+        corps.GetType().GetProperties().Select(p => p.Name).ToArray();
 
     private static TramOnLineController Tram(ContexteControleur ctx, ICurrentTenantService t) =>
         new(ctx, Microsoft.Extensions.Logging.Abstractions.NullLogger<TramOnLineController>.Instance, t)
@@ -302,16 +373,261 @@ public class RoutesOuvertesTests
             + "ne déclare aucune FallbackPolicy");
     }
 
+    /// <summary>
+    /// Le contrôleur reste fermé PAR DÉFAUT, et la seule ouverture est nommée ici.
+    ///
+    /// <para>Le 28/09/2026 Slim a rouvert le diagnostic aux installateurs, qui travaillent
+    /// sans compte. L'ouverture est portée par UNE action distincte, <c>StatutPublic</c>, et
+    /// non par un aménagement de <c>Lookup</c> : ce test fige cette liste, donc une deuxième
+    /// action anonyme ajoutée demain le fera échouer, ce qui est exactement le but.</para>
+    /// </summary>
     [Fact]
-    public void Le_controleur_de_verification_de_boitier_exige_desormais_un_jeton()
+    public void Le_controleur_de_verification_de_boitier_n_ouvre_QUE_le_statut_public()
     {
         var type = typeof(DeviceCheckController);
 
         type.GetCustomAttributes<AuthorizeAttribute>(inherit: true).Should().NotBeEmpty(
             "sans cet attribut la route est anonyme : Program.cs n'enchaîne que UseAuthentication/UseAuthorization");
-        type.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Should().BeEmpty();
+        type.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Should().BeEmpty(
+            "ouvrir la CLASSE rouvrirait Lookup, donc la position de n'importe quel véhicule");
         type.GetMethod(nameof(DeviceCheckController.Lookup))!
-            .GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Should().BeEmpty();
+            .GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Should().BeEmpty(
+            "c'est la route complète : plaque, position, contact, carburant, compteur");
+
+        var anonymes = type
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(m => m.GetCustomAttributes<AllowAnonymousAttribute>(inherit: true).Any())
+            .Select(m => m.Name)
+            .ToArray();
+
+        anonymes.Should().BeEquivalentTo(new[] { nameof(DeviceCheckController.StatutPublic) });
+    }
+
+    // ───────── B1 bis — la route publique rouverte le 28/09/2026 ─────────
+
+    /// <summary>
+    /// Les clés publiques sont l'IMEI et le MATRICULE DU BOÎTIER — jamais la plaque.
+    ///
+    /// <para>Les deux premières sont imprimées sur l'appareil que l'installateur tient en
+    /// main ; la plaque, elle, se lit dans la rue, et c'est ce qui transformait l'ancienne
+    /// route ouverte en traceur de véhicules d'autrui. Le matricule a été ajouté le
+    /// 29/09/2026 : les techniciens ont rapporté qu'ils lisent le matricule de l'étiquette,
+    /// pas l'IMEI.</para>
+    ///
+    /// <para><b>C'est l'ESPACE qui trie.</b> Une plaque tunisienne s'écrit « 233 TU 5102 »
+    /// et ne franchit pas le filtre. Un matricule n'a jamais d'espace : vérifié sur la
+    /// production, 0 des 440 matricules en contient. Et même collée, une plaque ne
+    /// trouverait rien : cette route n'interroge QUE la table des boîtiers.</para>
+    /// </summary>
+    [Theory]
+    [InlineData("111 TU 1")]         // une plaque, avec ses espaces
+    [InlineData("233 TU 5102")]      // une vraie plaque de la flotte
+    [InlineData("NR08 G1075")]       // un matricule mal recopié, avec un espace
+    [InlineData("MAT-A")]            // ponctuation : ni IMEI ni matricule
+    [InlineData("AB")]               // trop court pour être un matricule
+    [InlineData("")]
+    public async Task Statut_public_refuse_tout_ce_qui_n_est_ni_IMEI_ni_matricule(string saisie)
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        (await anonyme.StatutPublic(saisie)).Should().BeOfType<BadRequestObjectResult>(
+            "la recherche par plaque sans jeton est précisément ce qui transformait cette route "
+            + "en traceur de véhicules d'autrui");
+    }
+
+    /// <summary>
+    /// Une plaque saisie SANS ses espaces franchit le filtre de forme — et ne trouve
+    /// toujours rien, parce que la route ne regarde que les boîtiers. C'est la garantie de
+    /// fond : le filtre de forme est une commodité, le vrai verrou est qu'aucune requête ne
+    /// touche la table des véhicules.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_une_plaque_collee_passe_le_format_mais_ne_trouve_rien()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic("111TU1"));
+
+        Champ<bool>(corps, "found").Should().BeFalse(
+            "aucun boîtier ne porte cette chaîne, et les véhicules ne sont jamais interrogés ici");
+    }
+
+    [Fact]
+    public async Task Statut_public_trouve_un_boitier_par_son_MATRICULE()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte));
+
+        Champ<bool>(corps, "found").Should().BeTrue();
+        Champ<bool>(corps, "reporting").Should().BeTrue();
+
+        Champs(corps).Should().NotIntersectWith(new[] { "plate", "vehicleName", "mat", "lastPosition" },
+            "la réponse reste la même qu'en cherchant par IMEI : rien qui rattache le boîtier à un client");
+    }
+
+    /// <summary>
+    /// L'IMEI n'est RENVOYÉ QUE si l'appelant l'a lui-même saisi.
+    ///
+    /// <para>Les matricules suivent un gabarit très étroit — 423 des 440 de la production
+    /// s'écrivent « NR08G » + 4 chiffres, soit 10 000 possibilités contre 10^15 pour un
+    /// IMEI — et le plafond de débit borne la vitesse, pas le volume : le parc entier se
+    /// balaie en moins d'une heure. Renvoyer les 4 derniers chiffres de l'IMEI à chaque
+    /// touche permettait donc de le reconstituer pour presque tout le parc, 406 boîtiers
+    /// partageant le même préfixe constructeur. Or l'IMEI est l'identifiant que
+    /// l'ingestion GPS accepte : le déduire d'un matricule devinable revenait à publier la
+    /// clé d'entrée des trames.</para>
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_ne_rend_PAS_l_IMEI_quand_on_cherche_par_matricule()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var parMatricule = CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte));
+        Champ<string?>(parMatricule, "imei").Should().BeNull(
+            "un matricule se devine ; l'IMEI qu'il désigne ne doit pas se déduire de la réponse");
+
+        var parImei = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+        Champ<string?>(parImei, "imei").Should().NotBeNull(
+            "là, l'appelant l'a saisi lui-même : on ne lui apprend rien");
+    }
+
+    /// <summary>
+    /// Une recherche par IMEI ne regarde que <c>device_uid</c>, unique et indexé : elle ne
+    /// peut donc jamais être déclarée ambiguë parce qu'un matricule vaudrait l'IMEI d'un
+    /// autre boîtier, et elle garde son index.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_une_recherche_par_IMEI_n_est_jamais_ambigue()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+
+        Champs(corps).Should().NotContain("ambiguous");
+        Champ<bool>(corps, "reporting").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Statut_public_le_matricule_se_cherche_sans_tenir_compte_de_la_casse()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        Champ<bool>(CorpsOk(await anonyme.StatutPublic(MatriculeQuiRemonte.ToLowerInvariant())), "found")
+            .Should().BeTrue("un technicien recopie l'étiquette comme il la lit");
+    }
+
+    /// <summary>
+    /// Deux boîtiers peuvent porter le même matricule — 2 cas sur 438 en production. On le
+    /// DIT, au lieu d'en choisir un au hasard : annoncer « ça remonte » d'après le boîtier
+    /// d'un autre véhicule ferait repartir le technicien sur une pose qui ne marche pas.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_un_matricule_ambigu_est_signale_et_non_tranche()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(MatriculeEnDouble));
+
+        Champ<bool>(corps, "ambiguous").Should().BeTrue();
+        Champs(corps).Should().NotContain("reporting",
+            "aucun état de connexion ne doit être annoncé tant qu'on ne sait pas de quel boîtier on parle");
+    }
+
+    /// <summary>
+    /// Le test qui compte : ce que la réponse publique NE CONTIENT PAS. Elle porte sur un
+    /// boîtier d'une AUTRE société — la route n'a pas de locataire, donc elle ne cloisonne
+    /// pas — et c'est tolérable seulement parce qu'aucun champ ne rattache ce boîtier à un
+    /// client ni ne dit où il est.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_ne_rend_ni_position_ni_plaque_ni_societe()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+
+        Champ<bool>(corps, "found").Should().BeTrue();
+        Champ<bool>(corps, "reporting").Should().BeTrue("la trame a trois minutes");
+
+        Champs(corps).Should().NotIntersectWith(new[]
+        {
+            "plate", "vehicleName", "mat", "lastPosition", "latitude", "longitude",
+            "fuelPercent", "fuelRaw", "odometerKm", "ignitionOn", "address", "speedKph",
+            "companyId", "model", "firmwareVersion", "fuelSensorMode", "deviceStatus", "hasGps"
+        }, "connaître un IMEI ne doit plus permettre de suivre un véhicule ni d'identifier son client");
+    }
+
+    [Fact]
+    public async Task Statut_public_dit_qu_un_boitier_muet_ne_remonte_pas()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiMuet));
+
+        Champ<bool>(corps, "found").Should().BeTrue();
+        Champ<bool>(corps, "reporting").Should().BeFalse(
+            "cinq heures de silence : c'est l'information que l'installateur vient chercher");
+    }
+
+    [Fact]
+    public async Task Statut_public_distingue_le_boitier_jamais_vu_de_l_IMEI_inconnu()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var enregistre = CorpsOk(await anonyme.StatutPublic(ImeiSansTrame));
+        Champ<bool>(enregistre, "found").Should().BeTrue("le boîtier existe en base");
+        Champ<bool>(enregistre, "reporting").Should().BeFalse();
+
+        var inconnu = CorpsOk(await anonyme.StatutPublic(ImeiInconnu));
+        Champ<bool>(inconnu, "found").Should().BeFalse(
+            "distinguer les deux cas est utile à la pose : « mauvais IMEI » et « boîtier pas encore "
+            + "alimenté » ne se corrigent pas de la même façon");
+    }
+
+    /// <summary>
+    /// Le seuil de silence doit être le MÊME sur les deux routes, sinon le même boîtier est
+    /// « connecté » pour l'installateur et « déconnecté » pour le gestionnaire.
+    /// </summary>
+    [Fact]
+    public void Le_seuil_de_silence_est_partage_par_les_deux_routes()
+    {
+        DeviceCheckController.SilenceAvantDeconnexionMinutes.Should().Be(40);
+    }
+
+    /// <summary>
+    /// La dernière trame se choisit sur l'HORODATAGE, pas sur l'identifiant — et ce test
+    /// existe pour une raison de performance mesurée le 28/09/2026 sur la production :
+    /// « ORDER BY id DESC LIMIT 1 » remonte l'index de la clé primaire depuis la trame la
+    /// plus récente de toute la flotte en filtrant device_id, donc pour un boîtier sans
+    /// trame il parcourt les 30 Go — la requête a DÉPASSÉ 120 secondes, sur une route
+    /// désormais publique. Trié sur recorded_at, l'index (device_id, recorded_at) rend en
+    /// 0,072 ms. Ce test verrouille la sémantique qui accompagne ce tri : si quelqu'un
+    /// revient à « id », un boîtier dont les trames arrivent en désordre passera pour muet
+    /// alors qu'il vient d'émettre, et le balayage de 30 Go reviendra avec lui.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_retient_la_trame_la_plus_RECENTE_pas_le_plus_grand_identifiant()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiDesordre));
+
+        Champ<bool>(corps, "reporting").Should().BeTrue(
+            "la trame de deux minutes porte l'id 7, la trame de dix heures l'id 8 : trié sur "
+            + "l'identifiant, ce boîtier bien vivant serait déclaré muet");
+        Champ<double>(corps, "minutesSinceLastFrame").Should().BeLessThan(10);
     }
 
     private static IEnumerable<string> ActionsNonCouvertes()

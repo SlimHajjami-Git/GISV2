@@ -4,13 +4,35 @@ import { FormsModule } from '@angular/forms';
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
+import { AuthService } from '../services/auth.service';
 
 /**
  * Message affiché pour un échec de la recherche, selon le statut HTTP. Exporté pour
  * les tests : aucun statut ne doit laisser l'écran muet ou afficher un « HTTP 0 » brut.
+ *
+ * <p>Depuis le 28/09/2026 l'écran a deux modes, et le même statut ne veut plus dire la
+ * même chose dans les deux : en mode public il n'y a AUCUNE session, donc « votre session
+ * a expiré » enverrait l'installateur chercher un problème qui n'existe pas.</p>
  */
-export function messageErreurDiagnostic(statut: number): string {
-  if (statut === 401) return 'Votre session a expiré. Reconnectez-vous pour lancer un diagnostic.';
+export function messageErreurDiagnostic(
+  statut: number,
+  modePublic = false,
+  messageServeur?: string
+): string {
+  // Le serveur dit précisément ce qu'il attend (un IMEI de 15 chiffres) : le relayer vaut
+  // mieux que le paraphraser et risquer de diverger de la règle réelle.
+  if (statut === 400) {
+    return messageServeur?.trim()
+      || "Saisissez l'IMEI (15 chiffres) ou le matricule du boîtier, sans espace.";
+  }
+  if (statut === 429) {
+    return 'Trop de recherches en peu de temps. Patientez une minute avant de réessayer.';
+  }
+  if (statut === 401) {
+    return modePublic
+      ? "Le diagnostic n'est pas disponible pour le moment. Réessayez dans un instant."
+      : 'Votre session a expiré. Reconnectez-vous pour lancer un diagnostic.';
+  }
   if (statut === 403) return "Votre compte n'a pas accès au diagnostic des boîtiers.";
   if (statut === 0) return 'Serveur injoignable. Vérifiez votre connexion et réessayez.';
   return `Le diagnostic a échoué (erreur ${statut}). Réessayez dans un instant.`;
@@ -31,7 +53,8 @@ export function messageErreurDiagnostic(statut: number): string {
             </svg>
             <h1>Diagnostic Boîtier GPS</h1>
           </div>
-          <p class="subtitle">Vérifiez l'état de connexion d'un boîtier en saisissant son IMEI ou la matricule du véhicule</p>
+          <p class="subtitle" *ngIf="connecte">Vérifiez l'état de connexion d'un boîtier en saisissant son IMEI ou la matricule du véhicule</p>
+          <p class="subtitle" *ngIf="!connecte">Saisissez l'IMEI ou le matricule inscrit sur l'étiquette du boîtier pour vérifier qu'il remonte bien. Connectez-vous pour le diagnostic complet.</p>
         </div>
 
         <!-- Search -->
@@ -39,11 +62,15 @@ export function messageErreurDiagnostic(statut: number): string {
           <div class="input-row">
             <div class="input-group">
               <svg class="input-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <!-- PAS d'inputmode numérique sur ce champ. Il y en avait un en mode public
+                   tant que seul l'IMEI était accepté ; les techniciens, qui lisent le
+                   MATRICULE de l'étiquette, se retrouvaient devant un pavé de chiffres sur
+                   lequel « NR08G1075 » est intaisissable (signalé le 29/09/2026). -->
               <input
                 type="text"
                 [(ngModel)]="query"
                 (keyup.enter)="search()"
-                placeholder="IMEI ou Matricule..."
+                [placeholder]="connecte ? 'IMEI, matricule ou plaque...' : 'IMEI ou matricule du boîtier...'"
                 class="search-input"
                 [disabled]="loading"
                 autocomplete="off"
@@ -60,8 +87,52 @@ export function messageErreurDiagnostic(statut: number): string {
         </div>
 
 
+        <!-- Résultat PUBLIC (sans session) : réduit à ce que l'installation exige. Bloc
+             séparé, et non un aménagement de la carte complète : celle-ci lit result.plate,
+             result.lastPosition et la position GPS, qui n'existent tout simplement pas dans
+             la réponse publique. -->
+        <div *ngIf="result && modePublic" class="result-card"
+             [class.offline]="result.found && !result.reporting"
+             [class.no-gps]="!result.found">
+
+          <div *ngIf="!result.found" class="status-block not-found">
+            <h2>Boîtier inconnu</h2>
+            <p>{{ result.message || 'Aucun boîtier enregistré sous cet identifiant.' }} Vérifiez l'IMEI ou le matricule sur l'étiquette.</p>
+          </div>
+
+          <!-- Deux boîtiers peuvent porter le même matricule : on le DIT, au lieu d'en
+               choisir un au hasard et d'annoncer « ça remonte » d'après un autre véhicule. -->
+          <div *ngIf="result.found && result.ambiguous" class="status-block no-frames">
+            <h2>Matricule ambigu</h2>
+            <p>{{ result.message }}</p>
+          </div>
+
+          <div *ngIf="result.found && !result.ambiguous" class="status-block" [class.has-data]="result.reporting" [class.no-frames]="!result.reporting">
+            <h2>{{ result.reporting ? 'Le boîtier remonte' : 'Le boîtier ne remonte pas' }}</h2>
+            <p *ngIf="result.message">{{ result.message }}</p>
+            <!-- L'IMEI n'est renvoyé que si l'appelant l'a saisi : cherché par matricule,
+                 il vaut null et cette ligne doit disparaître au lieu de s'afficher vide. -->
+            <div class="info-row" *ngIf="result.imei"><span class="label">IMEI</span><span class="value mono">{{ result.imei }}</span></div>
+            <div class="info-row" *ngIf="result.lastFrameAt">
+              <span class="label">Dernière trame</span>
+              <span class="value">{{ formatDate(result.lastFrameAt) }}</span>
+            </div>
+            <div class="info-row" *ngIf="result.minutesSinceLastFrame != null">
+              <span class="label">Il y a</span>
+              <span class="value">{{ result.minutesSinceLastFrame | number:'1.0-0' }} minutes</span>
+            </div>
+            <div class="info-row" *ngIf="result.satellites != null">
+              <span class="label">Satellites</span><span class="value">{{ result.satellites }}</span>
+            </div>
+            <div class="info-row" *ngIf="result.signalStrength != null">
+              <span class="label">Signal GSM</span><span class="value">{{ result.signalStrength }}</span>
+            </div>
+            <p class="subtitle">Connectez-vous pour voir la position, le compteur et le carburant.</p>
+          </div>
+        </div>
+
         <!-- Result -->
-        <div *ngIf="result" class="result-card" [class.stale]="result.isStale" [class.offline]="!result.connected && result.hasGps" [class.no-gps]="!result.hasGps || !result.found">
+        <div *ngIf="result && !modePublic" class="result-card" [class.stale]="result.isStale" [class.offline]="!result.connected && result.hasGps" [class.no-gps]="!result.hasGps || !result.found">
 
           <!-- Not found -->
           <div *ngIf="!result.found" class="status-block not-found">
@@ -369,23 +440,43 @@ export class DeviceCheckComponent {
   result: any = null;
   error = '';
 
+  /**
+   * Vrai quand l'écran travaille SANS session : il interroge alors la route publique
+   * réduite et n'affiche que « enregistré / remonte des trames ». Figé au moment de la
+   * recherche, pas relu pendant l'affichage, pour qu'un résultat ne change pas de forme
+   * si la session expire entre-temps.
+   */
+  modePublic = false;
+
   constructor(
     private http: HttpClient,
     private router: Router,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private auth: AuthService
   ) {}
 
+  /** Utilisé par le gabarit pour adapter le libellé du champ avant toute recherche. */
+  get connecte(): boolean {
+    return this.auth.isAuthenticated();
+  }
+
   /**
-   * Cloisonnement HERTZ (23/09/2026) : /api/devicecheck était la SEULE route de l'API
-   * sans [Authorize] — elle répondait 200 sans jeton et traversait toutes les sociétés
-   * (IgnoreQueryFilters). Elle exige désormais un compte connecté et ne rend que les
-   * boîtiers de SA société et de SON périmètre de véhicules.
+   * DEUX routes, choisies sur la présence d'une session (décision de Slim, 28/09/2026).
    *
-   * L'appel passe donc par HttpClient, c'est-à-dire par authInterceptor, qui pose le
-   * jeton ET le rafraîchit (proactivement avant expiration, puis sur 401). L'ancien
-   * window.fetch échappait à l'intercepteur : un premier correctif y posait le jeton à
-   * la main, mais sans rafraîchissement — une session expirée devenait « HTTP 401 »
-   * affiché tel quel, sans issue. La route Angular est gardée par AuthGuard.
+   * <p>Sans session — le cas de l'installateur sur le terrain — on appelle
+   * <code>/devicecheck/status</code> : IMEI strict, et la réponse se limite à « boîtier
+   * enregistré » et « remonte des trames ». Aucune position, aucune plaque, aucune
+   * société ne circule, ce qui est ce qui permet d'ouvrir la route. Historique : cette
+   * même route était ouverte AVEC la réponse complète, et acceptait la recherche par
+   * plaque — une plaque se lit dans la rue, donc n'importe qui suivait n'importe quel
+   * véhicule de n'importe quel client. C'est le trou fermé le 23/09/2026 ; on ne le
+   * réouvre pas, on ouvre seulement ce dont l'installation a besoin.</p>
+   *
+   * <p>Avec session, rien ne change : <code>/devicecheck/lookup</code>, réponse complète,
+   * bornée à la société de l'appelant et à sa portée véhicule. L'appel passe par
+   * HttpClient, donc par authInterceptor, qui pose le jeton ET le rafraîchit
+   * (proactivement avant expiration, puis sur 401) — l'ancien window.fetch y échappait et
+   * une session expirée devenait un « HTTP 401 » affiché tel quel, sans issue.</p>
    */
   search() {
     const q = this.query.trim();
@@ -394,9 +485,36 @@ export class DeviceCheckComponent {
     this.result = null;
     this.error = '';
 
-    const params = new HttpParams().set('q', q);
+    const connecte = this.auth.isAuthenticated();
+    this.modePublic = !connecte;
 
-    this.http.get<any>(`${environment.apiUrl}/devicecheck/lookup`, { params }).subscribe({
+    // Normalisation appliquée aux DEUX chemins depuis le 29/09/2026. Elle ne l'était qu'au
+    // chemin public, et c'était un vrai défaut, mesuré le 28/09 avec un compte qui voit
+    // toute la plate-forme : « 860141076687244 » trouvait le boîtier, « 8601 4107 6687 244 »
+    // rendait « introuvable ». Les étiquettes s'impriment avec des espaces, et personne ne
+    // devinait qu'il fallait les retirer.
+    //
+    // La règle diffère selon le chemin, et ce n'est pas un caprice :
+    //   • sans session, la plaque n'est JAMAIS une clé valide, donc on peut nettoyer
+    //     largement — cela rattrape « NR08 G1075 » mal recopié aussi bien qu'un IMEI ;
+    //   • avec session, la plaque EST une clé, et ses espaces sont signifiants (ils sont
+    //     en base tels quels). On ne nettoie donc que si le résultat est exactement un
+    //     IMEI de 15 chiffres. Nettoyer plus largement casserait une plaque entièrement
+    //     numérique — forme inexistante en Tunisie mais courante ailleurs, et le produit
+    //     a déjà un déploiement algérien.
+    const sansSeparateurs = q.replace(/[\s-]/g, '');
+    const nettoye = connecte
+      ? (/^\d{15}$/.test(sansSeparateurs) ? sansSeparateurs : q)
+      : sansSeparateurs;
+
+    const url = connecte
+      ? `${environment.apiUrl}/devicecheck/lookup`
+      : `${environment.apiUrl}/devicecheck/status`;
+    const params = new HttpParams().set('q', nettoye);
+
+    const public_ = this.modePublic;
+
+    this.http.get<any>(url, { params }).subscribe({
       next: data => {
         this.result = data;
         this.loading = false;
@@ -404,13 +522,15 @@ export class DeviceCheckComponent {
       },
       error: (err: HttpErrorResponse) => {
         const statut = typeof err?.status === 'number' ? err.status : 0;
-        this.error = messageErreurDiagnostic(statut);
+        this.error = messageErreurDiagnostic(statut, public_, err?.error?.error);
         this.loading = false;
         this.cdr.detectChanges();
         // Session perdue malgré la tentative de rafraîchissement de l'intercepteur :
         // retour à la connexion, jamais un échec muet. (L'intercepteur y renvoie déjà
         // quand le rafraîchissement échoue ; ce cas couvre l'absence totale de session.)
-        if (statut === 401) {
+        // En mode public il n'y a PAS de session à retrouver : rediriger vers /login
+        // chasserait l'installateur hors de l'outil qu'on vient de lui rouvrir.
+        if (statut === 401 && !public_) {
           this.router.navigate(['/login'], { queryParams: { returnUrl: '/device-check' } });
         }
       }

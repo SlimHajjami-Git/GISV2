@@ -192,7 +192,10 @@ function dateSeule(d: string | null | undefined): string {
                fenêtre. L'ombre le cachait sans le sortir de l'ordre de TABULATION — une
                touche Tab (ou un clic dès la fenêtre refermée par erreur) rouvrait un
                formulaire vierge par-dessus la saisie en cours, perdue sans un mot. -->
+          <!-- data-guide : premier geste du tutoriel Réparations, posé seulement s'il y a un véhicule
+               (sans véhicule le tutoriel n'a pas lieu et revient plus tard). -->
           <button class="btn-add" (click)="openAddRepair()"
+                  [attr.data-guide]="vehicles.length ? 'reparations-nouvelle' : null"
                   [disabled]="fenetreOuverte"
                   [title]="fenetreOuverte ? raisonFenetreOuverte : 'Nouvelle réparation'">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -456,7 +459,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <h4>Vehicule</h4>
               <div class="vehicle-select-wrapper">
-                <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()">
+                <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()" data-guide="reparation-vehicule">
                   <option value="">Selectionnez un vehicule</option>
                   <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
                 </select>
@@ -471,7 +474,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <h4>Fournisseur / Garage</h4>
               <div class="supplier-select-row">
-                <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1">
+                <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1" data-guide="reparation-fournisseur">
                   <option value="">-- Aucun fournisseur --</option>
                   <option *ngFor="let s of suppliers" [value]="s.id">{{ s.name }} <span *ngIf="s.type">({{ s.type }})</span></option>
                 </select>
@@ -501,28 +504,28 @@ function dateSeule(d: string | null | undefined): string {
               <div class="form-row">
                 <div class="form-group">
                   <label>Date *</label>
-                  <input type="date" class="form-control" [(ngModel)]="form.repairDate">
+                  <input type="date" class="form-control" [(ngModel)]="form.repairDate" data-guide="reparation-date">
                 </div>
                 <div class="form-group">
                   <label>Compteur</label>
-                  <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km">
+                  <input type="number" class="form-control" [(ngModel)]="form.mileageAtRepair" placeholder="km" data-guide="reparation-compteur">
                 </div>
               </div>
               <div class="form-group">
                 <label>Type d'intervention</label>
-                <select class="form-control" [(ngModel)]="form.repairType">
+                <select class="form-control" [(ngModel)]="form.repairType" data-guide="reparation-type">
                   <option value="">-- Non précisé (déduit de la description) --</option>
                   <option *ngFor="let t of repairTypes" [value]="t.value">{{ t.label }}</option>
                 </select>
               </div>
               <div class="form-group">
                 <label>Description</label>
-                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..."></textarea>
+                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..." data-guide="reparation-description"></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label>N° Facture</label>
-                  <input type="text" class="form-control" [(ngModel)]="form.invoiceNumber" placeholder="FAC-XXXX">
+                  <input type="text" class="form-control" [(ngModel)]="form.invoiceNumber" placeholder="FAC-XXXX" data-guide="reparation-facture">
                 </div>
                 <div class="form-group" *ngIf="editingRepair">
                   <label>Statut</label>
@@ -547,7 +550,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <div class="section-header">
                 <h4>Pieces detachees</h4>
-                <button class="btn-add-part" (click)="addPart()">
+                <button class="btn-add-part" (click)="addPart()" data-guide="reparation-piece-ajouter">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                   </svg>
@@ -565,10 +568,10 @@ function dateSeule(d: string | null | undefined): string {
                   <span class="col-action"></span>
                 </div>
                 <div class="parts-row" *ngFor="let part of form.parts; let i = index">
-                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece">
-                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref">
-                  <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)">
-                  <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)">
+                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece" [attr.data-guide]="i === 0 ? 'reparation-piece-nom' : null">
+                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref" [attr.data-guide]="i === 0 ? 'reparation-piece-reference' : null">
+                  <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-quantite' : null">
+                  <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-prix' : null">
                   <span class="col-subtotal">{{ part.subtotal | appCurrency }}</span>
                   <button class="col-action btn-remove" (click)="removePart(i)">×</button>
                 </div>
@@ -584,7 +587,7 @@ function dateSeule(d: string | null | undefined): string {
               <h4>Main d'oeuvre</h4>
               <div class="form-group">
                 <label>Cout main d'oeuvre ({{ currencyCode }})</label>
-                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00">
+                <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00" data-guide="reparation-main-oeuvre">
               </div>
             </div>
 
@@ -608,7 +611,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <div class="form-group">
                 <label>Notes</label>
-                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..."></textarea>
+                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..." data-guide="reparation-notes"></textarea>
               </div>
             </div>
           </div>
@@ -616,7 +619,7 @@ function dateSeule(d: string | null | undefined): string {
           <div class="save-error" *ngIf="getAmountError() || saveError" role="alert">{{ getAmountError() || saveError }}</div>
           <div class="panel-footer">
             <button class="btn-cancel" (click)="closePanel()">Annuler</button>
-            <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()">
+            <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()" [attr.data-guide]="editingRepair ? null : 'reparation-enregistrer'">
               {{ editingRepair ? 'Mettre a jour' : 'Enregistrer' }}
             </button>
           </div>

@@ -23,10 +23,13 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   // pre-login AI assistant). These must never carry a JWT or trigger the
   // 401 refresh/logout flow.
   //
-  // « /devicecheck/ » N'EN FAIT PLUS PARTIE (23/09/2026) : la route API était la seule
-  // sans [Authorize] et traversait toutes les sociétés. Elle exige maintenant un compte
-  // connecté ; lui retirer le jeton ici la condamnait à répondre 401 à tout le monde.
-  // Elle suit désormais le flux commun : jeton posé, rafraîchi, 401 géré.
+  // « /devicecheck/ » N'EN FAIT PAS PARTIE, et ne doit pas y revenir (23/09 puis
+  // 28/09/2026). Cette classe expose maintenant DEUX routes : « /devicecheck/lookup »
+  // exige un compte et rend la réponse complète bornée au périmètre de l'appelant — elle a
+  // donc besoin du jeton, et l'exclure ici la condamnerait à répondre 401 à tout le monde ;
+  // « /devicecheck/status » est publique et [AllowAnonymous], donc elle fonctionne aussi
+  // bien avec jeton que sans, et l'écran ne l'appelle que lorsqu'il n'y a aucune session.
+  // Les deux suivent sans dommage le flux commun : jeton posé s'il existe, 401 géré.
   if (req.url.includes('/auth/login') || req.url.includes('/auth/register') || req.url.includes('/auth/refresh') || req.url.includes('/assistant/')) {
     return next(req);
   }
