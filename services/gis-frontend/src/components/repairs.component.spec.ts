@@ -130,6 +130,19 @@ describe('RepairsComponent — scan de facture', () => {
   let api: ApiService;
   let auth: AuthService;
 
+  /**
+   * Depuis le 29/09/2026 un scan ouvre d'abord le panneau de revue partagé ; le
+   * formulaire n'est rempli qu'à la validation. Ces tests portent sur le
+   * REMPLISSAGE, donc ils enchaînent les deux gestes — l'utilisateur relit sans
+   * rien corriger. Quand le scan est REFUSÉ (saisie en cours à ne pas écraser),
+   * `revue` reste null et il n'y a rien à valider : c'est exactement ce que
+   * vérifient les tests du bloc « le scan n'écrase jamais une saisie en cours ».
+   */
+  const scannerEtValider = (res: any) => {
+    component.onFactureScannee(res);
+    if (component.revue) component.validerRevue(component.revue);
+  };
+
   const vehicules = [
     { id: 2, name: 'Camion 12', plateNumber: '123 TU 4567', mileage: 84000 },
     { id: 3, name: 'Clio', plateNumber: '99 TU 1000', mileage: 12000 }
@@ -205,7 +218,7 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('scan réussi : véhicule, fournisseur, date, n° de facture, description et lignes pré-remplis', () => {
-    component.onFactureScannee(resultat() as any);
+    scannerEtValider(resultat() as any);
 
     expect(component.isPanelOpen).toBe(true);
     expect(component.editingRepair).toBeNull();
@@ -234,7 +247,7 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('écart avec le total de la facture : signalé, et comblé seulement sur clic', () => {
-    component.onFactureScannee(resultat() as any);
+    scannerEtValider(resultat() as any);
 
     // 343,43 facturés contre 342,43 répartis : le timbre fiscal laissé de côté.
     expect(component.getTotalCost()).toBe(342.43);
@@ -247,7 +260,7 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('facture sans lignes détaillées : aucune répartition inventée, l’écart vaut le total', () => {
-    component.onFactureScannee(resultat({ items: [] }) as any);
+    scannerEtValider(resultat({ items: [] }) as any);
 
     expect(component.form.parts).toEqual([]);
     expect(component.form.laborCost).toBe(0);
@@ -255,7 +268,7 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('plaque inconnue : véhicule laissé vide et plaque détectée affichée', () => {
-    component.onFactureScannee(resultat({ vehiclePlate: '456 TU 9999' }) as any);
+    scannerEtValider(resultat({ vehiclePlate: '456 TU 9999' }) as any);
     fixture.detectChanges();
 
     expect(component.form.vehicleId).toBe('');
@@ -268,14 +281,14 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('confiance de la lecture montrée dans le bandeau', () => {
-    component.onFactureScannee(resultat() as any);
+    scannerEtValider(resultat() as any);
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.scan-banner .scan-conf').textContent).toContain('élevée');
   });
 
   it('facture d’avoir : l’écran prévient au lieu de l’enregistrer comme un coût', () => {
-    component.onFactureScannee(resultat({ isCreditNote: true }) as any);
+    scannerEtValider(resultat({ isCreditNote: true }) as any);
     fixture.detectChanges();
 
     expect(component.scanInfo?.avoir).toBe(true);
@@ -309,7 +322,7 @@ describe('RepairsComponent — scan de facture', () => {
   });
 
   it('fermer le formulaire efface le bandeau du scan', () => {
-    component.onFactureScannee(resultat() as any);
+    scannerEtValider(resultat() as any);
     component.closePanel();
 
     expect(component.scanInfo).toBeNull();
@@ -373,7 +386,7 @@ describe('RepairsComponent — scan de facture', () => {
       component.form.description = 'Vidange saisie à la main';
       component.form.laborCost = 80;
 
-      component.onFactureScannee(resultat() as any);
+      scannerEtValider(resultat() as any);
 
       expect(demande).toHaveBeenCalled();
       expect(component.form.description).toBe('Vidange saisie à la main');
@@ -382,7 +395,7 @@ describe('RepairsComponent — scan de facture', () => {
       expect(component.scanInfo).toBeNull();
 
       demande.mockReturnValue(true);
-      component.onFactureScannee(resultat() as any);
+      scannerEtValider(resultat() as any);
 
       expect(component.form.description).toBe('GARAGE EL AMEN — Freins avant');
       expect(component.form.vehicleId).toBe('2');

@@ -12,6 +12,9 @@ import { trigger, transition, style, animate } from '@angular/animations';
 import {
   ScanFactureComponent, ResultatScanFacture, EchecScanFacture
 } from './shared/scan-facture.component';
+import {
+  VerifierFactureComponent, RevueFacture, revueDepuisScan, scanDepuisRevue
+} from './shared/verifier-facture.component';
 
 interface MaintenanceTemplate {
   id: string;
@@ -140,7 +143,7 @@ interface FlatRow {
 @Component({
   selector: 'app-maintenance-templates',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, VerifierFactureComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -443,12 +446,29 @@ interface FlatRow {
                 <h4 class="sub-title">Detail de la facture</h4>
                 <!-- Même geste qu'à l'écran Dépenses : la brique partagée fait l'envoi,
                      le quota et les messages ; cet écran ne remplit que SES champs. -->
+                <!-- Verrouillé pendant la revue : un 2e scan écraserait les corrections
+                     en cours sans rien demander, et consommerait du crédit IA. -->
                 <app-scan-facture libelle="Scanner la facture"
-                                  [desactive]="isMarkSubmitting"
-                                  raisonDesactivation="Enregistrement en cours…"
+                                  [desactive]="isMarkSubmitting || revueOuverte"
+                                  [raisonDesactivation]="revueOuverte ? 'Validez ou annulez la facture en cours de vérification.' : 'Enregistrement en cours…'"
                                   (scanne)="onFactureScannee($event)"
                                   (echec)="onEchecScan($event)"></app-scan-facture>
               </div>
+
+              <!-- Revue de la facture AVANT de remplir la fiche : mêmes champs et
+                   même détail ligne par ligne que sur Dépenses (29/09/2026). -->
+              @if (revueOuverte && revue) {
+                <app-verifier-facture
+                  [modele]="revue"
+                  [vehicules]="vehiculesRevue"
+                  [categories]="categoriesLignes"
+                  [devise]="currencyCode"
+                  [vehiculeVerrouille]="true"
+                  [montantObligatoire]="false"
+                  libelleValider="Continuer"
+                  (valider)="validerRevue($event)"
+                  (annuler)="annulerRevue()"></app-verifier-facture>
+              }
 
               <!-- Ce que le scan a lu : l'utilisateur doit voir ce qui a été pré-rempli,
                    avec quelle confiance, et ce qui n'a pas pu l'être. -->
@@ -1126,6 +1146,43 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
   suppliersLoaded = false;
   /** Dernier scan de facture de la modale ouverte (null tant qu'aucun scan). */
   scanLu: FactureScannee | null = null;
+
+  // ── Revue de la facture scannée (panneau partagé avec Dépenses, 29/09/2026) ──
+  /** Panneau de revue ouvert : la fiche n'est pas encore remplie. */
+  revueOuverte = false;
+  /** Ce que l'utilisateur relit et corrige. */
+  revue: RevueFacture | null = null;
+  /** Extraction d'origine, conservée pour les champs que le panneau ne montre pas. */
+  private scanOrigine: ResultatScanFacture | null = null;
+
+  /**
+   * Le panneau attend une liste de véhicules pour sa liste déroulante. Ici il n'y
+   * en a qu'un — celui de la fiche ouverte — et elle est verrouillée.
+   */
+  get vehiculesRevue() {
+    return this.markData.vehicleId
+      ? [{ id: this.markData.vehicleId, plate: this.markData.vehiclePlate, name: this.markData.vehicleName }]
+      : [];
+  }
+
+  /**
+   * Catégories proposées dans le panneau de revue — les DIX du vocabulaire du scan,
+   * à l'identique de l'écran Dépenses. Il faut la liste complète : l'IA peut rendre
+   * 'insurance', 'tax' ou 'credit_note', et une valeur absente de la liste laisse le
+   * select — marqué obligatoire — VIDE, sans rien dire (relecture du 29/09/2026).
+   */
+  readonly categoriesLignes = [
+    { value: 'fuel', label: 'Carburant' },
+    { value: 'maintenance', label: 'Entretien' },
+    { value: 'repair', label: 'Réparation' },
+    { value: 'insurance', label: 'Assurance' },
+    { value: 'tax', label: 'Vignette' },
+    { value: 'toll', label: 'Péage' },
+    { value: 'parking', label: 'Stationnement' },
+    { value: 'fine', label: 'Amende' },
+    { value: 'other', label: 'Autre' },
+    { value: 'credit_note', label: 'Avoir fournisseur' }
+  ];
   /**
    * Prix que l'ÉCRAN a posés lui-même, ligne par ligne : rappel du dernier prix payé
    * à l'ouverture ou au choix d'un modèle, montant proposé par un scan. Tant que le
@@ -1412,6 +1469,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     const tpl = this.templates.find(t => t.id === m.templateId);
     const aujourdhui = new Date().toISOString().split('T')[0];
     this.scanLu = null;
+    this.fermerRevue();   // une fiche neuve ne rouvre jamais la revue de la précédente
     this.markData = {
       vehicleId: v.vehicleId,
       vehicleName: v.vehicleName,
@@ -1540,6 +1598,17 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.isMarkSubmitting) return; // les appels en cours doivent pouvoir rendre compte de leur résultat
     this.isMarkOpen = false; this.markData = this.getEmptyMark();
     this.scanLu = null; this.prixProposes.clear();
+    // La revue meurt AVEC la fiche : sans cela le panneau restait armé derrière, et
+    // la facture du véhicule A se serait appliquée au véhicule B au dossier suivant,
+    // sans un mot (relecture du 29/09/2026).
+    this.fermerRevue();
+  }
+
+  /** Oublie toute revue en cours. Appelée à l'ouverture ET à la fermeture de la fiche. */
+  private fermerRevue(): void {
+    this.revueOuverte = false;
+    this.revue = null;
+    this.scanOrigine = null;
   }
   /**
    * Même règle que le serveur (MarkMaintenanceDoneCommandHandler) : un compteur ne recule pas.
@@ -1717,7 +1786,37 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
    * celui lu sur le document. Reste nul ou négatif : le champ prix reste VIDE, le
    * scan n'invente aucun montant.
    */
+  /**
+   * Facture scannée : on ouvre d'ABORD le panneau de revue partagé — les mêmes
+   * champs et le même détail ligne par ligne que sur Dépenses (29/09/2026). Le
+   * rapprochement ligne → modèle d'entretien ne se fait qu'après validation, sur
+   * les valeurs CORRIGÉES, par `appliquerFactureRelue`.
+   *
+   * Le véhicule n'est pas choisi ici : la fiche « Entretien effectué » est déjà
+   * ouverte POUR un véhicule. Le panneau l'affiche verrouillé, et la plaque lue
+   * sert d'alerte quand elle diffère.
+   */
   onFactureScannee(res: ResultatScanFacture): void {
+    this.scanOrigine = res;
+    this.revue = revueDepuisScan(res, this.markData.vehicleId);
+    this.revueOuverte = true;
+    this.cdr.detectChanges();
+  }
+
+  /** L'utilisateur a relu et corrigé : on applique SES valeurs à la fiche. */
+  validerRevue(modele: RevueFacture): void {
+    if (!this.scanOrigine) return;
+    const relu = scanDepuisRevue(modele, this.scanOrigine);
+    this.fermerRevue();
+    this.appliquerFactureRelue(relu);
+  }
+
+  annulerRevue(): void {
+    this.fermerRevue();
+    this.cdr.detectChanges();
+  }
+
+  private appliquerFactureRelue(res: ResultatScanFacture): void {
     const x = res.extraction;
     const lignes = this.markData.invoiceLines as InvoiceLine[];
 

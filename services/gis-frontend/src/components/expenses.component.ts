@@ -13,6 +13,7 @@ import {
   ScanFactureComponent, preparerImageFacture,
   ResultatScanFacture, EchecScanFacture
 } from './shared/scan-facture.component';
+import { VerifierFactureComponent } from './shared/verifier-facture.component';
 
 export interface Expense {
   id: string;
@@ -68,7 +69,7 @@ export interface Expense {
 @Component({
   selector: 'app-expenses',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, AppCurrencyPipe, ScanFactureComponent],
+  imports: [CommonModule, FormsModule, RouterLink, AppLayoutComponent, AppCurrencyPipe, ScanFactureComponent, VerifierFactureComponent],
   templateUrl: './expenses.component.html',
   styleUrls: ['./expenses.component.css']
 })

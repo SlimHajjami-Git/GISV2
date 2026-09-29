@@ -20,6 +20,16 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
   let component: MaintenanceTemplatesComponent;
   let api: ApiService;
 
+  /**
+   * Depuis le 29/09/2026 un scan ouvre d'abord le panneau de revue partagé ; la
+   * fiche n'est remplie qu'à la validation. Ces tests portent sur le REMPLISSAGE,
+   * donc ils enchaînent les deux gestes — l'utilisateur relit sans rien corriger.
+   */
+  const scannerEtValider = (res: any) => {
+    component.onFactureScannee(res);
+    component.validerRevue(component.revue!);
+  };
+
   const modeles = [
     { id: '1', name: 'Vidange moteur', description: '', intervalKm: 10000, intervalMonths: 12, estimatedCost: 150, priority: 'medium' as const, category: 'Moteur', isActive: true },
     { id: '2', name: 'Plaquettes de frein', description: '', intervalKm: 30000, intervalMonths: null, estimatedCost: 200, priority: 'high' as const, category: 'Freinage', isActive: true },
@@ -94,7 +104,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
   it('scan réussi : date, fournisseur, lignes et notes de la facture sont proposés', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
 
     expect(component.markData.date).toBe('2026-09-15');
     // Fournisseur rapproché par le nom, jamais créé.
@@ -124,7 +134,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
   it('sans détail de lignes : le total de la facture va sur l’entretien coché', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture({ items: [] }));
+    scannerEtValider(facture({ items: [] }));
 
     expect(component.markData.invoiceLines.length).toBe(1);
     expect(component.markData.invoiceLines[0].price).toBe(343);
@@ -139,7 +149,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
    */
   it('reste nul : le prix de l’entretien coché reste vide, jamais 0', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture({
+    scannerEtValider(facture({
       total: 343, amountTTC: 343,
       items: [{ label: 'Plaquettes de frein avant', amount: 343, category: 'maintenance' }]
     }));
@@ -157,7 +167,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
   it('total inférieur aux lignes lues : aucun montant ne redescend, aucun 0 inventé', () => {
     // a) Remise sur la facture : le montant déjà rapproché (120) est conservé.
     ouvrirEntretien();
-    component.onFactureScannee(facture({
+    scannerEtValider(facture({
       total: 250, amountTTC: 250,
       items: [
         { label: 'Vidange moteur 10W40', amount: 120, category: 'maintenance' },
@@ -169,7 +179,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
     // b) Reste négatif et champ vide : il reste vide, à l'utilisateur de trancher.
     ouvrirEntretien();
-    component.onFactureScannee(facture({
+    scannerEtValider(facture({
       total: 350, amountTTC: 350,
       items: [{ label: 'Plaquettes de frein avant', amount: 400, category: 'maintenance' }]
     }));
@@ -190,7 +200,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     component.onLineTemplateChange(ligneFreins, '2');
     ligneFreins.price = 200;
 
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
 
     // Main d'œuvre : aucun modèle ne la reconnaît, le montant n'a nulle part où aller.
     expect(component.scanLu!.lignesNonRapprochees.map(l => l.label)).toEqual(['Main d\'oeuvre']);
@@ -213,7 +223,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     component.markData.invoiceLines[0].price = 200;
     component.markData.notes = 'Facture remise en main propre';
 
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
 
     expect(component.markData.date).toBe('2026-09-10');
     expect(component.markData.invoiceLines[0].price).toBe(200);
@@ -237,10 +247,10 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     ouvrirEntretien();
     component.markData.invoiceLines[0].price = 200;   // prix tapé par l'utilisateur
 
-    component.onFactureScannee(facture());            // 1er scan : il le respecte
+    scannerEtValider(facture());            // 1er scan : il le respecte
     expect(component.markData.invoiceLines[0].price).toBe(200);
 
-    component.onFactureScannee(facture());            // 2e scan : il le respecte ENCORE
+    scannerEtValider(facture());            // 2e scan : il le respecte ENCORE
     expect(component.markData.invoiceLines[0].price).toBe(200);
     // Le montant lu reste rappelé, et la ligne reconnue par le 1er scan n'est pas dupliquée.
     expect(component.markData.invoiceLines.length).toBe(2);
@@ -255,11 +265,11 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
    */
   it('second scan d’une facture corrigée : le scan remplace bien SA propre proposition', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
     expect(component.markData.invoiceLines[0].price).toBe(163);
 
     // Le garage renvoie la facture corrigée : vidange 150, freins 180, main d'œuvre 70.
-    component.onFactureScannee(facture({
+    scannerEtValider(facture({
       total: 400, amountTTC: 400,
       items: [
         { label: 'Vidange moteur 10W40', amount: 150, category: 'maintenance' },
@@ -291,7 +301,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     component.onLineTemplateChange(component.markData.invoiceLines[1], '2');
     expect(component.markData.invoiceLines[1].price).toBe(200);   // rappel de l'écran
 
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
 
     expect(component.markData.invoiceLines[1].price).toBe(180);   // montant de la facture
     expect(component.markData.invoiceLines[0].price).toBe(163);
@@ -302,11 +312,11 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
   it('fournisseur déjà choisi ou introuvable : aucun garage inventé', () => {
     ouvrirEntretien();
     component.markData.supplierId = 9;
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
     expect(component.markData.supplierId).toBe(9);
 
     ouvrirEntretien();
-    component.onFactureScannee(facture({ supplierName: 'STATION SHELL LAC' }));
+    scannerEtValider(facture({ supplierName: 'STATION SHELL LAC' }));
     expect(component.markData.supplierId).toBeNull();
     expect(component.scanLu!.fournisseurRapproche).toBe(false);
     expect(component.scanLu!.fournisseurLu).toBe('STATION SHELL LAC');
@@ -314,7 +324,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
   it('plaque de la facture différente du véhicule : avertissement, sans blocage', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture({ vehiclePlate: '999 TU 1111' }));
+    scannerEtValider(facture({ vehiclePlate: '999 TU 1111' }));
 
     expect(component.scanLu!.plaqueDifferente).toBe(true);
     expect(component.scanLu!.plaqueLue).toBe('999 TU 1111');
@@ -325,7 +335,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
   it('facture d’avoir : signalée, jamais enregistrée comme un coût en douce', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture({ isCreditNote: true, category: 'credit_note' }));
+    scannerEtValider(facture({ isCreditNote: true, category: 'credit_note' }));
     expect(component.scanLu!.avoir).toBe(true);
   });
 
@@ -362,7 +372,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
 
   it('fermeture de la modale : le bandeau du scan ne survit pas au dossier suivant', () => {
     ouvrirEntretien();
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
     expect(component.scanLu).not.toBeNull();
 
     component.closeMarkDone();
@@ -383,7 +393,7 @@ describe('MaintenanceTemplatesComponent — scan de facture', () => {
     jest.spyOn(component, 'loadVehicles').mockImplementation(() => {});
 
     ouvrirEntretien();
-    component.onFactureScannee(facture());
+    scannerEtValider(facture());
     component.confirmMarkDone();
 
     expect(envoyes.length).toBe(2);

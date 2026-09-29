@@ -11,6 +11,9 @@ import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
 import {
   ScanFactureComponent, ResultatScanFacture, EchecScanFacture, LigneFactureScannee
 } from './shared/scan-facture.component';
+import {
+  VerifierFactureComponent, RevueFacture, revueDepuisScan, scanDepuisRevue
+} from './shared/verifier-facture.component';
 import { trigger, transition, style, animate } from '@angular/animations';
 
 type RepairSortKey = 'reference' | 'repairDate' | 'vehicleName' | 'partsCost' | 'laborCost' | 'totalCost' | 'status';
@@ -129,7 +132,7 @@ function dateSeule(d: string | null | undefined): string {
 @Component({
   selector: 'app-repairs',
   standalone: true,
-  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, ...USER_PREF_PIPES],
+  imports: [CommonModule, FormsModule, AppLayoutComponent, ScanFactureComponent, VerifierFactureComponent, ...USER_PREF_PIPES],
   animations: [
     trigger('fadeIn', [
       transition(':enter', [
@@ -188,6 +191,19 @@ function dateSeule(d: string | null | undefined): string {
           <app-scan-facture [desactive]="fenetreOuverte"
                             raisonDesactivation="Fermez la fenêtre ouverte avant de scanner : le scan repart d'un formulaire vierge."
                             (scanne)="onFactureScannee($event)" (echec)="onEchecScan($event)"></app-scan-facture>
+          <!-- Revue de la facture AVANT de remplir le formulaire : mêmes champs et
+               même détail ligne par ligne que sur Dépenses (29/09/2026). -->
+          @if (revueOuverte && revue) {
+            <app-verifier-facture
+              [modele]="revue"
+              [vehicules]="vehiculesRevue"
+              [categories]="categoriesLignes"
+              [devise]="currencyCode"
+              [montantObligatoire]="false"
+              libelleValider="Continuer"
+              (valider)="validerRevue($event)"
+              (annuler)="annulerRevue()"></app-verifier-facture>
+          }
           <!-- Même verrou, exactement pour la même raison : ce bouton vit HORS de la
                fenêtre. L'ombre le cachait sans le sortir de l'ordre de TABULATION — une
                touche Tab (ou un clic dès la fenêtre refermée par erreur) rouvrait un
@@ -1110,6 +1126,39 @@ export class RepairsComponent implements OnInit, OnDestroy {
   /** Résumé du dernier scan de facture, affiché en tête du formulaire (null = saisie manuelle). */
   scanInfo: ScanInfo | null = null;
 
+  // ── Revue de la facture scannée (panneau partagé avec Dépenses, 29/09/2026) ──
+  /** Panneau de revue ouvert : le formulaire de réparation n'est pas encore rempli. */
+  revueOuverte = false;
+  /** Ce que l'utilisateur relit et corrige. */
+  revue: RevueFacture | null = null;
+  /** Extraction d'origine, conservée pour les champs que le panneau ne montre pas. */
+  private scanOrigine: ResultatScanFacture | null = null;
+  /**
+   * Parc au format attendu par le panneau ({ id, plate, name }) : ici la plaque
+   * s'appelle `plateNumber`. Calculé à l'OUVERTURE du panneau — un getter serait
+   * réévalué à chaque cycle de détection et reconstruirait la liste pour rien.
+   */
+  vehiculesRevue: { id: number; plate: string; name: string }[] = [];
+
+  /**
+   * Catégories proposées dans le panneau de revue — les DIX du vocabulaire du scan,
+   * à l'identique de l'écran Dépenses. Il faut la liste complète : l'IA peut rendre
+   * 'insurance', 'tax' ou 'credit_note', et une valeur absente de la liste laisse le
+   * select — marqué obligatoire — VIDE, sans rien dire (relecture du 29/09/2026).
+   */
+  readonly categoriesLignes = [
+    { value: 'fuel', label: 'Carburant' },
+    { value: 'maintenance', label: 'Entretien' },
+    { value: 'repair', label: 'Réparation' },
+    { value: 'insurance', label: 'Assurance' },
+    { value: 'tax', label: 'Vignette' },
+    { value: 'toll', label: 'Péage' },
+    { value: 'parking', label: 'Stationnement' },
+    { value: 'fine', label: 'Amende' },
+    { value: 'other', label: 'Autre' },
+    { value: 'credit_note', label: 'Avoir fournisseur' }
+  ];
+
   form = this.getEmptyForm();
 
   readonly repairTypes = REPAIR_TYPES;
@@ -1140,7 +1189,13 @@ export class RepairsComponent implements OnInit, OnDestroy {
    * repartait de zéro ou était remplacé, la saisie en cours perdue sans un mot.
    */
   get fenetreOuverte(): boolean {
-    return this.isPanelOpen || !!this.viewingRepair || this.showDeleteConfirm;
+    // `revueOuverte` en fait partie depuis le 29/09/2026 : sans lui, une touche Tab
+    // atteignait « Nouvelle reparation » DERRIÈRE le panneau de revue et ouvrait le
+    // tiroir par-dessus (z-index 1200 contre 1051), revue invisible dessous ; et le
+    // bouton de scan relançait une analyse, crédit IA consommé, par-dessus une revue
+    // en cours. C'est exactement le piège de l'ordre de TABULATION que ce getter existe
+    // pour fermer.
+    return this.isPanelOpen || !!this.viewingRepair || this.showDeleteConfirm || this.revueOuverte;
   }
 
   /** Motif du verrou, en infobulle, pour que le gris ne soit pas une énigme. */
@@ -1696,8 +1751,37 @@ export class RepairsComponent implements OnInit, OnDestroy {
    * (null) reste vide — le scan propose, l'utilisateur dispose, et rien n'est
    * enregistré tant qu'il n'a pas validé.
    */
+  /**
+   * Facture scannée : on ouvre d'ABORD le panneau de revue partagé — les mêmes
+   * champs et le même détail ligne par ligne que sur Dépenses (29/09/2026). Le
+   * formulaire de réparation n'est rempli qu'après validation, par
+   * `appliquerFactureRelue`, qui reçoit alors les valeurs CORRIGÉES.
+   */
   onFactureScannee(res: ResultatScanFacture): void {
     if (!this.peutRemplacerLaSaisie()) return;
+    const vehicule = this.matchVehicleByPlate(res.extraction.vehiclePlate);
+    this.scanOrigine = res;
+    this.vehiculesRevue = this.vehicles.map(v => ({ id: v.id, plate: v.plateNumber, name: v.name }));
+    this.revue = revueDepuisScan(res, vehicule ? String(vehicule.id) : '');
+    this.revueOuverte = true;
+    this.cdr.detectChanges();
+  }
+
+  /** L'utilisateur a relu et corrigé : on remplit le formulaire avec SES valeurs. */
+  validerRevue(modele: RevueFacture): void {
+    if (!this.scanOrigine) return;
+    const relu = scanDepuisRevue(modele, this.scanOrigine);
+    this.revueOuverte = false;
+    this.appliquerFactureRelue(relu, modele.vehicleId);
+  }
+
+  annulerRevue(): void {
+    this.revueOuverte = false;
+    this.scanOrigine = null;
+    this.cdr.detectChanges();
+  }
+
+  private appliquerFactureRelue(res: ResultatScanFacture, vehicleIdChoisi: string): void {
     // Fiche de détail ou confirmation de suppression restées ouvertes : rien n'y est
     // saisi, mais deux fenêtres empilées n'ont aucun sens.
     this.viewingRepair = null;
@@ -1710,11 +1794,13 @@ export class RepairsComponent implements OnInit, OnDestroy {
     this.selectedVehicle = null;
     this.saveError = null;
 
-    const vehicule = this.matchVehicleByPlate(x.vehiclePlate);
-    if (vehicule) {
-      this.form.vehicleId = String(vehicule.id);
+    // Le véhicule vient du panneau de revue : l'utilisateur vient de le choisir
+    // (ou de confirmer celui que la plaque avait désigné). Ne pas re-deviner.
+    if (vehicleIdChoisi) {
+      this.form.vehicleId = vehicleIdChoisi;
       this.onVehicleChange();   // reprend le kilométrage courant, comme une sélection à la main
     }
+    const vehicule = vehicleIdChoisi ? this.vehicles.find(v => String(v.id) === vehicleIdChoisi) : null;
 
     const fournisseur = this.matchSupplierByName(x.supplierName);
     if (fournisseur) this.form.supplierId = String(fournisseur.id);
