@@ -165,17 +165,30 @@ builder.Services.AddHostedService<GisAPI.Services.BatteryMonitoringService>();
 // charging, or the saturated-firmware long-silence pattern).
 builder.Services.AddHostedService<GisAPI.Services.VoltageHealthMonitoringService>();
 
-// Audit du capteur de tension : décide, par boîtier, si sa valeur de batterie
-// est affichable. Le test est l'alternateur — un capteur qui rend la même
-// valeur moteur tournant et moteur éteint ne mesure rien. Sans cet audit,
-// l'interface annonçait « 12,9 V / 100 % » sur un véhicule en panne de
-// batterie (259 TU 4987, 14/08/2026).
+// Audit du capteur de tension : décide, par boîtier NON NEMS (Teltonika), si sa
+// valeur de batterie est affichable. Le test est l'alternateur — un capteur qui
+// rend la même valeur moteur tournant et moteur éteint ne mesure rien. Sans cet
+// audit, l'interface annonçait « 12,9 V / 100 % » sur un véhicule en panne de
+// batterie (259 TU 4987, 14/08/2026). Les NEMS n'y passent plus depuis le
+// 25/09/2026 : leur tension vient de l'octet « Batterie » (BatteryReadout).
 builder.Services.AddHostedService<GisAPI.Services.VoltageSensorAuditService>();
 
-// Détection "véhicule qui ne démarre pas" : lit le DÉMARREUR (tentatives de
-// contact répétées + immobilité du jour + a roulé la veille) et non la tension,
-// dont les cinq formulations testées ont toutes été réfutées sur ce matériel.
-builder.Services.AddHostedService<GisAPI.Services.StartFailureDetectionService>();
+// Tension batterie des NEMS : relevée au DÉMARRAGE du véhicule et gardée jusqu'au
+// suivant (Slim, 29/09/2026). Moteur tournant, l'octet « Batterie » porte
+// l'alternateur et ne dit rien de la batterie ; seul l'instant du démarrage la
+// montre. Le résultat est écrit sur le boîtier pour que /vehicles/with-positions,
+// pollé toutes les ~30 s par page et par utilisateur, n'ait rien à calculer.
+builder.Services.AddHostedService<GisAPI.Services.BatteryStartReadingService>();
+
+// L'alerte « véhicule qui ne démarre pas » (StartFailureDetectionService) a été
+// RETIRÉE le 29/09/2026. Elle lisait le démarreur — tentatives de contact répétées,
+// immobilité du jour, a roulé la veille — faute de pouvoir juger la batterie sur
+// l'octet 32-34. Deux raisons de la supprimer : elle n'a jamais tenu son étalonnage
+// (calibrée pour ~2 alertes par jour sur 250 véhicules, elle en produisait 22 par
+// jour sur 37 jours de production TN, 813 véhicules-jours et 119 véhicules touchés),
+// et elle dit maintenant la même chose que l'alerte batterie, en moins fiable.
+// La question « cette batterie va-t-elle lâcher ? » se juge sur la tension relevée
+// au démarrage (BatteryStartReadingService + VoltageHealthMonitoringService).
 
 // Invoice Orphan Cleanup — deletes scanned-invoice files under uploads/invoices
 // that no VehicleCost.ReceiptUrl references and are older than 24h (abandoned

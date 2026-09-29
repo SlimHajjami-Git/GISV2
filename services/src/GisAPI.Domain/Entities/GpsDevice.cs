@@ -93,6 +93,12 @@ public class GpsDevice : TenantEntity
     ///
     /// <para><c>null</c> = jamais audité ou données insuffisantes, traité
     /// comme non affichable.</para>
+    ///
+    /// <para>Ne concerne plus les NEMS depuis le 25/09/2026 : leur tension vient de
+    /// l'octet « Batterie » (34-36), retenue au démarrage du véhicule
+    /// (<see cref="BatteryStartRaw"/>), et ce drapeau n'est plus ni écrit ni lu
+    /// pour eux — c'est le service qui écrit cette tension qui porte sa propre
+    /// garde « l'octet bouge-t-il ».</para>
     /// </summary>
     public bool? VoltageSensorReliable { get; set; }
 
@@ -100,11 +106,48 @@ public class GpsDevice : TenantEntity
     public DateTime? VoltageSensorCheckedAt { get; set; }
 
     /// <summary>
-    /// Dernière alerte « démarrage impossible » envoyée pour ce boîtier.
-    /// Temporisation de 24 h : un véhicule qui reste en panne ne doit pas
-    /// renotifier à chaque cycle de détection.
+    /// Tension batterie retenue au DERNIER DÉMARRAGE du véhicule, en valeur brute
+    /// de l'octet « Batterie » (34-36) des trames NEMS — × <see cref="Domain.Common.VoltageScale.NemsBatteryFactor"/>
+    /// pour des volts (décision de Slim du 29/09/2026).
+    ///
+    /// <para><b>Pourquoi le démarrage.</b> L'octet mélange deux grandeurs : moteur
+    /// tournant il porte l'alternateur (13,5 à 14,4 V), pas la batterie. Seul
+    /// l'instant du démarrage dit dans quel état est la batterie. La valeur reste
+    /// donc affichée jusqu'au démarrage suivant : c'est un ÉTAT du boîtier, pas un
+    /// agrégat — d'où une colonne, et un chemin chaud qui ne calcule plus rien.</para>
+    ///
+    /// <para><c>null</c> = aucun démarrage exploitable connu, ou octet jugé figé sur
+    /// les dernières 24 h. Écrite par <c>BatteryStartReadingService</c>.</para>
     /// </summary>
-    public DateTime? LastStartFailureAlertAt { get; set; }
+    public short? BatteryStartRaw { get; set; }
+
+    /// <summary>
+    /// Instant (UTC) du démarrage d'où provient <see cref="BatteryStartRaw"/>. Sert
+    /// à dater la mesure à l'écran : sur TN, 14 boîtiers sur 226 n'avaient pas
+    /// redémarré depuis plus de 24 h le 29/09/2026.
+    /// </summary>
+    public DateTime? BatteryStartAt { get; set; }
+
+    /// <summary>
+    /// Médiane des <see cref="Domain.Common.VoltageScale.StartHistoryWindow"/> derniers
+    /// démarrages (ou de tous s'il y en a moins), en valeur brute de l'octet 34-36.
+    ///
+    /// <para><b>C'est ELLE qui allume le témoin et déclenche la notification</b>, jamais
+    /// <see cref="BatteryStartRaw"/> seul : un démarrage bas isolé — radio oubliée,
+    /// phares, trajet trop court pour recharger — ne prouve rien. Mesuré sur la
+    /// production TN le 29/09/2026 : 9 des 34 témoins venaient d'un creux isolé, et
+    /// 5 batteries franchement faibles étaient manquées parce que leur dernier démarrage
+    /// était bon.</para>
+    ///
+    /// <para><c>null</c> = moins de <see cref="Domain.Common.VoltageScale.MinStartsForWarning"/>
+    /// démarrages connus : le véhicule affiche sa tension, sans témoin.</para>
+    /// </summary>
+    public short? BatteryStartMedianRaw { get; set; }
+
+    // LastStartFailureAlertAt a été retirée le 29/09/2026 avec l'alerte « véhicule qui
+    // ne démarre pas ». La COLONNE last_start_failure_alert_at reste en base, avec ses
+    // 120 boîtiers déjà horodatés : c'est de l'historique client, on ne le supprime pas
+    // (voir migration 055, qui se contente de le documenter).
 
     public Societe? Societe { get; set; }
     public Vehicle? Vehicle { get; set; }

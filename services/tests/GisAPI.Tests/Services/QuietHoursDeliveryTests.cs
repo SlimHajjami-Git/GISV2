@@ -119,12 +119,12 @@ public class QuietHoursDeliveryTests
         VerifyFcm(h.Fcm, Times.Once());
     }
 
-    // Réponse du client (11/09/2026) : remorquage et panne de démarrage passent la nuit.
+    // Réponse du client (11/09/2026) : un remorquage passe la nuit. « Panne de
+    // démarrage » y figurait ; l'alerte a été retirée le 29/09/2026.
     [Theory]
     [InlineData("tow_detected")]
     [InlineData("accident_tow_detected")]
-    [InlineData("start_failure")]
-    public async Task Remorquage_et_panne_de_demarrage_passent_malgre_la_plage(string type)
+    public async Task Remorquage_passe_malgre_la_plage(string type)
     {
         var h = await BuildAsync(enabled: true, windowContainsNow: true);
 
@@ -132,6 +132,20 @@ public class QuietHoursDeliveryTests
 
         SilentFlag(h.SignalR.Single()).Should().BeFalse();
         VerifyFcm(h.Fcm, Times.Once());
+    }
+
+    [Fact]
+    public async Task La_batterie_en_fin_de_vie_attend_le_matin()
+    {
+        // Elle remplace l'alerte « véhicule qui ne démarre pas », mais pas son
+        // passe-droit : une batterie qui s'use ne justifie pas de réveiller un admin.
+        var h = await BuildAsync(enabled: true, windowContainsNow: true);
+
+        await h.Service.CreateAndSendAsync(CompanyId, UserId, "battery_health",
+            "Batterie en fin de vie", "11,2 V au démarrage", priority: "high");
+
+        SilentFlag(h.SignalR.Single()).Should().BeTrue();
+        VerifyFcm(h.Fcm, Times.Never());
     }
 
     [Fact]

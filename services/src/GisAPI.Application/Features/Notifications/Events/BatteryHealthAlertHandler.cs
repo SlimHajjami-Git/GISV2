@@ -119,15 +119,14 @@ public class BatteryHealthAlertHandler : INotificationHandler<BatteryHealthAlert
     private static (string Title, string Message) BuildCopy(BatteryHealthAlertEvent e, string vehicleLabel)
     {
         var observed = e.VoltageObservedV.HasValue ? $"{e.VoltageObservedV.Value:F1} V" : "—";
-        var baseline = e.VoltageBaselineV.HasValue ? $"{e.VoltageBaselineV.Value:F1} V" : "—";
 
         return e.SignalKind switch
         {
             "battery_dead" =>
-                ($"Batterie morte — {vehicleLabel}",
-                 $"La batterie du {vehicleLabel} chute régulièrement sous 11.9 V au repos " +
-                 $"(médiane {observed}). À ce niveau, la batterie ne tient plus la charge et le " +
-                 "démarrage à froid est compromis — remplacement à prévoir rapidement."),
+                ($"Batterie en fin de vie — {vehicleLabel}",
+                 $"Sur ses derniers démarrages, le {vehicleLabel} tourne à {observed} — " +
+                 "pas un creux isolé, une tendance. À ce niveau la batterie ne tient plus " +
+                 "la charge et le démarrage à froid est compromis : remplacement à prévoir."),
 
             _ =>
                 ($"Anomalie batterie — {vehicleLabel}",

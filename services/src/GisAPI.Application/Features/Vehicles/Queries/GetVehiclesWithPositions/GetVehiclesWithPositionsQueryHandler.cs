@@ -198,6 +198,14 @@ CROSS JOIN LATERAL (
             // à 600 s pour ne pas compter les coupures offline), attribué en
             // mouvement/arrêt selon la vitesse de la trame précédente — exactement
             // l'ancienne logique .NET, mais exécutée par Postgres et agrégée.
+            //
+            // LA BATTERIE N'EST PAS CALCULÉE ICI, et c'est délibéré. Une version
+            // intermédiaire y agrégeait l'octet « Batterie » sur la journée ; mesuré
+            // le 28/09/2026 sur les 307 véhicules HERTZ, cela coûtait 674 ms → 788 à
+            // 944 ms par appel, sur un chemin pollé toutes les ~30 s par page et par
+            // utilisateur. La tension retenue au démarrage est désormais un ÉTAT du
+            // boîtier (gps_devices.battery_start_raw, écrit par
+            // BatteryStartReadingService) : elle arrive avec le véhicule, gratuitement.
             const string statsSql = @"
 SELECT device_id AS ""DeviceId"",
        COALESCE(MAX(speed_kph), 0)::double precision AS ""MaxSpeed"",
@@ -205,7 +213,7 @@ SELECT device_id AS ""DeviceId"",
        (COALESCE(SUM(CASE WHEN prev_speed <= 5 OR prev_speed IS NULL THEN gap ELSE 0 END), 0) / 60.0)::double precision AS ""StoppedMinutes"",
        COUNT(*)::int AS ""TotalCount""
 FROM (
-    SELECT device_id, speed_kph,
+    SELECT device_id, speed_kph, recorded_at,
            LEAST(GREATEST(EXTRACT(EPOCH FROM (recorded_at - LAG(recorded_at) OVER w)), 0), 600) AS gap,
            LAG(speed_kph) OVER w AS prev_speed
     FROM gps_positions
@@ -228,51 +236,39 @@ GROUP BY device_id;
             deviceStats.TryGetValue(deviceId, out var stats);
             var lastComm = v.GpsDevice?.LastCommunication;
             var isOnline = lastComm.HasValue && (DateTime.UtcNow - lastComm.Value).TotalMinutes < 41;
-            // Tension et niveau de batterie — affichés UNIQUEMENT si l'audit a
-            // établi que le capteur de ce boîtier mesure vraiment quelque chose
-            // (VoltageSensorAuditService : le capteur suit-il l'alternateur ?).
-            //
-            // Sur 243 véhicules TN, 213 renvoyaient la MÊME valeur moteur
-            // tournant et moteur éteint : l'octet ne mesurait rien. On affichait
-            // pourtant « 12,9 V / 100 % » sur un véhicule incapable de démarrer
-            // (259 TU 4987, 14/08/2026). Devant une batterie, un trou franc vaut
-            // mieux qu'une fausse assurance — d'où le silence par défaut, y
-            // compris quand le verdict est encore inconnu (null).
-            //
-            // Depuis le 17/09/2026 la tension des NEMS vient de l'octet 34-36
-            // (« Batterie », × 0,156 V) et non plus de l'octet 32-34 (« Power »,
-            // × 0,3) qui ne mesurait rien sur 281 boîtiers sur 288. Les Teltonika
-            // gardent leur power_voltage en dixièmes de volt : eux mesurent bien.
-            int? batteryLevel = null;
-            double? batteryVoltageV = null;
-            var displayVolts = VoltageScale.DisplayVolts(
-                v.GpsDevice?.ProtocolType, position?.BatteryRaw, position?.PowerVoltage);
-            if (v.GpsDevice?.VoltageSensorReliable == true && displayVolts != null)
-            {
-                const double batteryMinV = 11.0;
-                const double batteryMaxV = 12.8;
-                var voltage = displayVolts.Value;
-                if (voltage > VoltageScale.AlternatorCeilingV) voltage = VoltageScale.AlternatorCeilingV;
-                batteryVoltageV = Math.Round(voltage, 1);
+            // Tension et niveau de batterie (voir BatteryReadout) :
+            // - NEMS : tension retenue au DERNIER DÉMARRAGE (Slim, 29/09/2026), lue
+            //   sur le boîtier, N/A tant qu'aucun démarrage exploitable n'est connu ;
+            // - Teltonika : dernière trame, seulement si l'audit a validé le
+            //   capteur. Sur 243 véhicules TN, 213 renvoyaient la même valeur
+            //   moteur tournant et éteint (259 TU 4987 affiché « 12,9 V / 100 % »
+            //   sans pouvoir démarrer, 14/08/2026) : devant une batterie, un trou
+            //   franc vaut mieux qu'une fausse assurance.
+            var battery = BatteryReadout.Compute(
+                v.GpsDevice?.ProtocolType,
+                v.GpsDevice?.VoltageSensorReliable,
+                v.GpsDevice?.BatteryLevel,
+                position?.BatteryRaw,
+                position?.PowerVoltage,
+                v.GpsDevice?.BatteryStartRaw,
+                v.GpsDevice?.BatteryStartAt,
+                v.GpsDevice?.BatteryStartMedianRaw);
+            var batteryLevel = battery.Percent;
+            var batteryVoltageV = battery.Volts;
 
-                batteryLevel = v.GpsDevice?.BatteryLevel;
-                if (batteryLevel == null)
-                {
-                    if (voltage <= batteryMinV) batteryLevel = 0;
-                    else if (voltage >= batteryMaxV) batteryLevel = 100;
-                    else batteryLevel = (int)Math.Round((voltage - batteryMinV) / (batteryMaxV - batteryMinV) * 100.0);
-                }
-            }
-
-            // Sticky battery-health flag: any voltage-health alert raised in
-            // the last 7 days surfaces as a warning indicator on the
-            // monitoring page. We deliberately go beyond the 48h cooldown of
-            // the detector so an admin who didn't see the SignalR push still
-            // notices the warning when they open the page.
+            // Icône « Anomalie batterie ».
+            // - NEMS : tension du dernier démarrage sous 11,5 V (Slim, 29/09/2026).
+            //   C'est exactement ce que juge la notification « batterie en fin de
+            //   vie » (VoltageHealthMonitoringService) : l'écran et l'alerte disent
+            //   désormais la même chose, à partir de la même valeur.
+            // - Autres : drapeau collant de l'alerte de santé des 7 derniers jours,
+            //   au-delà des 48 h de silence du détecteur, pour qu'un admin qui a
+            //   manqué la notification voie quand même l'avertissement.
             var batteryAlertCutoff = DateTime.UtcNow.AddDays(-7);
-            var hasBatteryHealthAlert =
-                v.GpsDevice?.LastVoltageHealthAlertAt.HasValue == true
-                && v.GpsDevice.LastVoltageHealthAlertAt.Value >= batteryAlertCutoff;
+            var hasBatteryHealthAlert = battery.IsStartReading
+                ? battery.LowWarning
+                : v.GpsDevice?.LastVoltageHealthAlertAt.HasValue == true
+                  && v.GpsDevice.LastVoltageHealthAlertAt.Value >= batteryAlertCutoff;
 
             // If ignition is off, speed is 0
             var ignitionOn = position?.IgnitionOn ?? false;
@@ -388,7 +384,10 @@ GROUP BY device_id;
                     // in the lookback window.
                     isMoving
                         ? null
-                        : (lastIgnitionOn.TryGetValue(deviceId, out var lastOn) ? lastOn : (DateTime?)null)
+                        : (lastIgnitionOn.TryGetValue(deviceId, out var lastOn) ? lastOn : (DateTime?)null),
+                    BatteryIsStartReading: battery.IsStartReading,
+                    BatteryMeasuredAt: battery.MeasuredAt,
+                    BatteryMedianVoltage: battery.MedianVolts
                 ),
                 // Firmware "L": use GPS odometer_km directly, otherwise use vehicle mileage
                 (v.GpsDevice?.FirmwareVersion != null

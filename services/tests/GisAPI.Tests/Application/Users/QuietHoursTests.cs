@@ -72,8 +72,12 @@ public class QuietHoursTests
     [InlineData("accident", "critical", true)]
     [InlineData("tow_detected", "high", true)]
     [InlineData("accident_tow_detected", "high", true)]
-    [InlineData("start_failure", "high", true)]
-    [InlineData("START_FAILURE", "normal", true)]     // insensible à la casse
+    [InlineData("TOW_DETECTED", "normal", true)]      // insensible à la casse
+    // L'alerte « véhicule qui ne démarre pas » a été retirée le 29/09/2026, et
+    // l'alerte batterie qui la remplace n'hérite PAS de son passe-droit : « cette
+    // batterie approche de sa fin » se traite le matin, pas à 3 h.
+    [InlineData("start_failure", "high", false)]
+    [InlineData("battery_health", "high", false)]
     [InlineData("document_expiry", "high", false)]    // la priorité seule ne suffit pas
     [InlineData("maintenance_due", "high", false)]
     [InlineData("geofence", "normal", false)]

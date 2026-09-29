@@ -25,24 +25,31 @@ namespace GisAPI.Services;
 /// véhicule qui n'a pas assez roulé pour conclure) vaut « non affichable » :
 /// devant une batterie, une absence de valeur est honnête, un « 100 % » faux
 /// ne l'est pas.</para>
+///
+/// <para><b>Depuis le 25/09/2026, les NEMS ne sont plus audités.</b> Leur tension
+/// vient de l'octet « Batterie » (34-36) et le monitoring affiche son minimum du
+/// jour, trié valeur par valeur (<see cref="GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions.BatteryReadout"/>).
+/// L'audit ne juge plus que les boîtiers qui mesurent par <c>power_voltage</c>
+/// (Teltonika). Le verdict déjà écrit sur les NEMS n'est plus lu pour eux.</para>
 /// </summary>
 public class VoltageSensorAuditService : BackgroundService
 {
     // Le comportement d'un capteur ne change pas d'une heure à l'autre : une
-    // passe par jour suffit largement, et la requête balaie 7 jours de
-    // positions pour toute la flotte.
+    // passe par jour suffit largement. Depuis le 25/09/2026, la requête ne lit
+    // que 7 jours de positions des boîtiers hors NEMS (une dizaine de Teltonika
+    // et quelques protocoles sans échelle), par la liste de leurs ids.
     private const int CycleHours = 24;
     private const int StartupDelayMinutes = 6;
 
     // 7 jours — et le verdict est CUMULATIF (voir plus bas), ce qui donne la
     // couverture d'une longue fenêtre sans en payer le prix.
     //
-    // Mesuré sur la base TN : le même agrégat sur 21 jours prend 3 minutes à
-    // cache froid, 45 jours 1 min 15 à chaud. Au-delà du dépassement de délai,
-    // ce balayage complet évince le cache de Postgres — c'est exactement ce qui
-    // avait ralenti toute l'application en juillet (voir /vehicles/with-positions).
-    // Le gain, lui, était de 15 véhicules sur 390 : le marché n'en vaut pas la
-    // peine quand l'accumulation donne le même résultat gratuitement.
+    // Historique : quand la requête balayait toute la flotte (NEMS compris), le
+    // même agrégat sur 21 jours prenait 3 minutes à cache froid, 45 jours 1 min 15
+    // à chaud, et ce balayage évinçait le cache de Postgres — c'est ce qui avait
+    // ralenti toute l'application en juillet (voir /vehicles/with-positions). Le
+    // gain d'une fenêtre plus longue était de 15 véhicules sur 390 : l'accumulation
+    // donne le même résultat gratuitement.
     private const int WindowDays = 7;
 
     // Au-dessus de cette vitesse, le moteur tourne à coup sûr et l'alternateur
@@ -86,38 +93,47 @@ public class VoltageSensorAuditService : BackgroundService
         using var scope = _serviceProvider.CreateScope();
         var context = scope.ServiceProvider.GetRequiredService<GisDbContext>();
 
+        // Les NEMS ne passent plus par l'audit (25/09/2026) : leur tension vient de
+        // l'octet « Batterie » (34-36), relevée au démarrage par
+        // BatteryStartReadingService, qui porte sa propre garde « l'octet bouge-t-il »
+        // sur 24 h. Leur ancien octet 32-34 (power_voltage) ne sert plus à rien, et le
+        // verdict sur 7 jours laissait masqué plusieurs jours un boîtier tout juste
+        // reflashé. Restent les protocoles qui mesurent par power_voltage (Teltonika).
+        var devices = await context.GpsDevices.IgnoreQueryFilters()
+            .Where(d => d.ProtocolType == null || d.ProtocolType.ToLower() != VoltageScale.NemsProtocol)
+            .ToListAsync(ct);
+
+        if (devices.Count == 0)
+        {
+            _logger.LogInformation("VoltageSensorAudit: aucun boîtier hors NEMS à auditer");
+            return;
+        }
+
         // Médianes calculées PAR POSTGRES : ramener la fenêtre en mémoire
         // coûterait des millions de lignes. On ne rapatrie qu'une ligne par
-        // boîtier.
+        // boîtier, et seulement pour les boîtiers audités : la liste d'ids laisse
+        // Postgres utiliser l'index (device_id, recorded_at) au lieu de balayer
+        // 7 jours de trames de toute la flotte.
         const string sql = @"
 SELECT p.device_id AS ""DeviceId"",
        percentile_disc(0.5) WITHIN GROUP (ORDER BY p.power_voltage)
-           FILTER (WHERE p.power_voltage > 0 AND p.ignition_on AND p.speed_kph > {1})  AS ""DrivingMedian"",
+           FILTER (WHERE p.ignition_on AND p.speed_kph > {2}) AS ""DrivingMedian"",
        percentile_disc(0.5) WITHIN GROUP (ORDER BY p.power_voltage)
-           FILTER (WHERE p.power_voltage > 0 AND p.ignition_on = false)                AS ""RestingMedian"",
-       count(*) FILTER (WHERE p.power_voltage > 0 AND p.ignition_on AND p.speed_kph > {1}) AS ""DrivingFrames"",
-       count(*) FILTER (WHERE p.power_voltage > 0 AND p.ignition_on = false)               AS ""RestingFrames"",
-       percentile_disc(0.5) WITHIN GROUP (ORDER BY p.battery_raw)
-           FILTER (WHERE p.battery_raw > 0 AND p.ignition_on = false)                  AS ""BatteryRestingMedian"",
-       count(*) FILTER (WHERE p.battery_raw > 0 AND p.ignition_on = false)             AS ""BatteryRestingFrames""
+           FILTER (WHERE p.ignition_on = false)               AS ""RestingMedian"",
+       count(*) FILTER (WHERE p.ignition_on AND p.speed_kph > {2}) AS ""DrivingFrames"",
+       count(*) FILTER (WHERE p.ignition_on = false)               AS ""RestingFrames""
 FROM gps_positions p
-WHERE p.recorded_at >= {0}
-  AND (p.power_voltage > 0 OR p.battery_raw > 0)
+WHERE p.device_id = ANY({0})
+  AND p.recorded_at >= {1}
+  AND p.power_voltage > 0
 GROUP BY p.device_id;
 ";
         var since = DateTime.UtcNow.AddDays(-WindowDays);
         var rows = await context.Database
-            .SqlQueryRaw<SensorSample>(sql, since, DrivingSpeedKph)
+            .SqlQueryRaw<SensorSample>(sql, devices.Select(d => d.Id).ToArray(), since, DrivingSpeedKph)
             .ToListAsync(ct);
 
-        if (rows.Count == 0)
-        {
-            _logger.LogInformation("VoltageSensorAudit: aucune trame de tension sur {Days} j", WindowDays);
-            return;
-        }
-
         var samples = rows.ToDictionary(r => r.DeviceId);
-        var devices = await context.GpsDevices.IgnoreQueryFilters().ToListAsync(ct);
 
         var now = DateTime.UtcNow;
         int reliable = 0, unreliable = 0, undecided = 0, conserves = 0;
@@ -126,22 +142,13 @@ GROUP BY p.device_id;
         {
             samples.TryGetValue(device.Id, out var sample);
 
-            // Deux familles, deux sources. Les NEMS : octet « Batterie » (34-36),
-            // jugé sur la seule plausibilité de la tension au repos — leur mesure
-            // est lissée et ne montre pas l'alternateur (voir EvaluateNemsBattery).
-            // Les autres (Teltonika) : power_voltage, jugé comme avant, alternateur
-            // compris.
-            var verdict = string.Equals(device.ProtocolType, VoltageScale.NemsProtocol,
-                                        StringComparison.OrdinalIgnoreCase)
-                ? VoltageScale.EvaluateNemsBattery(
-                    sample?.BatteryRestingMedian,
-                    sample?.BatteryRestingFrames ?? 0)
-                : VoltageScale.EvaluateSensor(
-                    device.ProtocolType,
-                    sample?.DrivingMedian,
-                    sample?.RestingMedian,
-                    sample?.DrivingFrames ?? 0,
-                    sample?.RestingFrames ?? 0);
+            // power_voltage, jugé alternateur compris (voir EvaluateSensor).
+            var verdict = VoltageScale.EvaluateSensor(
+                device.ProtocolType,
+                sample?.DrivingMedian,
+                sample?.RestingMedian,
+                sample?.DrivingFrames ?? 0,
+                sample?.RestingFrames ?? 0);
 
             // VERDICT CUMULATIF : « pas assez de données cette semaine » n'est
             // pas une raison d'effacer ce qu'on savait déjà. Un véhicule qui a
@@ -180,8 +187,6 @@ GROUP BY p.device_id;
         public int? RestingMedian { get; set; }
         public long DrivingFrames { get; set; }
         public long RestingFrames { get; set; }
-        public int? BatteryRestingMedian { get; set; }
-        public long BatteryRestingFrames { get; set; }
     }
 
 }

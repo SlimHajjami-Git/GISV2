@@ -38,8 +38,8 @@ import { HelpArticle } from '../services/help-content.model';
               Revoir les premiers pas
             </button>
           }
-          <!-- Seulement s'il existe un guide d'ecran pour ce client (nouvel
-               utilisateur, bonne offre) : ailleurs le bouton ne ferait rien. -->
+          <!-- Seulement s'il existe un guide d'ecran pour ce client (offre, droits,
+               profil) — nouvel utilisateur ou client installe (Karim, 28/09/2026). -->
           @if (ecransAvecGuide.length) {
             <button type="button" class="btn-visite" (click)="revoirLesGuidesDesEcrans()">
               {{ guidesRemis
@@ -248,8 +248,8 @@ export class HelpCenterComponent implements OnInit {
   }
 
   /**
-   * Ecrans qui ont un guide pour ce client, lus une fois. Pendant le pilote :
-   * « Vehicules » en GPA, rien en GPS — le bouton n'apparait alors pas.
+   * Ecrans qui ont un guide pour ce client, lus une fois : les ecrans GPA, rien en
+   * GPS (pas encore de guides d'ecran) — le bouton n'apparait alors pas.
    */
   ecransAvecGuide = this.help.ecransAvecGuide();
   offreGpa = this.help.offreGpa();

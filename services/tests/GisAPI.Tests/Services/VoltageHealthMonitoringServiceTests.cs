@@ -1,5 +1,6 @@
 using FluentAssertions;
 using GisAPI.Domain.Entities;
+using GisAPI.Services;
 using GisAPI.Tests.Common;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -7,43 +8,40 @@ using Xunit;
 namespace GisAPI.Tests.Services;
 
 /// <summary>
-/// Pinning tests for the single-signal design of
-/// <c>GisAPI.Services.VoltageHealthMonitoringService</c>:
+/// Tests de garde de <c>GisAPI.Services.VoltageHealthMonitoringService</c>, refondu
+/// le 29/09/2026 : un seul signal, la tension relevée au DERNIER DÉMARRAGE du
+/// véhicule (<c>gps_devices.battery_start_raw</c>) passée sous 11,5 V.
 ///
 /// <list type="bullet">
-///   <item><description><b>Candidate filter</b> — NEMS L (gps_type_1)
-///     devices with a vehicle, NOT immobilised, past the 48 h cooldown.</description></item>
-///   <item><description><b>battery_dead</b> — at rest (ignition off),
-///     at least 10 frames AND ≥20 % of recent frames report voltage
-///     strictly under 11.9 V (byte ≤ 39). The only signal we push.</description></item>
+///   <item><description><b>Filtre des candidats</b> — boîtiers NEMS (gps_type_1)
+///     avec un véhicule, NON immobilisé, hors temporisation de 48 h, ET porteurs
+///     d'une mesure de moins de 3 jours.</description></item>
+///   <item><description><b>Décision</b> — la valeur brute est triée sur la bande
+///     68-92 avant d'être comparée au seuil : hors bande ce n'est pas une tension
+///     (octet de cap des firmwares R00C30d).</description></item>
 /// </list>
 ///
-/// <para>The signals we intentionally REMOVED (operator feedback after
-/// two false-positive saturated_silence notifications on long-parked
-/// rental vehicles):
-/// <c>saturated_silence</c> (offline alerts were unactionable noise),
-/// <c>charging_voltage_low</c> (alternator, not battery, and unmeasurable
-/// past firmware saturation), and <c>resting_voltage_decline</c>
-/// (baseline always saturated, delta check never meaningful).</para>
+/// <para>Ce que le service ne lit PLUS : <c>gps_positions.power_voltage</c>
+/// (octet 32-34), prouvé muet le 25/09/2026 — 281 boîtiers sur 288 y renvoyaient la
+/// même valeur moteur tournant et moteur éteint. Le service tournait à vide :
+/// 2 boîtiers signalés sur 308 jugeables au 29/09/2026.</para>
 /// </summary>
 public class VoltageHealthMonitoringServiceTests
 {
     private const int CompanyId = 1;
-    private const int NemsLDeviceId = 500;
+    private const int NemsDeviceId = 500;
 
-    // Mirror of the service's constants.
-    private const double RawToVoltsFactor = 0.3;
-    private const int RestingDeadByteThreshold = 39;       // 11.7 V (strictly under 11.9 V)
-    private const int MinDeadFramesForAlert = 10;
-    private const double DeadFramesMinShare = 0.20;
-    private const int MinRestingFrames = 50;
+    // Miroir des constantes du service.
     private const int CooldownHours = 48;
+    private const int MaxReadingAgeDays = 3;
 
     private static GpsDevice SeedDevice(
         TestGisDbContext context,
         int id,
         string protocolType,
         int? vehicleId,
+        short? batteryStartRaw = 80,
+        DateTime? batteryStartAt = null,
         DateTime? lastHealthAlertAt = null,
         bool isImmobilized = false)
     {
@@ -54,6 +52,8 @@ public class VoltageHealthMonitoringServiceTests
             DeviceUid = $"DEV-{id}",
             Status = "active",
             ProtocolType = protocolType,
+            BatteryStartRaw = batteryStartRaw,
+            BatteryStartAt = batteryStartAt ?? DateTime.UtcNow.AddHours(-2),
             LastVoltageHealthAlertAt = lastHealthAlertAt
         };
         context.GpsDevices.Add(device);
@@ -76,60 +76,29 @@ public class VoltageHealthMonitoringServiceTests
         return device;
     }
 
-    private static void SeedPosition(
-        TestGisDbContext context,
-        int deviceId,
-        DateTime recordedAt,
-        int? powerVoltage,
-        bool? ignitionOn)
-    {
-        context.GpsPositions.Add(new GpsPosition
-        {
-            DeviceId = deviceId,
-            RecordedAt = recordedAt,
-            Latitude = 36.8,
-            Longitude = 10.18,
-            PowerVoltage = powerVoltage,
-            IgnitionOn = ignitionOn,
-            IsValid = true
-        });
-    }
-
-    private static void SeedRange(
-        TestGisDbContext context,
-        int deviceId,
-        DateTime windowStart,
-        DateTime windowEnd,
-        int count,
-        int powerVoltage,
-        bool ignitionOn)
-    {
-        var span = (windowEnd - windowStart).TotalSeconds;
-        for (int i = 0; i < count; i++)
-        {
-            var ts = windowStart.AddSeconds(span * i / count);
-            SeedPosition(context, deviceId, ts, powerVoltage, ignitionOn);
-        }
-    }
-
-    // ── Candidate filter ────────────────────────────────────────────────────
+    // ── Filtre des candidats ────────────────────────────────────────────────
 
     [Fact]
-    public async Task CandidateFilter_OnlyPicksNemsLWithVehicleNotImmobilisedPastCooldown()
+    public async Task FiltreCandidats_NemsAvecVehiculeNonImmobiliseHorsTemporisationEtMesureFraiche()
     {
         using var context = TestDbContextFactory.Create();
         var now = DateTime.UtcNow;
         var cooldownCutoff = now.AddHours(-CooldownHours);
+        var readingCutoff = now.AddDays(-MaxReadingAgeDays);
 
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700); // pick
+        SeedDevice(context, id: NemsDeviceId, protocolType: "gps_type_1", vehicleId: 700); // retenu
         SeedDevice(context, id: 503, protocolType: "gps_type_1", vehicleId: 701,
-            lastHealthAlertAt: now.AddHours(-49)); // past 48h, pick
+            lastHealthAlertAt: now.AddHours(-49));                                          // 48 h passées, retenu
         SeedDevice(context, id: 504, protocolType: "gps_type_1", vehicleId: 702,
-            lastHealthAlertAt: now.AddHours(-2)); // inside cooldown, skip
-        SeedDevice(context, id: 505, protocolType: "noron", vehicleId: 703); // wrong protocol, skip
-        SeedDevice(context, id: 506, protocolType: "gps_type_1", vehicleId: null); // no vehicle, skip
+            lastHealthAlertAt: now.AddHours(-2));                                           // temporisation, écarté
+        SeedDevice(context, id: 505, protocolType: "noron", vehicleId: 703);                // autre protocole, écarté
+        SeedDevice(context, id: 506, protocolType: "gps_type_1", vehicleId: null);          // sans véhicule, écarté
         SeedDevice(context, id: 507, protocolType: "gps_type_1", vehicleId: 705,
-            isImmobilized: true); // operator muted, skip
+            isImmobilized: true);                                                           // hors service, écarté
+        SeedDevice(context, id: 508, protocolType: "gps_type_1", vehicleId: 706,
+            batteryStartRaw: null);                                                         // jamais relevé, écarté
+        SeedDevice(context, id: 509, protocolType: "gps_type_1", vehicleId: 707,
+            batteryStartAt: now.AddDays(-5));                                               // mesure trop vieille, écartée
 
         await context.SaveChangesAsync();
 
@@ -138,200 +107,69 @@ public class VoltageHealthMonitoringServiceTests
             .Where(d => d.ProtocolType == "gps_type_1"
                      && d.Vehicle != null
                      && !d.Vehicle.IsImmobilized
+                     && d.BatteryStartRaw != null
+                     && d.BatteryStartAt != null
+                     && d.BatteryStartAt >= readingCutoff
                      && (d.LastVoltageHealthAlertAt == null
                          || d.LastVoltageHealthAlertAt < cooldownCutoff))
             .Select(d => d.Id)
             .OrderBy(id => id)
             .ToListAsync();
 
-        picked.Should().BeEquivalentTo(new[] { NemsLDeviceId, 503 });
-    }
-
-    // ── battery_dead signal ─────────────────────────────────────────────────
-
-    [Fact]
-    public async Task BatteryDead_Fires_WhenAtLeast20PercentOfFramesAreBelow11_9V()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        // 60 healthy frames at byte 43 (saturation = 12.9 V) + 20 dead
-        // frames at byte 38 (11.4 V, clearly under 11.9 V). 20/80 = 25 %.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
-            count: 60, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
-            count: 20, powerVoltage: 38, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
-        dead.Should().BeGreaterThanOrEqualTo(MinDeadFramesForAlert);
-        ((double)dead / total).Should().BeGreaterThanOrEqualTo(DeadFramesMinShare);
+        picked.Should().BeEquivalentTo(new[] { NemsDeviceId, 503 });
     }
 
     [Fact]
-    public async Task BatteryDead_DoesNotFire_OnHealthyFleetSaturatedAt12_9V()
+    public async Task MesureDePlusDeTroisJours_NEstPasNotifiee()
     {
-        // Default state of a healthy fleet: every frame at byte 43.
-        // This must NOT trigger — the whole point of the refactor.
+        // L'écran continue de l'afficher, datée : c'est une information. Mais
+        // notifier « batterie en fin de vie » sur une mesure d'il y a une semaine
+        // serait au mieux inutile, au pire faux — batterie déjà remplacée.
         using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
         var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
-            count: 100, powerVoltage: 43, ignitionOn: false);
-
+        SeedDevice(context, id: NemsDeviceId, protocolType: "gps_type_1", vehicleId: 700,
+            batteryStartRaw: 70, batteryStartAt: now.AddDays(-4));
         await context.SaveChangesAsync();
 
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        total.Should().BeGreaterThanOrEqualTo(MinRestingFrames);
-        dead.Should().Be(0);
+        var frais = await context.GpsDevices
+            .CountAsync(d => d.BatteryStartAt >= now.AddDays(-MaxReadingAgeDays));
+
+        frais.Should().Be(0);
     }
 
-    [Fact]
-    public async Task BatteryDead_DoesNotFire_When12_0VFramesAreFrequent()
+    // ── Décision ────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData((short)68, 10.6)]    // 10,625 V — borne basse de la bande
+    [InlineData((short)70, 10.9)]    // 10,94 V
+    [InlineData((short)73, 11.4)]    // 11,41 V, dernier cran sous le seuil
+    public void BatterieEnFinDeVie_SousLeSeuil(short raw, double attenduArrondi)
     {
-        // 12.0 V (byte 40) is weak but NOT yet "dead" per the operator
-        // spec: we only alert below 11.9 V. Lots of byte=40 readings must
-        // not trigger the alert.
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
+        var volts = VoltageHealthMonitoringService.DyingBatteryVolts(raw);
 
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
-            count: 100, powerVoltage: 40, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        dead.Should().Be(0);
-    }
-
-    [Fact]
-    public async Task BatteryDead_DoesNotFire_WhenFewerThan10DeadFrames()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
-            count: 95, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
-            count: 5, powerVoltage: 38, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        dead.Should().BeLessThan(MinDeadFramesForAlert);
-    }
-
-    [Fact]
-    public async Task BatteryDead_DoesNotFire_WhenShareBelow20Percent()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now.AddDays(-1),
-            count: 188, powerVoltage: 43, ignitionOn: false);
-        SeedRange(context, NemsLDeviceId, now.AddDays(-1), now,
-            count: 12, powerVoltage: 38, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        dead.Should().BeGreaterThanOrEqualTo(MinDeadFramesForAlert);
-        ((double)dead / total).Should().BeLessThan(DeadFramesMinShare);
-    }
-
-    [Fact]
-    public async Task BatteryDead_OnlyCountsIgnitionOffFrames()
-    {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        // Plenty of low readings, but ALL with ignition on → ignored.
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
-            count: 100, powerVoltage: 35, ignitionOn: true);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        total.Should().Be(0);
-        dead.Should().Be(0);
+        volts.Should().NotBeNull();
+        Math.Round(volts!.Value, 1).Should().Be(attenduArrondi);
     }
 
     [Theory]
-    [InlineData(39, true)]    // 11.7 V → counts as dead
-    [InlineData(38, true)]    // 11.4 V → counts as dead
-    [InlineData(30, true)]    //  9.0 V → counts as dead
-    [InlineData(40, false)]   // 12.0 V → does NOT count (weak but not dead)
-    [InlineData(41, false)]   // 12.3 V → does NOT count
-    [InlineData(43, false)]   // 12.9 V (saturation) → does NOT count
-    public async Task BatteryDead_ThresholdIsByte39Inclusive(int byteValue, bool shouldCount)
+    [InlineData((short)74)]   // 11,56 V — au-dessus du seuil
+    [InlineData((short)79)]   // 12,34 V — médiane de la flotte TN au démarrage
+    [InlineData((short)90)]   // 14,06 V
+    public void BatterieSaine_NeDeclenchePas(short raw)
     {
-        using var context = TestDbContextFactory.Create();
-        SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-
-        var now = DateTime.UtcNow;
-        SeedRange(context, NemsLDeviceId, now.AddDays(-7), now,
-            count: 50, powerVoltage: byteValue, ignitionOn: false);
-
-        await context.SaveChangesAsync();
-
-        var (dead, total) = await CountAsync(context, NemsLDeviceId, now);
-        if (shouldCount) dead.Should().Be(total);
-        else             dead.Should().Be(0);
+        VoltageHealthMonitoringService.DyingBatteryVolts(raw).Should().BeNull();
     }
 
-    // ── Stamping & re-arm ───────────────────────────────────────────────────
-
-    [Fact]
-    public async Task StampingLastVoltageHealthAlertAt_RemovesDeviceFromNextCycleCandidates()
+    [Theory]
+    [InlineData(null)]          // jamais relevé, ou octet jugé figé
+    [InlineData((short)21)]     // octet de cap d'un firmware R00C30d : 3,3 V n'est pas une mesure
+    [InlineData((short)67)]     // 10,47 V : sous le plancher de 10,5 V
+    [InlineData((short)50)]     // 7,8 V : repart comme un vehicule sain, donc pas la batterie
+    [InlineData((short)44)]     // dernier cran de l'octet de cap
+    [InlineData((short)93)]     // au-delà de l'échelle
+    public void ValeurQuiNEstPasUneTension_NeDeclenchePas(short? raw)
     {
-        using var context = TestDbContextFactory.Create();
-        var device = SeedDevice(context, id: NemsLDeviceId, protocolType: "gps_type_1", vehicleId: 700);
-        await context.SaveChangesAsync();
-
-        var now = DateTime.UtcNow;
-        var cooldownCutoff = now.AddHours(-CooldownHours);
-
-        device.LastVoltageHealthAlertAt = now;
-        await context.SaveChangesAsync();
-
-        var afterStamp = await context.GpsDevices
-            .Where(d => d.ProtocolType == "gps_type_1"
-                     && d.Vehicle != null
-                     && !d.Vehicle.IsImmobilized
-                     && (d.LastVoltageHealthAlertAt == null
-                         || d.LastVoltageHealthAlertAt < cooldownCutoff))
-            .Select(d => d.Id)
-            .ToListAsync();
-
-        afterStamp.Should().NotContain(NemsLDeviceId);
-    }
-
-    // ── Helper: replays the dead/total LINQ ─────────────────────────────────
-
-    private static async Task<(int dead, int total)> CountAsync(
-        TestGisDbContext context, int deviceId, DateTime now)
-    {
-        var recentStart = now.AddDays(-7);
-        var groups = await context.GpsPositions
-            .Where(p => p.DeviceId == deviceId
-                     && p.RecordedAt >= recentStart
-                     && p.IgnitionOn == false
-                     && p.PowerVoltage.HasValue
-                     && p.PowerVoltage.Value > 0)
-            .GroupBy(p => p.PowerVoltage!.Value <= RestingDeadByteThreshold)
-            .Select(g => new { IsDead = g.Key, Count = g.Count() })
-            .ToListAsync();
-
-        var total = groups.Sum(g => g.Count);
-        var dead = groups.FirstOrDefault(g => g.IsDead)?.Count ?? 0;
-        return (dead, total);
+        VoltageHealthMonitoringService.DyingBatteryVolts(raw).Should().BeNull(
+            "une valeur absurde ne doit jamais devenir une alerte");
     }
 }

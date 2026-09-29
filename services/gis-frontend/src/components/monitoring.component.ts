@@ -13,6 +13,7 @@ import { UserPreferencesService } from '../services/user-preferences.service';
 import { environment } from '../environments/environment';
 import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
+import { batteryTitle, isStartReadingLow, mergeLiveBattery } from './shared/monitoring-battery.helpers';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
 import * as L from 'leaflet';
 import qrcode from 'qrcode-generator';
@@ -555,8 +556,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             isMoving: update.isMoving,
             isStopped: !update.isMoving,
             ...(update.fuelRaw != null ? { fuelLevel: update.fuelRaw } : {}),
-            ...(update.batteryPercent != null ? { batteryLevel: update.batteryPercent } : {}),
-            ...(update.batteryVoltage != null ? { batteryVoltage: update.batteryVoltage } : {}),
+            // NEMS : la trame ne touche PAS à la batterie — la valeur affichée est
+            // celle du dernier démarrage (voir monitoring-battery.helpers.ts).
+            // Autres : dernière valeur reçue.
+            ...mergeLiveBattery(vehicle.stats, update, this.embedded),
             ...(update.temperatureC != null ? { temperature: update.temperatureC } : {})
           };
         }
@@ -984,7 +987,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
         // Run inside Angular zone to ensure change detection triggers
         this.ngZone.run(() => {
           console.log('Vehicles loaded:', vehicles.length);
-          
+
           const mappedVehicles = vehicles.map(v => ({
             ...v,
             registration_number: v.plate,
@@ -1421,28 +1424,30 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   isBatteryLow(vehicle: any): boolean {
     const stats = this.getVehicleStats(vehicle);
+    if (stats?.batteryIsStartReading) return isStartReadingLow(stats);
     return stats?.batteryLevel != null && stats.batteryLevel < 20;
   }
 
   /**
-   * True when either:
-   *  - The backend's VoltageHealthMonitoringService raised an alert
-   *    in the last 7 days (sticky `hasBatteryHealthAlert` flag), OR
-   *  - The legacy "battery < 20 %" trip is currently active.
-   *
-   * Either signal lights up the warning indicator; the operator
-   * doesn't need to know which detector fired.
+   * Icône et couleur « Anomalie batterie ».
+   *  - NEMS : MÉDIANE des derniers démarrages sous 11,5 V (Slim, 29/09/2026) —
+   *    un démarrage bas isolé, radio oubliée, ne suffit pas. Même seuil et même
+   *    valeur que la notification « batterie en fin de vie » envoyée par le
+   *    serveur : l'admin retrouve le chiffre de son alerte sur la carte.
+   *  - Autres : alerte de santé des 7 derniers jours (`hasBatteryHealthAlert`)
+   *    ou batterie sous 20 %.
    */
   hasBatteryHealthIssue(vehicle: any): boolean {
+    if (this.getVehicleStats(vehicle)?.batteryIsStartReading) return this.isBatteryLow(vehicle);
     return !!vehicle?.hasBatteryHealthAlert || this.isBatteryLow(vehicle);
   }
 
   /**
-   * Operator preference: monitoring shows the raw voltage in V (more
-   * actionable than a derived %). Falls back to "%" if voltage isn't
-   * available, then to "N/A". Voltage is rounded to 1 decimal because
-   * the NEMS L byte resolution is ≈0.3 V — anything finer would be
-   * fake precision.
+   * Operator preference: monitoring shows the voltage in V (more actionable
+   * than a derived %). Falls back to "%" if voltage isn't available, then to
+   * "N/A". For a NEMS it is the voltage read at the last engine START (see
+   * monitoring-battery.helpers.ts) — moteur tournant, l'octet porte
+   * l'alternateur et ne dit rien de la batterie.
    */
   getBatteryDisplay(vehicle: any): string {
     const stats = this.getVehicleStats(vehicle);
@@ -1453,6 +1458,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       return `${stats.batteryLevel} %`;
     }
     return 'N/A';
+  }
+
+  /** Infobulle de la cellule Batterie : pour un NEMS, DATE la mesure. */
+  getBatteryTitle(vehicle: any): string | null {
+    return batteryTitle(this.getVehicleStats(vehicle));
   }
 
   /**

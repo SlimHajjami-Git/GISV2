@@ -52,11 +52,10 @@ public record PositionDto(
     int? BatteryLevel,
     string? Address,
     long? OdometerKm,
-    // Decoded battery voltage in volts (PowerVoltage byte * 0.3, the
-    // empirical NEMS L 12V-system calibration). Computed server-side
-    // and exposed alongside BatteryLevel so the frontend can show
-    // either readout — the operator likes V on monitoring but % on
-    // the device-overview screen.
+    // Tension batterie en volts, calculée côté serveur (voir BatteryReadout) :
+    // NEMS = octet « Batterie » (34-36) × 40/256 au dernier démarrage ;
+    // Teltonika = power_voltage × 0,1 de la dernière trame. Exposée à côté de
+    // BatteryLevel : l'exploitant préfère les volts au monitoring.
     double? BatteryVoltage
 );
 
@@ -80,5 +79,17 @@ public record VehicleStatsDto(
     // Everything after that point the engine has been off — drives the
     // "moteur coupé depuis X min" copy on the monitoring detail panel.
     // Null when the vehicle has no recorded ignition-on frame.
-    DateTime? EngineOffSince
+    DateTime? EngineOffSince,
+    // NEMS : BatteryVoltage/BatteryLevel sont la tension retenue au DERNIER
+    // DÉMARRAGE du véhicule, et non la dernière trame — moteur tournant, l'octet
+    // porte l'alternateur, pas la batterie. Le temps réel ne doit donc pas les
+    // remplacer : la valeur ne change qu'au démarrage suivant.
+    bool BatteryIsStartReading = false,
+    // Instant (UTC) de ce démarrage, pour dater la mesure à l'écran : elle peut
+    // avoir plusieurs jours sur un véhicule qui n'a pas redémarré.
+    DateTime? BatteryMeasuredAt = null,
+    // Médiane des derniers démarrages : c'est ELLE qui allume le témoin, pas la
+    // mesure ci-dessus. Affichée en infobulle pour que l'écart s'explique. Null tant
+    // qu'on n'a pas assez de démarrages pour conclure — et alors, pas de témoin.
+    double? BatteryMedianVoltage = null
 );

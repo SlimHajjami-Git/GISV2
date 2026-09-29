@@ -35,6 +35,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<VehicleDocument> VehicleDocuments => Set<VehicleDocument>();
     public DbSet<GpsDevice> GpsDevices => Set<GpsDevice>();
     public DbSet<GpsPosition> GpsPositions => Set<GpsPosition>();
+    public DbSet<BatteryStartReading> BatteryStartReadings => Set<BatteryStartReading>();
     public DbSet<GpsAlert> GpsAlerts => Set<GpsAlert>();
     public DbSet<Geofence> Geofences => Set<Geofence>();
     public DbSet<GeofenceVehicle> GeofenceVehicles => Set<GeofenceVehicle>();

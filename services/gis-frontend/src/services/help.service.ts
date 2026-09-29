@@ -43,6 +43,12 @@ interface EtatAide {
   /** Conseil de premiere connexion deja lu : il ne revient plus jamais. */
   conseilVu?: boolean;
   /**
+   * « Revoir les guides des ecrans » clique dans l'Aide : les guides des ecrans se
+   * rejouent aussi pour un client deja installe (Karim, 28/09/2026). Sans effet sur le
+   * conseil de premiere connexion ni sur les premiers pas.
+   */
+  guidesRejoues?: boolean;
+  /**
    * Premiers pas en cours (offre GPA) : chaque guide termine emmene a l'ecran
    * suivant. Retenu ici pour survivre a un rafraichissement de la page.
    */
@@ -319,6 +325,17 @@ export class HelpService {
   /** Memes filets que termineeEnMemoire, quand localStorage refuse d'ecrire. */
   private nouveauxEnMemoire = new Set<string>();
   private ecransVusEnMemoire = new Set<string>();
+  private guidesRejouesEnMemoire = new Set<string>();
+
+  /**
+   * Les guides des ecrans se jouent pour ce client : nouvel utilisateur, ou client
+   * installe qui a demande a les revoir depuis l'Aide.
+   */
+  private guidesEcransActifs(): boolean {
+    return this.estNouvelUtilisateur()
+      || this.guidesRejouesEnMemoire.has(this.cleUtilisateur())
+      || !!this.lireEtat().guidesRejoues;
+  }
 
   /**
    * Nouvel utilisateur = premiere connexion (Karim, 24/09/2026). Le drapeau vient
@@ -362,9 +379,9 @@ export class HelpService {
   visiteEcranAProposer(url: string): VisiteEcran | null {
     // En premier : le drapeau de premiere connexion est retenu meme sur une page
     // sans guide (le tableau de bord, ou la connexion depose le client).
-    const nouveau = this.estNouvelUtilisateur();
+    const actifs = this.guidesEcransActifs();
     const visite = VISITES_ECRANS.find(v => this.estSurSonEcran(v, url));
-    if (!visite || !nouveau) return null;
+    if (!visite || !actifs) return null;
     const pourLui = this.pourCeClient(visite);
     if (!pourLui || this.ecranVu(visite.id) || this.doitProposerLeGuide()) return null;
     return pourLui;
@@ -389,13 +406,14 @@ export class HelpService {
   }
 
   /**
-   * Ecrans qui ont un guide pour ce client, par leur nom (« Vehicules »). Vide
-   * s'il n'est pas un nouvel utilisateur : le centre d'aide cache alors son bouton.
+   * Ecrans qui ont un guide pour ce client (offre, droits, profil), par leur nom
+   * (« Vehicules »). Nouvel utilisateur ou non : « Revoir les guides des ecrans » sert
+   * aussi a un client installe (Karim, 28/09/2026). Vide en GPS, qui n'a pas encore
+   * de guides d'ecran : le centre d'aide cache alors son bouton.
    */
   ecransAvecGuide(): string[] {
-    if (!this.estNouvelUtilisateur()) return [];
     return VISITES_ECRANS
-      .filter(v => this.guidePourCetteOffre(v))
+      .filter(v => !!this.pourCeClient(v))
       .map(v => v.titre.replace(/^Écran\s+/, ''));
   }
 
@@ -417,11 +435,16 @@ export class HelpService {
     if (!vus.includes(id)) this.modifierEtat({ ecransVus: [...vus, id] });
   }
 
-  /** Bouton du centre d'aide : chaque guide d'ecran reviendra au prochain acces a son ecran. */
+  /**
+   * Bouton du centre d'aide : chaque guide d'ecran reviendra au prochain acces a son
+   * ecran, meme pour un client deja installe (guidesRejoues).
+   */
   reinitialiserEcrans(): void {
-    const prefixe = this.cleUtilisateur() + '|';
+    const cle = this.cleUtilisateur();
+    const prefixe = cle + '|';
     this.ecransVusEnMemoire.forEach(c => { if (c.startsWith(prefixe)) this.ecransVusEnMemoire.delete(c); });
-    this.modifierEtat({ ecransVus: [] });
+    this.guidesRejouesEnMemoire.add(cle);
+    this.modifierEtat({ ecransVus: [], guidesRejoues: true });
   }
 
   // ------------------------------------------------ Premiers pas (offre GPA)
@@ -479,7 +502,7 @@ export class HelpService {
    * ni fait ni passé, et que ce client a cet écran (Karim, 26/09/2026).
    */
   passerelleVersAlertes(idTermine: string): VisiteEcran | null {
-    if (!VERS_ALERTES_APRES.includes(idTermine) || !this.estNouvelUtilisateur()) return null;
+    if (!VERS_ALERTES_APRES.includes(idTermine) || !this.guidesEcransActifs()) return null;
     if (this.ecranVu(PASSERELLE_ALERTES_GPA.id) || this.ecranVu(ID_TUTO_ALERTES)) return null;
     const alertes = VISITES_ECRANS.find(v => v.id === ID_TUTO_ALERTES);
     if (!alertes || !this.pourCeClient(alertes)) return null;
