@@ -40,6 +40,18 @@ namespace GisAPI.Application.Common.Security;
 public static class NotificationAudience
 {
     /// <summary>
+    /// Valeur de <c>notifications."ReferenceType"</c> qui désigne un véhicule, et donc
+    /// les lignes auxquelles la portée véhicule s'applique à la lecture. Écrite ici une
+    /// seule fois : la même chaîne était recopiée dans les producteurs et dans les deux
+    /// requêtes de lecture, et une faute de frappe y serait invisible — le filtre
+    /// laisserait simplement tout passer, exactement le défaut qu'on corrige.
+    /// Relevé sur la production le 29/09/2026 : 126 459 lignes portent cette valeur,
+    /// 70 399 « geofence », le reste se partage driver, tour, fuel_entry, device,
+    /// accident_event, cost et user.
+    /// </summary>
+    public const string ReferenceVehicule = "vehicle";
+
+    /// <summary>
     /// Identifiants des utilisateurs actifs à notifier pour <paramref name="vehicleId"/>.
     /// Liste vide = personne à prévenir, ce qui est un résultat valide (aucun
     /// admin et aucune affectation) et jamais une raison de retomber sur
