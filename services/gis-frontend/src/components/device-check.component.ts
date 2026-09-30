@@ -121,13 +121,33 @@ export function messageErreurDiagnostic(
               <span class="label">Il y a</span>
               <span class="value">{{ result.minutesSinceLastFrame | number:'1.0-0' }} minutes</span>
             </div>
-            <div class="info-row" *ngIf="result.satellites != null">
-              <span class="label">Satellites</span><span class="value">{{ result.satellites }}</span>
+            <!-- Diagnostics d'installation (30/09/2026) : ce qu'un technicien vérifie après
+                 une pose — le câblage, pas la position. Chaque ligne n'apparaît que si la
+                 trame porte la valeur, pour ne pas afficher « N/A » à la chaîne. -->
+            <div class="info-row" *ngIf="result.gpsValid != null">
+              <span class="label">GPS</span>
+              <span class="value">{{ result.gpsValid ? 'Valide' : 'Invalide' }}<ng-container *ngIf="result.satellites != null"> · {{ result.satellites }} satellites</ng-container></span>
             </div>
-            <div class="info-row" *ngIf="result.signalStrength != null">
-              <span class="label">Signal GSM</span><span class="value">{{ result.signalStrength }}</span>
+            <div class="info-row" *ngIf="result.ignitionOn != null">
+              <span class="label">Contact</span><span class="value">{{ result.ignitionOn ? 'Mis' : 'Coupé' }}</span>
             </div>
-            <p class="subtitle">Connectez-vous pour voir la position, le compteur et le carburant.</p>
+            <div class="info-row" *ngIf="result.speedKph != null">
+              <span class="label">Vitesse</span><span class="value">{{ result.speedKph | number:'1.0-0' }} km/h</span>
+            </div>
+            <div class="info-row" *ngIf="result.fuelRaw != null">
+              <span class="label">Carburant</span>
+              <span class="value">{{ result.fuelPercent != null ? (result.fuelPercent + ' %') : ('brut ' + result.fuelRaw) }}</span>
+            </div>
+            <div class="info-row" *ngIf="result.odometerKm != null">
+              <span class="label">Compteur</span><span class="value">{{ result.odometerKm | number:'1.0-0' }} km</span>
+            </div>
+            <div class="info-row" *ngIf="result.batteryVolts != null">
+              <span class="label">Batterie</span><span class="value">{{ result.batteryVolts | number:'1.1-1' }} V</span>
+            </div>
+            <div class="info-row" *ngIf="result.temperatureC != null">
+              <span class="label">Température moteur</span><span class="value">{{ result.temperatureC }} °C</span>
+            </div>
+            <p class="subtitle">Connectez-vous pour voir la position et la fiche du véhicule.</p>
           </div>
         </div>
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common.Security;
+using GisAPI.Domain.Common;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
@@ -109,12 +110,18 @@ public class DeviceCheckController : ControllerBase
     /// ce que l'installation exige).
     ///
     /// <para><b>Ce que cette route ne dit JAMAIS</b>, et c'est précisément ce qui la rend
-    /// publiable : aucune position, aucune plaque, aucun nom de véhicule ni de société,
-    /// aucun contact moteur, aucun carburant, aucun compteur. Elle répond à une seule
-    /// question — cet appareil est-il enregistré, et envoie-t-il des trames. Connaître un
-    /// IMEI ne permet donc plus de suivre un véhicule, ce qui était le trou de l'ancienne
-    /// route ouverte. La route authentifiée <c>lookup</c> garde, elle, la réponse complète,
-    /// le cloisonnement par société et la portée véhicule de l'appelant.</para>
+    /// publiable : aucune position, aucune adresse, aucune plaque, aucun nom de véhicule ni
+    /// de société. Connaître un identifiant de boîtier ne permet donc pas de suivre un
+    /// véhicule ni de savoir à qui il est, ce qui était le trou de l'ancienne route ouverte.
+    /// La route authentifiée <c>lookup</c> garde, elle, la réponse complète, le
+    /// cloisonnement par société et la portée véhicule de l'appelant.</para>
+    ///
+    /// <para><b>Ce qu'elle dit depuis le 30/09/2026 (décision de Slim) : les diagnostics
+    /// d'installation.</b> La carte réduite à « remonte / dernière trame / satellites » ne
+    /// permettait pas à un technicien de valider une pose. Il vérifie le CÂBLAGE : contact
+    /// moteur, sonde carburant, CAN (compteur, température), batterie, et la qualité du GPS.
+    /// Ces valeurs décrivent un ÉTAT de l'appareil, pas un lieu ni une identité ; elles
+    /// viennent de la dernière trame et du boîtier seuls, jamais de la table des véhicules.</para>
     ///
     /// <para><b>Deux clés depuis le 29/09/2026 : l'IMEI ET le matricule du boîtier.</b>
     /// Les techniciens ont rapporté que sur le terrain ils lisent le MATRICULE de
@@ -179,7 +186,7 @@ public class DeviceCheckController : ControllerBase
                 ? d.DeviceUid == saisie
                 : d.Mat != null && d.Mat.ToLower() == saisieMinuscule)
             .OrderBy(d => d.Id)
-            .Select(d => new { d.Id, d.DeviceUid, d.SignalStrength })
+            .Select(d => new { d.Id, d.DeviceUid, d.ProtocolType, d.FuelSensorMode })
             .Take(2)
             .ToListAsync(HttpContext.RequestAborted);
 
@@ -230,7 +237,11 @@ public class DeviceCheckController : ControllerBase
         var derniere = await _context.GpsPositions.AsNoTracking()
             .Where(p => p.DeviceId == boitier.Id)
             .OrderByDescending(p => p.RecordedAt)
-            .Select(p => new { p.RecordedAt, p.Satellites })
+            .Select(p => new
+            {
+                p.RecordedAt, p.Satellites, p.IsValid, p.IgnitionOn, p.SpeedKph,
+                p.FuelRaw, p.OdometerKm, p.BatteryRaw, p.PowerVoltage, p.TemperatureC
+            })
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
         if (derniere == null)
@@ -244,6 +255,35 @@ public class DeviceCheckController : ControllerBase
 
         var minutes = (DateTime.UtcNow - derniere.RecordedAt).TotalMinutes;
 
+        // DIAGNOSTICS D'INSTALLATION, décision de Slim du 30/09/2026. Les techniciens ont
+        // rapporté que la carte à trois lignes ne leur permettait pas de valider une pose.
+        // Ce qu'ils vérifient après un montage, c'est le CÂBLAGE : le fil de contact
+        // (ignitionOn), la sonde carburant (fuelRaw), le CAN (odometerKm, temperatureC), la
+        // batterie (batteryVolts) et le GPS (isValid, satellites, speedKph). Sur les 300
+        // boîtiers NEMS actifs mesurés ce jour-là, ces champs sont renseignés dans 244 à
+        // 300 cas. AUCUN d'eux ne localise le véhicule ni n'identifie le client : la
+        // position, l'adresse, la plaque et la société restent réservées à la route
+        // authentifiée. Ce que révèle cette carte à qui connaît un matricule — le moteur
+        // tourne-t-il, quel niveau de carburant — est un ÉTAT, pas une identité ni un lieu.
+        //
+        // Le pourcentage de carburant n'est calculé que si le mode du capteur n'exige pas la
+        // capacité du réservoir : celle-ci vit sur le véhicule, table que cette route
+        // n'interroge JAMAIS. Sinon la valeur brute suffit au technicien, qui veut voir que
+        // la sonde répond, pas connaître le niveau exact.
+        int? fuelPercent = derniere.FuelRaw is > 0 ? (boitier.FuelSensorMode ?? "raw_255") switch
+        {
+            "percent" => Math.Clamp(derniere.FuelRaw.Value, 0, 100),
+            "raw_255" => Math.Clamp((int)Math.Round(derniere.FuelRaw.Value / 255.0 * 100.0), 0, 100),
+            _ => null
+        } : null;
+
+        // Même sentinelle que le monitoring : 1048574 = « compteur non initialisé ».
+        long? odometerKm = derniere.OdometerKm is > 0 and not 1048574 ? derniere.OdometerKm : null;
+
+        // Même conversion que partout ailleurs (VoltageScale) : l'octet Batterie × 0,156
+        // pour un NEMS, borné à la bande plausible ; power_voltage × 0,1 pour un Teltonika.
+        var batteryVolts = VoltageScale.DisplayVolts(boitier.ProtocolType, derniere.BatteryRaw, derniere.PowerVoltage);
+
         return Ok(new
         {
             found = true,
@@ -251,8 +291,16 @@ public class DeviceCheckController : ControllerBase
             imei = imeiAEcho,
             lastFrameAt = derniere.RecordedAt,
             minutesSinceLastFrame = Math.Round(minutes, 1),
+            gpsValid = derniere.IsValid,
             satellites = derniere.Satellites,
-            signalStrength = boitier.SignalStrength
+            speedKph = derniere.SpeedKph,
+            ignitionOn = derniere.IgnitionOn,
+            fuelRaw = derniere.FuelRaw,
+            fuelPercent,
+            fuelSensorMode = boitier.FuelSensorMode,
+            odometerKm,
+            batteryVolts = batteryVolts is null ? (double?)null : Math.Round(batteryVolts.Value, 1),
+            temperatureC = derniere.TemperatureC
         });
     }
 

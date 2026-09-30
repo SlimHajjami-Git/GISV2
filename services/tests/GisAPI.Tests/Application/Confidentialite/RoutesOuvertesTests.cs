@@ -230,7 +230,7 @@ public class RoutesOuvertesTests
             // route publique n'a pas de société d'appelant, donc elle ne cloisonne pas — ce
             // qui n'est acceptable que parce que sa réponse ne dit rien du client. Les tests
             // ci-dessous vérifient exactement cela.
-            new GpsDevice { Id = BoitierPublicQuiRemonte, DeviceUid = ImeiQuiRemonte, Mat = MatriculeQuiRemonte, Label = "Pose du jour", SimNumber = "21600014", CompanyId = AutreSociete, Status = "active", SignalStrength = 24 },
+            new GpsDevice { Id = BoitierPublicQuiRemonte, DeviceUid = ImeiQuiRemonte, Mat = MatriculeQuiRemonte, Label = "Pose du jour", SimNumber = "21600014", CompanyId = AutreSociete, Status = "active", ProtocolType = "gps_type_1", FuelSensorMode = "raw_255" },
             // Deux boîtiers, un seul matricule : le cas ambigu, réel sur la production.
             new GpsDevice { Id = BoitierDouble1, DeviceUid = "350000000000010", Mat = MatriculeEnDouble, Label = "Double A", SimNumber = "21600020", CompanyId = Societe, Status = "active" },
             new GpsDevice { Id = BoitierDouble2, DeviceUid = "350000000000011", Mat = MatriculeEnDouble, Label = "Double B", SimNumber = "21600021", CompanyId = AutreSociete, Status = "active" },
@@ -245,7 +245,9 @@ public class RoutesOuvertesTests
             new GpsPosition { Id = 4, DeviceId = BoitierAutreSociete, RecordedAt = Jour, Latitude = 34.74, Longitude = 10.76, SpeedKph = 90, IgnitionOn = true, IsValid = true },
             // « Remonte » se juge par rapport à l'heure COURANTE dans le contrôleur : ces deux
             // trames sont donc datées relativement à maintenant, et non au Jour figé.
-            new GpsPosition { Id = 5, DeviceId = BoitierPublicQuiRemonte, RecordedAt = DateTime.UtcNow.AddMinutes(-3), Latitude = 36.85, Longitude = 10.20, SpeedKph = 12, IgnitionOn = true, IsValid = true, Satellites = 11 },
+            // Trame complète de pose : ce qu'un technicien vérifie (câblage), et ce qu'il ne
+            // doit PAS voir (la position, qui figure ici pour prouver qu'elle ne sort pas).
+            new GpsPosition { Id = 5, DeviceId = BoitierPublicQuiRemonte, RecordedAt = DateTime.UtcNow.AddMinutes(-3), Latitude = 36.85, Longitude = 10.20, SpeedKph = 12, IgnitionOn = true, IsValid = true, Satellites = 11, FuelRaw = 128, OdometerKm = 35615, BatteryRaw = 80, TemperatureC = 88, Address = "Rue secrète, Tunis" },
             new GpsPosition { Id = 6, DeviceId = BoitierPublicMuet, RecordedAt = DateTime.UtcNow.AddHours(-5), Latitude = 36.86, Longitude = 10.21, SpeedKph = 0, IgnitionOn = false, IsValid = true, Satellites = 6 },
             // Trames en DÉSORDRE : le plus grand « id » porte l'horodatage le plus ANCIEN.
             // Trié sur id, ce boîtier passerait pour muet alors qu'il vient d'émettre.
@@ -558,12 +560,65 @@ public class RoutesOuvertesTests
         Champ<bool>(corps, "found").Should().BeTrue();
         Champ<bool>(corps, "reporting").Should().BeTrue("la trame a trois minutes");
 
+        // Ce qui ne sort JAMAIS : tout ce qui localise le véhicule ou identifie le client.
         Champs(corps).Should().NotIntersectWith(new[]
         {
-            "plate", "vehicleName", "mat", "lastPosition", "latitude", "longitude",
-            "fuelPercent", "fuelRaw", "odometerKm", "ignitionOn", "address", "speedKph",
-            "companyId", "model", "firmwareVersion", "fuelSensorMode", "deviceStatus", "hasGps"
-        }, "connaître un IMEI ne doit plus permettre de suivre un véhicule ni d'identifier son client");
+            "plate", "vehicleName", "mat", "lastPosition", "latitude", "longitude", "address",
+            "companyId", "model", "firmwareVersion", "deviceStatus", "hasGps"
+        }, "connaître un identifiant de boîtier ne doit pas permettre de suivre un véhicule ni d'identifier son client");
+    }
+
+    /// <summary>
+    /// Ce qui SORT depuis le 30/09/2026 (décision de Slim) : les diagnostics d'installation.
+    /// La carte à trois lignes ne permettait pas à un technicien de valider une pose ; il
+    /// vérifie le CÂBLAGE — contact, sonde carburant, CAN, batterie, GPS. Ces valeurs
+    /// décrivent un état de l'appareil, pas un lieu ni une identité, et viennent de la trame
+    /// et du boîtier seuls. La trame de test porte une adresse précisément pour prouver
+    /// qu'elle ne sort pas avec le reste.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_rend_les_diagnostics_d_installation_mais_jamais_la_position()
+    {
+        using var parc = await ParcAsync();
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+
+        Champ<bool>(corps, "gpsValid").Should().BeTrue();
+        Champ<int?>(corps, "satellites").Should().Be(11);
+        Champ<bool?>(corps, "ignitionOn").Should().BeTrue("le fil de contact est la première chose qu'on vérifie");
+        Champ<double?>(corps, "speedKph").Should().Be(12);
+        Champ<int?>(corps, "fuelRaw").Should().Be(128);
+        Champ<int?>(corps, "fuelPercent").Should().Be(50, "mode raw_255 : 128 / 255 = 50 %, calculable sans le véhicule");
+        Champ<long?>(corps, "odometerKm").Should().Be(35615);
+        Champ<double?>(corps, "batteryVolts").Should().Be(12.5, "NEMS : 80 brut × 40/256 = 12,5 V, dans la bande plausible");
+        Champ<short?>(corps, "temperatureC").Should().Be(88);
+
+        Champs(corps).Should().NotContain(new[] { "address", "latitude", "longitude", "plate" },
+            "la trame porte une adresse et des coordonnées : elles ne doivent pas sortir avec les diagnostics");
+        Champs(corps).Should().NotContain("signalStrength",
+            "jamais renseigné sur les 463 boîtiers : afficher une ligne vide n'aide personne");
+    }
+
+    /// <summary>
+    /// Le pourcentage de carburant exige la capacité du réservoir pour les modes en litres —
+    /// elle vit sur le VÉHICULE, table que cette route n'interroge jamais. On rend alors la
+    /// valeur brute seule, plutôt que d'aller la chercher là où on s'est interdit d'aller.
+    /// </summary>
+    [Fact]
+    public async Task Statut_public_carburant_en_litres_rend_le_brut_sans_pourcentage()
+    {
+        using var parc = await ParcAsync();
+        var ctx = parc.Pour(AdminSysteme());
+        var boitier = await ctx.GpsDevices.IgnoreQueryFilters().SingleAsync(d => d.Id == BoitierPublicQuiRemonte);
+        boitier.FuelSensorMode = "liters";
+        await ctx.SaveChangesAsync();
+
+        var anonyme = BoitierAnonyme(parc.Pour(TenantAnonyme()));
+        var corps = CorpsOk(await anonyme.StatutPublic(ImeiQuiRemonte));
+
+        Champ<int?>(corps, "fuelRaw").Should().Be(128, "le technicien voit que la sonde répond");
+        Champ<int?>(corps, "fuelPercent").Should().BeNull("pas de capacité de réservoir sans lire le véhicule");
     }
 
     [Fact]
