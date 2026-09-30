@@ -56,11 +56,14 @@ cd services/gis-frontend && npx jest             # frontend (jest-preset-angular
 cd services/gps-ingest-rust && cargo run         # ports config/listeners.yaml, REST 3000
 ```
 
-Comptes seed (Program.cs, publics) : `admin@belive.tn` / `Admin@2026` (société Belive) et
-`admin@transporttest.tn` / `Admin@2026` (société TransportTest). Jamais de compte client réel en test.
+Comptes seed (Program.cs, publics) : `admin@belive.tn` / `Admin@2026` (société Belive, créé par le seed dans
+tous les environnements avec ce mot de passe INITIAL) et
+`admin@transporttest.tn` / `Admin@2026` (société TransportTest, créée **en Development seulement** :
+supprimée de TN le 30/09/2026, le seed ne la recrée plus en production). Jamais de compte client réel en test.
 
 `docker-compose.yaml` à la racine = pile COMPLÈTE conteneurisée (API exposée sur 5000, front 4200,
-RabbitMQ sur 5673) : utile pour une démo, pas pour le dev quotidien. `docker-compose.prod.yml` est
+RabbitMQ sur 5673) : utile pour une démo, pas pour le dev quotidien — elle tourne en Production, donc sans
+TransportTest (utiliser `admin@belive.tn`). `docker-compose.prod.yml` est
 un vestige — la prod tourne sur K3s (`k8s/`).
 
 **Worktrees** : toujours builder/tester depuis le chemin du worktree courant (compiler depuis

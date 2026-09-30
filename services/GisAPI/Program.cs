@@ -455,7 +455,7 @@ using (var scope = app.Services.CreateScope())
     }
 
     await SeedBeliveCompany(context);
-    await SeedSubscriptionPlansAndTestCompany(context);
+    await SeedSubscriptionPlansAndTestCompany(context, app.Environment.IsDevelopment());
     await SeedFuelTypesAndPricing(context);
     await SeedCarMarketAsync(context, app.Environment.ContentRootPath);
 }
@@ -467,10 +467,29 @@ static async Task SeedBeliveCompany(GisAPI.Infrastructure.Persistence.GisDbConte
 {
     try
     {
-        // Check if Belive already exists
+        // Recherche insensible à la casse : en production la société 1 s'écrit « BELIVE », et la
+        // comparaison exacte a fait créer une seconde « Belive » vide (id 9, supprimée le 30/09/2026)
+        // au premier démarrage sur une base où le nom exact manquait.
         var existingCompany = await context.Societes
             .IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.Name == "Belive");
+            .OrderBy(c => c.Id)
+            .FirstOrDefaultAsync(c => c.Name.ToLower() == "belive");
+        if (existingCompany == null)
+        {
+            // Renommée autrement ? La société de l'administrateur système fait foi
+            // (company_id = 0 est un compte orphelin, pas une société : on ne le suit pas).
+            var adminCompanyId = await context.Users
+                .IgnoreQueryFilters()
+                .Where(u => u.Email == "admin@belive.tn" && u.CompanyId > 0)
+                .Select(u => (int?)u.CompanyId)
+                .FirstOrDefaultAsync();
+            if (adminCompanyId != null)
+            {
+                existingCompany = await context.Societes
+                    .IgnoreQueryFilters()
+                    .FirstOrDefaultAsync(c => c.Id == adminCompanyId.Value);
+            }
+        }
 
         if (existingCompany != null)
         {
@@ -936,7 +955,7 @@ static async Task SeedCarMarketAsync(GisAPI.Infrastructure.Persistence.GisDbCont
 // =============================================================================
 // Seed: 3 Subscription Plans + Test Company + Admin + User + Access Verification
 // =============================================================================
-static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Persistence.GisDbContext context)
+static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Persistence.GisDbContext context, bool seedTestCompany)
 {
     try
     {
@@ -1163,6 +1182,15 @@ static async Task SeedSubscriptionPlansAndTestCompany(GisAPI.Infrastructure.Pers
         else
         {
             Console.WriteLine($"[Seed] Plan Premium already exists (Id: {planPremium.Id})");
+        }
+
+        // Hors Development, la société de test ne se crée JAMAIS : elle n'a rien à faire chez un client.
+        // TransportTest a été supprimée de la production le 30/09/2026 ; sans ce garde-fou le seed la
+        // recréait, avec ses deux comptes au mot de passe public, à chaque redémarrage de l'API.
+        if (!seedTestCompany)
+        {
+            Console.WriteLine("[Seed] Société de test TransportTest : ignorée hors Development");
+            return;
         }
 
         // ──────────────────────────────────────────────────────────

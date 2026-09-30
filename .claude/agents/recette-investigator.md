@@ -179,7 +179,8 @@ Vérification live quand c'est possible : `POST /api/auth/login` (corps JSON
 concernée — jamais un compte client réel — puis `GET` de l'endpoint avec
 `Authorization: Bearer <jeton renvoyé>`. Hôte prod TN : `belive-calypso.com` (ingress
 `k8s/04-ingress.yaml`). Comptes seed connus (valides seulement là où le seed a tourné) :
-`admin@belive.tn` / `Admin@2026`, `admin@transporttest.tn` / `Admin@2026`.
+`admin@belive.tn` / `Admin@2026` ; `admin@transporttest.tn` / `Admin@2026` en local seulement
+(société TransportTest supprimée de TN le 30/09/2026, le seed ne la crée qu'en Development).
 
 ## Pièges connus à passer en revue (tous vérifiés dans le repo ou en prod)
 
