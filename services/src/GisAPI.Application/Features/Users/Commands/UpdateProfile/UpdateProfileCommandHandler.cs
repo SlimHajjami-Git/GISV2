@@ -38,14 +38,11 @@ public class UpdateProfileCommandHandler : IRequestHandler<UpdateProfileCommand,
             .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId, ct)
             ?? throw new NotFoundException("Utilisateur", userId);
 
-        // Enforce email uniqueness within the tenant
-        var normalizedEmail = request.Email.Trim();
-        var emailTaken = await _context.Users
-            .AnyAsync(u => u.CompanyId == companyId
-                        && u.Id != userId
-                        && u.Email == normalizedEmail, ct);
-        if (emailTaken)
-            throw new DomainException("Cet email est déjà utilisé par un autre utilisateur");
+        // Unicité de l'e-mail sur TOUTE la base, comme l'index : limité à sa société, ce
+        // contrôle laissait passer l'adresse d'une autre société et le 23505 remontait en
+        // 500 (voir UserEmailRules).
+        await UserEmailRules.EnsureAvailableAsync(_context, request.Email, userId, ct);
+        var normalizedEmail = UserEmailRules.Normalize(request.Email);
 
         user.FirstName = request.FirstName.Trim();
         user.LastName = request.LastName.Trim();

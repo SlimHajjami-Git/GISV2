@@ -41,9 +41,11 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         if (!request.IsDriverAccount)
             await DriverAccountRules.EnsureStaffSeatAvailableAsync(_context, companyId, null, ct);
 
-        // Check email uniqueness
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email, ct))
-            throw new ConflictException("Cet email est déjà utilisé");
+        // Unicité de l'e-mail : voir UserEmailRules. Le contrôle porte sur TOUTE la base,
+        // comme l'index `idx_users_email` ; filtré par société il ne voyait pas une adresse
+        // déjà prise ailleurs, et la création finissait en 500 illisible côté client.
+        await UserEmailRules.EnsureAvailableAsync(_context, request.Email, null, ct);
+        var emailNormalise = UserEmailRules.Normalize(request.Email);
 
         // Fiche désignée par « Créer son compte » : vérifiée AVANT d'enregistrer le compte,
         // un refus (fiche d'une autre société, déjà reliée) ne laisse rien derrière lui.
@@ -97,7 +99,7 @@ public class CreateUserCommandHandler : IRequestHandler<CreateUserCommand, UserL
         {
             FirstName = request.FirstName,
             LastName = request.LastName,
-            Email = request.Email,
+            Email = emailNormalise,
             Phone = request.Phone,
             PasswordHash = _passwordHasher.HashPassword(request.Password),
             RoleId = role.Id,

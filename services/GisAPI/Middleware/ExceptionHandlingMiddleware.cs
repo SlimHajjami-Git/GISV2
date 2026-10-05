@@ -3,6 +3,8 @@ using System.Text.Json;
 using FluentValidation;
 using GisAPI.Application.Features.AiCredits;
 using GisAPI.Domain.Exceptions;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace GisAPI.Middleware;
 
@@ -29,6 +31,28 @@ public class ExceptionHandlingMiddleware
         }
     }
 
+    /// <summary>
+    /// Contraintes d'unicité de la base traduites en phrase utile. Une contrainte absente
+    /// de cette table reste un doublon : message générique, mais jamais un 500.
+    /// </summary>
+    private static readonly Dictionary<string, string> MessagesParContrainte = new()
+    {
+        ["idx_users_email"] = "Cet email est déjà utilisé"
+    };
+
+    /// <summary>Message d'un doublon PostgreSQL (23505), ou null si ce n'en est pas un.</summary>
+    public static string? MessageDeDoublon(Exception exception)
+    {
+        for (Exception? e = exception; e != null; e = e.InnerException)
+        {
+            if (e is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation)
+                return MessagesParContrainte.TryGetValue(pg.ConstraintName ?? string.Empty, out var m)
+                    ? m
+                    : "Cette valeur est déjà utilisée";
+        }
+        return null;
+    }
+
     private async Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         // Crédit IA refusé (22/09/2026) : ni une erreur ni un simple 400. L'écran lit le
@@ -45,6 +69,25 @@ public class ExceptionHandlingMiddleware
                 code = aiCredit.Code,
                 message = aiCredit.Message,
                 credit = aiCredit.Credit
+            }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+            return;
+        }
+
+        // Doublon refusé par la base (23505). Les handlers contrôlent en amont ; ceci
+        // rattrape la course entre deux enregistrements simultanés et tout chemin qui
+        // aurait oublié le contrôle. Sans cela l'utilisateur lisait « An unexpected error
+        // occurred » là où il avait seulement saisi une valeur déjà prise (HERTZ, 03/10/2026).
+        var doublon = exception is DbUpdateException ? MessageDeDoublon(exception) : null;
+        if (doublon != null)
+        {
+            _logger.LogWarning(exception, "Doublon refusé par la base : {Message}", doublon);
+            context.Response.ContentType = "application/json";
+            context.Response.StatusCode = (int)HttpStatusCode.Conflict;
+            await context.Response.WriteAsync(JsonSerializer.Serialize(new
+            {
+                status = HttpStatusCode.Conflict,
+                message = doublon,
+                errors = (object?)null
             }, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
             return;
         }

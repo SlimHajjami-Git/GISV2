@@ -50,6 +50,9 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
         var ficheDesignee = devientChauffeur ? request.DriverId : null;
 
         // Contrôles AVANT toute modification (la création d'un rôle plus bas enregistre déjà).
+        // L'e-mail n'était pas contrôlé du tout ici : le reprendre sur une adresse déjà
+        // prise rendait le même 500 que la création (voir UserEmailRules).
+        await UserEmailRules.EnsureAvailableAsync(_context, request.Email, user.Id, ct);
         if (devientChauffeur && !etaitChauffeur)
             await EnsureCanBecomeDriverAsync(user, companyId, currentUserId, ct);
         if (ficheDesignee is int ficheId)
@@ -80,7 +83,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand>
 
         user.FirstName = request.FirstName;
         user.LastName = request.LastName;
-        user.Email = request.Email;
+        user.Email = UserEmailRules.Normalize(request.Email);
         user.Phone = request.Phone;
         if (!string.IsNullOrEmpty(request.Status))
             user.Status = request.Status;

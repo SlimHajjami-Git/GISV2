@@ -46,8 +46,9 @@ public class RegisterCommandHandler : IRequestHandler<RegisterCommand, RegisterR
     {
         var email = (request.Email ?? string.Empty).Trim().ToLowerInvariant();
 
-        if (await _context.Users.AnyAsync(u => u.Email.ToLower() == email, ct))
-            throw new ConflictException("Cet email est déjà utilisé");
+        // Même règle que les écrans internes (UserEmailRules) : toute la base, sans la casse.
+        await GisAPI.Application.Features.Users.UserEmailRules
+            .EnsureAvailableAsync(_context, email, null, ct);
 
         // ── Le plan est résolu par CODE, depuis la configuration du déploiement ──
         //

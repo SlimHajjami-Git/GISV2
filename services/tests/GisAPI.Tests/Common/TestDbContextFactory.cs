@@ -34,6 +34,15 @@ public static class TestDbContextFactory
         var connection = new SqliteConnection("DataSource=:memory:");
         connection.Open();
 
+        // Même relâchement que Create() : les tests vérifient des règles métier, pas les
+        // clés étrangères de SQLite. Sans ce PRAGMA, semer deux sociétés échouait ici
+        // alors que la même graine passait avec Create().
+        using (var cmd = connection.CreateCommand())
+        {
+            cmd.CommandText = "PRAGMA foreign_keys = OFF;";
+            cmd.ExecuteNonQuery();
+        }
+
         var options = new DbContextOptionsBuilder<TestGisDbContext>()
             .UseSqlite(connection)
             .Options;
