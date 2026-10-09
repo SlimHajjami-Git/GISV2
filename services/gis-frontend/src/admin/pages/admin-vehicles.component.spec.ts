@@ -156,3 +156,81 @@ describe('AdminVehiclesComponent — liste des sociétés du popup', () => {
     expect(component.companiesForPopup).toEqual([]);
   });
 });
+
+/**
+ * Porte de sortie du 09/10/2026 (HTZ 344, Belive SAV) : la création est refusée parce qu'une
+ * fiche boîtier morte (jamais connectée, sans véhicule ni donnée) porte le MAT ou la SIM
+ * saisis ; le serveur la désigne, l'écran propose de la libérer puis rejoue la même création.
+ */
+describe('AdminVehiclesComponent — fiche boîtier morte à la création', () => {
+  let component: AdminVehiclesComponent;
+  let admin: AdminService;
+
+  const refus = (releaseSuggestedDeviceId?: number) => ({
+    error: {
+      message: 'Doublon refusé : le numéro SIM « 93094727 » est déjà utilisé par le boîtier #567111 (boîtier non affecté).',
+      releaseSuggestedDeviceId
+    }
+  });
+  const formulaire = {
+    name: 'HTZ 344', type: 'voiture', hasGPS: true, gpsImei: '860141076687632', gpsSimNumber: '93094727', companyId: '6'
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule, RouterTestingModule, FormsModule, AdminVehiclesComponent],
+      providers: [AdminService, ApiService],
+    }).compileComponents();
+    admin = TestBed.inject(AdminService);
+    jest.spyOn(admin, 'isAuthenticated').mockReturnValue(true);
+    jest.spyOn(admin, 'getVehicles').mockReturnValue(of([]));
+    jest.spyOn(admin, 'getClients').mockReturnValue(of([]));
+    component = TestBed.createComponent(AdminVehiclesComponent).componentInstance;
+  });
+
+  // Les espions sur window.confirm / window.alert ne doivent pas se cumuler d’un test a l’autre.
+  afterEach(() => jest.restoreAllMocks());
+
+  it('propose de libérer la fiche désignée puis rejoue la même création', () => {
+    const creer = jest.spyOn(admin, 'createVehicle')
+      .mockReturnValueOnce(throwError(() => refus(567111)))
+      .mockReturnValueOnce(of({ id: 600 } as AdminVehicle));
+    const liberer = jest.spyOn(admin, 'releaseEmptyGpsDevice').mockReturnValue(of({ message: 'libérée' }));
+    jest.spyOn(window, 'confirm').mockReturnValue(true);
+    const alerte = jest.spyOn(window, 'alert').mockImplementation(() => {});
+
+    component.onVehicleSaved(formulaire);
+
+    expect(liberer).toHaveBeenCalledWith(567111, 6);
+    expect(creer).toHaveBeenCalledTimes(2);
+    // Le rejeu porte les mêmes valeurs (société 6, IMEI, SIM, aucun appareil choisi par id).
+    expect(creer.mock.calls[1][0]).toEqual(expect.objectContaining({
+      name: 'HTZ 344', companyId: 6, hasGps: true, gpsImei: '860141076687632', gpsSimNumber: '93094727', gpsDeviceId: undefined
+    }));
+    // … et la libération précède le rejeu.
+    expect(liberer.mock.invocationCallOrder[0]).toBeLessThan(creer.mock.invocationCallOrder[1]);
+    expect(alerte).not.toHaveBeenCalled();
+  });
+
+  it('ne touche à rien si l’opérateur refuse', () => {
+    const creer = jest.spyOn(admin, 'createVehicle').mockReturnValue(throwError(() => refus(567111)));
+    const liberer = jest.spyOn(admin, 'releaseEmptyGpsDevice');
+    jest.spyOn(window, 'confirm').mockReturnValue(false);
+
+    component.onVehicleSaved(formulaire);
+
+    expect(liberer).not.toHaveBeenCalled();
+    expect(creer).toHaveBeenCalledTimes(1);
+  });
+
+  it('affiche simplement le refus quand aucune fiche n’est désignée', () => {
+    jest.spyOn(admin, 'createVehicle').mockReturnValue(throwError(() => refus()));
+    const confirmer = jest.spyOn(window, 'confirm');
+    const alerte = jest.spyOn(window, 'alert').mockImplementation(() => {});
+
+    component.onVehicleSaved(formulaire);
+
+    expect(confirmer).not.toHaveBeenCalled();
+    expect(alerte).toHaveBeenCalledWith(expect.stringContaining('Doublon refusé'));
+  });
+});

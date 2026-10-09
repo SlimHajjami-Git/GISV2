@@ -1,5 +1,6 @@
 import {
-  fuelSensorModeForChosenDevice, gpsDeviceIdToSend, replayAfterReplacement, shouldProposeReplacement, trimIdentifier
+  fuelSensorModeForChosenDevice, gpsDeviceIdToSend, releaseSuggestedDeviceId, replayAfterReplacement,
+  shouldProposeReplacement, trimIdentifier
 } from './vehicle-gps-save.helpers';
 
 /**
@@ -91,6 +92,21 @@ describe('vehicle-gps-save.helpers (boucle Doublon refusé du 14/09/2026)', () =
       expect(fuelSensorModeForChosenDevice('percent', 'liters')).toBe('percent');
       expect(fuelSensorModeForChosenDevice('raw_255', undefined)).toBe('raw_255');
       expect(fuelSensorModeForChosenDevice(null, null)).toBe('raw_255');
+    });
+  });
+
+  describe('releaseSuggestedDeviceId (fiche morte du 09/10/2026, HTZ 344)', () => {
+    it('rend la fiche que le serveur propose de libérer', () => {
+      expect(releaseSuggestedDeviceId({ releaseSuggestedDeviceId: 567111 })).toBe(567111);
+    });
+
+    it('ne propose rien sans fiche désignée, ni pour une valeur qui n’est pas un id', () => {
+      expect(releaseSuggestedDeviceId({})).toBeUndefined();
+      expect(releaseSuggestedDeviceId({ releaseSuggestedDeviceId: null })).toBeUndefined();
+      expect(releaseSuggestedDeviceId({ releaseSuggestedDeviceId: 0 })).toBeUndefined();
+      expect(releaseSuggestedDeviceId({ releaseSuggestedDeviceId: 'abc' })).toBeUndefined();
+      expect(releaseSuggestedDeviceId(null)).toBeUndefined();
+      expect(releaseSuggestedDeviceId(undefined)).toBeUndefined();
     });
   });
 

@@ -1267,7 +1267,12 @@ public class ReplaceVehicleDeviceTests
     {
         await SeedCompaniesAsync(context);
         context.GpsDevices.Add(Device(WrongDevice278, WrongImei278, Mat278, null, BeliveSav, "assigned"));
-        context.GpsDevices.Add(Device(RealDevice278, RealImei278, Mat278, null, Belive, "unassigned"));
+        // La fiche qui émet a une dernière communication, comme en prod (l'ingestion la pose
+        // à chaque trame) : la contradiction de MAT du 09/10/2026 ne doit pas s'y déclencher
+        // quand le MAT est le même.
+        var real = Device(RealDevice278, RealImei278, Mat278, null, Belive, "unassigned");
+        real.LastCommunication = DateTime.UtcNow;
+        context.GpsDevices.Add(real);
         context.Vehicles.Add(Vehicle(Htz278, "HTZ 278", WrongDevice278));
         AddPositions(context, RealDevice278, 352);
         await context.SaveChangesAsync();

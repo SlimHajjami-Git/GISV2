@@ -96,6 +96,34 @@ public static class GpsDeviceUniquenessGuard
     }
 
     /// <summary>
+    /// Le MAT saisi contredit celui d'une fiche retrouvée par son IMEI qui a DÉJÀ communiqué.
+    /// Rend la phrase à afficher, ou null (fiche jamais connectée, MAT stocké vide, saisie vide,
+    /// ou différence limitée à la casse et aux espaces — ce n'est pas une contradiction).
+    ///
+    /// POURQUOI — recette du 09/10/2026 (Belive SAV, HTZ 344 / HTZ 345) : les IMEI des deux
+    /// boîtiers avaient été permutés à la saisie. En re-créant HTZ 344 avec l'IMEI du boîtier
+    /// dont la fiche porte « NR08G1116 » et le MAT « NR08G1115 », la saisie écrasait en silence
+    /// le MAT de la fiche : le véhicule aurait été rattaché au mauvais boîtier sans que personne
+    /// ne le voie. La contradiction se dit ; elle ne se tranche pas à la place de l'opérateur.
+    /// </summary>
+    public static string? ContradictionAvecLeMatDuBoitier(
+        string imei, string? storedMat, DateTime? lastCommunication, string? input)
+    {
+        if (lastCommunication == null || string.IsNullOrWhiteSpace(storedMat) || string.IsNullOrWhiteSpace(input))
+            return null;
+        if (Normalize(storedMat) == Normalize(input)) return null;
+
+        // Le MAT stocké a été saisi à la main ou lu dans les trames : une fiche saisie avec un MAT
+        // faux « a communiqué » aussi (les positions se résolvent par IMEI), donc on ne dit pas
+        // « le boîtier annonce » — on dit ce que porte la fiche et on laisse l'opérateur trancher.
+        return $"Le boîtier IMEI {imei} a déjà communiqué et sa fiche porte le MAT « {storedMat} » ; " +
+               $"vous avez saisi « {input.Trim()} ». La saisie ne remplace pas en silence le MAT d'un boîtier " +
+               "qui émet. Si l'IMEI est le bon, laissez le MAT vide (la fiche garde le sien) ou saisissez " +
+               $"« {storedMat} » ; pour corriger ensuite ce MAT, passez par le véhicule qui porte la fiche. " +
+               "Si c'est l'IMEI qui est faux, corrigez-le.";
+    }
+
+    /// <summary>
     /// IMEI plausible : 15 chiffres dont le dernier est la clé de Luhn.
     ///
     /// POURQUOI — le 14/09/2026, trois véhicules (HTZ 278, 255, 292) pointaient vers

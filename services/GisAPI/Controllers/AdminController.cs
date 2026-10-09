@@ -11,6 +11,7 @@ using GisAPI.Application.Features.Admin.Vehicles.Commands.CreateAdminVehicle;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.UpdateAdminVehicle;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.DeleteAdminVehicle;
 using GisAPI.Application.Features.Admin.Vehicles.Commands.ReplaceVehicleDevice;
+using GisAPI.Application.Features.Admin.Vehicles.Commands.ReleaseEmptyGpsDevice;
 using GisAPI.Application.Features.Admin.Users;
 using GisAPI.Application.Features.Admin.Companies;
 using GisAPI.Application.Features.Admin.Companies.Queries.GetCompanies;
@@ -422,8 +423,25 @@ public class AdminController : ControllerBase
             request.GpsBrand, request.GpsModel, request.GpsFirmwareVersion, request.GpsFuelSensorMode,
             request.GpsSimNumber, request.GpsSimOperator, request.GpsInstallationDate
         ));
-        if (!result.Success) return BadRequest(new { message = result.Error });
+        // releaseSuggestedDeviceId : fiche strictement vide qui bloque le MAT ou la SIM — l'écran
+        // propose de la libérer puis de recommencer (recette du 09/10/2026, HTZ 344).
+        if (!result.Success) return BadRequest(new { message = result.Error, releaseSuggestedDeviceId = result.ReleaseSuggestedDeviceId });
         return CreatedAtAction(nameof(GetVehicle), new { id = result.Vehicle!.Id }, result.Vehicle);
+    }
+
+    /// <summary>
+    /// Libère une fiche boîtier STRICTEMENT VIDE (jamais connectée, sans véhicule ni donnée) qui
+    /// bloque un MAT ou une SIM à la création d'un véhicule — recette du 09/10/2026 (HTZ 344) :
+    /// jusque-là aucun écran ne permettait de s'en défaire. Le serveur refuse tout autre cas ;
+    /// la suppression est journalisée par l'audit (suppression_gps-devices).
+    /// </summary>
+    [HttpDelete("gps-devices/{id}")]
+    public async Task<ActionResult> ReleaseEmptyGpsDevice(int id, [FromQuery] int? pourSociete)
+    {
+        var result = await _mediator.Send(new ReleaseEmptyGpsDeviceCommand(id, pourSociete));
+        if (result.NotFound) return NotFound(new { message = result.Message });
+        if (!result.Success) return BadRequest(new { message = result.Message });
+        return Ok(new { message = result.Message });
     }
 
     /// <summary>

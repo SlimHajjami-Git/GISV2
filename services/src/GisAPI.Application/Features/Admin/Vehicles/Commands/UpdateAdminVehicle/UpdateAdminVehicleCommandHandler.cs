@@ -134,7 +134,7 @@ public class UpdateAdminVehicleCommandHandler : IRequestHandler<UpdateAdminVehic
                 }
 
                 var (resolvedDevice, error) = await GpsDeviceResolver.ResolveAsync(
-                    _context, targetCompanyId, r.GpsDeviceId, r.GpsImei, r.GpsMat);
+                    _context, targetCompanyId, r.GpsDeviceId, r.GpsImei, r.GpsMat, ownDeviceId: currentDeviceId);
                 if (error != null) return new UpdateAdminVehicleResult(false, error);
                 gpsDevice = resolvedDevice;
             }

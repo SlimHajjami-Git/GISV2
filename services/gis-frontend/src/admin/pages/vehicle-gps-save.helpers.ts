@@ -53,6 +53,19 @@ export function shouldProposeReplacement(
   return normalize(newImei) !== normalize(currentImei);
 }
 
+/**
+ * Fiche boîtier morte que le serveur propose de libérer après un refus de création
+ * (releaseSuggestedDeviceId) : jamais connectée, sans véhicule ni donnée, elle porte le MAT ou
+ * la SIM saisis. Recette du 09/10/2026 (HTZ 344) : la suppression d'un véhicule laisse sa fiche
+ * boîtier « non affectée », et aucun écran ne permettait de s'en défaire.
+ */
+export function releaseSuggestedDeviceId(
+  errorBody: { releaseSuggestedDeviceId?: unknown } | null | undefined
+): number | undefined {
+  const id = Number(errorBody?.releaseSuggestedDeviceId);
+  return Number.isInteger(id) && id > 0 ? id : undefined;
+}
+
 /** Champs que le remplacement de boîtier a déjà appliqués à la fiche retenue. */
 const REPLACEMENT_FIELDS = ['gpsImei', 'gpsMat', 'gpsSimNumber', 'gpsSimOperator', 'gpsFuelSensorMode'] as const;
 

@@ -14,7 +14,7 @@ import { driverAccountsPreviewText, driverAccountsResultText, keptUsersText } fr
 import { environment } from '../../environments/environment';
 import { AuthService } from '../../services/auth.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
-import { gpsDeviceIdToSend, trimIdentifier } from './vehicle-gps-save.helpers';
+import { gpsDeviceIdToSend, releaseSuggestedDeviceId, trimIdentifier } from './vehicle-gps-save.helpers';
 import { PermissionEditorComponent } from '../components/permission-editor.component';
 
 type CompanyRole = Role & { userCount?: number };
@@ -3016,17 +3016,52 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         }
       });
     } else {
-      this.adminService.createVehicle(vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
-        next: () => {
-          this.closeVehiclePopup();
-          this.loadVehicles();
-        },
-        error: (err) => {
-          console.error('Error creating vehicle:', err);
-          alert(err?.error?.message || 'Erreur lors de la création du véhicule');
-        }
-      });
+      this.creerVehicule(vehicleData);
     }
+  }
+
+  /**
+   * Création, avec la porte de sortie du 09/10/2026 (HTZ 344) : quand le refus vient d'une fiche
+   * boîtier strictement vide (jamais connectée, sans véhicule ni donnée) qui porte le MAT ou la
+   * SIM saisis, le serveur la désigne (releaseSuggestedDeviceId) ; on propose de la libérer puis
+   * on recommence la même création. Tout autre refus s'affiche tel quel.
+   */
+  private creerVehicule(vehicleData: Partial<AdminVehicle>) {
+    this.adminService.createVehicle(vehicleData).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.closeVehiclePopup();
+        this.loadVehicles();
+      },
+      error: (err) => {
+        console.error('Error creating vehicle:', err);
+        const msg: string = err?.error?.message || 'Erreur lors de la création du véhicule';
+        const ficheMorte = releaseSuggestedDeviceId(err?.error);
+        if (ficheMorte) {
+          const ok = confirm(
+            `${msg}\n\n` +
+            `Libérer la fiche boîtier #${ficheMorte} (jamais connectée, sans véhicule ni donnée) ` +
+            `et recommencer la création ?`
+          );
+          if (ok) { this.libererFicheEtRecreer(ficheMorte, vehicleData); return; }
+          this.cdr.detectChanges();
+          return;
+        }
+        alert(msg);
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  private libererFicheEtRecreer(deviceId: number, vehicleData: Partial<AdminVehicle>) {
+    this.adminService.releaseEmptyGpsDevice(deviceId, vehicleData.companyId).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => this.creerVehicule(vehicleData),
+      error: (err) => {
+        console.error('Error releasing empty GPS device:', err);
+        // Le serveur refuse (la fiche a communiqué, porte des données ou a disparu) : le dire.
+        alert(err?.error?.message || `Impossible de libérer la fiche boîtier #${deviceId}.`);
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   // Role actions

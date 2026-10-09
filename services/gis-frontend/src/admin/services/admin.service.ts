@@ -893,6 +893,17 @@ export class AdminService {
       `${this.apiUrl}/admin/vehicles/${vehicleId}/replace-device`, payload, { headers: this.getHeaders() });
   }
 
+  /**
+   * Libère une fiche boîtier STRICTEMENT VIDE (jamais connectée, sans véhicule ni donnée) qui
+   * bloque un MAT ou une SIM à la création d'un véhicule — le serveur refuse tout autre cas
+   * (recette du 09/10/2026, HTZ 344).
+   */
+  releaseEmptyGpsDevice(deviceId: number, pourSocieteId?: number): Observable<{ message: string }> {
+    const query = pourSocieteId ? `?pourSociete=${pourSocieteId}` : '';
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/admin/gps-devices/${deviceId}${query}`, { headers: this.getHeaders() });
+  }
+
   getServiceHealth(): Observable<ServiceHealth[]> {
     return this.http.get<ServiceHealth[]>(`${this.apiUrl}/admin/health`, { headers: this.getHeaders() }).pipe(
       catchError(err => {

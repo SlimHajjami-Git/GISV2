@@ -29,4 +29,9 @@ public record CreateAdminVehicleCommand(
     DateTime? GpsInstallationDate
 ) : IRequest<CreateAdminVehicleResult>;
 
-public record CreateAdminVehicleResult(bool Success, string? Error = null, AdminVehicleDto? Vehicle = null);
+/// <param name="ReleaseSuggestedDeviceId">
+/// Fiche boîtier STRICTEMENT VIDE (jamais connectée, sans véhicule ni donnée) qui porte le MAT ou
+/// la SIM refusés : l'écran propose de la libérer puis de recommencer (recette du 09/10/2026).
+/// </param>
+public record CreateAdminVehicleResult(
+    bool Success, string? Error = null, AdminVehicleDto? Vehicle = null, int? ReleaseSuggestedDeviceId = null);

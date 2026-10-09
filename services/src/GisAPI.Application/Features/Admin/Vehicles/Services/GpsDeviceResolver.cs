@@ -7,8 +7,14 @@ namespace GisAPI.Application.Features.Admin.Vehicles.Services;
 
 public static class GpsDeviceResolver
 {
+    /// <param name="ownDeviceId">
+    /// Fiche ACTUELLE du véhicule édité : sur elle, la saisie du MAT gagne toujours (c'est la seule
+    /// façon de corriger un MAT saisi faux sur un boîtier qui émet — cas HTZ 345, 09/10/2026) ; la
+    /// contradiction ne vaut que pour une AUTRE fiche retrouvée par IMEI.
+    /// </param>
     public static async Task<(GpsDevice? device, string? error)> ResolveAsync(
-        IGisDbContext context, int companyId, int? gpsDeviceId, string? gpsImei, string? gpsMat)
+        IGisDbContext context, int companyId, int? gpsDeviceId, string? gpsImei, string? gpsMat,
+        int? ownDeviceId = null)
     {
         if (gpsDeviceId.HasValue)
         {
@@ -27,6 +33,19 @@ public static class GpsDeviceResolver
 
             if (device != null)
             {
+                // Un MAT saisi qui contredit celui d'une AUTRE fiche qui a déjà communiqué ne
+                // s'applique pas en silence : il se signale, avant de toucher à la fiche
+                // (recette du 09/10/2026 : IMEI permutés entre HTZ 344 et HTZ 345, la saisie
+                // aurait rattaché le mauvais boîtier). La fiche propre du véhicule édité, elle,
+                // reste corrigeable : l'écran n'édite le MAT qu'en mode « nouvel appareil », qui
+                // passe par ici avec l'IMEI du boîtier actuel.
+                if (device.Id != ownDeviceId)
+                {
+                    var contradiction = GpsDeviceUniquenessGuard.ContradictionAvecLeMatDuBoitier(
+                        device.DeviceUid, device.Mat, device.LastCommunication, gpsMat);
+                    if (contradiction != null) return (null, contradiction);
+                }
+
                 if (device.CompanyId != companyId) device.CompanyId = companyId;
                 // Fiche existante retrouvée par son IMEI : le MAT saisi n'a pas été lu sur
                 // elle. Si le boîtier a déjà communiqué, l'orthographe stockée (celle que

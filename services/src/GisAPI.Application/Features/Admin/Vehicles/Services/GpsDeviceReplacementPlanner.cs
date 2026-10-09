@@ -333,7 +333,7 @@ public static class GpsDeviceReplacementPlanner
     /// sans clé étrangère ni entité EF) — ses lignes survivent à la suppression.
     /// </summary>
     /// <param name="ignoreVehicleId">Véhicule dont le lien avec la fiche ne compte pas.</param>
-    private static async Task<DeviceDataReport> InspectAsync(
+    public static async Task<DeviceDataReport> InspectAsync(
         IGisDbContext context, int deviceId, int? ignoreVehicleId, CancellationToken ct)
     {
         var linkedVehicles = await CountAsync(context.Vehicles.IgnoreQueryFilters()
@@ -357,6 +357,7 @@ public static class GpsDeviceReplacementPlanner
         await Add(context.AccidentEvents.IgnoreQueryFilters().Where(a => a.GpsDeviceId == deviceId), "accident(s)");
         await Add(context.GeofenceEvents.IgnoreQueryFilters().Where(g => g.DeviceId == deviceId), "événement(s) de zone");
         await Add(context.PoiVisits.IgnoreQueryFilters().Where(v => v.DeviceId == deviceId), "passage(s) sur point d'intérêt");
+        await Add(context.BatteryStartReadings.IgnoreQueryFilters().Where(b => b.DeviceId == deviceId), "relevé(s) de tension au démarrage");
 
         return new DeviceDataReport(linkedVehicles, positions, others);
     }
@@ -369,7 +370,7 @@ public static class GpsDeviceReplacementPlanner
 
     /// <param name="Positions">Positions (plafonnées à CountCap + 1).</param>
     /// <param name="Others">Autres tables, déjà libellées (« 2 alerte(s) »).</param>
-    private sealed record DeviceDataReport(int LinkedVehicles, int Positions, IReadOnlyList<string> Others)
+    public sealed record DeviceDataReport(int LinkedVehicles, int Positions, IReadOnlyList<string> Others)
     {
         /// <summary>Positions puis autres données, libellées.</summary>
         public IReadOnlyList<string> History =>
