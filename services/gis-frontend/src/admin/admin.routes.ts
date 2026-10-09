@@ -21,6 +21,7 @@ import { AdminTramesComponent } from './pages/admin-trames.component';
 import { AdminAutoRecoveryComponent } from './pages/admin-auto-recovery.component';
 import { AdminDatabaseComponent } from './pages/admin-database.component';
 import { AdminDeviceCommandsComponent } from './pages/admin-device-commands.component';
+import { AdminGpsDevicesComponent } from './pages/admin-gps-devices.component';
 import { AdminGuard } from './guards/admin.guard';
 
 export const adminRoutes: Routes = [
@@ -36,6 +37,7 @@ export const adminRoutes: Routes = [
   { path: 'roles', component: AdminRolesComponent, canActivate: [AdminGuard] },
   { path: 'users', component: AdminUsersComponent, canActivate: [AdminGuard] },
   { path: 'vehicles', component: AdminVehiclesComponent, canActivate: [AdminGuard] },
+  { path: 'gps-devices', component: AdminGpsDevicesComponent, canActivate: [AdminGuard] },
   { path: 'brands', component: AdminBrandsComponent, canActivate: [AdminGuard] },
   { path: 'parts', component: AdminPartsComponent, canActivate: [AdminGuard] },
   { path: 'health', component: AdminHealthComponent, canActivate: [AdminGuard] },

@@ -1,5 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace GisAPI.Application.Common.Helpers;
 
@@ -42,6 +44,18 @@ public static class VehicleDeletionHelper
           AND n.nspname = 'public'
           AND cl.relname <> 'vehicles';";
 
+    private const string NpgsqlProvider = "Npgsql.EntityFrameworkCore.PostgreSQL";
+
+    // Même relevé pour SQLite (base des tests), qui n'a pas de pg_catalog : sans lui, la
+    // suppression d'un boîtier AVEC son véhicule (09/10/2026) ne se vérifiait pas de bout en bout.
+    private const string SqliteReferencingColumnsSql = @"
+        SELECT CASE WHEN ti.""notnull"" = 1 THEN 'NO' ELSE 'YES' END || '|' || m.name || '.' || fk.""from"" AS ""Value""
+        FROM sqlite_master m
+        JOIN pragma_foreign_key_list(m.name) fk
+        JOIN pragma_table_info(m.name) ti ON ti.name = fk.""from""
+        WHERE m.type = 'table' AND lower(fk.""table"") = 'vehicles' AND lower(m.name) <> 'vehicles'
+        ORDER BY m.name, fk.""from"";";
+
     /// <summary>
     /// Dossiers de sinistre : accident_events.vehicle_id n'a AUCUNE clé étrangère
     /// (migration 027), donc le catalogue ne le voit pas et la suppression du
@@ -64,9 +78,40 @@ public static class VehicleDeletionHelper
     /// sinistre d'abord, car leur libellé se lit sur la ligne du véhicule, puis
     /// chaque colonne relevée au catalogue, puis le véhicule.
     /// </summary>
-    public static List<string> BuildStatements(IEnumerable<string> referencingColumns)
+    public static List<string> BuildStatements(IEnumerable<string> referencingColumns) =>
+        BuildStatements(referencingColumns, AccidentFilePreservationSql);
+
+    /// <summary>
+    /// Mêmes ordres « sinistres » que <see cref="AccidentFilePreservationSql"/>, mais avec les
+    /// noms de table et de colonnes lus dans le modèle EF : la base des tests (SQLite, noms par
+    /// convention) ne connaît pas accident_events ni plate_number (09/10/2026).
+    /// </summary>
+    public static IReadOnlyList<string> AccidentFilePreservationSqlFor(IModel model)
     {
-        var statements = new List<string>(AccidentFilePreservationSql);
+        var accidents = model.FindEntityType(typeof(AccidentEvent));
+        var vehicles = model.FindEntityType(typeof(Vehicle));
+        if (accidents == null || vehicles == null) return Array.Empty<string>();
+
+        static string Q(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
+        static string T(IEntityType e) => Q(e.GetTableName()!);
+        static string C(IEntityType e, string property) =>
+            Q(e.FindProperty(property)!.GetColumnName(StoreObjectIdentifier.Table(e.GetTableName()!, e.GetSchema()))!);
+
+        var label = C(accidents, nameof(AccidentEvent.VehicleLabel));
+        var vehicleId = C(accidents, nameof(AccidentEvent.VehicleId));
+        return new[]
+        {
+            $"UPDATE {T(accidents)} SET {label} = (" +
+            $"SELECT substr(COALESCE(NULLIF(TRIM(v.{C(vehicles, nameof(Vehicle.Plate))}), ''), NULLIF(TRIM(v.{C(vehicles, nameof(Vehicle.Name))}), ''), 'Véhicule #' || v.{C(vehicles, nameof(Vehicle.Id))}), 1, 100) " +
+            $"FROM {T(vehicles)} v WHERE v.{C(vehicles, nameof(Vehicle.Id))} = {{0}}) " +
+            $"WHERE {vehicleId} = {{0}} AND ({label} IS NULL OR TRIM({label}) = '')",
+            $"UPDATE {T(accidents)} SET {vehicleId} = NULL WHERE {vehicleId} = {{0}}",
+        };
+    }
+
+    public static List<string> BuildStatements(IEnumerable<string> referencingColumns, IReadOnlyList<string> accidentStatements)
+    {
+        var statements = new List<string>(accidentStatements);
 
         foreach (var row in referencingColumns)
         {
@@ -106,11 +151,14 @@ public static class VehicleDeletionHelper
     {
         var db = context.Database;
 
-        var rows = await db.SqlQueryRaw<string>(ReferencingColumnsSql).ToListAsync(ct);
+        var postgres = db.ProviderName == NpgsqlProvider;
+        var catalogue = postgres ? ReferencingColumnsSql : SqliteReferencingColumnsSql;
+        var rows = await db.SqlQueryRaw<string>(catalogue).ToListAsync(ct);
+        var accidents = postgres ? AccidentFilePreservationSql : AccidentFilePreservationSqlFor(context.Model);
 
         await using var tx = await db.BeginTransactionAsync(ct);
 
-        foreach (var sql in BuildStatements(rows))
+        foreach (var sql in BuildStatements(rows, accidents))
             await db.ExecuteSqlRawAsync(sql, new object[] { vehicleId }, ct);
 
         await tx.CommitAsync(ct);

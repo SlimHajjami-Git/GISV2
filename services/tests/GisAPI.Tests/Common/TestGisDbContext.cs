@@ -34,6 +34,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
     public DbSet<VehicleDocument> VehicleDocuments => Set<VehicleDocument>();
     public DbSet<GpsDevice> GpsDevices => Set<GpsDevice>();
+    public DbSet<GpsDeviceBlocklistEntry> GpsDeviceBlocklist => Set<GpsDeviceBlocklistEntry>();
     public DbSet<GpsPosition> GpsPositions => Set<GpsPosition>();
     public DbSet<BatteryStartReading> BatteryStartReadings => Set<BatteryStartReading>();
     public DbSet<GpsAlert> GpsAlerts => Set<GpsAlert>();
@@ -135,6 +136,9 @@ public class TestGisDbContext : DbContext, IGisDbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
+
+        // === Liste de blocage des boîtiers : clé = IMEI (migration 057) ===
+        modelBuilder.Entity<GpsDeviceBlocklistEntry>().HasKey(b => b.DeviceUid);
 
         // === User: computed properties + legacy cached fields ===
         modelBuilder.Entity<User>()

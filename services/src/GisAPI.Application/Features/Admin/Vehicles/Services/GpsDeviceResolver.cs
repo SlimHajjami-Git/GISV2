@@ -31,6 +31,10 @@ public static class GpsDeviceResolver
                 .Include(d => d.Vehicle)
                 .FirstOrDefaultAsync(d => d.DeviceUid == normalizedImei);
 
+            // Un IMEI supprimé puis ré-inscrit à la main est un boîtier réinstallé : le
+            // blocage tombe, sinon le nouvel ingest ignorerait ses trames pour toujours.
+            await LeverLeBlocageAsync(context, normalizedImei);
+
             if (device != null)
             {
                 // Un MAT saisi qui contredit celui d'une AUTRE fiche qui a déjà communiqué ne
@@ -96,6 +100,17 @@ public static class GpsDeviceResolver
         }
 
         return (null, null);
+    }
+
+    /// <summary>
+    /// Retire l'IMEI de la liste de blocage (migration 057) s'il y figure. La suppression est
+    /// enregistrée par le SaveChanges de l'appelant, avec le véhicule ; rien n'est persisté si
+    /// la création échoue ensuite.
+    /// </summary>
+    public static async Task LeverLeBlocageAsync(IGisDbContext context, string deviceUid)
+    {
+        var bloque = await context.GpsDeviceBlocklist.FirstOrDefaultAsync(b => b.DeviceUid == deviceUid);
+        if (bloque != null) context.GpsDeviceBlocklist.Remove(bloque);
     }
 
     public static async Task ReleaseAsync(IGisDbContext context, int? gpsDeviceId)

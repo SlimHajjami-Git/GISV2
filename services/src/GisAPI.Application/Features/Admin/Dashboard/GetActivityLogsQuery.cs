@@ -36,6 +36,7 @@ public class GetActivityLogsQueryHandler : IRequestHandler<GetActivityLogsQuery,
     private static readonly HashSet<string> UserActions = new(StringComparer.OrdinalIgnoreCase)
     {
         "login", "logout", "session", "impersonate", "company_data_reset", "vehicle_mileage_corrected",
+        "gps_device_deleted", "gps_device_unblocked",
     };
 
     private static readonly string[] UserActionPrefixes = { "creation_", "modification_", "suppression_" };

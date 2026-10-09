@@ -846,6 +846,18 @@ async fn process_single_frame(
 
             if is_info_frame {
                 let info = telemetry::hh::parse_info_frame(frame_str)?;
+                // L'IMEI entre dans la carte de connexion AVANT le verdict de l'ingestion :
+                // bloqué ou non (liste de blocage, 09/10/2026), les trames de position de
+                // cette connexion doivent se résoudre sur CET IMEI, jamais par repli sur le
+                // MAT — qu'un boîtier de remplacement peut partager, ce qui ferait ingérer les
+                // positions du boîtier supprimé sous la fiche du remplaçant.
+                if let (Some(peer), Some(imei_annonce)) = (peer_addr, info.imei.as_deref()) {
+                    let imei_annonce = imei_annonce.trim();
+                    if !imei_annonce.is_empty() {
+                        let mut map = connection_map.lock().await;
+                        map.insert(peer.to_string(), imei_annonce.to_string());
+                    }
+                }
                 let imei = database.ingest_info_frame(protocol, &info).await?;
                 if let Some(peer) = peer_addr {
                     let mut map = connection_map.lock().await;

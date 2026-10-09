@@ -91,6 +91,37 @@ export interface CreateUserRequest {
 }
 
 // ── Commandes boîtiers (écran admin) ──
+/** Ligne de l'inventaire avant suppression d'un boîtier (09/10/2026). */
+export interface GpsDeviceDeletionRow { table: string; label: string; rows: number; capped: boolean; }
+export interface GpsDeviceDeletionVehicle {
+  id: number; name: string; plate?: string | null; companyId: number; companyName?: string | null;
+  accidentFilesKept: number; repairs: number; costs: number; fuelEntries: number; trips: number; tours: number; notifications: number;
+}
+/** Ce que la suppression d'un boîtier emporte, ce qu'elle refuse, et ce que l'opérateur doit taper. */
+export interface GpsDeviceDeletionImpact {
+  deviceId: number; imei: string; mat?: string | null; companyId: number; companyName?: string | null;
+  lastCommunication?: string | null; activeRecently: boolean;
+  vehicle?: GpsDeviceDeletionVehicle | null;
+  rows: GpsDeviceDeletionRow[]; totalRows: number; capped: boolean; accidentFilesKept: number;
+  warnings: string[]; refusal?: string | null; confirmationToken: string;
+}
+export interface GpsDeviceDeletionResult {
+  success: boolean; message: string; deleted: GpsDeviceDeletionRow[]; totalRows: number;
+  vehicleDeleted: boolean; durationMs: number; imei?: string | null;
+}
+/** Fiche boîtier telle que l'écran Admin › Boîtiers GPS la liste. */
+export interface AdminGpsDevice {
+  deviceId: number; imei: string; mat?: string | null; companyId: number; companyName?: string | null;
+  vehicleId?: number | null; plate?: string | null; vehicleName?: string | null;
+  protocolType?: string | null; brand?: string | null; model?: string | null; status: string;
+  lastCommunication?: string | null; createdAt: string;
+}
+/** IMEI supprimé : l'ingestion ignore ses trames et ne recrée pas sa fiche. */
+export interface GpsDeviceBlocklistEntry {
+  deviceUid: string; blockedAt: string; blockedByUserId?: number | null; deviceIdBefore?: number | null;
+  mat?: string | null; companyIdBefore?: number | null; reason?: string | null;
+}
+
 export interface DeviceCommandTarget {
   deviceId: number;
   imei: string;
@@ -902,6 +933,44 @@ export class AdminService {
     const query = pourSocieteId ? `?pourSociete=${pourSocieteId}` : '';
     return this.http.delete<{ message: string }>(
       `${this.apiUrl}/admin/gps-devices/${deviceId}${query}`, { headers: this.getHeaders() });
+  }
+
+  // ── Écran Boîtiers GPS et suppression définitive (09/10/2026) ──
+
+  /** Toutes les fiches boîtier ; sans véhicule seulement, par société, ou par texte (IMEI, MAT, plaque, véhicule). */
+  getAdminGpsDevices(filtre: { companyId?: number | null; unassignedOnly?: boolean; search?: string }): Observable<AdminGpsDevice[]> {
+    const params: string[] = [];
+    if (filtre.companyId) params.push(`companyId=${filtre.companyId}`);
+    if (filtre.unassignedOnly) params.push('unassignedOnly=true');
+    if (filtre.search && filtre.search.trim()) params.push(`search=${encodeURIComponent(filtre.search.trim())}`);
+    const query = params.length ? '?' + params.join('&') : '';
+    return this.http.get<AdminGpsDevice[]>(`${this.apiUrl}/admin/gps-devices${query}`, { headers: this.getHeaders() });
+  }
+
+  /** Inventaire chiffré avant suppression : ce qui part, ce qui est conservé, ce qui est refusé. */
+  getGpsDeviceDeletionImpact(deviceId: number): Observable<GpsDeviceDeletionImpact> {
+    return this.http.get<GpsDeviceDeletionImpact>(
+      `${this.apiUrl}/admin/gps-devices/${deviceId}/deletion-impact`, { headers: this.getHeaders() });
+  }
+
+  /**
+   * Suppression DÉFINITIVE du boîtier, de son véhicule et de toutes leurs données.
+   * `confirmation` = l'IMEI retapé (ou « SUPPRIMER »), tel que l'inventaire l'annonce.
+   */
+  deleteGpsDeviceWithData(deviceId: number, confirmation: string): Observable<GpsDeviceDeletionResult> {
+    return this.http.delete<GpsDeviceDeletionResult>(
+      `${this.apiUrl}/admin/gps-devices/${deviceId}/with-data?confirmation=${encodeURIComponent(confirmation)}`,
+      { headers: this.getHeaders() });
+  }
+
+  getGpsDeviceBlocklist(): Observable<GpsDeviceBlocklistEntry[]> {
+    return this.http.get<GpsDeviceBlocklistEntry[]>(`${this.apiUrl}/admin/gps-devices/blocklist`, { headers: this.getHeaders() });
+  }
+
+  /** Réinstallation d'un boîtier supprimé : l'ingestion peut de nouveau créer sa fiche. */
+  unblockGpsDevice(imei: string): Observable<{ message: string }> {
+    return this.http.delete<{ message: string }>(
+      `${this.apiUrl}/admin/gps-devices/blocklist/${encodeURIComponent(imei)}`, { headers: this.getHeaders() });
   }
 
   getServiceHealth(): Observable<ServiceHealth[]> {

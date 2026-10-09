@@ -50,6 +50,17 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
     private static readonly TimeSpan _cacheTtl = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan _dedupWindow = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// Oublie la fiche mise en cache pour cet IMEI (suppression d'un boîtier, 09/10/2026) :
+    /// ses trames suivantes ne sont plus diffusées à son ancienne société pendant le TTL.
+    /// </summary>
+    public static void InvalidateDevice(string deviceUid)
+    {
+        if (string.IsNullOrWhiteSpace(deviceUid)) return;
+        _deviceCache.TryRemove(deviceUid, out _);
+        _lastBroadcast.TryRemove(deviceUid, out _);
+    }
+
     // Speed alert state — tracks the highest speed already notified for
     // the CURRENT "speeding session" of each vehicle. A session starts
     // when speed crosses (limit + 20) and ends when it drops back under.

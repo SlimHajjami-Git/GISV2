@@ -5,6 +5,7 @@ use serde_json::json;
 use sqlx::{postgres::PgPool, Row};
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::{
     ports::TelemetryStore,
@@ -42,6 +43,9 @@ pub struct Database {
     /// Tracks consecutive odometer spike rejections per device.
     /// Used to detect poisoned cache and auto-recover.
     odometer_reject_tracker: Mutex<HashMap<i32, OdometerRejectTracker>>,
+    /// IMEI supprimés par l'administration (table gps_device_blocklist, migration 057) :
+    /// instant du dernier contrôle, pour ne pas relire la base à chaque trame.
+    blocked_cache: Mutex<HashMap<String, Instant>>,
 }
 
 pub struct LastKnownPosition {
@@ -173,7 +177,27 @@ impl Database {
         }
         */
 
-        let (position_id, filtered_odometer) = self.insert_position(device_id, frame, event_key, has_fms, &last_pos).await?;
+        let (position_id, filtered_odometer) = match self
+            .insert_position(device_id, frame, event_key, has_fms, &last_pos)
+            .await
+        {
+            Ok(inserted) => inserted,
+            Err(e) => {
+                // La fiche a disparu (suppression par l'administration) alors que le cache
+                // mémoire garde encore son ancien id : la clé étrangère refuse l'insertion.
+                // On oublie l'entrée pour que la prochaine trame repasse par ensure_device
+                // (liste de blocage, ou recréation si le boîtier a été débloqué).
+                if is_foreign_key_violation(&e) {
+                    self.forget_device(device_uid, device_id);
+                    tracing::warn!(
+                        device_uid,
+                        device_id,
+                        "Position refused: device row gone (deleted by admin) — cache entry dropped"
+                    );
+                }
+                return Err(e);
+            }
+        };
 
         // Update last position cache for next frame's stopped-vehicle check
         // IMPORTANT: use filtered_odometer (not raw frame.odometer_km) to prevent
@@ -336,6 +360,28 @@ impl Database {
 
         // MAT is the GPS logical identifier (e.g., "NR08G0664"), distinct from vehicle plate_number
         let mat = info.mat.as_ref().map(|m| m.trim().to_string());
+
+        // Boîtier supprimé par l'administration (liste de blocage, 09/10/2026) : sa fiche
+        // n'est ni recréée ni mise à jour, la trame est ignorée jusqu'à déblocage.
+        if let Some(fresh) = self.check_blocked(&imei).await {
+            if fresh {
+                tracing::warn!(imei = %imei, "Info frame ignored: device deleted by admin (blocklist)");
+                let _ = self
+                    .log_frame_debug(
+                        None,
+                        Some(&imei),
+                        mat.as_deref(),
+                        "info",
+                        None,
+                        None,
+                        &format!("info(imei={}, mat={:?}, fw={})", imei, mat, firmware),
+                        "blocked_deleted",
+                        None,
+                    )
+                    .await;
+            }
+            anyhow::bail!("Device {} is blocked (deleted by admin)", imei);
+        }
 
         // Calypso 7 strict frame validation: before we let the UPSERT touch
         // the row, peek at any existing values for this IMEI and reject the
@@ -530,6 +576,18 @@ impl Database {
         .await?;
         Ok(())
     }
+}
+
+/// Violation de clé étrangère PostgreSQL (SQLSTATE 23503) : la fiche boîtier n'existe plus.
+fn is_foreign_key_violation(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<sqlx::Error>()
+            .and_then(|e| e.as_database_error())
+            .and_then(|db| db.code())
+            .map(|code| code == "23503")
+            .unwrap_or(false)
+    })
 }
 
 #[async_trait]
@@ -1278,7 +1336,56 @@ impl Database {
             device_cache: Mutex::new(HashMap::new()),
             last_position_cache: Mutex::new(HashMap::new()),
             odometer_reject_tracker: Mutex::new(HashMap::new()),
+            blocked_cache: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Liste de blocage (gps_device_blocklist, migration 057) : un boîtier supprimé par
+    /// l'administration ne doit ni recréer sa fiche ni rattacher des positions.
+    /// Rend `None` s'il n'est pas bloqué, `Some(true)` la première fois qu'on le voit
+    /// bloqué (à journaliser), `Some(false)` ensuite pendant BLOCKLIST_TTL — un boîtier
+    /// branché émet toutes les 30 s, on ne relit pas la base à chaque trame. Un déblocage
+    /// prend donc effet au plus tard après BLOCKLIST_TTL.
+    async fn check_blocked(&self, device_uid: &str) -> Option<bool> {
+        const BLOCKLIST_TTL: Duration = Duration::from_secs(600);
+        {
+            let cache = self.blocked_cache.lock().unwrap();
+            if let Some(seen) = cache.get(device_uid) {
+                if seen.elapsed() < BLOCKLIST_TTL {
+                    return Some(false);
+                }
+            }
+        }
+
+        let row = sqlx::query_scalar::<_, i32>("SELECT 1 FROM gps_device_blocklist WHERE device_uid = $1")
+            .bind(device_uid)
+            .fetch_optional(&self.pool)
+            .await;
+
+        match row {
+            Ok(Some(_)) => {
+                let mut cache = self.blocked_cache.lock().unwrap();
+                let fresh = !cache.contains_key(device_uid);
+                cache.insert(device_uid.to_string(), Instant::now());
+                Some(fresh)
+            }
+            Ok(None) => {
+                self.blocked_cache.lock().unwrap().remove(device_uid);
+                None
+            }
+            Err(e) => {
+                // Table absente ou base indisponible : on ne bloque pas à l'aveugle.
+                tracing::warn!(device_uid, error = %e, "Blocklist lookup failed; frame accepted");
+                None
+            }
+        }
+    }
+
+    /// Oublie un boîtier dont la fiche a disparu : la prochaine trame repasse par
+    /// ensure_device (liste de blocage, ou recréation si le boîtier a été débloqué).
+    fn forget_device(&self, device_uid: &str, device_id: i32) {
+        self.device_cache.lock().unwrap().remove(device_uid);
+        self.last_position_cache.lock().unwrap().remove(&device_id);
     }
 
     async fn ensure_device(
@@ -1295,7 +1402,18 @@ impl Database {
             }
         }
 
-        // Cache miss — hit DB
+        // Cache miss — hit DB.
+        // Boîtier supprimé par l'administration (liste de blocage, 09/10/2026) : la fiche
+        // n'est pas recréée et la trame est ignorée, jusqu'à déblocage.
+        if let Some(fresh) = self.check_blocked(device_uid).await {
+            if fresh {
+                tracing::warn!(device_uid, "Frames ignored: device deleted by admin (blocklist)");
+                let _ = self
+                    .log_frame_debug(None, Some(device_uid), None, "position", None, None, "", "blocked_deleted", None)
+                    .await;
+            }
+            anyhow::bail!("Device {} is blocked (deleted by admin)", device_uid);
+        }
         const DEFAULT_COMPANY_ID: i32 = 1;
         let model = metadata.model_name;
         let firmware = metadata.firmware_flavor;

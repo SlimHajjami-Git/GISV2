@@ -59,6 +59,16 @@ export function shouldProposeReplacement(
  * la SIM saisis. Recette du 09/10/2026 (HTZ 344) : la suppression d'un véhicule laisse sa fiche
  * boîtier « non affectée », et aucun écran ne permettait de s'en défaire.
  */
+/**
+ * Confirmation d'une suppression définitive de boîtier (09/10/2026) : l'opérateur retape le
+ * jeton annoncé par le serveur (l'IMEI, ou « SUPPRIMER »). Comparaison normalisée — espaces
+ * ignorés, casse ignorée —, la même règle que le garde anti-doublons côté serveur.
+ */
+export function confirmationMatches(typed: string | null | undefined, token: string | null | undefined): boolean {
+  const normalize = (v: string | null | undefined) => (v || '').replace(/\s+/g, '').toUpperCase();
+  return normalize(token).length > 0 && normalize(typed) === normalize(token);
+}
+
 export function releaseSuggestedDeviceId(
   errorBody: { releaseSuggestedDeviceId?: unknown } | null | undefined
 ): number | undefined {

@@ -191,11 +191,19 @@ public class DeviceCheckController : ControllerBase
             .ToListAsync(HttpContext.RequestAborted);
 
         if (correspondances.Count == 0)
+        {
+            // Boîtier supprimé par l'administration (liste de blocage, 09/10/2026) : le dire au
+            // technicien plutôt que « inconnu », sinon il repart sur une pose qui ne remontera jamais.
+            var bloque = estImei && await _context.GpsDeviceBlocklist.AsNoTracking()
+                .AnyAsync(b => b.DeviceUid == saisie, HttpContext.RequestAborted);
             return Ok(new
             {
                 found = false,
-                message = estImei ? "IMEI inconnu." : "Matricule inconnu."
+                message = bloque
+                    ? "Ce boîtier a été supprimé de Calypso par l'administration : ses trames sont ignorées tant qu'il n'est pas débloqué."
+                    : (estImei ? "IMEI inconnu." : "Matricule inconnu.")
             });
+        }
 
         // Ambiguïté DITE, jamais tranchée au hasard : répondre « ce boîtier remonte » en
         // ayant regardé celui d'un autre véhicule enverrait le technicien repartir alors

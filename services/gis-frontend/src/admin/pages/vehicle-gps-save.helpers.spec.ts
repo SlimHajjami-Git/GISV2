@@ -1,5 +1,5 @@
 import {
-  fuelSensorModeForChosenDevice, gpsDeviceIdToSend, releaseSuggestedDeviceId, replayAfterReplacement,
+  confirmationMatches, fuelSensorModeForChosenDevice, gpsDeviceIdToSend, releaseSuggestedDeviceId, replayAfterReplacement,
   shouldProposeReplacement, trimIdentifier
 } from './vehicle-gps-save.helpers';
 
@@ -107,6 +107,20 @@ describe('vehicle-gps-save.helpers (boucle Doublon refusé du 14/09/2026)', () =
       expect(releaseSuggestedDeviceId({ releaseSuggestedDeviceId: 'abc' })).toBeUndefined();
       expect(releaseSuggestedDeviceId(null)).toBeUndefined();
       expect(releaseSuggestedDeviceId(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('confirmationMatches (suppression définitive d’un boîtier, 09/10/2026)', () => {
+    it('accepte l’IMEI retapé, espaces et casse ignorés', () => {
+      expect(confirmationMatches(' 8601 4107 6687 632 ', '860141076687632')).toBe(true);
+      expect(confirmationMatches('supprimer', 'SUPPRIMER')).toBe(true);
+    });
+
+    it('refuse un IMEI différent, vide, ou un jeton vide', () => {
+      expect(confirmationMatches('860141076687633', '860141076687632')).toBe(false);
+      expect(confirmationMatches('', '860141076687632')).toBe(false);
+      expect(confirmationMatches(undefined, '860141076687632')).toBe(false);
+      expect(confirmationMatches('x', '')).toBe(false);
     });
   });
 

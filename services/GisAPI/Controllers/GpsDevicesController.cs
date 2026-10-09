@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Application.Common.Security;
+using GisAPI.Application.Features.Admin.Vehicles.Services;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
@@ -269,15 +270,16 @@ public class GpsDevicesController : ControllerBase
         if (await BoitierHorsPorteeAsync(companyId, id))
             return NotFound();
 
-        // Unassign from vehicle first
-        var vehicle = await _context.Vehicles
-            .FirstOrDefaultAsync(v => v.GpsDeviceId == id);
-
-        if (vehicle != null)
-        {
-            vehicle.GpsDeviceId = null;
-            vehicle.HasGps = false;
-        }
+        // Jamais de cascade silencieuse depuis l'espace client (09/10/2026) : un Remove nu
+        // laissait PostgreSQL effacer toutes les positions du boîtier sans un mot, ou tombait
+        // en 23503. Seule une fiche strictement vide se supprime ici ; un boîtier qui a
+        // communiqué ou porte des données relève de l'administration (inventaire + confirmation).
+        var donnees = await GpsDeviceReplacementPlanner.InspectAsync(_context, id, ignoreVehicleId: null, HttpContext.RequestAborted);
+        if (device.LastCommunication != null || !donnees.IsStrictlyEmpty)
+            return BadRequest(new
+            {
+                message = $"Ce boîtier a communiqué ou porte des données ({donnees.Describe()}) : sa suppression passe par l'administration Calypso."
+            });
 
         _context.GpsDevices.Remove(device);
         await _context.SaveChangesAsync();

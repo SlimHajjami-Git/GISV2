@@ -8,6 +8,7 @@ import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, AdminVehicle, Client } from '../services/admin.service';
 import { ApiService, VehicleDeletionImpact } from '../../services/api.service';
 import { VehiclePopupComponent } from '../../components/shared/vehicle-popup.component';
+import { GpsDeviceDeleteModalComponent } from '../components/gps-device-delete-modal.component';
 import {
   gpsDeviceIdToSend, releaseSuggestedDeviceId, replayAfterReplacement, shouldProposeReplacement, trimIdentifier
 } from './vehicle-gps-save.helpers';
@@ -15,7 +16,7 @@ import {
 @Component({
   selector: 'admin-vehicles',
   standalone: true,
-  imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent],
+  imports: [CommonModule, FormsModule, AdminLayoutComponent, VehiclePopupComponent, GpsDeviceDeleteModalComponent],
   template: `
     <admin-layout pageTitle="Gestion des Vehicules">
       <div class="vehicles-page">
@@ -155,6 +156,14 @@ import {
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     </svg>
                   </button>
+                  <!-- Suppression DÉFINITIVE du boîtier ET du véhicule, avec toutes leurs données (09/10/2026). -->
+                  <button class="action-btn device-delete" *ngIf="vehicle.gpsDeviceId" (click)="openDeviceDelete(vehicle)" title="Supprimer le boîtier et toutes ses données (véhicule compris)">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>
+                      <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
+                      <line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+                    </svg>
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -186,6 +195,8 @@ import {
           (closed)="closeModals()"
           (saved)="onVehicleSaved($event)">
         </app-vehicle-popup>
+
+        <gps-device-delete-modal [deviceId]="deviceToDeleteId" (closed)="onDeviceDeleteClosed($event)"></gps-device-delete-modal>
 
         <!-- Detail Modal -->
         <div class="modal-overlay" *ngIf="showViewModal" (mousedown)="closeModals()">
@@ -463,6 +474,8 @@ import {
 
     /* Delete Modal */
     .delete-modal { max-width: 440px; }
+    .action-btn.device-delete { background: rgba(146, 64, 14, 0.12); color: #92400e; }
+    .action-btn.device-delete:hover { background: rgba(146, 64, 14, 0.24); }
     .delete-header h2 { color: var(--adm-red); }
     .modal-body { padding: 24px; }
     .delete-warning { text-align: center; }
@@ -731,6 +744,19 @@ export class AdminVehiclesComponent implements OnInit, OnDestroy {
   viewVehicle(vehicle: AdminVehicle) {
     this.selectedVehicle = vehicle;
     this.showViewModal = true;
+  }
+
+  /** Fiche boîtier dont la suppression définitive est en cours de confirmation ; null = fenêtre fermée. */
+  deviceToDeleteId: number | null = null;
+
+  openDeviceDelete(vehicle: AdminVehicle) {
+    this.deviceToDeleteId = vehicle.gpsDeviceId ?? null;
+  }
+
+  onDeviceDeleteClosed(e: { deleted: boolean }) {
+    this.deviceToDeleteId = null;
+    if (e.deleted) this.loadData();
+    this.cdr.markForCheck();
   }
 
   confirmDelete(vehicle: AdminVehicle) {

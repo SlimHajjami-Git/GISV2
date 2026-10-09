@@ -46,6 +46,7 @@ public class GisDbContext : DbContext, IGisDbContext
 
     // GPS & Tracking
     public DbSet<GpsDevice> GpsDevices => Set<GpsDevice>();
+    public DbSet<GpsDeviceBlocklistEntry> GpsDeviceBlocklist => Set<GpsDeviceBlocklistEntry>();
     public DbSet<GpsPosition> GpsPositions => Set<GpsPosition>();
     public DbSet<BatteryStartReading> BatteryStartReadings => Set<BatteryStartReading>();
     public DbSet<GpsAlert> GpsAlerts => Set<GpsAlert>();

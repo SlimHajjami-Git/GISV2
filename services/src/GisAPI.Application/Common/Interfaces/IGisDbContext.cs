@@ -14,6 +14,8 @@ public interface IGisDbContext
     DbSet<Vehicle> Vehicles { get; }
     DbSet<VehicleDocument> VehicleDocuments { get; }
     DbSet<GpsDevice> GpsDevices { get; }
+    /// <summary>IMEI des boîtiers supprimés par l'administration (migration 057).</summary>
+    DbSet<GpsDeviceBlocklistEntry> GpsDeviceBlocklist { get; }
     DbSet<GpsPosition> GpsPositions { get; }
     DbSet<BatteryStartReading> BatteryStartReadings { get; }
     DbSet<GpsAlert> GpsAlerts { get; }
@@ -121,6 +123,12 @@ public interface IGisDbContext
     /// abuse it — prefer LINQ when it's expressive enough.
     /// </summary>
     Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade Database { get; }
+
+    /// <summary>
+    /// Modèle EF : noms réels de tables et de colonnes, pour le SQL écrit à la main qui doit
+    /// tourner sur PostgreSQL (prod) comme sur SQLite (tests) — suppression par lots (09/10/2026).
+    /// </summary>
+    Microsoft.EntityFrameworkCore.Metadata.IModel Model { get; }
 
     /// <summary>
     /// Suivi des entités — exposé pour qu'un handler puisse abandonner ses
