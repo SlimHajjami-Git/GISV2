@@ -626,9 +626,15 @@ data:
             proxy_http_version 1.1;
             proxy_set_header Connection "";
 
-            # Host en dur sur le nom canonique du WordPress : avec $host, un visiteur
-            # de belive-calypso.com sans www recevrait une 301 emise par WordPress.
-            proxy_set_header Host www.belive-calypso.com;
+            # Host du visiteur, et non un nom en dur : le WordPress canonise lui-meme
+            # vers www par une 301. Ce rebond est VOULU — il place le visiteur sur le
+            # meme hote que les liens absolus de la vitrine, donc sur la meme origine.
+            # Sans lui, un visiteur arrive sur le domaine nu changerait d hote au
+            # premier clic : le referent serait reduit a l origine, le chemin /fr
+            # perdu, et le prospect francais recevrait le formulaire tunisien (mesure
+            # au navigateur le 10/10/2026). Le rebond disparaitra quand le WordPress
+            # aura le domaine nu pour adresse (reglage « home » chez Karim).
+            proxy_set_header Host $host;
             proxy_set_header X-Forwarded-Host $host;
             # $remote_addr vaut 10.42.0.1 (passerelle du cluster) : l IP du visiteur
             # est dans l en-tete pose par Traefik, d ou $proxy_add_x_forwarded_for.
