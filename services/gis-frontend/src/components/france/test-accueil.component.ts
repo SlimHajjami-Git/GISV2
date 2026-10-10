@@ -27,14 +27,14 @@ import { RouterLink } from '@angular/router';
 
         <!-- ══ EN-TÊTE — hauteur 58 ══ -->
         <header class="tc-hd">
-          <a class="tc-brand" routerLink="/fr">
+          <a class="tc-brand" href="/fr/">
             <img src="/assets/calypso-logo.svg" alt="Calypso">
           </a>
           <nav class="tc-nav">
-            <a routerLink="/fr/fonctionnalites">Fonctionnalités</a>
-            <a routerLink="/fr/tarifs">Tarifs</a>
-            <a routerLink="/fr/calypso-auto">Calypso Auto</a>
-            <a routerLink="/fr/contact">Contact</a>
+            <a href="/fr/fonctionnalites/">Fonctionnalités</a>
+            <a href="/fr/tarifs/">Tarifs</a>
+            <a href="/fr/calypso-auto/">Calypso Auto</a>
+            <a href="/fr/contact/">Contact</a>
           </nav>
           <div class="tc-hd-right">
             <a routerLink="/login" class="tc-signin">Se connecter</a>
@@ -89,12 +89,12 @@ import { RouterLink } from '@angular/router';
 
         <!-- ══ BANDEAU DES UNIVERS — panneau h=62 ══ -->
         <div class="tc-panel tc-strip">
-          <a routerLink="/fr/fonctionnalites"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0 4.6 5.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3a4 4 0 0 0-1.8-2.9z"/></svg><span>ENTRETIENS</span></a>
-          <a routerLink="/fr/fonctionnalites"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg><span>RÉPARATIONS</span></a>
-          <a routerLink="/fr/fonctionnalites"><svg viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h13M17 9l2.5 2.5V17a1.5 1.5 0 0 1-3 0V9z"/></svg><span>CARBURANT</span></a>
-          <a routerLink="/fr/fonctionnalites"><svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="1.8"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>DÉPENSES</span></a>
-          <a routerLink="/fr/fonctionnalites"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>ÉCHÉANCES</span></a>
-          <a routerLink="/fr/calypso-auto"><svg viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.8"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8A3 3 0 0 0 8 18a3 3 0 0 0 4-1V4.9A3 3 0 0 0 9 4zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8A3 3 0 0 1 16 18a3 3 0 0 1-4-1"/></svg><span>IA</span></a>
+          <a href="/fr/fonctionnalites/"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0 4.6 5.7l-8.3 8.3a2 2 0 0 1-2.8-2.8l8.3-8.3a4 4 0 0 0-1.8-2.9z"/></svg><span>ENTRETIENS</span></a>
+          <a href="/fr/fonctionnalites/"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M18.7 5.3l-2.1 2.1M7.4 16.6l-2.1 2.1"/></svg><span>RÉPARATIONS</span></a>
+          <a href="/fr/fonctionnalites/"><svg viewBox="0 0 24 24" fill="none" stroke="#34D399" stroke-width="1.8"><path d="M4 20V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15M3 20h13M17 9l2.5 2.5V17a1.5 1.5 0 0 1-3 0V9z"/></svg><span>CARBURANT</span></a>
+          <a href="/fr/fonctionnalites/"><svg viewBox="0 0 24 24" fill="none" stroke="#818CF8" stroke-width="1.8"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>DÉPENSES</span></a>
+          <a href="/fr/fonctionnalites/"><svg viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span>ÉCHÉANCES</span></a>
+          <a href="/fr/calypso-auto/"><svg viewBox="0 0 24 24" fill="none" stroke="#EC4899" stroke-width="1.8"><path d="M9 4a3 3 0 0 0-3 3 3 3 0 0 0-1 5.8A3 3 0 0 0 8 18a3 3 0 0 0 4-1V4.9A3 3 0 0 0 9 4zM15 4a3 3 0 0 1 3 3 3 3 0 0 1 1 5.8A3 3 0 0 1 16 18a3 3 0 0 1-4-1"/></svg><span>IA</span></a>
         </div>
 
         <!-- ══ PRODUIT RÉEL — panneau h=302 ══ -->
@@ -149,7 +149,7 @@ import { RouterLink } from '@angular/router';
           </ul>
           <div class="tc-price-cta">
             <a routerLink="/inscription" class="tc-b1">ESSAYER GRATUITEMENT</a>
-            <a routerLink="/fr/tarifs" class="tc-b2">VOIR LES TARIFS</a>
+            <a href="/fr/tarifs/" class="tc-b2">VOIR LES TARIFS</a>
           </div>
         </div>
 
@@ -181,22 +181,22 @@ import { RouterLink } from '@angular/router';
             </div>
             <div>
               <h4>PRODUIT</h4>
-              <a routerLink="/fr/fonctionnalites">Fonctionnalités</a>
-              <a routerLink="/fr/tarifs">Tarifs</a>
-              <a routerLink="/fr/calypso-auto">Calypso Auto</a>
+              <a href="/fr/fonctionnalites/">Fonctionnalités</a>
+              <a href="/fr/tarifs/">Tarifs</a>
+              <a href="/fr/calypso-auto/">Calypso Auto</a>
             </div>
             <div>
               <h4>CALYPSO</h4>
-              <a routerLink="/fr/contact">Contact</a>
+              <a href="/fr/contact/">Contact</a>
               <a routerLink="/login">Se connecter</a>
               <a routerLink="/inscription">Essayer gratuitement</a>
             </div>
             <div>
               <h4>LÉGAL</h4>
-              <a routerLink="/fr/mentions-legales">Mentions légales</a>
-              <a routerLink="/fr/confidentialite">Politique de confidentialité</a>
-              <a routerLink="/fr/rgpd">RGPD</a>
-              <a routerLink="/fr/cookies">Cookies</a>
+              <a href="/fr/mentions-legales/">Mentions légales</a>
+              <a href="/fr/confidentialite/">Politique de confidentialité</a>
+              <a href="/fr/rgpd/">RGPD</a>
+              <a href="/fr/cookies/">Cookies</a>
             </div>
           </div>
           <div class="tc-foot-b">© 2026 Calypso. Tous droits réservés.</div>

@@ -2,12 +2,6 @@ import { Routes } from '@angular/router';
 import { environment } from './environments/environment';
 import { AiLandingComponent } from './components/ai-landing.component';
 import { LandingComponent } from './components/landing.component';
-import { Fr2HomeComponent } from './components/france/fr2-home.component';
-import { Fr2FeaturesComponent } from './components/france/fr2-features.component';
-import { Fr2PricingComponent } from './components/france/fr2-pricing.component';
-import { Fr2AutoComponent } from './components/france/fr2-auto.component';
-import { FranceContactComponent } from './components/france/france-contact.component';
-import { FrancePrivacyComponent, FranceLegalComponent, FranceRgpdComponent, FranceCookiesComponent } from './components/france/fr2-legal-pages.component';
 import { TestAccueilComponent } from './components/france/test-accueil.component';
 import { RegionGateComponent } from './components/region-gate.component';
 import { LoginComponent } from './components/login.component';
@@ -108,33 +102,20 @@ export const routes: Routes = [
   // (pre-login); "Accéder à Calypso" routes to /login and the former marketing
   // landing stays reachable at /accueil.
   { path: '', component: RegionGateComponent },
-  // Le site commercial France : une coque (en-tête, pied de page, feuille de
-  // style) et huit pages enfants, conformément au cahier des charges. Elles
-  // vivent sous /fr et non à la racine pour qu'il n'existe qu'UNE adresse par
-  // page : deux URL servant le même contenu se pénalisent mutuellement au
-  // référencement, et le cahier des charges pose des exigences SEO précises.
+  // La vitrine commerciale vit toujours sous /fr, mais elle n'est PLUS servie
+  // par cette application : depuis le 10/10/2026, nginx proxyfie /fr/ vers le
+  // WordPress hébergé chez Topnet (ConfigMap frontend-nginx-config). Les routes
+  // Angular qui occupaient ce chemin ont été retirées — les garder aurait fait
+  // cohabiter deux sites à la MÊME adresse : la page Angular en navigation
+  // interne, le WordPress au rechargement. D'où aussi la règle : tout lien vers
+  // la vitrine est un href (navigation navigateur), jamais un routerLink. Les
+  // composants fr2-* restent dans le dépôt mais sortent du bundle, faute d'être
+  // référencés ici : un retour arrière se fait en rétablissant ce bloc de routes
+  // ET la configuration nginx, les deux allant par paire.
   // Page temoin : reproduction de la capture ACCUEIL a comparer avant
   // adoption. Hors du site France, pour ne pas melanger les deux.
   { path: 'testacceuil', component: TestAccueilComponent },
   { path: 'testaccueil', redirectTo: 'testacceuil' },
-  {
-    path: 'fr',
-    children: [
-      { path: '', component: Fr2HomeComponent },
-      { path: 'fonctionnalites', component: Fr2FeaturesComponent },
-      { path: 'tarifs', component: Fr2PricingComponent },
-      { path: 'calypso-auto', component: Fr2AutoComponent },
-      { path: 'contact', component: FranceContactComponent },
-      { path: 'confidentialite', component: FrancePrivacyComponent },
-      { path: 'mentions-legales', component: FranceLegalComponent },
-      { path: 'rgpd', component: FranceRgpdComponent },
-      { path: 'cookies', component: FranceCookiesComponent },
-      // Le document maitre range les « pages 404 » parmi les elements
-      // interdits : une adresse inconnue sous /fr ramene a l accueil du site
-      // plutot que d ouvrir une page supplementaire non demandee.
-      { path: '**', redirectTo: '' }
-    ]
-  },
   { path: 'assistant', component: aiLandingEnabled ? AiLandingComponent : LandingComponent },
   { path: 'accueil', component: LandingComponent },
   { path: 'login', component: LoginComponent },

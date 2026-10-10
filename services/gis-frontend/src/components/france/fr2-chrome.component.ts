@@ -27,15 +27,15 @@ import { RegionService } from '../../services/region.service';
   encapsulation: ViewEncapsulation.None,
   template: `
     <header class="fr2-hd">
-      <a class="fr2-brand" routerLink="/fr">
+      <a class="fr2-brand" href="/fr/">
         <img src="/assets/calypso-logo.svg" alt="Calypso">
       </a>
       <nav class="fr2-nav">
-        @if (accueil) { <a routerLink="/fr">Accueil</a> }
-        <a routerLink="/fr/fonctionnalites">Fonctionnalités</a>
-        <a routerLink="/fr/tarifs">Tarifs</a>
-        <a routerLink="/fr/calypso-auto">Calypso Auto</a>
-        <a routerLink="/fr/contact">Contact</a>
+        @if (accueil) { <a href="/fr/">Accueil</a> }
+        <a href="/fr/fonctionnalites/">Fonctionnalités</a>
+        <a href="/fr/tarifs/">Tarifs</a>
+        <a href="/fr/calypso-auto/">Calypso Auto</a>
+        <a href="/fr/contact/">Contact</a>
       </nav>
       <div class="fr2-hd-right">
         <a routerLink="/login" class="fr2-signin">Se connecter</a>
@@ -147,22 +147,22 @@ export class Fr2DecoComponent {}
             </div>
             <div>
               <h4>PRODUIT</h4>
-              <a routerLink="/fr/fonctionnalites">Fonctionnalités</a>
-              <a routerLink="/fr/tarifs">Tarifs</a>
-              <a routerLink="/fr/calypso-auto">Calypso Auto</a>
+              <a href="/fr/fonctionnalites/">Fonctionnalités</a>
+              <a href="/fr/tarifs/">Tarifs</a>
+              <a href="/fr/calypso-auto/">Calypso Auto</a>
             </div>
             <div>
               <h4>CALYPSO</h4>
-              <a routerLink="/fr/contact">Contact</a>
+              <a href="/fr/contact/">Contact</a>
               <a routerLink="/login">Se connecter</a>
               <a routerLink="/inscription">Essayer gratuitement</a>
             </div>
             <div>
               <h4>LÉGAL</h4>
-              <a routerLink="/fr/mentions-legales">Mentions légales</a>
-              <a routerLink="/fr/confidentialite">Politique de confidentialité</a>
-              <a routerLink="/fr/rgpd">RGPD</a>
-              <a routerLink="/fr/cookies">Cookies</a>
+              <a href="/fr/mentions-legales/">Mentions légales</a>
+              <a href="/fr/confidentialite/">Politique de confidentialité</a>
+              <a href="/fr/rgpd/">RGPD</a>
+              <a href="/fr/cookies/">Cookies</a>
             </div>
           </div>
           <div class="fr2-ft-b">© 2026 Calypso. Tous droits réservés.</div>
@@ -187,21 +187,21 @@ export class Fr2DecoComponent {}
             </div>
             <div>
               <h4>Produit</h4>
-              <a routerLink="/fr/fonctionnalites">Fonctionnalités</a>
-              <a routerLink="/fr/tarifs">Tarifs</a>
-              <a routerLink="/fr/calypso-auto">Calypso Auto</a>
+              <a href="/fr/fonctionnalites/">Fonctionnalités</a>
+              <a href="/fr/tarifs/">Tarifs</a>
+              <a href="/fr/calypso-auto/">Calypso Auto</a>
             </div>
             <div>
               <h4>Calypso</h4>
-              <a routerLink="/fr">Accueil</a>
-              <a routerLink="/fr/contact">Contact</a>
+              <a href="/fr/">Accueil</a>
+              <a href="/fr/contact/">Contact</a>
               <a routerLink="/inscription">Essayer gratuitement</a>
             </div>
             <div>
               <h4>Légal</h4>
-              <a routerLink="/fr/confidentialite">Confidentialité</a>
-              <a routerLink="/fr/mentions-legales">Mentions légales</a>
-              <a routerLink="/fr/rgpd">RGPD</a>
+              <a href="/fr/confidentialite/">Confidentialité</a>
+              <a href="/fr/mentions-legales/">Mentions légales</a>
+              <a href="/fr/rgpd/">RGPD</a>
             </div>
             <div class="safe">
               <span class="sh"><svg viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="1.7"><path d="M12 3l7.5 3v6c0 4.4-3.1 7.6-7.5 9-4.4-1.4-7.5-4.6-7.5-9V6z"/><path d="m9 12 2 2 4-4.5"/></svg></span>
@@ -228,9 +228,9 @@ export class Fr2DecoComponent {}
           <img src="/assets/calypso-logo.svg" alt="Calypso">
           <span class="cp">© 2026 Calypso. Tous droits réservés.</span>
           <nav>
-            <a routerLink="/fr/confidentialite">Confidentialité</a>
-            <a routerLink="/fr/mentions-legales">Mentions légales</a>
-            <a routerLink="/fr/rgpd">RGPD</a>
+            <a href="/fr/confidentialite/">Confidentialité</a>
+            <a href="/fr/mentions-legales/">Mentions légales</a>
+            <a href="/fr/rgpd/">RGPD</a>
           </nav>
           <span class="lang">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>
@@ -246,7 +246,7 @@ export class Fr2DecoComponent {}
           <nav>
             @for (l of legalLinks; track l.to) {
               @if (!$first) { <span class="sep">|</span> }
-              <a [routerLink]="l.to">{{ l.t }}</a>
+              <a [href]="l.to">{{ l.t }}</a>
             }
           </nav>
         </footer>
@@ -351,10 +351,12 @@ export class Fr2FooterComponent {
   /** Affiche les quatre mini-arguments sous le logo (capture « compte pret »). */
   @Input() perks = false;
 
+  // Adresses du WordPress, barre finale comprise : sans elle il répond par une
+  // redirection 301, soit un aller-retour public inutile à chaque clic.
   readonly legalLinks = [
-    { t: 'Politique de confidentialité', to: '/fr/confidentialite' },
-    { t: 'Mentions légales', to: '/fr/mentions-legales' },
-    { t: 'RGPD', to: '/fr/rgpd' },
-    { t: 'Cookies', to: '/fr/cookies' }
+    { t: 'Politique de confidentialité', to: '/fr/confidentialite/' },
+    { t: 'Mentions légales', to: '/fr/mentions-legales/' },
+    { t: 'RGPD', to: '/fr/rgpd/' },
+    { t: 'Cookies', to: '/fr/cookies/' }
   ];
 }

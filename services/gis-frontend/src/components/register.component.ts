@@ -160,8 +160,8 @@ import { RegionService } from '../services/region.service';
 
                 <label class="fa-check" style="margin-top:14px;align-items:flex-start">
                   <input type="checkbox" name="acceptTerms" [(ngModel)]="acceptTerms">
-                  <span>J'accepte les <a routerLink="/fr/mentions-legales" class="fa-link">Conditions d'utilisation</a>
-                  et la <a routerLink="/fr/confidentialite" class="fa-link">Politique de confidentialité</a> <span class="req">*</span></span>
+                  <span>J'accepte les <a href="/fr/mentions-legales/" class="fa-link">Conditions d'utilisation</a>
+                  et la <a href="/fr/confidentialite/" class="fa-link">Politique de confidentialité</a> <span class="req">*</span></span>
                 </label>
 
                 @if (errorMessage) { <div class="fa-error">{{ errorMessage }}</div> }

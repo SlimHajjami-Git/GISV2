@@ -1,5 +1,4 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
-import { Router } from '@angular/router';
 import { environment } from '../environments/environment';
 import { RegionService } from '../services/region.service';
 import { AiLandingComponent } from './ai-landing.component';
@@ -40,22 +39,33 @@ import { LandingComponent } from './landing.component';
 })
 export class RegionGateComponent implements OnInit {
   private readonly region = inject(RegionService);
-  private readonly router = inject(Router);
 
   readonly aiLanding = (environment as any).aiAssistantLanding === true;
   readonly decided = signal(false);
 
   async ngOnInit(): Promise<void> {
     if (this.region.isEurope) {
-      this.router.navigateByUrl('/fr', { replaceUrl: true });
+      this.ouvrirLaVitrine();
       return;
     }
     const resolved = await this.region.resolveByCountry();
     if (resolved === 'europe') {
-      this.router.navigateByUrl('/fr', { replaceUrl: true });
+      this.ouvrirLaVitrine();
       return;
     }
     this.decided.set(true);
+  }
+
+  /**
+   * La vitrine européenne est servie par le WordPress derrière nginx, pas par
+   * le routeur de l'application : il faut donc une navigation NAVIGATEUR. Un
+   * navigateByUrl ne sortirait pas de l'application et, les routes /fr ayant
+   * été retirées, laisserait le visiteur sur une page vide.
+   * replace() plutôt qu'assign() : le bouton « retour » ne doit pas ramener sur
+   * cette page d'aiguillage, qui renverrait aussitôt vers la vitrine.
+   */
+  private ouvrirLaVitrine(): void {
+    window.location.replace('/fr/');
   }
 
 }

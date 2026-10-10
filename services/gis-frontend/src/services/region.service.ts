@@ -60,6 +60,19 @@ export class RegionService {
     const geo = this.readGeo();
     if (geo === 'europe') return 'europe';
 
+    // Arrivée depuis la vitrine. Depuis le 10/10/2026 la vitrine /fr est servie
+    // par le WordPress : son en-tête n'est plus du code Angular, il ne peut donc
+    // plus poser la marque de session lui-même. Le référent le dit à sa place —
+    // la vitrine et l'application partagent le domaine, et « Referrer-Policy:
+    // strict-origin-when-cross-origin » transmet le chemin complet entre pages
+    // du MÊME domaine. Sans ce signal, un prospect français qui clique
+    // « Essayer gratuitement » sur la vitrine recevrait le formulaire tunisien,
+    // en dinars.
+    if (this.arriveDeLaVitrine()) {
+      this.memoriserVisite();
+      return 'europe';
+    }
+
     // Visite en cours du site France. Indispensable tant qu'aucun domaine
     // européen ne pointe ici : sans cela, un visiteur qui parcourt /fr et clique
     // « Essayer gratuitement » atterrirait sur l'inscription tunisienne, et le
@@ -107,13 +120,38 @@ export class RegionService {
    * de ce site, pas ailleurs.
    */
   markFranceVisit(): void {
+    this.memoriserVisite();
+    // Le cache doit suivre, sinon la valeur calculée avant l'entrée sur le
+    // site resterait « default » pour toute la session.
+    this.cached = 'europe';
+  }
+
+  /**
+   * Note en session que le visiteur est sur le parcours européen. Appelé aussi
+   * depuis resolve(), d'où la séparation avec markFranceVisit : on n'y touche
+   * pas au cache, qui est précisément en train d'être calculé.
+   */
+  private memoriserVisite(): void {
     try {
       sessionStorage.setItem(RegionService.VISIT_KEY, '1');
-      // Le cache doit suivre, sinon la valeur calculée avant l'entrée sur le
-      // site resterait « default » pour toute la session.
-      this.cached = 'europe';
     } catch {
       // Stockage refusé : on retombe sur le domaine, sans casser la navigation.
+    }
+  }
+
+  /**
+   * Le visiteur arrive-t-il d'une page de la vitrine du MÊME domaine ? Le
+   * référent d'une autre origine est ignoré : seul notre /fr compte.
+   */
+  private arriveDeLaVitrine(): boolean {
+    try {
+      const referent = document.referrer;
+      if (!referent) return false;
+      const url = new URL(referent);
+      if (url.origin !== window.location.origin) return false;
+      return url.pathname === '/fr' || url.pathname.startsWith('/fr/');
+    } catch {
+      return false;
     }
   }
 

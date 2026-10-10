@@ -570,6 +570,21 @@ metadata:
   namespace: gisv2
 data:
   default.conf: |
+    # Vitrine WordPress hebergee chez Topnet, publiee sous /fr/ (demande Karim 09/10/2026).
+    # Membre = adresse IP litterale : aucune directive resolver necessaire.
+    upstream calypso_wordpress {
+        server 41.226.27.20:443;
+        keepalive 8;
+        keepalive_timeout 30s;
+        keepalive_requests 100;
+    }
+
+    # Journal dedie : le format "main" de l image ne dit rien de l amont, donc un 502
+    # du WordPress serait indiscernable d une erreur locale.
+    log_format fr_proxy '$http_x_forwarded_for - [$time_local] "$request" $status '
+                        '$body_bytes_sent up=$upstream_addr up_status=$upstream_status '
+                        'up_time=$upstream_response_time rt=$request_time';
+
     server {
         listen 80;
         server_name _;
@@ -594,6 +609,70 @@ data:
             add_header Cache-Control "no-cache, no-store, must-revalidate";
             add_header Pragma "no-cache";
             expires -1;
+        }
+
+        # Vitrine WordPress. absolute_redirect off : ce bloc ecoute en clair (TLS
+        # termine par Traefik), donc $scheme vaut http et une 301 absolue renverrait
+        # le visiteur en HTTP avant d etre rebascule en HTTPS.
+        location = /fr {
+            absolute_redirect off;
+            return 301 /fr/;
+        }
+
+        # ^~ INDISPENSABLE : sans lui les .css/.js/.png sous /fr/ tomberaient dans la
+        # location regex des actifs ci-dessous et seraient cherches sur le disque du pod.
+        location ^~ /fr/ {
+            proxy_pass https://calypso_wordpress;
+            proxy_http_version 1.1;
+            proxy_set_header Connection "";
+
+            # Host en dur sur le nom canonique du WordPress : avec $host, un visiteur
+            # de belive-calypso.com sans www recevrait une 301 emise par WordPress.
+            proxy_set_header Host www.belive-calypso.com;
+            proxy_set_header X-Forwarded-Host $host;
+            # $remote_addr vaut 10.42.0.1 (passerelle du cluster) : l IP du visiteur
+            # est dans l en-tete pose par Traefik, d ou $proxy_add_x_forwarded_for.
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+            # "https" en dur : $scheme vaut http ici, WordPress fabriquerait des URL
+            # http:// (contenu mixte, boucles de redirection).
+            proxy_set_header X-Forwarded-Proto https;
+
+            # Le certificat de l origine ne porte que *.topnet.tn : avec $host la
+            # verification echoue et tout /fr/ repond 502. Plesk choisit son vhost sur
+            # l en-tete Host, pas sur le SNI, donc epingler le SNI fonctionne.
+            proxy_ssl_server_name on;
+            proxy_ssl_name www.topnet.tn;
+            proxy_ssl_verify on;
+            proxy_ssl_verify_depth 3;
+            proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+
+            # Origine a 0,6 ms de RTT : rien de legitime ne met 60 s.
+            proxy_connect_timeout 3s;
+            proxy_send_timeout 15s;
+            proxy_read_timeout 15s;
+            proxy_next_upstream off;
+
+            # La page d accueil pese 118 Ko : sans ces tampons, nginx ecrit ~86 Ko de
+            # fichier temporaire par visiteur sur le disque du noeud (deja a 79 %).
+            proxy_buffer_size 16k;
+            proxy_buffers 16 16k;
+            client_max_body_size 64m;
+
+            # Le WordPress impose un HSTS d un an. Le certificat de TN expire le
+            # 2027-02-25 sans renouvellement automatique : un HSTS actif transformerait
+            # un oubli de renouvellement en panne non contournable.
+            proxy_hide_header Strict-Transport-Security;
+
+            access_log /var/log/nginx/access.log fr_proxy;
+            error_page 502 503 504 = @fr_indisponible;
+        }
+
+        # Repli lisible si la machine de Topnet ne repond pas, au lieu du 502 nu.
+        location @fr_indisponible {
+            internal;
+            default_type text/html;
+            return 503 '<!doctype html><html lang="fr"><meta charset="utf-8"><title>Calypso</title><body style="font-family:system-ui;max-width:34rem;margin:15vh auto;padding:0 1.5rem;color:#1b2430"><h1 style="font-size:1.4rem">Page momentanement indisponible</h1><p>Notre site de presentation ne repond pas pour l instant. L application reste accessible.</p><p><a href="/login" style="color:#0b7">Ouvrir Calypso</a></p></body></html>';
         }
 
         # Cache static assets

@@ -1,6 +1,6 @@
 import { Component, Input, ViewEncapsulation } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink, RouterLinkActive } from '@angular/router';
+import { RouterLink } from '@angular/router';
 
 /**
  * En-tête commercial Calypso, partagé par le site France, l'inscription et
@@ -21,19 +21,19 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 @Component({
   selector: 'app-france-header',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive],
+  imports: [CommonModule, RouterLink],
   encapsulation: ViewEncapsulation.None,
   template: `
     <header class="fr-hd">
       <div class="fr-hd-bar">
-        <a class="fr-hd-brand" routerLink="/fr" aria-label="Calypso, accueil">
+        <a class="fr-hd-brand" href="/fr/" aria-label="Calypso, accueil">
           <img src="/assets/calypso-logo.svg" alt="Calypso" width="504" height="170">
         </a>
         <nav class="fr-hd-nav">
-          <a class="fr-hd-hide" routerLink="/fr/fonctionnalites" routerLinkActive="on">Fonctionnalités</a>
-          <a class="fr-hd-hide" routerLink="/fr/tarifs" routerLinkActive="on">Tarifs</a>
-          <a class="fr-hd-hide" routerLink="/fr/calypso-auto" routerLinkActive="on">Calypso Auto</a>
-          <a class="fr-hd-hide" routerLink="/fr/contact" routerLinkActive="on">Contact</a>
+          <a class="fr-hd-hide" href="/fr/fonctionnalites/">Fonctionnalités</a>
+          <a class="fr-hd-hide" href="/fr/tarifs/">Tarifs</a>
+          <a class="fr-hd-hide" href="/fr/calypso-auto/">Calypso Auto</a>
+          <a class="fr-hd-hide" href="/fr/contact/">Contact</a>
           @if (connected) {
             <span class="fr-hd-chip" [title]="userName">
               <span class="fr-hd-dot"></span>
