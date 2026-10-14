@@ -1,6 +1,5 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Models;
-using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -20,59 +19,13 @@ public class GetFuelEntriesQueryHandler : IRequestHandler<GetFuelEntriesQuery, P
 
     public async Task<PaginatedList<FuelEntryDto>> Handle(GetFuelEntriesQuery request, CancellationToken cancellationToken)
     {
-        var companyId = _tenantService.CompanyId ?? throw new UnauthorizedAccessException("Company ID not found");
-
-        // Portee vehicules : chaque plein expose le montant, la station, le numero de
-        // facture et le NOM DU CHAUFFEUR. Fuite constatee : un employe restreint a ses
-        // vehicules voyait les pleins de tout le parc. Seul l'admin societe voit tout.
-        var scope = await VehicleScope.AccessibleVehicleIdsAsync(_context, _tenantService, cancellationToken);
-
-        var query = _context.FuelEntries
+        // Périmètre (portée véhicules) et filtres partagés avec les totaux de l'écran Carburant.
+        var query = (await FuelEntriesFilter.AppliquerAsync(
+                _context, _tenantService, request.FuelTypeId, request.VehiclePlate,
+                request.StartDate, request.EndDate, request.VehicleId, cancellationToken))
             .Include(e => e.FuelType)
             .Include(e => e.Driver)
-            .Where(e => e.CompanyId == companyId)
-            .AsQueryable();
-
-        if (scope is not null)
-        {
-            // Les saisies non rattachees a un vehicule (VehicleId null) ne restent visibles
-            // que si leur plaque correspond a un vehicule autorise — meme regle de
-            // rattachement que les rapports carburant (audit / comparatif).
-            var scopedPlates = await _context.Vehicles
-                .AsNoTracking()
-                .Where(v => v.CompanyId == companyId
-                            && scope.Contains(v.Id)
-                            && v.Plate != null && v.Plate != "")
-                .Select(v => v.Plate!)
-                .ToListAsync(cancellationToken);
-
-            query = query.Where(e =>
-                (e.VehicleId != null && scope.Contains(e.VehicleId.Value))
-                || (e.VehicleId == null && scopedPlates.Contains(e.VehiclePlate)));
-        }
-
-        if (request.FuelTypeId.HasValue)
-            query = query.Where(e => e.FuelTypeId == request.FuelTypeId.Value);
-
-        if (request.VehicleId.HasValue)
-            query = query.Where(e => e.VehicleId == request.VehicleId.Value);
-
-        if (!string.IsNullOrEmpty(request.VehiclePlate))
-            query = query.Where(e => e.VehiclePlate.Contains(request.VehiclePlate));
-
-        if (request.StartDate.HasValue)
-        {
-            var startDate = DateTime.SpecifyKind(request.StartDate.Value, DateTimeKind.Utc);
-            query = query.Where(e => e.InvoiceDate >= startDate);
-        }
-
-        if (request.EndDate.HasValue)
-        {
-            var endDate = DateTime.SpecifyKind(request.EndDate.Value.AddDays(1), DateTimeKind.Utc);
-            query = query.Where(e => e.InvoiceDate < endDate);
-        }
-
-        query = query.OrderByDescending(e => e.InvoiceDate).ThenByDescending(e => e.CreatedAt);
+            .OrderByDescending(e => e.InvoiceDate).ThenByDescending(e => e.CreatedAt);
 
         var totalCount = await query.CountAsync(cancellationToken);
 

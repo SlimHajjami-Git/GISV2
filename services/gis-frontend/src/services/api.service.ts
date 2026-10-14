@@ -2366,6 +2366,16 @@ export class ApiService {
     return this.http.get<PaginatedFuelEntriesResult>(`${this.API_URL}/fuelentries`, { headers: this.getHeaders(), params });
   }
 
+  /** Totaux des pleins qui répondent aux mêmes filtres que getFuelEntries, toutes pages confondues. */
+  getFuelEntriesSummary(options: { fuelTypeId?: number; vehicleId?: number; startDate?: string; endDate?: string } = {}): Observable<FuelEntriesSummary> {
+    let params = new HttpParams();
+    if (options.fuelTypeId) params = params.set('fuelTypeId', options.fuelTypeId.toString());
+    if (options.vehicleId) params = params.set('vehicleId', options.vehicleId.toString());
+    if (options.startDate) params = params.set('startDate', options.startDate);
+    if (options.endDate) params = params.set('endDate', options.endDate);
+    return this.http.get<FuelEntriesSummary>(`${this.API_URL}/fuelentries/summary`, { headers: this.getHeaders(), params });
+  }
+
   createFuelEntry(request: CreateFuelEntryRequest): Observable<{ id: number }> {
     return this.http.post<{ id: number }>(`${this.API_URL}/fuelentries`, request, { headers: this.getHeaders() });
   }
@@ -4784,6 +4794,14 @@ export interface PaginatedFuelEntriesResult {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+/** Tuiles de l'écran Carburant. averagePricePerLiter = montant ÷ litres (null sans litre). */
+export interface FuelEntriesSummary {
+  count: number;
+  totalVolume: number;
+  totalAmount: number;
+  averagePricePerLiter: number | null;
 }
 
 // ==================== DEVICE EVENTS INTERFACES ====================

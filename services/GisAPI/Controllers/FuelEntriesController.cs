@@ -40,6 +40,26 @@ public class FuelEntriesController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Totaux des pleins qui répondent aux MÊMES filtres que la liste (tuiles de l'écran
+    /// Carburant) : nombre, litres, montant, prix moyen pondéré par les litres.
+    /// </summary>
+    [HttpGet("summary")]
+    public async Task<ActionResult<FuelEntriesSummaryDto>> GetFuelEntriesSummary(
+        [FromQuery] int? fuelTypeId = null,
+        [FromQuery] string? vehiclePlate = null,
+        [FromQuery] int? vehicleId = null,
+        [FromQuery] DateTime? startDate = null,
+        [FromQuery] DateTime? endDate = null)
+    {
+        return Ok(await _mediator.Send(new GetFuelEntriesSummaryQuery(
+            FuelTypeId: fuelTypeId,
+            VehiclePlate: vehiclePlate,
+            StartDate: startDate,
+            EndDate: endDate,
+            VehicleId: vehicleId)));
+    }
+
     [HttpPost]
     public async Task<ActionResult<int>> CreateFuelEntry([FromBody] CreateFuelEntryRequest request)
     {

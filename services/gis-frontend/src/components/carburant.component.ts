@@ -7,7 +7,7 @@ import {
   ScanFactureComponent, ExtractionFacture,
   ResultatScanFacture, EchecScanFacture
 } from './shared/scan-facture.component';
-import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto } from '../services/api.service';
+import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto, FuelEntriesSummary } from '../services/api.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 declare const XLSX: any;
@@ -144,7 +144,9 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ fuelHistory.length }}</span>
+              <!-- Tuiles : TOUS les pleins des filtres (API /fuelentries/summary), et non les
+                   100 lignes chargées — erreur n°3 de la campagne GPA du 06/10/2026. -->
+              <span class="stat-value">{{ summary ? (summary.count | appNumber:0) : '—' }}</span>
               <span class="stat-label">Entrées</span>
             </div>
           </div>
@@ -155,7 +157,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getAveragePrice() | appNumber:2 }}</span>
+              <span class="stat-value">{{ summary?.averagePricePerLiter != null ? (summary!.averagePricePerLiter | appCurrency:prefs.unitPriceDigits) : '—' }}</span>
               <span class="stat-label">Prix Moyen/L</span>
             </div>
           </div>
@@ -166,7 +168,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalVolume() | appNumber:0 }} L</span>
+              <span class="stat-value">{{ (summary?.totalVolume ?? 0) | appNumber:0 }} L</span>
               <span class="stat-label">Volume Total</span>
             </div>
           </div>
@@ -177,7 +179,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalAmount() | appNumber:2 }}</span>
+              <span class="stat-value">{{ (summary?.totalAmount ?? 0) | appCurrency:2 }}</span>
               <span class="stat-label">Montant Total</span>
             </div>
           </div>
@@ -320,7 +322,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                     <td><span class="fuel-badge">{{ entry.fuelTypeName }}</span></td>
                     <td>{{ entry.volume | appNumber:2 }} L</td>
                     <td>{{ entry.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
-                    <td class="total-cell">{{ entry.totalAmount | appNumber:2 }}</td>
+                    <td class="total-cell">{{ entry.totalAmount | appCurrency:2 }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -434,7 +436,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                     <td>{{ e.vehiclePlate }}</td>
                     <td>{{ e.volume | appNumber:2 }} L</td>
                     <td>{{ e.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
-                    <td>{{ e.totalAmount | appNumber:2 }}</td>
+                    <td>{{ e.totalAmount | appCurrency:2 }}</td>
                     <td>{{ e.invoiceDate }}</td>
                     <td>{{ e.odometerKm ? (e.odometerKm | appNumber:0) : '—' }}</td>
                     <td><select [(ngModel)]="e.fuelTypeId" *ngIf="e.isValid"><option *ngFor="let ft of fuelTypes" [ngValue]="ft.id">{{ ft.name }}</option></select></td>
@@ -494,12 +496,19 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                     <td><span class="fuel-badge">{{ entry.fuelTypeName }}</span></td>
                     <td>{{ entry.volume | appNumber:2 }} L</td>
                     <td>{{ entry.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
-                    <td class="total-cell">{{ entry.totalAmount | appNumber:2 }}</td>
+                    <td class="total-cell">{{ entry.totalAmount | appCurrency:2 }}</td>
                     <td>{{ entry.odometerKm ? (entry.odometerKm | appNumber:0) : '—' }}</td>
                     <td><button class="btn-icon-delete" (click)="deleteEntry(entry)" title="Supprimer">🗑️</button></td>
                   </tr>
                 </tbody>
               </table>
+            </div>
+            <!-- Au-delà de 100 pleins, les plus anciens étaient inaccessibles : aucune pagination. -->
+            <div class="history-more" *ngIf="fuelHistory.length > 0">
+              <span>{{ fuelHistory.length | appNumber:0 }} plein{{ fuelHistory.length > 1 ? 's' : '' }} affiché{{ fuelHistory.length > 1 ? 's' : '' }} sur {{ historyTotal | appNumber:0 }}</span>
+              <button class="btn-more" *ngIf="fuelHistory.length < historyTotal" [disabled]="loadingMore" (click)="loadMoreHistory()">
+                {{ loadingMore ? 'Chargement…' : 'Afficher ' + historyPageSize + ' de plus' }}
+              </button>
             </div>
             <div class="empty-state" *ngIf="fuelHistory.length === 0">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -703,6 +712,9 @@ const ECART_MAX_RAPPROCHEMENT = 2;
     .filter-select, .filter-input { padding: 6px 10px; border: 1px solid #e2e8f0; border-radius: 4px; font-size: 12px; }
     .table-container { padding: 0 16px 16px; }
     .empty-state { text-align: center; padding: 48px; color: #64748b; }
+    .history-more { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 4px 0; font-size: 12px; color: #64748b; }
+    .btn-more { padding: 6px 14px; background: #fff; border: 1px solid #3b82f6; border-radius: 4px; color: #3b82f6; font-size: 12px; font-weight: 500; cursor: pointer; }
+    .btn-more:disabled { opacity: .6; cursor: default; }
     .empty-state svg { color: #cbd5e1; margin-bottom: 12px; }
     .empty-state p { margin: 0 0 16px; font-size: 13px; }
     @media (max-width: 1024px) { .form-grid { grid-template-columns: repeat(2, 1fr); } .mapping-grid { grid-template-columns: repeat(3, 1fr); } }
@@ -766,6 +778,12 @@ export class CarburantComponent implements OnInit, OnDestroy {
   fuelTypes: FuelTypeDto[] = [];
   vehicles: VehicleWithPositionDto[] = [];
   fuelHistory: FuelEntryDto[] = [];
+  /** Totaux de TOUS les pleins des filtres (tuiles), null tant qu'ils ne sont pas chargés. */
+  summary: FuelEntriesSummary | null = null;
+  readonly historyPageSize = 100;
+  historyPage = 1;
+  historyTotal = 0;
+  loadingMore = false;
   fuelPrices: FuelPriceFullDto[] = [];
   defaultFuelTypeId: number | null = null;
 
@@ -842,26 +860,46 @@ export class CarburantComponent implements OnInit, OnDestroy {
     });
   }
 
+  /** Filtres de l'onglet Historique, communs à la liste et à ses totaux. */
+  private historyFilters(): { vehicleId?: number; fuelTypeId?: number; startDate?: string; endDate?: string } {
+    const f: any = {};
+    if (this.filterVehicleId) f.vehicleId = this.filterVehicleId;
+    if (this.filterFuelType) f.fuelTypeId = this.filterFuelType;
+    if (this.filterStartDate) f.startDate = this.filterStartDate;
+    if (this.filterEndDate) f.endDate = this.filterEndDate;
+    return f;
+  }
+
   loadHistory() {
-    const options: any = { pageSize: 100 };
-    if (this.filterVehicleId) options.vehicleId = this.filterVehicleId;
-    if (this.filterFuelType) options.fuelTypeId = this.filterFuelType;
-    if (this.filterStartDate) options.startDate = this.filterStartDate;
-    if (this.filterEndDate) options.endDate = this.filterEndDate;
-    this.apiService.getFuelEntries(options).pipe(takeUntil(this.destroy$)).subscribe({
-      next: (r) => { this.fuelHistory = r.items; this.cdr.detectChanges(); },
+    const filtres = this.historyFilters();
+    this.historyPage = 1;
+    this.apiService.getFuelEntries({ ...filtres, page: 1, pageSize: this.historyPageSize }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => { this.fuelHistory = r.items; this.historyTotal = r.totalCount; this.cdr.detectChanges(); },
       error: (err) => { console.error(err); this.cdr.detectChanges(); }
+    });
+    // Les tuiles portent sur TOUS les pleins des filtres, calculés par l'API : sommées ici
+    // sur la page chargée, elles annonçaient 100 pleins et 8 004 pour 439 et 42 383 €.
+    this.apiService.getFuelEntriesSummary(filtres).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (s) => { this.summary = s; this.cdr.detectChanges(); },
+      error: (err) => { console.error(err); this.summary = null; this.cdr.detectChanges(); }
     });
   }
 
-  getAveragePrice(): number {
-    if (this.fuelHistory.length === 0) return 0;
-    const total = this.fuelHistory.reduce((s, e) => s + (e.pricePerLiter || 0), 0);
-    return total / this.fuelHistory.length;
+  loadMoreHistory() {
+    if (this.loadingMore) return;
+    this.loadingMore = true;
+    const page = this.historyPage + 1;
+    this.apiService.getFuelEntries({ ...this.historyFilters(), page, pageSize: this.historyPageSize }).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.fuelHistory = [...this.fuelHistory, ...r.items];
+        this.historyTotal = r.totalCount;
+        this.historyPage = page;
+        this.loadingMore = false;
+        this.cdr.detectChanges();
+      },
+      error: (err) => { console.error(err); this.loadingMore = false; this.cdr.detectChanges(); }
+    });
   }
-
-  getTotalVolume(): number { return this.fuelHistory.reduce((s, e) => s + (e.volume || 0), 0); }
-  getTotalAmount(): number { return this.fuelHistory.reduce((s, e) => s + (e.totalAmount || 0), 0); }
 
   // Re-sync the total whenever volume or price moves, UNLESS the
   // operator has already typed a custom total — they're in "free total"
