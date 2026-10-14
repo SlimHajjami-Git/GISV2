@@ -195,11 +195,14 @@ export class PermissionService {
    *
    * Le calcul est fait par le serveur (LoginCommandHandler) et transporté dans le
    * jeton d'ouverture de session : la règle reste unique.
+   *
+   * Et seulement à l'administrateur de la société : commander ou annuler engage la
+   * société, l'API le refuse aux autres ([RequireCompanyAdmin]).
    */
   canManageOwnSubscription(): boolean {
     const user = this.authService.getCurrentUserSync();
     if (!user) return false;
-    return !!user.isSystemAdmin || !!user.selfServiceSubscription;
+    return !!user.isSystemAdmin || (!!user.selfServiceSubscription && !!user.isCompanyAdmin);
   }
 
   isCompanyAdmin(): boolean {

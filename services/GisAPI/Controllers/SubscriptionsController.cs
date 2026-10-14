@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
+using GisAPI.Attributes;
 
 namespace GisAPI.Controllers;
 
@@ -144,9 +145,14 @@ public class SubscriptionsController : ControllerBase
     //
     // Le client COMMANDE ; la plateforme confirme depuis /api/admin une fois le
     // règlement reçu hors application. Le montant est calculé côté serveur.
+    //
+    // Commander et annuler engagent la société : réservé à son administrateur.
+    // Avec le seul [Authorize] de la classe, un opérateur ou un chauffeur passait
+    // ou annulait la commande (campagne de tests GPA du 06/10/2026, erreur n°1).
 
     /// <summary>Passe une commande pour l'offre en libre-service.</summary>
     [HttpPost("orders")]
+    [RequireCompanyAdmin]
     public async Task<ActionResult> CreateOrder(
         [FromBody] CreateOrderRequest request,
         [FromServices] MediatR.IMediator mediator)
@@ -168,6 +174,7 @@ public class SubscriptionsController : ControllerBase
 
     /// <summary>Annule ma commande, tant qu'elle est en attente.</summary>
     [HttpDelete("orders/{id}")]
+    [RequireCompanyAdmin]
     public async Task<ActionResult> CancelOrder(int id, [FromServices] MediatR.IMediator mediator)
     {
         await mediator.Send(

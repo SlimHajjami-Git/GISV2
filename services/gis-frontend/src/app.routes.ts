@@ -47,6 +47,7 @@ import { FeatureGuard } from './guards/feature.guard';
 import { SystemAdminGuard } from './guards/system-admin.guard';
 import { SecuriteGuard } from './guards/securite.guard';
 import { LocationCompanyGuard } from './guards/location-company.guard';
+import { SubscriptionGuard } from './guards/subscription.guard';
 import { VehicleLoansComponent } from './components/vehicle-loans.component';
 import { PrivacyPolicyComponent } from './components/privacy-policy.component';
 import { TowingComponent } from './components/towing.component';
@@ -174,9 +175,9 @@ export const routes: Routes = [
   { path: 'depenses', component: ExpensesComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'costs' } },
   { path: 'carburant', component: CarburantComponent, canActivate: [AuthGuard, FeatureGuard], data: { feature: 'carburant' } },
   
-  // Subscription (always accessible)
+  // Subscription : administrateur de la société en libre-service (même règle que le menu)
   ...(subscriptionModuleEnabled
-    ? [{ path: 'subscription', component: SubscriptionComponent, canActivate: [AuthGuard] }]
+    ? [{ path: 'subscription', component: SubscriptionComponent, canActivate: [AuthGuard, SubscriptionGuard] }]
     : []),
   
   // Monitoring module

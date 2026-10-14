@@ -269,4 +269,18 @@ public class SubscriptionOrderCommandsTests
         saved.Note.Should().Be("Règlement non reçu.");
         saved.ProcessedAt.Should().NotBeNull();
     }
+
+    [Theory]
+    [InlineData(nameof(GisAPI.Controllers.SubscriptionsController.CreateOrder))]
+    [InlineData(nameof(GisAPI.Controllers.SubscriptionsController.CancelOrder))]
+    public void Commander_et_annuler_sont_reserves_a_l_administrateur_de_la_societe(string action)
+    {
+        // Avec le seul [Authorize] de la classe, un opérateur passait ou annulait la
+        // commande de sa société (campagne de tests GPA du 06/10/2026, erreur n°1).
+        var method = typeof(GisAPI.Controllers.SubscriptionsController).GetMethod(action)!;
+
+        System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<GisAPI.Attributes.RequireCompanyAdminAttribute>(method)
+            .Should().NotBeNull();
+    }
 }
