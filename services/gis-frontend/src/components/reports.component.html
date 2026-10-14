@@ -385,7 +385,7 @@
                       <div class="stat-donut-legend">
                         @for (c of monthlyCostCategoryTotals(); track c.key) {
                           <span class="stat-donut-item" [title]="c.label">
-                            <i class="stat-donut-dot" [style.background]="c.color"></i><span class="stat-donut-lbl">{{ c.label }}</span>{{ c.percent.toFixed(0) }} %
+                            <i class="stat-donut-dot" [style.background]="c.color"></i><span class="stat-donut-lbl">{{ c.label }}</span>{{ c.percent | number:'1.0-0' }} %
                           </span>
                         }
                       </div>

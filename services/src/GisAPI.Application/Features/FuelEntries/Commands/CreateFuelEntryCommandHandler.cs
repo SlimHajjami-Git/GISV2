@@ -6,6 +6,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.FuelEntries.Commands;
 
@@ -136,10 +137,10 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             {
                 throw new GisAPI.Domain.Exceptions.DomainException(
                     invoiceDate.Date >= DateTime.UtcNow.Date
-                        ? $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur au kilométrage " +
-                          $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur."
-                        : $"Le kilométrage saisi ({request.OdometerKm.Value:N0} km) est inférieur à un relevé déjà " +
-                          $"enregistré au {invoiceDate:dd/MM/yyyy} ou avant ({plancher:N0} km). Un compteur ne recule pas : " +
+                        ? $"Le kilométrage saisi ({FormatFr.N(request.OdometerKm.Value, 0)} km) est inférieur au kilométrage " +
+                          $"actuel du véhicule ({FormatFr.N(vehicle.Mileage, 0)} km). Un compteur ne recule pas : vérifiez la valeur."
+                        : $"Le kilométrage saisi ({FormatFr.N(request.OdometerKm.Value, 0)} km) est inférieur à un relevé déjà " +
+                          $"enregistré au {invoiceDate:dd/MM/yyyy} ou avant ({FormatFr.N(plancher, 0)} km). Un compteur ne recule pas : " +
                           "vérifiez la valeur ou la date.");
             }
         }

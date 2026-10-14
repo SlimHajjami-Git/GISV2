@@ -5,6 +5,7 @@ import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, DashboardStats, FeatureUsage, ServiceHealth, ActivityLog } from '../services/admin.service';
+import { nombreFr } from '../../pipes/user-preference-pipes';
 
 @Component({
   selector: 'admin-dashboard',
@@ -794,10 +795,10 @@ export class AdminDashboardComponent implements OnInit, OnDestroy {
 
   formatNumber(num: number): string {
     if (num >= 1000000) {
-      return (num / 1000000).toFixed(1) + 'M';
+      return nombreFr((num / 1000000), 1) + 'M';
     }
     if (num >= 1000) {
-      return (num / 1000).toFixed(1) + 'K';
+      return nombreFr((num / 1000), 1) + 'K';
     }
     return num.toString();
   }

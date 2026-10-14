@@ -156,6 +156,11 @@ export class ReportExportService {
       const parsed = Number(text);
       if (Number.isFinite(parsed)) return parsed;
     }
+    // Même chose au format français (nombreFr) : « 12,5 », « 161 980 », « 1 234,50 ».
+    if (/^-?(0|[1-9]\d{0,2}(?:[\u202F\u00A0 ]\d{3})+|[1-9]\d*)(,\d+)?$/.test(text)) {
+      const parsed = Number(text.replace(/[\u202F\u00A0 ]/g, '').replace(',', '.'));
+      if (Number.isFinite(parsed)) return parsed;
+    }
     return text;
   }
 

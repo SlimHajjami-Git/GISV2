@@ -279,7 +279,7 @@ public class DashboardService : IDashboardService
 
         var tripsList = trips.Select(t =>
         {
-            var dist = (t.DistanceKm).ToString("F1");
+            var dist = GisAPI.Domain.Common.FormatFr.F(t.DistanceKm, 1); // « 12,5 » et non « 12.5 » (voir FormatFr)
             var mins = t.DurationMinutes;
             var dur = mins >= 60 ? $"{mins / 60}h{(mins % 60).ToString().PadLeft(2, '0')}" : $"{mins} min";
             var plate = t.Vehicle?.Plate ?? t.Vehicle?.Name ?? "Vehicule";

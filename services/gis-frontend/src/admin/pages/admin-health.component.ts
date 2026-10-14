@@ -22,7 +22,7 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
                   <circle class="ring-bg" cx="50" cy="50" r="45"/>
                   <circle class="ring-progress" cx="50" cy="50" r="45" [style.stroke-dasharray]="uptimeCircle"/>
                 </svg>
-                <span class="uptime-value">{{ averageUptime.toFixed(1) }}%</span>
+                <span class="uptime-value">{{ averageUptime | number:'1.1-1' }}%</span>
               </div>
             </div>
             <div class="overview-info">

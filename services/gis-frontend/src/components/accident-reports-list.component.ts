@@ -14,7 +14,7 @@ import { Vehicle } from '../models/types';
 import { AuthService } from '../services/auth.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { textesSinistres, TextesSinistres } from '../services/sinistres-textes-pays';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 
 /**
  * Calypso 6 (P9) — admin list of every `accident_events` row for the
@@ -580,8 +580,8 @@ export class AccidentReportsListComponent implements OnInit, OnDestroy {
 
   formatBytes(n: number): string {
     if (n < 1024) return `${n} o`;
-    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} ko`;
-    return `${(n / 1024 / 1024).toFixed(1)} Mo`;
+    if (n < 1024 * 1024) return `${nombreFr((n / 1024), 1)} ko`;
+    return `${nombreFr((n / 1024 / 1024), 1)} Mo`;
   }
 
   canSubmitManual(): boolean {

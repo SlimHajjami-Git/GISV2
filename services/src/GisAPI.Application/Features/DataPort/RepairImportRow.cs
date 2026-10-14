@@ -1,6 +1,7 @@
 using GisAPI.Application.Features.Repairs.Handlers;
 using GisAPI.Application.Features.Reports.Common;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.DataPort;
 
@@ -123,7 +124,7 @@ public static class RepairImportRow
             p = parts ?? 0;
             var sum = l + p;
             if (total is decimal entered && Math.Abs(entered - sum) > Tolerance)
-                notes.Add($"total saisi ({entered:N2}) différent de main d'œuvre + pièces ({sum:N2}) : {sum:N2} retenu.");
+                notes.Add($"total saisi ({FormatFr.N(entered, 2)}) différent de main d'œuvre + pièces ({FormatFr.N(sum, 2)}) : {FormatFr.N(sum, 2)} retenu.");
         }
 
         l = Math.Round(l, 2, MidpointRounding.AwayFromZero);

@@ -12,7 +12,7 @@ import { ReportExportService, ReportExportConfig } from '../services/report-expo
 import { ReportStateService } from '../services/report-state.service';
 import { PermissionService } from '../services/permission.service';
 import { ButtonComponent, CardComponent, DataTableComponent } from './shared/ui';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr, lireNombreFr } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { libellePerimetreParc } from './dashboard-gpa.helpers';
 import { CreditIaBarComponent } from './shared/credit-ia-bar.component';
@@ -1107,9 +1107,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (typeof valA === 'number' && typeof valB === 'number') {
         return (valA - valB) * dir;
       }
-      // Try parsing as number (for formatted strings with numeric sortKey)
-      const numA = parseFloat(valA);
-      const numB = parseFloat(valB);
+      // Try parsing as number (for formatted strings with numeric sortKey) — au format
+      // français : « 1 234,5 km » se trie après « 999,9 km ».
+      const numA = lireNombreFr(valA);
+      const numB = lireNombreFr(valB);
       if (!isNaN(numA) && !isNaN(numB)) {
         return (numA - numB) * dir;
       }
@@ -1491,7 +1492,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         vehicleName: p.vehicleName,
         time: this.formatDateTime(p.recordedAt),
         _timeSort: new Date(p.recordedAt).getTime(),
-        speed: `${(p.speedKph || 0).toFixed(0)} km/h`,
+        speed: `${nombreFr((p.speedKph || 0), 0)} km/h`,
         address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`
       }));
       this.statisticsData = {
@@ -1620,9 +1621,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
         endTime: this.formatDateTime(trip.end.recordedAt),
         duration: formatDuration(durationMin),
         durationMin,
-        distance: `${distanceKm.toFixed(1)} km`,
+        distance: `${nombreFr(distanceKm, 1)} km`,
         distanceKm,
-        maxSpeed: `${maxSpeed.toFixed(0)} km/h`,
+        maxSpeed: `${nombreFr(maxSpeed, 0)} km/h`,
         startAddress: trip.start.address || `${trip.start.latitude.toFixed(4)}°`,
         endAddress: trip.end.address || `${trip.end.latitude.toFixed(4)}°`
       };
@@ -1659,9 +1660,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       '🚗 Véhicules': byVehicle.size.toString(),
       '🛣️ Nombre de trajets': allTrips.length.toString(),
-      '📏 Distance totale': `${totalDistance.toFixed(1)} km`,
+      '📏 Distance totale': `${nombreFr(totalDistance, 1)} km`,
       '⏱️ Temps total': formatDuration(totalDurationMin),
-      '⌀ Distance/trajet': `${(totalDistance / (allTrips.length || 1)).toFixed(1)} km`
+      '⌀ Distance/trajet': `${nombreFr((totalDistance / (allTrips.length || 1)), 1)} km`
     };
 
     this.secondaryChartData = [];
@@ -1701,7 +1702,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       label: r.label,
       value: r.count,
       color: r.color,
-      percentage: ((r.count / highSpeedPositions.length) * 100).toFixed(1)
+      percentage: nombreFr(((r.count / highSpeedPositions.length) * 100), 1)
     }));
 
     // Sort by speed descending to show highest first
@@ -1720,11 +1721,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         vehicleName: p.vehicleName,
         time: this.formatDateTime(p.recordedAt),
         _timeSort: new Date(p.recordedAt).getTime(),
-        speed: `${speed.toFixed(0)} km/h`,
+        speed: `${nombreFr(speed, 0)} km/h`,
         speedValue: speed,
         vehicleLimit: `${vehicleLimit} km/h`,
         vehicleLimitValue: vehicleLimit,
-        excess: exceedsLimit ? `+${excess.toFixed(0)} km/h` : '-',
+        excess: exceedsLimit ? `+${nombreFr(excess, 0)} km/h` : '-',
         excessValue: excess,
         exceedsLimit: exceedsLimit,
         address: p.address || `${p.latitude.toFixed(5)}, ${p.longitude.toFixed(5)}`,
@@ -1761,7 +1762,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       'Points > 50 km/h': highSpeedPositions.length.toString(),
       'Véhicules': new Set(highSpeedPositions.map(p => p.vehicleId)).size.toString(),
-      'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
+      'Vitesse max': `${nombreFr(maxSpeed, 0)} km/h`,
       '🔴 Dépassements limite': infractions.length.toString(),
       'Véhicules en infraction': Object.keys(infractionsByVehicle).length.toString()
     };
@@ -2021,7 +2022,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         address: inf.address || `${inf.latitude.toFixed(5)}, ${inf.longitude.toFixed(5)}`,
         latitude: inf.latitude,
         longitude: inf.longitude,
-        speed: `${inf.speed.toFixed(1)} km/h`,
+        speed: `${nombreFr(inf.speed, 1)} km/h`,
         speedValue: inf.speed,
         limit: `${inf.limit} km/h`,
         limitValue: inf.limit,
@@ -2077,14 +2078,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // Statistics
     const maxSpeed = Math.max(...infractions.map(i => i.speed));
     const avgExcess = infractions.reduce((sum, i) => sum + i.excess, 0) / infractions.length;
-    const lightPct = ((light / infractions.length) * 100).toFixed(0);
-    const mediumPct = ((medium / infractions.length) * 100).toFixed(0);
-    const severePct = ((severe / infractions.length) * 100).toFixed(0);
+    const lightPct = nombreFr(((light / infractions.length) * 100), 0);
+    const mediumPct = nombreFr(((medium / infractions.length) * 100), 0);
+    const severePct = nombreFr(((severe / infractions.length) * 100), 0);
     
     this.statisticsData = {
       '⚠️ Total infractions': infractions.length.toString(),
-      '🏎️ Vitesse max': `${maxSpeed.toFixed(1)} km/h`,
-      '📊 Excès moyen': `+${avgExcess.toFixed(1)} km/h`,
+      '🏎️ Vitesse max': `${nombreFr(maxSpeed, 1)} km/h`,
+      '📊 Excès moyen': `+${nombreFr(avgExcess, 1)} km/h`,
       '🟢 Léger (+1-10%)': `${light} (${lightPct}%)`,
       '🟡 Modéré (+11-20%)': `${medium} (${mediumPct}%)`,
       '🔴 Grave (+21%+)': `${severe} (${severePct}%)`,
@@ -2332,7 +2333,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           longitude: curr.longitude,
           address: curr.address,
           value: acceleration,
-          valueFormatted: `+${acceleration.toFixed(1)} m/s²`,
+          valueFormatted: `+${nombreFr(acceleration, 1)} m/s²`,
           severity: acceleration > 5 ? 'high' : acceleration > 4 ? 'medium' : 'low'
         });
       }
@@ -2348,7 +2349,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           longitude: curr.longitude,
           address: curr.address,
           value: Math.abs(acceleration),
-          valueFormatted: `${acceleration.toFixed(1)} m/s²`,
+          valueFormatted: `${nombreFr(acceleration, 1)} m/s²`,
           severity: acceleration < -5 ? 'high' : acceleration < -4 ? 'medium' : 'low'
         });
       }
@@ -2368,7 +2369,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             longitude: curr.longitude,
             address: curr.address,
             value: headingDiff,
-            valueFormatted: `${headingDiff.toFixed(0)}°`,
+            valueFormatted: `${nombreFr(headingDiff, 0)}°`,
             severity: headingDiff > 90 ? 'high' : headingDiff > 60 ? 'medium' : 'low'
           });
         }
@@ -2385,7 +2386,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           longitude: curr.longitude,
           address: curr.address,
           value: curr.speedKph,
-          valueFormatted: `${curr.speedKph.toFixed(0)} km/h`,
+          valueFormatted: `${nombreFr(curr.speedKph, 0)} km/h`,
           severity: curr.speedKph > 160 ? 'high' : curr.speedKph > 145 ? 'medium' : 'low'
         });
       }
@@ -2537,9 +2538,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
     ].filter(d => d.value > 0);
     
     // Statistics with percentages
-    const highPct = ((bySeverity.high / incidents.length) * 100).toFixed(0);
-    const mediumPct = ((bySeverity.medium / incidents.length) * 100).toFixed(0);
-    const lowPct = ((bySeverity.low / incidents.length) * 100).toFixed(0);
+    const highPct = nombreFr(((bySeverity.high / incidents.length) * 100), 0);
+    const mediumPct = nombreFr(((bySeverity.medium / incidents.length) * 100), 0);
+    const lowPct = nombreFr(((bySeverity.low / incidents.length) * 100), 0);
     
     // Find worst incident type
     const worstType = Object.entries(byType).sort((a, b) => b[1].count - a[1].count)[0];
@@ -2695,7 +2696,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           latitude: activity.endLocation?.latitude || activity.startLocation.latitude,
           longitude: activity.endLocation?.longitude || activity.startLocation.longitude,
           duration: activity.durationFormatted,
-          distance: `${(activity.distanceKm || 0).toFixed(1)} km`,
+          distance: `${nombreFr((activity.distanceKm || 0), 1)} km`,
           speed: `max ${activity.maxSpeedKph || 0} km/h`,
           distanceKm: activity.distanceKm || 0,
           durationSeconds: activity.durationSeconds,
@@ -2715,7 +2716,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           latitude: activity.startLocation.latitude,
           longitude: activity.startLocation.longitude,
           duration: activity.durationFormatted,
-          distance: activity.distanceKm ? `${activity.distanceKm.toFixed(1)} km` : '-',
+          distance: activity.distanceKm ? `${nombreFr(activity.distanceKm, 1)} km` : '-',
           speed: '-',
           durationSeconds: activity.durationSeconds,
           _sortTime: new Date(activity.startTime).getTime()
@@ -2890,7 +2891,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     if (report.summary.fuelRefillCount > 0) {
       stats['⛽ Remplissages'] = `${report.summary.fuelRefillCount}`;
       if (report.summary.totalFuelRefillLiters) {
-        stats['⛽ Total rempli'] = `${report.summary.totalFuelRefillLiters.toFixed(1)} L`;
+        stats['⛽ Total rempli'] = `${nombreFr(report.summary.totalFuelRefillLiters, 1)} L`;
       }
     }
 
@@ -3001,14 +3002,14 @@ export class ReportsComponent implements OnInit, OnDestroy {
       date: new Date(day.date).toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' }),
       _dateSort: new Date(day.date).getTime(),
       dayOfWeek: day.dayOfWeek,
-      distance: `${day.distanceKm.toFixed(1)} km`,
+      distance: `${nombreFr(day.distanceKm, 1)} km`,
       distanceValue: day.distanceKm,
       tripCount: day.tripCount,
       drivingTime: this.formatMinutes(day.drivingMinutes),
       _drivingTimeSecondsSort: day.drivingMinutes,
-      maxSpeed: `${day.maxSpeedKph.toFixed(1)} km/h`,
+      maxSpeed: `${nombreFr(day.maxSpeedKph, 1)} km/h`,
       _maxSpeedValueSort: day.maxSpeedKph,
-      odometer: day.endOdometerKm ? `${day.endOdometerKm.toFixed(0)} km` : '-'
+      odometer: day.endOdometerKm ? `${nombreFr(day.endOdometerKm, 0)} km` : '-'
     }));
 
     // Chart data - daily distances (oldest left → newest right)
@@ -3022,15 +3023,15 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
       'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
-      'Distance totale': `${report.summary.totalDistanceKm.toFixed(1)} km`,
-      'Moyenne journalière': `${report.summary.averageDailyKm.toFixed(1)} km`,
+      'Distance totale': `${nombreFr(report.summary.totalDistanceKm, 1)} km`,
+      'Moyenne journalière': `${nombreFr(report.summary.averageDailyKm, 1)} km`,
       'Max journalier': report.summary.maxDailyDate 
-        ? `${report.summary.maxDailyKm.toFixed(1)} km (${new Date(report.summary.maxDailyDate).toLocaleDateString('fr-FR')})`
-        : `${report.summary.maxDailyKm.toFixed(1)} km`,
+        ? `${nombreFr(report.summary.maxDailyKm, 1)} km (${new Date(report.summary.maxDailyDate).toLocaleDateString('fr-FR')})`
+        : `${nombreFr(report.summary.maxDailyKm, 1)} km`,
       'Nombre de trajets': report.summary.totalTripCount.toString(),
       'Temps de conduite': report.summary.totalDrivingFormatted,
-      'Vitesse max': `${report.summary.maxSpeedKph.toFixed(1)} km/h`,
-      'Jours actifs': `${report.summary.daysWithActivity}/${report.summary.totalDays} (${report.summary.activityPercentage.toFixed(0)}%)`
+      'Vitesse max': `${nombreFr(report.summary.maxSpeedKph, 1)} km/h`,
+      'Jours actifs': `${report.summary.daysWithActivity}/${report.summary.totalDays} (${nombreFr(report.summary.activityPercentage, 0)}%)`
     };
 
     // Add comparison if available
@@ -3039,13 +3040,13 @@ export class ReportsComponent implements OnInit, OnDestroy {
       const trendIcon = comp.trend === 'increase' ? '📈' : comp.trend === 'decrease' ? '📉' : '➡️';
       const sign = comp.differenceKm >= 0 ? '+' : '';
       this.statisticsData['Évolution vs période précédente'] = 
-        `${trendIcon} ${sign}${comp.differenceKm.toFixed(1)} km (${sign}${comp.percentageChange.toFixed(1)}%)`;
+        `${trendIcon} ${sign}${nombreFr(comp.differenceKm, 1)} km (${sign}${nombreFr(comp.percentageChange, 1)}%)`;
     }
 
     // Add odometer if available
     if (report.startOdometerKm && report.endOdometerKm) {
-      this.statisticsData['Compteur début'] = `${report.startOdometerKm.toFixed(0)} km`;
-      this.statisticsData['Compteur fin'] = `${report.endOdometerKm.toFixed(0)} km`;
+      this.statisticsData['Compteur début'] = `${nombreFr(report.startOdometerKm, 0)} km`;
+      this.statisticsData['Compteur fin'] = `${nombreFr(report.endOdometerKm, 0)} km`;
     }
   }
 
@@ -3100,12 +3101,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
       vehicleName: r.vehicleName || r.plate,
       plate: r.plate || '-',
       driver: r.driverName || '-',
-      distance: `${r.summary.totalDistanceKm.toFixed(1)} km`,
+      distance: `${nombreFr(r.summary.totalDistanceKm, 1)} km`,
       distanceValue: r.summary.totalDistanceKm,
       tripCount: r.summary.totalTripCount,
       drivingTime: r.summary.totalDrivingFormatted || this.formatMinutes(r.summary.totalDrivingMinutes || 0),
-      maxSpeed: `${r.summary.maxSpeedKph.toFixed(1)} km/h`,
-      avgDaily: `${r.summary.averageDailyKm.toFixed(1)} km/j`,
+      maxSpeed: `${nombreFr(r.summary.maxSpeedKph, 1)} km/h`,
+      avgDaily: `${nombreFr(r.summary.averageDailyKm, 1)} km/j`,
       activeDays: `${r.summary.daysWithActivity}/${r.summary.totalDays}`
     }));
 
@@ -3124,10 +3125,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.statisticsData = {
       'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
       'Véhicules': validReports.length.toString(),
-      'Distance totale flotte': `${totalDist.toFixed(1)} km`,
+      'Distance totale flotte': `${nombreFr(totalDist, 1)} km`,
       'Nombre total de trajets': totalTrips.toString(),
-      'Moyenne par véhicule': `${(totalDist / validReports.length).toFixed(1)} km`,
-      'Véhicule le plus actif': maxVehicle ? `${maxVehicle.vehicleName} (${maxDist.toFixed(1)} km)` : '-'
+      'Moyenne par véhicule': `${nombreFr((totalDist / validReports.length), 1)} km`,
+      'Véhicule le plus actif': maxVehicle ? `${maxVehicle.vehicleName} (${nombreFr(maxDist, 1)} km)` : '-'
     };
   }
 
@@ -3170,7 +3171,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
           // No dataset label needed
           tooltip: {
             callbacks: {
-              label: (context) => `${(context.parsed.y ?? 0).toFixed(1)} km`
+              label: (context) => `${nombreFr((context.parsed.y ?? 0), 1)} km`
             }
           }
         },
@@ -3372,12 +3373,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
 
     this.tableData = results.map(r => ({
       period: r.vehiclePlate || r.vehicleName,
-      distance: `${r.totalDistance.toFixed(1)} km`,
+      distance: `${nombreFr(r.totalDistance, 1)} km`,
       distanceValue: r.totalDistance,
       tripCount: r.totalTrips,
       drivingTime: r.totalDrivingFormatted,
-      avgSpeed: `${r.avgSpeedKph.toFixed(1)} km/h`,
-      maxSpeed: `${r.maxSpeedKph.toFixed(1)} km/h`
+      avgSpeed: `${nombreFr(r.avgSpeedKph, 1)} km/h`,
+      maxSpeed: `${nombreFr(r.maxSpeedKph, 1)} km/h`
     }));
 
     this.chartData = results.map(r => ({
@@ -3392,9 +3393,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'Période': `${start.toLocaleDateString('fr-FR')} - ${end.toLocaleDateString('fr-FR')}`,
       'Type': this.getMileagePeriodTypeLabel(this.selectedMileagePeriodType),
       'Véhicules': results.length.toString(),
-      'Distance totale flotte': `${totalDist.toFixed(1)} km`,
+      'Distance totale flotte': `${nombreFr(totalDist, 1)} km`,
       'Nombre total de trajets': totalTrips.toString(),
-      'Moyenne par véhicule': results.length > 0 ? `${(totalDist / results.length).toFixed(1)} km` : '0 km'
+      'Moyenne par véhicule': results.length > 0 ? `${nombreFr((totalDist / results.length), 1)} km` : '0 km'
     };
   }
 
@@ -3424,12 +3425,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
           .map((h: HourlyMileagePeriod) => ({
             period: h.hourLabel || `${String(h.hour).padStart(2, '0')}:00 - ${String(h.hour + 1).padStart(2, '0')}:00`,
             _periodSort: h.hour,
-            distance: `${h.distanceKm.toFixed(1)} km`,
+            distance: `${nombreFr(h.distanceKm, 1)} km`,
             distanceValue: h.distanceKm,
             tripCount: h.tripCount,
             drivingTime: this.formatMinutes(h.drivingMinutes),
             _drivingTimeSecondsSort: h.drivingMinutes,
-            maxSpeed: `${h.maxSpeedKph.toFixed(1)} km/h`,
+            maxSpeed: `${nombreFr(h.maxSpeedKph, 1)} km/h`,
             _maxSpeedValueSort: h.maxSpeedKph
           }));
         break;
@@ -3441,12 +3442,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
             period: d.dateLabel,
             _periodSort: new Date(d.date).getTime(),
             dayOfWeek: d.dayOfWeek,
-            distance: `${d.distanceKm.toFixed(1)} km`,
+            distance: `${nombreFr(d.distanceKm, 1)} km`,
             distanceValue: d.distanceKm,
             tripCount: d.tripCount,
             drivingTime: this.formatMinutes(d.drivingMinutes),
             _drivingTimeSecondsSort: d.drivingMinutes,
-            maxSpeed: `${d.maxSpeedKph.toFixed(1)} km/h`,
+            maxSpeed: `${nombreFr(d.maxSpeedKph, 1)} km/h`,
             _maxSpeedValueSort: d.maxSpeedKph
           }));
         break;
@@ -3457,9 +3458,9 @@ export class ReportsComponent implements OnInit, OnDestroy {
           .map((m: MonthlyMileagePeriod) => ({
             period: m.monthLabel,
             _periodSort: m.year * 100 + m.month,
-            distance: `${m.distanceKm.toFixed(1)} km`,
+            distance: `${nombreFr(m.distanceKm, 1)} km`,
             distanceValue: m.distanceKm,
-            avgDaily: `${m.averageDailyKm.toFixed(1)} km/jour`,
+            avgDaily: `${nombreFr(m.averageDailyKm, 1)} km/jour`,
             activeDays: `${m.daysWithActivity}`,
             tripCount: m.tripCount,
             drivingTime: this.formatMinutes(m.drivingMinutes),
@@ -3482,10 +3483,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       'Véhicule': `${report.vehicleName}${report.plate ? ' (' + report.plate + ')' : ''}`,
       'Période': `${new Date(report.startDate).toLocaleDateString('fr-FR')} - ${new Date(report.endDate).toLocaleDateString('fr-FR')}`,
       'Type de rapport': this.getMileagePeriodTypeLabel(report.periodType),
-      'Distance totale': `${report.totalDistanceKm.toFixed(1)} km`,
-      'Moyenne': `${report.averageDistanceKm.toFixed(1)} km`,
-      'Maximum': `${report.maxDistanceKm.toFixed(1)} km`,
-      'Minimum': `${report.minDistanceKm.toFixed(1)} km`,
+      'Distance totale': `${nombreFr(report.totalDistanceKm, 1)} km`,
+      'Moyenne': `${nombreFr(report.averageDistanceKm, 1)} km`,
+      'Maximum': `${nombreFr(report.maxDistanceKm, 1)} km`,
+      'Minimum': `${nombreFr(report.minDistanceKm, 1)} km`,
       'Nombre de trajets': report.totalTripCount.toString(),
       'Temps de conduite': report.totalDrivingFormatted
     };
@@ -3560,7 +3561,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             callbacks: {
               label: (context) => {
                 const value = context.parsed.y ?? context.parsed.x ?? 0;
-                return `${value.toFixed(1)} km`;
+                return `${nombreFr(value, 1)} km`;
               },
               afterLabel: (context) => {
                 const dataPoint = this.chartData[context.dataIndex];
@@ -4242,7 +4243,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       this.chartData = [];
       this.statisticsData = {
         '⚠️ Capteur carburant': 'Données non fiables',
-        'Diagnostic': `${(extremeRatio * 100).toFixed(0)}% des lectures sont à 0% ou 100% avec ${largeSwings} oscillations`,
+        'Diagnostic': `${nombreFr((extremeRatio * 100), 0)}% des lectures sont à 0% ou 100% avec ${largeSwings} oscillations`,
         'Recommandation': 'Vérifier le branchement du capteur carburant ou le mode capteur du boîtier GPS'
       };
       return;
@@ -4418,7 +4419,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       '📏 Distance parcourue': totalKm > 0 ? `${totalKm.toLocaleString('fr-FR')} km` : 'N/A',
       '⛽ Remplissages': refuels.toString(),
       '⚠️ Alertes': anomalies.toString(),
-      '📊 Niveau moyen': `${avgFuel.toFixed(1)}%`,
+      '📊 Niveau moyen': `${nombreFr(avgFuel, 1)}%`,
       '📈 Niveau max': fuelValues.length > 0 ? `${Math.max(...fuelValues)}%` : 'N/A',
       '📉 Niveau min': fuelValues.length > 0 ? `${Math.min(...fuelValues)}%` : 'N/A'
     };
@@ -4472,11 +4473,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
         vehicleName: vehicleName,
         time: this.formatDateTime(pos.recordedAt),
         _timeSort: new Date(pos.recordedAt).getTime(),
-        speed: `${speed.toFixed(0)} km/h`,
+        speed: `${nombreFr(speed, 0)} km/h`,
         speedValue: speed,
         vehicleLimit: `${vehicleLimit} km/h`,
         vehicleLimitValue: vehicleLimit,
-        excess: exceedsLimit ? `+${excess.toFixed(0)} km/h` : '-',
+        excess: exceedsLimit ? `+${nombreFr(excess, 0)} km/h` : '-',
         excessValue: excess,
         exceedsLimit: exceedsLimit,
         address: pos.address || `${pos.latitude?.toFixed(5) || 0}, ${pos.longitude?.toFixed(5) || 0}`,
@@ -4493,7 +4494,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       label: range.label,
       value: range.count,
       color: range.color,
-      percentage: ((range.count / movingPositions.length) * 100).toFixed(1)
+      percentage: nombreFr(((range.count / movingPositions.length) * 100), 1)
     }));
 
     // Statistics
@@ -4501,12 +4502,12 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const avgSpeed = speeds.reduce((a: number, b: number) => a + b, 0) / speeds.length;
     const maxSpeed = Math.max(...speeds);
     const highSpeedCount = speeds.filter((s: number) => s > 90).length;
-    const highSpeedPct = ((highSpeedCount / speeds.length) * 100).toFixed(1);
+    const highSpeedPct = nombreFr(((highSpeedCount / speeds.length) * 100), 1);
 
     this.statisticsData = {
       '🚗 Véhicule': `${vehicleName} (limite: ${vehicleLimit} km/h)`,
       'Points analysés': movingPositions.length.toString(),
-      'Vitesse max': `${maxSpeed.toFixed(0)} km/h`,
+      'Vitesse max': `${nombreFr(maxSpeed, 0)} km/h`,
       '🔴 Dépassements limite': `${infractions.length} (${vehicleLimit} km/h)`,
       '⚠️ >90 km/h': `${highSpeedCount} (${highSpeedPct}%)`
     };
@@ -4718,10 +4719,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
       if (i % 10 === 0) {
         segments.push({
           time: this.formatDateTime(curr.recordedAt),
-          distance: `${totalDistance.toFixed(2)} km`,
-          speed: `${(curr.speedKph || 0).toFixed(1)} km/h`,
+          distance: `${nombreFr(totalDistance, 2)} km`,
+          speed: `${nombreFr((curr.speedKph || 0), 1)} km/h`,
           location: `${curr.latitude.toFixed(5)}, ${curr.longitude.toFixed(5)}`,
-          kilometrage: `${totalDistance.toFixed(2)} km`
+          kilometrage: `${nombreFr(totalDistance, 2)} km`
         });
       }
     }
@@ -4729,11 +4730,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
     this.tableData = segments;
     this.chartData = segments.map((s: any, i: number) => ({
       label: s.time.split(' ')[1] || `Pt ${i}`,
-      value: parseFloat(s.distance)
+      value: lireNombreFr(s.distance)
     }));
 
     this.statisticsData = {
-      'Distance totale': `${totalDistance.toFixed(2)} km`,
+      'Distance totale': `${nombreFr(totalDistance, 2)} km`,
       'Points GPS': positions.length.toString()
     };
     if (filteredPoints > 0) {
@@ -5132,7 +5133,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
                 label: (context: any) => {
                   const item = this.chartData[context.dataIndex];
                   const totalVal = this.chartData.reduce((s: number, d: any) => s + d.value, 0);
-                  const pct = totalVal > 0 ? ((item.value / totalVal) * 100).toFixed(1) : 0;
+                  const pct = totalVal > 0 ? nombreFr(((item.value / totalVal) * 100), 1) : 0;
                   return [`${item.value} min (${pct}%)`, `${item.count} arrêt(s)`];
                 }
               }
@@ -5275,7 +5276,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
               callbacks: {
                 label: (context: any) => {
                   const total = this.chartData.reduce((s, d) => s + d.value, 0);
-                  const pct = total > 0 ? ((context.raw / total) * 100).toFixed(1) : 0;
+                  const pct = total > 0 ? nombreFr(((context.raw / total) * 100), 1) : 0;
                   return `${context.raw} incidents (${pct}%)`;
                 }
               }
@@ -5847,7 +5848,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             title: { display: true, text: '📈 Distance cumulée', font: { size: 12, weight: 'bold' } },
             tooltip: {
               callbacks: {
-                label: (context: any) => `${(context.parsed.y ?? 0).toFixed(1)} km`
+                label: (context: any) => `${nombreFr((context.parsed.y ?? 0), 1)} km`
               }
             }
           },
@@ -6407,10 +6408,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
     const data = (report as any).vehicles?.map((v: any) => ({
       vehicleName: v.name || '-',
       plate: v.plate || '-',
-      distance: (v.distanceKm || 0).toFixed(1),
-      fuel: (v.estimatedFuelLiters || 0).toFixed(1),
-      cost: (v.estimatedCostDa || 0).toFixed(0),
-      consumption: (v.consumptionPer100km || 0).toFixed(1)
+      distance: nombreFr((v.distanceKm || 0), 1),
+      fuel: nombreFr((v.estimatedFuelLiters || 0), 1),
+      cost: nombreFr((v.estimatedCostDa || 0), 0),
+      consumption: nombreFr((v.consumptionPer100km || 0), 1)
     })) || [];
 
     return {
@@ -7335,10 +7336,10 @@ export class ReportsComponent implements OnInit, OnDestroy {
           this.statisticsData = {
             'Véhicules analysés': report.vehicleCount.toString(),
             'Distance totale': `${Math.round(report.totalFleetDistanceKm)} km`,
-            'Carburant consommé': `${report.totalFleetFuelConsumedLiters.toFixed(1)} L`,
+            'Carburant consommé': `${nombreFr(report.totalFleetFuelConsumedLiters, 1)} L`,
             'Coût total estimé': `${Math.round(report.totalFleetFuelCost)} ${this.getCurrencyCode()}`,
-            'Consommation moyenne': `${report.fleetAverageConsumptionPer100Km.toFixed(2)} L/100km`,
-            'Écart-type': `${report.fleetStandardDeviation.toFixed(2)} L/100km`
+            'Consommation moyenne': `${nombreFr(report.fleetAverageConsumptionPer100Km, 2)} L/100km`,
+            'Écart-type': `${nombreFr(report.fleetStandardDeviation, 2)} L/100km`
           };
           
           // Chart data - fuel type distribution
@@ -7504,8 +7505,8 @@ export class ReportsComponent implements OnInit, OnDestroy {
                   label: (context) => {
                     const value = context.raw as number;
                     const total = this.fuelEstimationReport!.totalFleetFuelCost;
-                    const pct = total > 0 ? ((value / total) * 100).toFixed(1) : '0';
-                    return `${context.label}: ${value.toFixed(2)} ${this.getCurrencyCode()} (${pct}%)`;
+                    const pct = total > 0 ? nombreFr(((value / total) * 100), 1) : '0';
+                    return `${context.label}: ${nombreFr(value, 2)} ${this.getCurrencyCode()} (${pct}%)`;
                   }
                 }
               }
@@ -7646,7 +7647,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
       .map(g => {
         const dateStr = g.date.toLocaleDateString('fr-FR') + ' ' +
           g.date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-        return `${dateStr}: +${g.liters.toFixed(1)} L (~${g.cost.toFixed(2)} ${this.getCurrencyCode()})`;
+        return `${dateStr}: +${nombreFr(g.liters, 1)} L (~${nombreFr(g.cost, 2)} ${this.getCurrencyCode()})`;
       })
       .join('\n');
   }
@@ -8314,8 +8315,11 @@ export class ReportsComponent implements OnInit, OnDestroy {
   }
 
   /** Coût au km : 3 décimales, « — » quand non calculable (aucune distance mesurable). */
+  // Décimales selon la devise : 3 en dinar (millimes), 2 en euro — même règle que l'écran
+  // Carburant (recette de Karim du 14/10/2026).
   formatCostPerKm(value: number | null | undefined): string {
-    return value == null ? '—' : Number(value).toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    const d = this.userPrefs.unitPriceDigits;
+    return value == null ? '—' : Number(value).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
   }
 
   /** Pourcentage signé à 1 décimale (« +12,5 % »), « — » si null. */
@@ -9052,7 +9056,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
    *  « Carburant : 4 007,87 € (88 %) — Réparation : 528,00 € (12 %) ». */
   monthlyCostDonutTitle(): string {
     return this.monthlyCostCategoryTotals()
-      .map(c => `${c.label} : ${this.formatCurrency(c.amount)} (${c.percent.toFixed(0)} %)`)
+      .map(c => `${c.label} : ${this.formatCurrency(c.amount)} (${nombreFr(c.percent, 0)} %)`)
       .join(' — ');
   }
 
@@ -9164,7 +9168,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
             callbacks: {
               label: (item) => {
                 const v = Number(item.parsed) || 0;
-                return `${item.label} : ${this.formatCurrency(v)} (${((v / total) * 100).toFixed(1)} %)`;
+                return `${item.label} : ${this.formatCurrency(v)} (${nombreFr(((v / total) * 100), 1)} %)`;
               }
             }
           }

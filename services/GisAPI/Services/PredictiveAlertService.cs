@@ -4,6 +4,7 @@ using GisAPI.Application.Features.Documents;
 using GisAPI.Infrastructure.Persistence;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Services;
 
@@ -279,7 +280,7 @@ public class PredictiveAlertService : BackgroundService
                 if (schedule.NextDueKm.HasValue && vehicle.Mileage > schedule.NextDueKm.Value)
                 {
                     var overKm = vehicle.Mileage - schedule.NextDueKm.Value;
-                    message = $"{templateName} en retard de {overKm:N0} km pour {vehicle.Name} ({vehicle.Plate})";
+                    message = $"{templateName} en retard de {FormatFr.N(overKm, 0)} km pour {vehicle.Name} ({vehicle.Plate})";
                 }
                 else
                 {
@@ -292,7 +293,7 @@ public class PredictiveAlertService : BackgroundService
                 if (schedule.NextDueKm.HasValue)
                 {
                     var remainingKm = schedule.NextDueKm.Value - vehicle.Mileage;
-                    message = $"{templateName} à prévoir dans {remainingKm:N0} km pour {vehicle.Name} ({vehicle.Plate})";
+                    message = $"{templateName} à prévoir dans {FormatFr.N(remainingKm, 0)} km pour {vehicle.Name} ({vehicle.Plate})";
                 }
                 else if (schedule.NextDueDate.HasValue)
                 {
@@ -384,7 +385,7 @@ public class PredictiveAlertService : BackgroundService
                 await SendToCompanyAdmins(context, notifService, companyId,
                     "fuel_anomaly",
                     $"Consommation anormale: {vehicle.Name}",
-                    $"Consommation carburant en hausse de {increase:F0}% sur 7 jours pour {vehicle.Name} ({vehicle.Plate}). {recentRate:F1} L/100km vs {prevRate:F1} L/100km la semaine précédente.",
+                    $"Consommation carburant en hausse de {increase:F0}% sur 7 jours pour {vehicle.Name} ({vehicle.Plate}). {FormatFr.F(recentRate, 1)} L/100km vs {FormatFr.F(prevRate, 1)} L/100km la semaine précédente.",
                     "normal", "vehicle", vehicle.Id, "/vehicules", ct);
             }
         }

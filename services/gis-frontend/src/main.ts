@@ -1,4 +1,6 @@
-import { Component, OnInit, OnDestroy, provideZoneChangeDetection } from '@angular/core';
+import { Component, OnInit, OnDestroy, provideZoneChangeDetection, LOCALE_ID } from '@angular/core';
+import { registerLocaleData } from '@angular/common';
+import localeFr from '@angular/common/locales/fr';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideRouter, RouterOutlet } from '@angular/router';
@@ -30,8 +32,15 @@ export class App implements OnInit, OnDestroy {
   }
 }
 
+// Nombres au format français dans TOUTE l'application : sans LOCALE_ID, Angular reste
+// en en-US et le pipe `number` écrivait « 161,980 » km (lu 161 km) et « 36.11 L »
+// (recette de Karim du 14/10/2026). Les dates sont toutes au format numérique
+// (dd/MM/yyyy…) : elles ne changent pas.
+registerLocaleData(localeFr, 'fr-FR');
+
 bootstrapApplication(App, {
   providers: [
+    { provide: LOCALE_ID, useValue: 'fr-FR' },
     // Angular 21 est « zoneless » par defaut : sans ce fournisseur, zone.js est
     // charge mais IGNORE, et seule une interaction (clic, saisie) rafraichit la
     // vue — un retour HTTP ou un await laissent l ecran fige. Constate en prod

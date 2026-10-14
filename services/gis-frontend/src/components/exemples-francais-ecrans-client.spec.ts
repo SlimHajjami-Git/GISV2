@@ -86,7 +86,8 @@ describe('exemples des écrans clients (marché français)', () => {
   // 568,45 pour 45,5 L sont des millimes, invraisemblables en euros.
   it("l'écran carburant propose des montants à l'échelle européenne", () => {
     const carburant = source('carburant.component.ts');
-    expect(carburant).toContain('placeholder="Ex: 1.750"');
+    // L'exemple de prix suit la devise : 3 décimales en dinar, 2 en euro (recette du 14/10/2026).
+    expect(carburant).toContain("prefs.unitPriceDigits === 3 ? 'Ex: 1.750' : 'Ex: 1.85'");
     expect(carburant).toContain('placeholder="Ex: 79.63"');
     expect(carburant).not.toContain('12.450');
     expect(carburant).not.toContain('568.45');

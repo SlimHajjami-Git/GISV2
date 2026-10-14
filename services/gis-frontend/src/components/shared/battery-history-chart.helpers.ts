@@ -1,4 +1,5 @@
 import { BatteryHistoryDto } from '../../services/api.service';
+import { nombreFr } from '../../pipes/user-preference-pipes';
 
 /**
  * Géométrie du graphe « tension batterie » de la fenêtre d'alerte (Slim, 29/09/2026).
@@ -141,7 +142,7 @@ function buildYTicks(lo: number, hi: number, y: (v: number) => number) {
   const steps = 4;
   for (let i = 0; i <= steps; i++) {
     const v = lo + ((hi - lo) * i) / steps;
-    ticks.push({ y: y(v), label: `${v.toFixed(1)} V` });
+    ticks.push({ y: y(v), label: `${nombreFr(v, 1)} V` });
   }
   return ticks;
 }

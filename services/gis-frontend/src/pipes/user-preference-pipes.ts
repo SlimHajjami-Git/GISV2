@@ -111,6 +111,24 @@ export class AppCurrencyPipe implements PipeTransform, OnDestroy {
   }
 }
 
+/** Remplaçant français de `x.toFixed(n)` pour un TEXTE affiché (écran, PDF, info-bulle) :
+ *  « 12,5 » et « 161 980 » au lieu de « 12.5 » et « 161980 ». Jamais pour une valeur
+ *  renvoyée à l'API, à un champ de saisie ou à un tracé SVG, qui attendent le point. */
+export function nombreFr(value: number, digits: number = 0): string {
+  return Number.isFinite(value) ? fmt(value, digits) : '-';
+}
+
+/** Relit le nombre en tête d'un texte affiché, au format français OU anglais :
+ *  « 1 234,5 km » → 1234.5, « 12.5 km » → 12.5. parseFloat seul s'arrêtait à l'espace
+ *  des milliers (« 1 234 » → 1) et à la virgule (« 12,5 » → 12). */
+export function lireNombreFr(value: unknown): number {
+  if (typeof value === 'number') return value;
+  const texte = String(value ?? '')
+    .replace(/(\d)[\u202F\u00A0 ](?=\d{3}(?!\d))/g, '$1')
+    .replace(/^(\s*-?\d+),(\d)/, '$1.$2');
+  return parseFloat(texte);
+}
+
 /** Nombre au format français, sans unité : « 42 383 », « 45,50 ». Le pipe `number`
  *  d'Angular suit la locale de l'application, restée en-US : il écrivait « 42,383 » km,
  *  virgule des milliers à l'anglaise (recette de Karim du 14/10/2026). */

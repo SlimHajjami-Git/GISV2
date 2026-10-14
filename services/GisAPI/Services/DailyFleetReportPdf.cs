@@ -31,6 +31,9 @@ public static class DailyFleetReportPdf
 
     private static string Hm(DateTime utc) => utc.AddHours(1).ToString("HH:mm");
 
+    // « 1 234 km » et non « 1,234 km » (culture invariante du conteneur Linux) : voir FormatFr.
+    private static string N0(double value) => value.ToString("N0", GisAPI.Domain.Common.FormatFr.Nombres);
+
     public static byte[] Build(
         Societe societe,
         DateTime reportDate,
@@ -80,7 +83,7 @@ public static class DailyFleetReportPdf
                         row.Spacing(8);
                         FleetCard(row, reports.Count.ToString(), "Véhicules");
                         FleetCard(row, active.Count.ToString(), "Actifs");
-                        FleetCard(row, $"{totalDistance:N0} km", "Distance totale");
+                        FleetCard(row, $"{N0(totalDistance)} km", "Distance totale");
                         FleetCard(row, DailyFleetReportService.FormatDuration(totalDriving), "Conduite totale");
                     });
 
@@ -166,11 +169,11 @@ public static class DailyFleetReportPdf
                 row.Spacing(6);
                 MiniCard(row, s.TotalDrivingFormatted, "Conduite");
                 MiniCard(row, $"{s.TotalStoppedFormatted} ({s.StopCount})", "Arrêts");
-                MiniCard(row, $"{s.TotalDistanceKm:N0} km", "Distance");
-                MiniCard(row, $"{s.MaxSpeedKph:N0} km/h", "Vitesse max");
+                MiniCard(row, $"{N0(s.TotalDistanceKm)} km", "Distance");
+                MiniCard(row, $"{N0(s.MaxSpeedKph)} km/h", "Vitesse max");
                 if (s.FuelRefillCount > 0)
                     MiniCard(row, $"{s.FuelRefillCount} plein(s)",
-                        s.TotalFuelRefillLiters.HasValue ? $"{s.TotalFuelRefillLiters.Value:N0} L" : "Carburant");
+                        s.TotalFuelRefillLiters.HasValue ? $"{N0(s.TotalFuelRefillLiters.Value)} L" : "Carburant");
             });
 
             // First start of the day.
@@ -199,7 +202,7 @@ public static class DailyFleetReportPdf
                     {
                         t.Span($"• {Hm(fe.Timestamp)}  {label} — {fe.FuelPercent}%").FontSize(8.5f).FontColor(Muted);
                         if (fe.RefuelAmount.HasValue)
-                            t.Span($"  (+{fe.RefuelAmount.Value:N0} L)").FontSize(8.5f).FontColor(Green);
+                            t.Span($"  (+{N0(fe.RefuelAmount.Value)} L)").FontSize(8.5f).FontColor(Green);
                     });
                 }
             }

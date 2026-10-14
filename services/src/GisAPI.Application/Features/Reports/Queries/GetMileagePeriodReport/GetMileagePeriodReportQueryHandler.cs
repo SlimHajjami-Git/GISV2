@@ -5,6 +5,7 @@ using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.Reports.Queries.GetMileagePeriodReport;
 
@@ -175,7 +176,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         {
             Label = h.HourLabel,
             Value = h.DistanceKm,
-            Tooltip = $"{h.DistanceKm:F1} km - {h.TripCount} trajets"
+            Tooltip = $"{FormatFr.F(h.DistanceKm, 1)} km - {h.TripCount} trajets"
         }).ToList();
 
         return report;
@@ -258,7 +259,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         {
             Label = d.Date.ToString("dd/MM", FrenchCulture),
             Value = d.DistanceKm,
-            Tooltip = $"{d.DayOfWeek}: {d.DistanceKm:F1} km"
+            Tooltip = $"{d.DayOfWeek}: {FormatFr.F(d.DistanceKm, 1)} km"
         }).ToList();
 
         return report;
@@ -353,7 +354,7 @@ public class GetMileagePeriodReportQueryHandler : IRequestHandler<GetMileagePeri
         {
             Label = new DateTime(m.Year, m.Month, 1).ToString("MMM yy", FrenchCulture),
             Value = m.DistanceKm,
-            Tooltip = $"{m.MonthLabel}: {m.DistanceKm:F1} km ({m.DaysWithActivity} jours actifs)"
+            Tooltip = $"{m.MonthLabel}: {FormatFr.F(m.DistanceKm, 1)} km ({m.DaysWithActivity} jours actifs)"
         }).ToList();
 
         return report;

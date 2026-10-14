@@ -3,6 +3,7 @@ using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common.Security;
 using GisAPI.Application.Features.Admin.Vehicles.Services;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.Admin.GpsDevices;
 
@@ -202,7 +203,7 @@ public static class GpsDeviceDeletionInventory
                          "et ses trames sont ignorées tant qu'il n'est pas débloqué.");
 
         var capped = rows.Any(r => r.Capped);
-        if (capped) warnings.Add($"Les comptages sont plafonnés à {CountCap:N0} lignes par table.");
+        if (capped) warnings.Add($"Les comptages sont plafonnés à {FormatFr.N(CountCap, 0)} lignes par table.");
 
         var total = rows.Sum(r => (long)r.Rows);
         return new GpsDeviceDeletionImpactDto(

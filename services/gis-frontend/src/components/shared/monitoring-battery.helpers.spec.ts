@@ -99,12 +99,12 @@ describe('monitoring-battery.helpers', () => {
       expect(titre).toContain('au démarrage du');
       expect(titre).toContain('29/09');
       expect(titre).toContain('médiane');
-      expect(titre).toContain('12.3 V');
+      expect(titre).toContain('12,3 V'); // format français (recette du 14/10/2026)
     });
 
     it('explique pourquoi le témoin reste éteint malgré une mesure basse', () => {
       const titre = batteryTitle({ ...demarrage, batteryVoltage: 10.9, batteryMedianVoltage: 12.3 });
-      expect(titre).toContain('12.3 V');
+      expect(titre).toContain('12,3 V'); // format français (recette du 14/10/2026)
     });
 
     it('dit qu’on n’a pas encore assez de démarrages', () => {

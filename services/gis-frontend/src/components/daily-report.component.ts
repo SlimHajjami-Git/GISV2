@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService, DailyActivityReport, ActivitySegment } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-daily-report',
@@ -954,7 +954,7 @@ export class DailyReportComponent implements OnInit, OnDestroy {
     const tankCapacity = vehicle?.fuelTankCapacity || vehicle?.fuel_tank_capacity || 60;
     const litersConsumed = (consumed / 100) * tankCapacity;
     const per100km = (litersConsumed / dist) * 100;
-    return `${per100km.toFixed(1)} L/100km`;
+    return `${nombreFr(per100km, 1)} L/100km`;
   }
 
   formatDate(dateStr: string): string {

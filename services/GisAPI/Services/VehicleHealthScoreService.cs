@@ -4,6 +4,7 @@ using GisAPI.Application.Features.Documents;
 using GisAPI.Application.Features.Repairs;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Services;
 
@@ -218,12 +219,12 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
             else if (age > 10) { ageScore -= 6; }
             else if (age > 7) { ageScore -= 3; }
 
-            if (vehicle.Mileage > 300000) { ageScore -= 8; result.Warnings.Add($"Kilométrage élevé: {vehicle.Mileage:N0} km"); }
+            if (vehicle.Mileage > 300000) { ageScore -= 8; result.Warnings.Add($"Kilométrage élevé: {FormatFr.N(vehicle.Mileage, 0)} km"); }
             else if (vehicle.Mileage > 200000) { ageScore -= 5; }
             else if (vehicle.Mileage > 150000) { ageScore -= 2; }
         }
         ageScore = Math.Max(0, ageScore);
-        factors.Add(new HealthFactor { Name = "Âge/Kilométrage", Score = ageScore, MaxScore = 20, Detail = $"{vehicle.Year ?? 0} · {vehicle.Mileage:N0} km" });
+        factors.Add(new HealthFactor { Name = "Âge/Kilométrage", Score = ageScore, MaxScore = 20, Detail = $"{vehicle.Year ?? 0} · {FormatFr.N(vehicle.Mileage, 0)} km" });
 
         // ═══ TOTAL ═══
         result.Factors = factors;

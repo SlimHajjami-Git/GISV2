@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 import { ApiService, RepairDto } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
@@ -1636,9 +1636,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
           date: this.formatDate(r.repairDate),
           description: r.description || '—',
           parts: r.parts.length > 0 ? r.parts.length.toString() : '—',
-          partsCost: (r.partsCost || 0).toFixed(2),
-          laborCost: (r.laborCost || 0).toFixed(2),
-          totalCost: (r.totalCost || 0).toFixed(2),
+          partsCost: nombreFr((r.partsCost || 0), 2),
+          laborCost: nombreFr((r.laborCost || 0), 2),
+          totalCost: nombreFr((r.totalCost || 0), 2),
           status: this.getStatusLabel(r.status)
         })),
         subtotal: `${rs.length} réparation(s) — Pièces: ${this.userPrefs.formatCurrency(subParts)} | M. œuvre: ${this.userPrefs.formatCurrency(subLabor)} | Total: ${this.userPrefs.formatCurrency(subTotal)}`

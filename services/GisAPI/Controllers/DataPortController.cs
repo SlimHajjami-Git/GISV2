@@ -10,6 +10,7 @@ using GisAPI.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Controllers;
 
@@ -424,7 +425,7 @@ public class DataPortController : ControllerBase
                     if (VehicleMileage.Advance(known, Int(row.Cell(8))))
                     {
                         result.VehiclesUpdated++;
-                        result.AddNote($"Véhicule « {plate} » : kilométrage porté à {known.Mileage:N0} km.");
+                        result.AddNote($"Véhicule « {plate} » : kilométrage porté à {FormatFr.N(known.Mileage, 0)} km.");
                     }
                     else
                     {

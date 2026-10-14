@@ -6,7 +6,7 @@ import { Subject, takeUntil } from 'rxjs';
 import { ApiService, MonthlyFleetReport, MonthlyCostReport, DepartmentCostGroup, ChartData, MultiSeriesChartData, Kpi, FleetAlert, ComparisonMetric } from '../services/api.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ButtonComponent, CardComponent } from './shared/ui';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
 
@@ -232,7 +232,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
             callbacks: {
               label: (context) => {
                 const total = (context.dataset.data as number[]).reduce((a, b) => a + b, 0);
-                const percentage = ((context.parsed / total) * 100).toFixed(1);
+                const percentage = nombreFr(((context.parsed / total) * 100), 1);
                 return `${context.label}: ${context.parsed} (${percentage}%)`;
               }
             }
@@ -454,7 +454,7 @@ export class MonthlyReportComponent implements OnInit, OnDestroy, AfterViewInit 
 
   formatPercent(value: number | null | undefined): string {
     if (value == null) return '—';
-    return value.toFixed(1) + '%';
+    return nombreFr(value, 1) + '%';
   }
 
   // Export functionality

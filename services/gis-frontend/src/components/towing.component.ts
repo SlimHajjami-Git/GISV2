@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { ApiService, TowEventDto } from '../services/api.service';
+import { nombreFr } from '../pipes/user-preference-pipes';
 
 /**
  * /remorquages — dedicated page listing standalone tow detections
@@ -214,7 +215,7 @@ export class TowingComponent implements OnInit {
   round(v: number): number { return Math.round(v); }
 
   formatDistance(meters: number): string {
-    if (meters >= 1000) return (meters / 1000).toFixed(1) + ' km';
+    if (meters >= 1000) return nombreFr((meters / 1000), 1) + ' km';
     return Math.round(meters) + ' m';
   }
 

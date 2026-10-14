@@ -5,6 +5,7 @@ using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.Vehicles.Commands.CorrectMileage;
 
@@ -78,7 +79,7 @@ public class CorrectVehicleMileageCommandHandler
             EntityName = vehicle.Plate,
             OldValues = new Dictionary<string, object> { ["mileage"] = previous },
             NewValues = new Dictionary<string, object> { ["mileage"] = request.Mileage },
-            Description = $"Kilométrage corrigé de {previous:N0} à {request.Mileage:N0} km — {request.Reason.Trim()}",
+            Description = $"Kilométrage corrigé de {FormatFr.N(previous, 0)} à {FormatFr.N(request.Mileage, 0)} km — {request.Reason.Trim()}",
             Timestamp = DateTime.UtcNow
         });
 

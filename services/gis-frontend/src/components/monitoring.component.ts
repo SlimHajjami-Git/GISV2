@@ -11,7 +11,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 import { AdminService } from '../admin/services/admin.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { environment } from '../environments/environment';
-import { AppSpeedPipe, AppDistancePipe, AppTempPipe } from '../pipes/user-preference-pipes';
+import { AppSpeedPipe, AppDistancePipe, AppTempPipe, nombreFr } from '../pipes/user-preference-pipes';
 import { getVehicleIcon } from './shared/vehicle-icons';
 import { batteryTitle, isStartReadingLow, mergeLiveBattery } from './shared/monitoring-battery.helpers';
 import { PlaybackStateService, PlaybackTimelineEntry } from '../services/playback-state.service';
@@ -1452,7 +1452,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   getBatteryDisplay(vehicle: any): string {
     const stats = this.getVehicleStats(vehicle);
     if (stats?.batteryVoltage != null) {
-      return `${stats.batteryVoltage.toFixed(1)} V`;
+      return `${nombreFr(stats.batteryVoltage, 1)} V`;
     }
     if (stats?.batteryLevel != null) {
       return `${stats.batteryLevel} %`;
@@ -2325,7 +2325,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   // Format timeline distance
   formatTimelineDistance(meters: number): string {
     const km = meters / 1000;
-    return km < 10 ? km.toFixed(1) : Math.round(km).toString();
+    return km < 10 ? nombreFr(km, 1) : nombreFr(km, 0);
   }
 
   // Format timeline time
@@ -4365,7 +4365,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       totalMeters += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
     }
     const totalKm = totalMeters / 1000;
-    return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
+    return totalKm < 10 ? nombreFr(totalKm, 1) : nombreFr(totalKm, 0);
   }
 
   getPlaybackCurrentKm(): string {
@@ -4379,7 +4379,7 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       totalMeters += this.calculateDistance(prev.latitude, prev.longitude, curr.latitude, curr.longitude);
     }
     const totalKm = totalMeters / 1000;
-    return totalKm < 10 ? totalKm.toFixed(1) : Math.round(totalKm).toString();
+    return totalKm < 10 ? nombreFr(totalKm, 1) : nombreFr(totalKm, 0);
   }
 
   // End playback - called when user clicks "Fermer" button

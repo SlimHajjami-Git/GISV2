@@ -9,7 +9,7 @@ import { ApiService, VehicleExpiryDto, GpaDashboard, GpaDashboardAlert, GpaDashb
 import { SignalRService } from '../services/signalr.service';
 import { Company } from '../models/types';
 import { UserPreferencesService } from '../services/user-preferences.service';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { estRefusDeDroit, estSocieteSansGps, sousTitreAchats } from './dashboard-gpa.helpers';
 
@@ -1661,7 +1661,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
 
   donutIdx(name:string):number{return this.donutSegs.findIndex(s=>s.name===name);}
 
-  absPct(v:number):string{return Math.abs(v).toFixed(1);}
+  absPct(v:number):string{return nombreFr(Math.abs(v), 1);}
 
   /** Etiquette de la periode DEMANDEE au serveur, pour la coller au chiffre. */
   private libellePeriode(periode:string,du:string,au:string):string{

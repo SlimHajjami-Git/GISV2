@@ -3,6 +3,7 @@ using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.Vehicles.Commands.UpdateVehicle;
 
@@ -59,8 +60,8 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
         if (request.Mileage > 0 && request.Mileage < vehicle.Mileage)
         {
             throw new GisAPI.Domain.Exceptions.DomainException(
-                $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
-                $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur.");
+                $"Le kilométrage saisi ({FormatFr.N(request.Mileage, 0)} km) est inférieur au kilométrage " +
+                $"actuel du véhicule ({FormatFr.N(vehicle.Mileage, 0)} km). Un compteur ne recule pas : vérifiez la valeur.");
         }
         if (request.Mileage > 0)
             vehicle.Mileage = request.Mileage;

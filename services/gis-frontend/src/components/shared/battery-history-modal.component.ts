@@ -49,8 +49,8 @@ import { CHART, ChartGeometry, buildBatteryChart, nearestIndex } from './battery
                 Chaque creux est un arrêt moteur : la batterie seule y montre ce qu'elle vaut.
                 <ng-container *ngIf="data.medianV != null">
                   Sur ses derniers démarrages, celle-ci tourne à
-                  <b [class.bh-bad]="data.medianV < data.thresholdV">{{ data.medianV.toFixed(1) }} V</b>
-                  (seuil {{ data.thresholdV.toFixed(1) }} V).
+                  <b [class.bh-bad]="data.medianV < data.thresholdV">{{ data.medianV | number:'1.1-1' }} V</b>
+                  (seuil {{ data.thresholdV | number:'1.1-1' }} V).
                 </ng-container>
               </p>
 
@@ -72,12 +72,12 @@ import { CHART, ChartGeometry, buildBatteryChart, nearestIndex } from './battery
                     <line class="bh-threshold" [attr.x1]="CHART.left" [attr.y1]="g.thresholdY"
                           [attr.x2]="CHART.right" [attr.y2]="g.thresholdY"/>
                     <text class="bh-threshold-label" [attr.x]="CHART.right" [attr.y]="g.thresholdY - 6"
-                          text-anchor="end">seuil {{ data.thresholdV.toFixed(1) }} V</text>
+                          text-anchor="end">seuil {{ data.thresholdV | number:'1.1-1' }} V</text>
                   </ng-container>
 
                   <circle *ngFor="let s of g.starts" class="bh-start" [class.bh-start-low]="s.low"
                           [attr.cx]="s.x" [attr.cy]="s.y" r="3.5">
-                    <title>Démarrage du {{ s.label }} — {{ s.volts.toFixed(1) }} V</title>
+                    <title>Démarrage du {{ s.label }} — {{ s.volts | number:'1.1-1' }} V</title>
                   </circle>
 
                   <ng-container *ngIf="hoverIndex >= 0 && g.hover[hoverIndex] as h">
@@ -95,8 +95,8 @@ import { CHART, ChartGeometry, buildBatteryChart, nearestIndex } from './battery
                 <div class="bh-tip" *ngIf="hoverIndex >= 0 && g.hover[hoverIndex] as h"
                      [style.left.%]="(h.x / CHART.width) * 100">
                   <span>{{ h.label }}</span>
-                  <b>{{ h.minV.toFixed(1) }} V</b>
-                  <em *ngIf="h.maxV > h.minV">jusqu'à {{ h.maxV.toFixed(1) }} V</em>
+                  <b>{{ h.minV | number:'1.1-1' }} V</b>
+                  <em *ngIf="h.maxV > h.minV">jusqu'à {{ h.maxV | number:'1.1-1' }} V</em>
                 </div>
               </div>
 

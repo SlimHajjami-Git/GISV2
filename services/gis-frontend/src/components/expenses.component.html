@@ -352,7 +352,7 @@
         </div>
         <div class="xd-row" *ngIf="detailExpense.quantity > 1 || detailExpense.category === 'carburant'">
           <span class="xd-row-label">Détail prix</span>
-          <span class="xd-row-value">{{ detailExpense.quantity | number:'1.2-2' }} × {{ detailExpense.unitPrice | appCurrency:3 }}</span>
+          <span class="xd-row-value">{{ detailExpense.quantity | number:'1.2-2' }} × {{ detailExpense.unitPrice | appCurrency:prixDecimales }}</span>
         </div>
         <div class="xd-row" *ngIf="!isAcquisition(detailExpense)">
           <span class="xd-row-label">Enregistré le</span>

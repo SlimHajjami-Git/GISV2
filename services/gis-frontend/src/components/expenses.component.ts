@@ -182,6 +182,8 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   get currencyCode(): string { return this.userPrefs.current.currency || 'TND'; }
+  /** Décimales d'un prix unitaire : 3 en dinar, 2 en euro (recette du 14/10/2026). */
+  get prixDecimales(): number { return this.userPrefs.unitPriceDigits; }
 
   // Bouton « Scanner une facture », compteur de quota, préparation de la photo,
   // appel et messages d'erreur : tout cela vit désormais dans <app-scan-facture>

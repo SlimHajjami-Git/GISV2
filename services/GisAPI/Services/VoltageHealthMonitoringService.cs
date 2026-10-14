@@ -148,9 +148,9 @@ public class VoltageHealthMonitoringService : BackgroundService
                     SignalKind: "battery_dead",
                     Severity: "critical",
                     Description:
-                        $"Batterie en fin de vie : {volts.Value:F1} V de médiane sur les " +
+                        $"Batterie en fin de vie : {FormatFr.F(volts.Value, 1)} V de médiane sur les " +
                         $"{VoltageScale.StartHistoryWindow} derniers démarrages (seuil " +
-                        $"{VoltageScale.NemsBatteryLowWarningV:F1} V), dernier le " +
+                        $"{FormatFr.F(VoltageScale.NemsBatteryLowWarningV, 1)} V), dernier le " +
                         $"{measuredAt:dd/MM/yyyy à HH:mm} UTC",
                     VoltageObservedV: VoltageScale.RoundVolts(volts.Value),
                     VoltageBaselineV: null,

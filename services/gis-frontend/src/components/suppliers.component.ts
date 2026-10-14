@@ -6,6 +6,7 @@ import { AppLayoutComponent } from './shared/app-layout.component';
 import { GaragePopupComponent } from './shared/garage-popup.component';
 import { ApiService } from '../services/api.service';
 import { trigger, transition, style, animate } from '@angular/animations';
+import { nombreFr } from '../pipes/user-preference-pipes';
 
 // Interface pour les fournisseurs
 export interface Garage {
@@ -164,7 +165,7 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
                       </svg>
-                      {{ garage.rating.toFixed(1) }}
+                      {{ garage.rating | number:'1.1-1' }}
                     </span>
                   </div>
                 </div>
@@ -869,9 +870,9 @@ export class SuppliersComponent implements OnInit, OnDestroy {
   }
 
   getAverageRating(): string {
-    if (this.allGarages.length === 0) return '0.0';
+    if (this.allGarages.length === 0) return '0,0';
     const sum = this.allGarages.reduce((acc, g) => acc + g.rating, 0);
-    return (sum / this.allGarages.length).toFixed(1);
+    return nombreFr((sum / this.allGarages.length), 1);
   }
 
   getServiceLabel(service: string): string {

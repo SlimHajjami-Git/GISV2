@@ -2,6 +2,7 @@ using GisAPI.Application.Common.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.Notifications.Events;
 
@@ -118,7 +119,7 @@ public class BatteryHealthAlertHandler : INotificationHandler<BatteryHealthAlert
     /// </summary>
     private static (string Title, string Message) BuildCopy(BatteryHealthAlertEvent e, string vehicleLabel)
     {
-        var observed = e.VoltageObservedV.HasValue ? $"{e.VoltageObservedV.Value:F1} V" : "—";
+        var observed = e.VoltageObservedV.HasValue ? $"{FormatFr.F(e.VoltageObservedV.Value, 1)} V" : "—";
 
         return e.SignalKind switch
         {

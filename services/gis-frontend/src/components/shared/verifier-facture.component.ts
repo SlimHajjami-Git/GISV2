@@ -183,8 +183,8 @@ export interface CategorieRevue { value: string; label: string; }
                       <div class="sm-items-tblfoot">
                         <button class="sm-add-line" (click)="ajouterLigne()">+ Ajouter une ligne</button>
                         <span class="sm-sum" [class.sm-sum-warn]="sommeDiffere()">
-                          Somme : <strong>{{ sommeLignes() | number:'1.3-3' }} {{ devise }}</strong>
-                          @if (sommeDiffere()) { <em>≠ total {{ modele.amount | number:'1.3-3' }}</em> }
+                          Somme : <strong>{{ sommeLignes() | number:formatMontant }} {{ devise }}</strong>
+                          @if (sommeDiffere()) { <em>≠ total {{ modele.amount | number:formatMontant }}</em> }
                         </span>
                       </div>
                     </div>
@@ -567,6 +567,11 @@ export class VerifierFactureComponent {
   @Input() vehicules: VehiculeRevue[] = [];
   @Input() categories: CategorieRevue[] = [];
   @Input() devise = 'TND';
+  /** Montants à 3 décimales en dinar (millimes), 2 ailleurs : « 12,500 € » se lisait
+   *  comme douze mille cinq cents (recette de Karim du 14/10/2026). */
+  get formatMontant(): string {
+    return /^(TND|DT)$/i.test(this.devise) ? '1.3-3' : '1.2-2';
+  }
   @Input() libelleValider = 'Enregistrer';
   /** Vrai pendant l'enregistrement : le bouton se grise et change de libellé. */
   @Input() enregistrement = false;

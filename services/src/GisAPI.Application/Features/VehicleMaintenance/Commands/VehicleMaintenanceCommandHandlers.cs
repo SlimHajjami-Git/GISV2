@@ -7,6 +7,7 @@ using GisAPI.Domain.Exceptions;
 using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Application.Features.VehicleMaintenance.Commands;
 
@@ -289,10 +290,10 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         {
             throw new GisAPI.Domain.Exceptions.DomainException(
                 request.Date.Date >= DateTime.UtcNow.Date
-                    ? $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur au kilométrage " +
-                      $"actuel du véhicule ({vehicle.Mileage:N0} km). Un compteur ne recule pas : vérifiez la valeur."
-                    : $"Le kilométrage saisi ({request.Mileage:N0} km) est inférieur à un relevé déjà enregistré " +
-                      $"au {request.Date:dd/MM/yyyy} ou avant ({plancher:N0} km). Un compteur ne recule pas : " +
+                    ? $"Le kilométrage saisi ({FormatFr.N(request.Mileage, 0)} km) est inférieur au kilométrage " +
+                      $"actuel du véhicule ({FormatFr.N(vehicle.Mileage, 0)} km). Un compteur ne recule pas : vérifiez la valeur."
+                    : $"Le kilométrage saisi ({FormatFr.N(request.Mileage, 0)} km) est inférieur à un relevé déjà enregistré " +
+                      $"au {request.Date:dd/MM/yyyy} ou avant ({FormatFr.N(plancher, 0)} km). Un compteur ne recule pas : " +
                       "vérifiez la valeur ou la date.");
         }
 

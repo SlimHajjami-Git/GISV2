@@ -2,6 +2,7 @@ import { Component, Input, Output, EventEmitter, OnInit, OnChanges, SimpleChange
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Employee, DriverScore, Vehicle, VehicleConsumptionData } from '../../models/types';
+import { nombreFr } from '../../pipes/user-preference-pipes';
 
 @Component({
   selector: 'app-driver-score-detail',
@@ -442,9 +443,9 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
   getDiffLabel(driverConsumption: number, vehicleConsumption: number): string {
     const diff = driverConsumption - vehicleConsumption;
     if (diff <= 0) {
-      return `${Math.abs(diff).toFixed(1)} ↓`;
+      return `${nombreFr(Math.abs(diff), 1)} ↓`;
     }
-    return `+${diff.toFixed(1)} ↑`;
+    return `+${nombreFr(diff, 1)} ↑`;
   }
 
   getInitials(): string {

@@ -18,6 +18,8 @@
  * valeur reçue remplace la précédente.
  */
 
+import { nombreFr } from '../../pipes/user-preference-pipes';
+
 /** Seuil de l'icône « Anomalie batterie » pour un NEMS (VoltageScale.NemsBatteryLowWarningV). */
 export const NEMS_BATTERY_LOW_WARNING_V = 11.5;
 
@@ -92,7 +94,7 @@ export function batteryTitle(stats: BatteryStats | null | undefined): string | n
   if (stats.batteryMedianVoltage == null) {
     return `${base} — pas encore assez de démarrages pour conclure`;
   }
-  return `${base} — médiane des derniers démarrages : ${stats.batteryMedianVoltage.toFixed(1)} V`;
+  return `${base} — médiane des derniers démarrages : ${nombreFr(stats.batteryMedianVoltage, 1)} V`;
 }
 
 function formatMeasuredAt(iso: string | null | undefined): string | null {

@@ -2,6 +2,7 @@ using GisAPI.Application.Common;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Services;
 
@@ -91,7 +92,7 @@ public class SubscriptionMonitoringService : BackgroundService
             var s = x.Societe;
             var amount = GisAPI.Application.Common.SubscriptionPricing.AmountDue(
                     s, vehicleCounts.GetValueOrDefault(s.Id)) is decimal a and > 0
-                ? $" — {a:N0} à encaisser" : "";
+                ? $" — {FormatFr.N(a, 0)} à encaisser" : "";
             return x.State.Reason switch
             {
                 "grace" => $"{s.Name} : EXPIRÉ, grâce {x.State.GraceDaysLeft} j restants (impayé{amount})",

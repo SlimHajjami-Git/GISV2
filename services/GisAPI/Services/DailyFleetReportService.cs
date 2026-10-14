@@ -4,6 +4,7 @@ using GisAPI.Application.Features.Reports.Queries.GetDailyActivityReport;
 using GisAPI.Domain.Entities;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using GisAPI.Domain.Common;
 
 namespace GisAPI.Services;
 
@@ -517,10 +518,10 @@ public class DailyFleetReportService : BackgroundService
         {
             var rowBg = r.HasActivity ? "#ffffff" : "#f8fafc";
             var muted = r.HasActivity ? "#475569" : "#94a3b8";
-            var distance = r.HasActivity ? $"{r.Summary.TotalDistanceKm:N1} km" : "—";
+            var distance = r.HasActivity ? $"{FormatFr.N(r.Summary.TotalDistanceKm, 1)} km" : "—";
             var driving = r.HasActivity ? FormatDuration(r.Summary.TotalDrivingSeconds) : "—";
             var stops = r.HasActivity ? r.Summary.StopCount.ToString() : "—";
-            var maxSpeed = r.HasActivity ? $"{r.Summary.MaxSpeedKph:N0} km/h" : "—";
+            var maxSpeed = r.HasActivity ? $"{FormatFr.N(r.Summary.MaxSpeedKph, 0)} km/h" : "—";
 
             rows.Append($@"
         <tr style=""background:{rowBg};"">
@@ -570,7 +571,7 @@ public class DailyFleetReportService : BackgroundService
               </td>
               <td style=""width:8px;""></td>
               <td style=""padding:12px;background:#f8fafc;border-radius:8px;text-align:center;width:25%;"">
-                <div style=""font-size:20px;font-weight:700;color:#1e293b;"">{totalDistanceKm:N0} km</div>
+                <div style=""font-size:20px;font-weight:700;color:#1e293b;"">{FormatFr.N(totalDistanceKm, 0)} km</div>
                 <div style=""font-size:11px;color:#64748b;"">Distance totale</div>
               </td>
               <td style=""width:8px;""></td>

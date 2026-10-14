@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService } from '../services/admin.service';
+import { nombreFr } from '../../pipes/user-preference-pipes';
 
 @Component({
   selector: 'admin-database',
@@ -320,6 +321,6 @@ export class AdminDatabaseComponent implements OnInit {
     if (!bytes) return '0 o';
     const u = ['o', 'Ko', 'Mo', 'Go']; let i = 0; let n = bytes;
     while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
-    return `${n.toFixed(1)} ${u[i]}`;
+    return `${nombreFr(n, 1)} ${u[i]}`;
   }
 }

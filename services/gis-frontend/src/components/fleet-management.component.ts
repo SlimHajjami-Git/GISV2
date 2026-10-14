@@ -176,7 +176,7 @@ interface PartPricing {
                       <span class="item-desc">Code: {{ fuel.code }}</span>
                     </div>
                     <div class="item-meta">
-                      <span class="price-tag" *ngIf="fuel.currentPrice">{{ fuel.currentPrice | appCurrency:3 }}/L</span>
+                      <span class="price-tag" *ngIf="fuel.currentPrice">{{ fuel.currentPrice | appCurrency:prixDecimales }}/L</span>
                       <span class="badge system" *ngIf="fuel.isSystem">Système</span>
                     </div>
                     <div class="item-actions">
@@ -1830,6 +1830,9 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
 
   constructor(private http: HttpClient, private cdr: ChangeDetectorRef, private apiService: ApiService, private userPrefs: UserPreferencesService, private permissions: PermissionService) {}
 
+  /** Décimales du prix au litre : 3 en dinar, 2 en euro (recette du 14/10/2026). */
+  get prixDecimales(): number { return this.userPrefs.unitPriceDigits; }
+
   /** 'mph' when the operator's profile speed unit is mph, else 'km/h'. */
   get speedUnitLabel(): string {
     return this.userPrefs.current.speedUnit === 'mph' ? 'mph' : 'km/h';
@@ -2036,7 +2039,7 @@ export class FleetManagementComponent implements OnInit, OnDestroy {
         this.newPrice = { fuelTypeId: null, price: null };
         this.loadFuelTypes();
         this.cdr.detectChanges();
-        alert(`Prix enregistré pour ${fuelName} : ${this.userPrefs.formatCurrency(price, 3)}/L`);
+        alert(`Prix enregistré pour ${fuelName} : ${this.userPrefs.formatCurrency(price, this.prixDecimales)}/L`);
       },
       error: (err) => {
         console.error('Error saving fuel price:', err);
