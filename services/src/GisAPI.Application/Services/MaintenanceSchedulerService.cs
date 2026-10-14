@@ -68,6 +68,50 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
     }
 
     /// <summary>
+    /// Échéance au km d'un échéancier qu'on crée : compteur + intervalle, ou null tant que le
+    /// compteur est à 0 — kilométrage pas encore connu (fiche saisie sans compteur, GPS qui n'a
+    /// pas encore remonté). Calée sur 0, l'échéance passait « en retard » dès l'arrivée du vrai
+    /// compteur : 97 entretiens de HERTZ affectés en août à 0 km, jusqu'à 208 194 km « dépassés »
+    /// et 10 908 notifications en 7 jours (campagne GPA du 06/10/2026, erreur n°5).
+    /// </summary>
+    public static int? EcheanceKmInitiale(int currentMileage, int? intervalKm) =>
+        intervalKm.HasValue && currentMileage > 0 ? currentMileage + intervalKm.Value : null;
+
+    /// <summary>
+    /// Premier relevé d'un échéancier créé à 0 km : l'échéance au km se cale sur le compteur
+    /// + l'intervalle, comme le bouton « Recalculer ». Seulement si l'entretien n'a jamais été
+    /// fait et n'a pas encore d'échéance au km. Vrai si l'échéancier a changé.
+    /// </summary>
+    public static bool AncrerAuPremierReleve(VehicleMaintenanceSchedule schedule, int currentKm)
+    {
+        var intervalKm = schedule.CustomIntervalKm ?? schedule.Template?.IntervalKm;
+        if (schedule.NextDueKm.HasValue || schedule.LastDoneKm.HasValue || !intervalKm.HasValue || currentKm <= 0)
+            return false;
+
+        schedule.NextDueKm = currentKm + intervalKm.Value;
+        return true;
+    }
+
+    /// <summary>
+    /// Kilométrage saisi à la main sur un véhicule resté à 0 : les échéanciers en attente du
+    /// premier relevé se calent tout de suite (avant le SaveChanges de l'appelant), sans attendre
+    /// le recalcul horaire de MaintenanceStatusRefreshService.
+    /// </summary>
+    public static async Task AncrerEcheancesDuVehiculeAsync(IGisDbContext context, int vehicleId, int currentKm, CancellationToken ct)
+    {
+        if (currentKm <= 0) return;
+
+        var enAttente = await context.VehicleMaintenanceSchedules
+            .Include(s => s.Template)
+            .Where(s => s.VehicleId == vehicleId && s.NextDueKm == null && s.LastDoneKm == null)
+            .ToListAsync(ct);
+
+        foreach (var schedule in enAttente)
+            if (AncrerAuPremierReleve(schedule, currentKm))
+                schedule.UpdatedAt = DateTime.UtcNow;
+    }
+
+    /// <summary>
     /// Met à jour le statut de tous les schedules d'une société ou de toutes les sociétés
     /// </summary>
     public async Task<int> UpdateAllScheduleStatusesAsync(int? companyId = null, CancellationToken ct = default)
@@ -88,9 +132,10 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
         foreach (var schedule in schedules)
         {
             var currentKm = await GetCurrentMileageAsync(schedule.VehicleId, ct);
+            var ancre = AncrerAuPremierReleve(schedule, currentKm);
             var newStatus = CalculateStatus(schedule, currentKm);
 
-            if (schedule.Status != newStatus)
+            if (ancre || schedule.Status != newStatus)
             {
                 schedule.Status = newStatus;
                 schedule.UpdatedAt = DateTime.UtcNow;
@@ -123,9 +168,10 @@ public class MaintenanceSchedulerService : IMaintenanceSchedulerService
 
         foreach (var schedule in schedules)
         {
+            var ancre = AncrerAuPremierReleve(schedule, currentKm);
             var newStatus = CalculateStatus(schedule, currentKm);
 
-            if (schedule.Status != newStatus)
+            if (ancre || schedule.Status != newStatus)
             {
                 schedule.Status = newStatus;
                 schedule.UpdatedAt = DateTime.UtcNow;

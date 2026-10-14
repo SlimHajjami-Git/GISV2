@@ -64,7 +64,14 @@ public class UpdateVehicleCommandHandler : IRequestHandler<UpdateVehicleCommand>
                 $"actuel du véhicule ({FormatFr.N(vehicle.Mileage, 0)} km). Un compteur ne recule pas : vérifiez la valeur.");
         }
         if (request.Mileage > 0)
+        {
+            // Premier compteur d'un véhicule resté à 0 : les entretiens au km en attente se
+            // calent dessus tout de suite (erreur n°5 de la campagne GPA du 06/10/2026).
+            if (vehicle.Mileage <= 0)
+                await GisAPI.Application.Services.MaintenanceSchedulerService.AncrerEcheancesDuVehiculeAsync(
+                    _context, vehicle.Id, request.Mileage, ct);
             vehicle.Mileage = request.Mileage;
+        }
         if (request.FuelType != null) vehicle.FuelType = request.FuelType;
         vehicle.FuelTankCapacity = request.FuelTankCapacity;
         // Chauffeur et superviseur : champ ABSENT = champ non modifié, comme les

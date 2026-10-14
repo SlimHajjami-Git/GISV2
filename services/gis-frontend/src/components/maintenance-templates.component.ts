@@ -132,6 +132,9 @@ interface FlatRow {
   // 'paused' : échéancier mis en pause, statut figé lui aussi.
   status: 'ok' | 'upcoming' | 'due' | 'critical' | 'overdue' | 'inactive' | 'paused';
   kmUntilDue: number | null;
+  /** Entretien au km d'un véhicule dont le compteur est encore inconnu (0 km) : l'échéance
+   *  se calera sur le premier relevé (erreur n°5 de la campagne GPA du 06/10/2026). */
+  attenteReleve: boolean;
   progressPercent: number;
   // Free maintenance benefit
   freeUsesTotal?: number;
@@ -295,7 +298,7 @@ interface FlatRow {
                   </td>
                   <td class="col-km">
                     <span class="cell-km" [class]="row.status">
-                      {{ row.kmUntilDue !== null ? (row.kmUntilDue > 0 ? (row.kmUntilDue | number) + ' km' : ((-row.kmUntilDue) | number) + ' km depasses') : '-' }}
+                      {{ row.attenteReleve ? 'au 1er relevé' : row.kmUntilDue !== null ? (row.kmUntilDue > 0 ? (row.kmUntilDue | number) + ' km' : ((-row.kmUntilDue) | number) + ' km dépassés') : '-' }}
                     </span>
                   </td>
                   <td class="col-status">
@@ -1327,6 +1330,7 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
           vehicleId: v.vehicleId, vehicleName: v.vehicleName, vehiclePlate: v.vehiclePlate, currentMileage: v.currentMileage,
           templateId: m.templateId, templateName: m.templateName, scheduleId: m.scheduleId, lastDoneDate: m.lastDoneDate, lastDoneKm: m.lastDoneKm, nextDueKm: m.nextDueKm,
           status, kmUntilDue: m.kmUntilDue, progressPercent: pct,
+          attenteReleve: m.nextDueKm == null && m.lastDoneKm == null && !!tpl?.intervalKm,
           freeUsesTotal: m.freeUsesTotal,
           freeUsesRemaining: m.freeUsesRemaining,
           freeSource: m.freeSource,

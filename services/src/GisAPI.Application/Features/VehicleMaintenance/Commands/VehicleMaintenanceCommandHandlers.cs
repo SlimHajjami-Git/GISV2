@@ -96,7 +96,8 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
             // la société du jeton, et l'échéancier créé par un administrateur système pour une
             // autre société disparaissait des listes et des statistiques de cette société.
             CompanyId = vehicle.CompanyId,
-            NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
+            // Compteur à 0 = kilométrage inconnu : échéance au km au premier relevé (erreur n°5).
+            NextDueKm = MaintenanceSchedulerService.EcheanceKmInitiale(currentMileage, template.IntervalKm),
             NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
             Status = "upcoming"
         };
@@ -703,7 +704,8 @@ public class DeclareFreeMaintenancesCommandHandler : IRequestHandler<DeclareFree
                 TemplateId = request.TemplateId,
                 // Société du véhicule, pas celle du jeton : même raison qu'à l'affectation.
                 CompanyId = vehicle.CompanyId,
-                NextDueKm = template.IntervalKm.HasValue ? currentMileage + template.IntervalKm.Value : null,
+                // Compteur à 0 = kilométrage inconnu : échéance au km au premier relevé (erreur n°5).
+                NextDueKm = MaintenanceSchedulerService.EcheanceKmInitiale(currentMileage, template.IntervalKm),
                 NextDueDate = template.IntervalMonths.HasValue ? DateTime.UtcNow.AddMonths(template.IntervalMonths.Value) : null,
                 Status = "upcoming",
                 FreeUsesTotal = request.Count,

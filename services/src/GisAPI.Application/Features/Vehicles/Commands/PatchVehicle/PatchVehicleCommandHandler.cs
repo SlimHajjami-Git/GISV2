@@ -61,6 +61,10 @@ public class PatchVehicleCommandHandler : IRequestHandler<PatchVehicleCommand, U
                     $"Le kilométrage saisi ({FormatFr.N(request.Mileage.Value, 0)} km) est inférieur au kilométrage " +
                     $"actuel du véhicule ({FormatFr.N(vehicle.Mileage, 0)} km). Un compteur ne recule pas : vérifiez la valeur.");
 
+            // Premier compteur d'un véhicule resté à 0 : entretiens au km calés tout de suite (erreur n°5).
+            if (vehicle.Mileage <= 0)
+                await GisAPI.Application.Services.MaintenanceSchedulerService.AncrerEcheancesDuVehiculeAsync(
+                    _context, vehicle.Id, request.Mileage.Value, cancellationToken);
             vehicle.Mileage = request.Mileage.Value;
         }
         if (request.FuelTankCapacity.HasValue) vehicle.FuelTankCapacity = request.FuelTankCapacity;

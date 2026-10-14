@@ -112,19 +112,22 @@ public class MaintenanceMileageResolverTests
         schedule.Status.Should().Be("upcoming");
     }
 
-    [Fact]
-    public async Task Assign_OnVehicleWithZeroMileage_StillAnchorsOnInterval()
+    [Theory]
+    // Compteur inconnu à l'affectation, vrai compteur ensuite (HERTZ : 206 TU 3873 à 218 194 km).
+    [InlineData(218_194, 228_194)]
+    // Véhicule réellement neuf : premier relevé à 50 km, échéance à 10 050 km (10 000 avant).
+    [InlineData(50, 10_050)]
+    public async Task Assign_OnVehicleWithZeroMileage_WaitsForTheFirstReading(int premierReleve, int echeanceAttendue)
     {
-        // Cas d'un véhicule fraichement créé sans odomètre + sans manual.
-        // Le snapshot prend max(currentMileage = 0, 0) → NextDueKm = intervalKm.
-        // Ce qui est correct : on attend de voir 10 000 km parcourus avant
-        // la première vidange, peu importe d'où on part.
+        // Calée sur 0, l'échéance passait « en retard » dès l'arrivée du vrai compteur : 97
+        // entretiens de HERTZ jusqu'à 208 194 km « dépassés » (campagne GPA du 06/10/2026,
+        // erreur n°5). À 0 km, elle attend le premier relevé.
         using var context = TestDbContextFactory.Create();
         context.Vehicles.Add(new Vehicle { Id = 1, Name = "Neuf", CompanyId = 1, Mileage = 0 });
         context.MaintenanceTemplates.Add(new MaintenanceTemplate
         {
             Id = 1, Name = "Vidange", Category = "Moteur", Priority = "medium",
-            IntervalKm = 10_000, CompanyId = 1
+            IntervalKm = 10_000, CompanyId = 1, IsActive = true
         });
         await context.SaveChangesAsync();
 
@@ -136,7 +139,55 @@ public class MaintenanceMileageResolverTests
             new AssignMaintenanceTemplateCommand(1, 1), CancellationToken.None);
 
         var schedule = await context.VehicleMaintenanceSchedules.FindAsync(scheduleId);
-        schedule!.NextDueKm.Should().Be(10_000);
+        schedule!.NextDueKm.Should().BeNull("compteur encore inconnu : pas d'échéance au km calée sur 0");
+
+        // Premier relevé (GPS, plein…) : le recalcul des statuts cale l'échéance sur le compteur.
+        context.Vehicles.Single().Mileage = premierReleve;
+        await context.SaveChangesAsync();
+        await scheduler.UpdateVehicleScheduleStatusesAsync(1);
+
+        schedule.NextDueKm.Should().Be(echeanceAttendue);
+        schedule.Status.Should().NotBe("overdue");
+    }
+
+    [Fact]
+    public async Task UpdateVehicle_FirstMileage_AnchorsWaitingSchedulesAtOnce()
+    {
+        // Kilométrage saisi à la main sur la fiche : pas besoin d'attendre le recalcul horaire.
+        using var context = TestDbContextFactory.Create();
+        context.Vehicles.Add(new Vehicle { Id = 1, Name = "TEST-KM", Plate = "TEST-KM-01", CompanyId = 1, Mileage = 0, Status = "available" });
+        var template = new MaintenanceTemplate
+        {
+            Id = 1, Name = "Vidange", Category = "Moteur", Priority = "medium",
+            IntervalKm = 15_000, CompanyId = 1, IsActive = true
+        };
+        context.MaintenanceTemplates.Add(template);
+        context.VehicleMaintenanceSchedules.Add(new VehicleMaintenanceSchedule { Id = 1, VehicleId = 1, TemplateId = 1, CompanyId = 1, NextDueKm = null });
+        await context.SaveChangesAsync();
+
+        await GisAPI.Application.Services.MaintenanceSchedulerService.AncrerEcheancesDuVehiculeAsync(context, 1, 42_000, CancellationToken.None);
+
+        context.VehicleMaintenanceSchedules.Single().NextDueKm.Should().Be(57_000);
+    }
+
+    [Fact]
+    public void Anchor_NeverTouchesAScheduleAlreadyDoneOrAlreadyAnchored()
+    {
+        var template = new MaintenanceTemplate { IntervalKm = 10_000 };
+
+        MaintenanceSchedulerService.AncrerAuPremierReleve(
+            new VehicleMaintenanceSchedule { Template = template, NextDueKm = 25_000 }, 42_000).Should().BeFalse();
+        MaintenanceSchedulerService.AncrerAuPremierReleve(
+            new VehicleMaintenanceSchedule { Template = template, LastDoneKm = 30_000 }, 42_000).Should().BeFalse();
+        MaintenanceSchedulerService.AncrerAuPremierReleve(
+            new VehicleMaintenanceSchedule { Template = template }, 0).Should().BeFalse("toujours pas de compteur");
+        MaintenanceSchedulerService.AncrerAuPremierReleve(
+            new VehicleMaintenanceSchedule { Template = new MaintenanceTemplate { IntervalMonths = 12 } }, 42_000)
+            .Should().BeFalse("entretien à la date seulement");
+
+        var personnalise = new VehicleMaintenanceSchedule { Template = template, CustomIntervalKm = 20_000 };
+        MaintenanceSchedulerService.AncrerAuPremierReleve(personnalise, 42_000).Should().BeTrue();
+        personnalise.NextDueKm.Should().Be(62_000, "l'intervalle personnalisé l'emporte, comme « Recalculer »");
     }
 
     [Fact]
