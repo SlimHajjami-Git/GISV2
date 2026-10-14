@@ -1413,7 +1413,7 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   docLabel(t:string):string{ return ({insurance:'Assurance',tax:'Vignette',technical_inspection:'Visite technique',registration:'Carte grise',transport_permit:'Autorisation',driver_permit:'Permis de conduire'} as Record<string,string>)[t] || 'Document'; }
   /** Une ligne de permis porte le chauffeur dans vehicleName et « Permis B » à la place de la plaque : la pastille nomme le chauffeur. */
   deadlineWho(d:VehicleExpiryDto):string{ return (d.documentType==='driver_permit' ? d.vehicleName : (d.vehiclePlate || d.vehicleName)) || '—'; }
-  dueCls(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'red':n<=30?'amber':'green'; }
+  dueCls(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?'red':n<=(d.reminderDays||30)?'amber':'green'; }
   daysLabel(d:VehicleExpiryDto):string{ const n=d.daysUntilExpiry??0; return n<0?((-n)+' j retard'):(n+' j'); }
   loadDeadlines(){
     this.apiService.getExpiryAlerts(60).pipe(takeUntil(this.destroy$)).subscribe({

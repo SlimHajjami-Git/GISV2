@@ -123,6 +123,8 @@ export interface Employee {
   permitNumber?: string;
   permitType?: string;
   permitExpiry?: Date;
+  /** « Rappel avant (jours) » du permis (migration 059), 30 par défaut. */
+  permitReminderDays?: number;
   cin?: string;
   dateOfBirth?: Date;
 }

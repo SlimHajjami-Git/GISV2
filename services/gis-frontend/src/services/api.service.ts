@@ -3866,6 +3866,8 @@ export interface VehicleExpiryDto {
   expiryDate?: string;
   status: string;
   daysUntilExpiry: number;
+  /** « Rappel avant (jours) » de l'échéance : seuil de « bientôt » (30 par défaut). */
+  reminderDays?: number;
   lastRenewalDate?: string;
   lastRenewalCost?: number;
   documentNumber?: string;
@@ -3888,6 +3890,8 @@ export interface RenewDocumentRequest {
   provider?: string;
   notes?: string;
   documentUrl?: string;
+  /** « Rappel avant (jours) » de l'échéance, 1 à 365. */
+  reminderDays?: number;
 }
 
 export interface RenewalHistoryDto {

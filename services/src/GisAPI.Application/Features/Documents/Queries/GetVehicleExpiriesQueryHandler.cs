@@ -68,17 +68,19 @@ public class GetVehicleExpiriesQueryHandler : IRequestHandler<GetVehicleExpiries
 
         // Jours calendaires (ExpiryCalendar) : l'heure stockée ne décale ni le
         // compte ni la date affichée.
+        var rappel = ExpiryCalendar.ReminderDays(vehicle, type);
         expiries.Add(new VehicleExpiryDto(
             vehicle.Id,
             vehicle.Name,
             vehicle.Plate,
             type,
             ExpiryCalendar.Day(expiryDate),
-            ExpiryCalendar.Status(expiryDate, today),
+            ExpiryCalendar.Status(expiryDate, today, rappel),
             expiryDate.HasValue ? ExpiryCalendar.DaysUntil(expiryDate.Value, today) : -1,
             lastRenewal?.Date,
             lastRenewal?.Amount,
-            lastRenewal?.DocumentNumber
+            lastRenewal?.DocumentNumber,
+            rappel
         ));
     }
 }

@@ -90,7 +90,8 @@ public class GetDriversQueryHandler : IRequestHandler<GetDriversQuery, List<Driv
                           d.Status,
                           d.CreatedAt,
                           d.UserId,
-                          compte != null ? compte.Status : null
+                          compte != null ? compte.Status : null,
+                          d.PermitReminderDays
                       ))
                       .ToListAsync(ct);
     }

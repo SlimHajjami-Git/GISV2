@@ -68,7 +68,7 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
                 expiries.Add(DriverPermitExpiries.ToDto(
                     driver,
                     vehicles,
-                    ExpiryCalendar.Status(driver.PermitExpiry, today),
+                    ExpiryCalendar.Status(driver.PermitExpiry, today, driver.PermitReminderDays),
                     ExpiryCalendar.DaysUntil(driver.PermitExpiry!.Value, today)));
             }
         }
@@ -138,18 +138,20 @@ public class GetExpiriesQueryHandler : IRequestHandler<GetExpiriesQuery, Paginat
         string type, DateTime? expiryDate, DateTime today)
     {
         // Jours calendaires (ExpiryCalendar) : l'heure stockée ne décale ni le
-        // compte ni la date affichée.
+        // compte ni la date affichée. « Bientôt » au « Rappel avant » de l'échéance.
+        var rappel = ExpiryCalendar.ReminderDays(vehicle, type);
         expiries.Add(new VehicleExpiryDto(
             vehicle.Id,
             vehicle.Name,
             vehicle.Plate,
             type,
             ExpiryCalendar.Day(expiryDate),
-            ExpiryCalendar.Status(expiryDate, today),
+            ExpiryCalendar.Status(expiryDate, today, rappel),
             expiryDate.HasValue ? ExpiryCalendar.DaysUntil(expiryDate.Value, today) : -1,
             null,
             null,
-            null
+            null,
+            rappel
         ));
     }
 }

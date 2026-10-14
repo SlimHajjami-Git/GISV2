@@ -92,23 +92,26 @@ public class PredictiveAlertService : BackgroundService
     internal const int UrgentExpiryDays = 15;
 
     /// <summary>
-    /// Jours restants et priorité d'une échéance, ou null au-delà de
-    /// <see cref="ExpiryCalendar.ExpiringSoonDays"/>. Jours calendaires UTC
+    /// Jours restants et priorité d'une échéance, ou null au-delà de son « Rappel avant
+    /// (jours) » (30 par défaut ; fixé à 30 en dur jusqu'à l'erreur n°4 de la campagne GPA
+    /// du 06/10/2026, le réglage saisi ne servait à rien). Jours calendaires UTC
     /// (<see cref="ExpiryCalendar"/>), comme l'écran Échéances : la comparaison
     /// d'instants tronquait les jours (« expire dans 6 jours » quand l'écran en
     /// affichait 7) et déclarait expiré un document le jour même de son échéance.
     /// </summary>
-    internal static (int Days, string Priority)? ExpiryUrgency(DateTime expiry, DateTime todayUtc)
+    internal static (int Days, string Priority)? ExpiryUrgency(DateTime expiry, DateTime todayUtc,
+        int reminderDays = ExpiryCalendar.ExpiringSoonDays)
     {
         var days = ExpiryCalendar.DaysUntil(expiry, todayUtc);
-        if (days > ExpiryCalendar.ExpiringSoonDays) return null;
+        if (days > ExpiryCalendar.ReminderOrDefault(reminderDays)) return null;
         return (days, days <= UrgentExpiryDays ? "urgent" : "normal");
     }
 
     internal static (string Message, string Priority)? DocumentExpiryAlert(
-        string name, string vehicleName, string? plate, DateTime expiry, DateTime todayUtc)
+        string name, string vehicleName, string? plate, DateTime expiry, DateTime todayUtc,
+        int reminderDays = ExpiryCalendar.ExpiringSoonDays)
     {
-        if (ExpiryUrgency(expiry, todayUtc) is not { } urgency) return null;
+        if (ExpiryUrgency(expiry, todayUtc, reminderDays) is not { } urgency) return null;
         var (days, priority) = urgency;
 
         var target = $"{vehicleName} ({plate})";
@@ -122,9 +125,10 @@ public class PredictiveAlertService : BackgroundService
     }
 
     internal static (string Message, string Priority)? DriverPermitExpiryAlert(
-        string fullName, DateTime expiry, DateTime todayUtc)
+        string fullName, DateTime expiry, DateTime todayUtc,
+        int reminderDays = ExpiryCalendar.ExpiringSoonDays)
     {
-        if (ExpiryUrgency(expiry, todayUtc) is not { } urgency) return null;
+        if (ExpiryUrgency(expiry, todayUtc, reminderDays) is not { } urgency) return null;
         var (days, priority) = urgency;
 
         var message = days switch
@@ -144,20 +148,21 @@ public class PredictiveAlertService : BackgroundService
     {
         var today = DateTime.UtcNow.Date;
 
-        var docs = new List<(string Name, DateTime? Expiry)>
+        var docs = new List<(string Name, DateTime? Expiry, string Type)>
         {
-            ("Assurance", vehicle.InsuranceExpiry),
-            ("Contrôle technique", vehicle.TechnicalInspectionExpiry),
-            ("Vignette", vehicle.TaxExpiry),
-            ("Carte grise", vehicle.RegistrationExpiry),
-            ("Permis de transport", vehicle.TransportPermitExpiry)
+            ("Assurance", vehicle.InsuranceExpiry, "insurance"),
+            ("Contrôle technique", vehicle.TechnicalInspectionExpiry, "technical_inspection"),
+            ("Vignette", vehicle.TaxExpiry, "tax"),
+            ("Carte grise", vehicle.RegistrationExpiry, "registration"),
+            ("Permis de transport", vehicle.TransportPermitExpiry, "transport_permit")
         };
 
-        foreach (var (name, expiry) in docs)
+        foreach (var (name, expiry, type) in docs)
         {
             if (!expiry.HasValue) continue;
 
-            var alert = DocumentExpiryAlert(name, vehicle.Name, vehicle.Plate, expiry.Value, today);
+            var alert = DocumentExpiryAlert(name, vehicle.Name, vehicle.Plate, expiry.Value, today,
+                ExpiryCalendar.ReminderDays(vehicle, type));
             string? message = alert?.Message;
             string priority = alert?.Priority ?? "normal";
 
@@ -199,7 +204,7 @@ public class PredictiveAlertService : BackgroundService
 
     /// <summary>
     /// Notifies company admins when a driver's driving-licence (permis conducteur)
-    /// is expired, or expires within 15 / 30 days. In-app notification for admins +
+    /// is expired, or expires within its « Rappel avant » (30 days by default). In-app notification for admins +
     /// email fan-out to the alert_emails recipients of type "permis".
     /// </summary>
     private async Task CheckDriverPermitExpiry(GisDbContext context, INotificationService notifService,
@@ -218,7 +223,7 @@ public class PredictiveAlertService : BackgroundService
         foreach (var driver in drivers)
         {
             var fullName = $"{driver.FirstName} {driver.LastName}".Trim();
-            var alert = DriverPermitExpiryAlert(fullName, driver.PermitExpiry!.Value, today);
+            var alert = DriverPermitExpiryAlert(fullName, driver.PermitExpiry!.Value, today, driver.PermitReminderDays);
             if (alert is null) continue;
             var (message, priority) = alert.Value;
 

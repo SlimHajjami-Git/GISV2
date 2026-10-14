@@ -472,7 +472,7 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
     const days = this.permitDaysLeft(this.employee.permitExpiry);
     if (days < 0) return 'expired';
     if (days <= 15) return 'critical';
-    if (days <= 30) return 'warning';
+    if (days <= (this.employee.permitReminderDays || 30)) return 'warning'; // « Rappel avant » du permis
     return 'ok';
   }
 
@@ -481,7 +481,7 @@ export class DriverScoreDetailComponent implements OnInit, OnChanges {
     const days = this.permitDaysLeft(this.employee.permitExpiry);
     if (days < 0) return 'Expiré';
     if (days === 0) return "Expire aujourd'hui";
-    if (days <= 30) return `Expire dans ${days}j`;
+    if (days <= (this.employee.permitReminderDays || 30)) return `Expire dans ${days}j`;
     return `Valide (${days}j)`;
   }
 }

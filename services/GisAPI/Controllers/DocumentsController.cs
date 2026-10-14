@@ -73,7 +73,8 @@ public class DocumentsController : ControllerBase
             request.DocumentNumber,
             request.Provider,
             request.Notes,
-            request.DocumentUrl
+            request.DocumentUrl,
+            request.ReminderDays
         );
 
         var costId = await _mediator.Send(command);
@@ -123,7 +124,8 @@ public record RenewDocumentRequest(
     string? DocumentNumber,
     string? Provider,
     string? Notes,
-    string? DocumentUrl
+    string? DocumentUrl,
+    int? ReminderDays = null
 );
 
 public record UpdateExpiryRequest(

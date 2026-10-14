@@ -73,6 +73,10 @@ public class Vehicle : TenantEntity
     public int InsuranceReminderDays { get; set; } = 30;
     public int TaxReminderDays { get; set; } = 30;
     public int TechnicalInspectionReminderDays { get; set; } = 30;
+    /// <summary>« Rappel avant » de la carte grise et de l'autorisation de transport (migration 059) :
+    /// décide quand l'échéance passe « Expire bientôt » et quand l'alerte part.</summary>
+    public int RegistrationReminderDays { get; set; } = 30;
+    public int TransportPermitReminderDays { get; set; } = 30;
 
     public ICollection<VehicleDocument> Documents { get; set; } = new List<VehicleDocument>();
     public ICollection<MaintenanceRecord> MaintenanceRecords { get; set; } = new List<MaintenanceRecord>();

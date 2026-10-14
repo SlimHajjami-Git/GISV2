@@ -32,6 +32,8 @@ public class Driver : TenantEntity
     public string? PermitNumber { get; set; }
     public string? PermitType { get; set; }
     public DateTime? PermitExpiry { get; set; }
+    /// <summary>« Rappel avant » du permis (migration 059) : « Expire bientôt » et alerte N jours avant.</summary>
+    public int PermitReminderDays { get; set; } = 30;
     public string? CIN { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public DateTime? HireDate { get; set; }

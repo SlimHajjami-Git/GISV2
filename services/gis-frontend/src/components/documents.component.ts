@@ -102,7 +102,7 @@ export interface VehicleDocument {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ expiringSoonCount }}</span>
-              <span class="stat-label">Expire < 30j</span>
+              <span class="stat-label">Expire bientôt</span>
             </div>
           </div>
           <div class="stat-item" (click)="filterByStatus('ok')">
@@ -1068,7 +1068,10 @@ export class DocumentsComponent implements OnInit, OnDestroy {
               const known = dto.status !== 'unknown' && expiryDate !== null;
               const daysUntilExpiry = known ? (dto.daysUntilExpiry ?? 0) : 0;
               let status: VehicleDocument['status'] = 'unknown';
-              if (known) status = daysUntilExpiry < 0 ? 'expired' : daysUntilExpiry <= 30 ? 'expiring_soon' : 'ok';
+              // « Bientôt » au « Rappel avant » de l'échéance, renvoyé par l'API (30 par
+              // défaut) : il était fixé à 30 jours et le réglage ne servait à rien (erreur n°4).
+              const rappel = dto.reminderDays || 30;
+              if (known) status = daysUntilExpiry < 0 ? 'expired' : daysUntilExpiry <= rappel ? 'expiring_soon' : 'ok';
 
               docs.push({
                 vehicleId: dto.vehicleId,
@@ -1079,7 +1082,7 @@ export class DocumentsComponent implements OnInit, OnDestroy {
                 documentNumber: dto.documentNumber,
                 lastRenewalDate: dto.lastRenewalDate ? new Date(dto.lastRenewalDate) : undefined,
                 lastRenewalCost: dto.lastRenewalCost,
-                reminderDays: 30,
+                reminderDays: rappel,
                 status,
                 daysUntilExpiry
               } as VehicleDocument);

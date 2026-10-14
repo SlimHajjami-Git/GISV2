@@ -114,7 +114,9 @@ public class GetVehiclesQueryHandler : IRequestHandler<GetVehiclesQuery, Paginat
                 // Immobilisation (bannière et bouton de levée de l'écran Véhicules)
                 v.IsImmobilized,
                 v.ImmobilizationReason,
-                v.ImmobilizationStartedAt
+                v.ImmobilizationStartedAt,
+                v.InsuranceReminderDays,
+                v.TechnicalInspectionReminderDays
             ));
 
         var result = await projectedQuery.ToPaginatedListAsync(request.Page, request.PageSize, ct);

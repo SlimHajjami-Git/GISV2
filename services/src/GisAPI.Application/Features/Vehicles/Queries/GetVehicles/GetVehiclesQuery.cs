@@ -56,7 +56,10 @@ public record VehicleDto(
     // (recette GPA du 11/09/2026).
     bool IsImmobilized = false,
     string? ImmobilizationReason = null,
-    DateTime? ImmobilizationStartedAt = null
+    DateTime? ImmobilizationStartedAt = null,
+    // « Rappel avant (jours) » : seuil des alertes d'échéance de la liste (migration 059).
+    int InsuranceReminderDays = 30,
+    int TechnicalInspectionReminderDays = 30
 );
 
 public record GpsDeviceDto(

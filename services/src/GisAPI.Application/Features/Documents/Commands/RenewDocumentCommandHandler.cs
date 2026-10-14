@@ -46,6 +46,11 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
         CheckLength(request.Notes, NotesMaxLength, "Notes");
         CheckLength(request.DocumentUrl, DocumentUrlMaxLength, "Lien du justificatif");
 
+        if (request.ReminderDays is { } rappel
+            && (rappel < ExpiryCalendar.MinReminderDays || rappel > ExpiryCalendar.MaxReminderDays))
+            throw new DomainException(
+                $"Le rappel doit être compris entre {ExpiryCalendar.MinReminderDays} et {ExpiryCalendar.MaxReminderDays} jours.");
+
         var companyId = _tenantService.CompanyId ?? throw new DomainException("Société non identifiée");
 
         // Borne explicite à la société, comme la correction d'échéance : le
@@ -154,6 +159,11 @@ public class RenewDocumentCommandHandler : IRequestHandler<RenewDocumentCommand,
                 vehicle.TransportPermitExpiry = expiryDateUtc;
                 break;
         }
+
+        // « Rappel avant » de cette échéance : il décide quand elle passe « Expire bientôt »
+        // et quand l'alerte part (ExpiryCalendar.ReminderDays).
+        if (request.ReminderDays.HasValue)
+            ExpiryCalendar.SetReminderDays(vehicle, request.DocumentType, request.ReminderDays.Value);
 
         vehicle.UpdatedAt = DateTime.UtcNow;
 

@@ -3451,13 +3451,13 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   isInsuranceExpiring(vehicle: any): boolean {
     if (!vehicle.insuranceExpiry) return false;
     const days = this.getDaysUntilExpiry(vehicle.insuranceExpiry);
-    return days <= 30;
+    return days <= (vehicle.insuranceReminderDays || 30); // « Rappel avant » (erreur n°4)
   }
 
   isTechnicalInspectionExpiring(vehicle: any): boolean {
     if (!vehicle.technicalInspectionExpiry) return false;
     const days = this.getDaysUntilExpiry(vehicle.technicalInspectionExpiry);
-    return days <= 30;
+    return days <= (vehicle.technicalInspectionReminderDays || 30);
   }
 
   // Jours calendaires en UTC, comme /documents/expiries (ExpiryCalendar) : compté en jour

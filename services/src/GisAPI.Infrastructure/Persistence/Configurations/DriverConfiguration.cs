@@ -26,6 +26,7 @@ public class DriverConfiguration : IEntityTypeConfiguration<Driver>
         builder.Property(d => d.PermitNumber).HasColumnName("permit_number").HasMaxLength(50);
         builder.Property(d => d.PermitType).HasColumnName("permit_type").HasMaxLength(10);
         builder.Property(d => d.PermitExpiry).HasColumnName("permit_expiry");
+        builder.Property(d => d.PermitReminderDays).HasColumnName("permit_reminder_days"); // migration 059
         builder.Property(d => d.CIN).HasColumnName("cin").HasMaxLength(20);
         builder.Property(d => d.DateOfBirth).HasColumnName("date_of_birth");
         builder.Property(d => d.HireDate).HasColumnName("hire_date");

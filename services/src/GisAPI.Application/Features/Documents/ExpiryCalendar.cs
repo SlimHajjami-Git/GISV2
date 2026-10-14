@@ -42,11 +42,50 @@ public static class ExpiryCalendar
     public static int DaysUntil(DateTime stored, DateTime today) =>
         (Day(stored) - today.Date).Days;
 
-    public static string Status(DateTime? stored, DateTime today)
+    public static string Status(DateTime? stored, DateTime today) =>
+        Status(stored, today, ExpiringSoonDays);
+
+    /// <summary>
+    /// Statut avec le « Rappel avant (jours) » de l'échéance : elle passe « bientôt » N jours
+    /// avant. Le seuil était fixé à 30 jours partout et le réglage saisi ne servait à rien
+    /// (campagne de tests GPA du 06/10/2026, erreur n°4).
+    /// </summary>
+    public static string Status(DateTime? stored, DateTime today, int reminderDays)
     {
         if (stored is null) return Unknown;
         var days = DaysUntil(stored.Value, today);
-        return days < 0 ? Expired : days <= ExpiringSoonDays ? ExpiringSoon : Ok;
+        return days < 0 ? Expired : days <= ReminderOrDefault(reminderDays) ? ExpiringSoon : Ok;
+    }
+
+    /// <summary>Bornes du réglage (1 à 365 jours) ; hors bornes, le seuil historique de 30 jours.</summary>
+    public const int MinReminderDays = 1;
+    public const int MaxReminderDays = 365;
+
+    public static int ReminderOrDefault(int reminderDays) =>
+        reminderDays is >= MinReminderDays and <= MaxReminderDays ? reminderDays : ExpiringSoonDays;
+
+    /// <summary>« Rappel avant » d'une échéance de véhicule, selon son type.</summary>
+    public static int ReminderDays(GisAPI.Domain.Entities.Vehicle vehicle, string documentType) => ReminderOrDefault(documentType switch
+    {
+        "insurance" => vehicle.InsuranceReminderDays,
+        "technical_inspection" => vehicle.TechnicalInspectionReminderDays,
+        "tax" => vehicle.TaxReminderDays,
+        "registration" => vehicle.RegistrationReminderDays,
+        "transport_permit" => vehicle.TransportPermitReminderDays,
+        _ => ExpiringSoonDays
+    });
+
+    /// <summary>Enregistre le « Rappel avant » d'une échéance de véhicule (renouvellement).</summary>
+    public static void SetReminderDays(GisAPI.Domain.Entities.Vehicle vehicle, string documentType, int reminderDays)
+    {
+        switch (documentType)
+        {
+            case "insurance": vehicle.InsuranceReminderDays = reminderDays; break;
+            case "technical_inspection": vehicle.TechnicalInspectionReminderDays = reminderDays; break;
+            case "tax": vehicle.TaxReminderDays = reminderDays; break;
+            case "registration": vehicle.RegistrationReminderDays = reminderDays; break;
+            case "transport_permit": vehicle.TransportPermitReminderDays = reminderDays; break;
+        }
     }
 
     /// <summary>

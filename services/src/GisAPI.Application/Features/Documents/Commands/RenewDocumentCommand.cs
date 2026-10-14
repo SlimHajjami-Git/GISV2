@@ -11,7 +11,10 @@ public record RenewDocumentCommand(
     string? DocumentNumber,
     string? Provider,
     string? Notes,
-    string? DocumentUrl
+    string? DocumentUrl,
+    // « Rappel avant (jours) » saisi dans la fenêtre : jamais envoyé ni enregistré jusqu'à
+    // l'erreur n°4 de la campagne GPA (06/10/2026). Null = réglage inchangé.
+    int? ReminderDays = null
 ) : ICommand<int>;
 
 

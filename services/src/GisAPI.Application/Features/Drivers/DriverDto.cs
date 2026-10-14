@@ -20,5 +20,7 @@ public record DriverDto(
     // Compte chauffeur relié (migration 050) : null = pas d'accès à l'application ;
     // AccountStatus = statut de ce compte (« active », « inactive »).
     int? UserId = null,
-    string? AccountStatus = null
+    string? AccountStatus = null,
+    // « Rappel avant (jours) » du permis (migration 059) : la fiche chauffeur le relit.
+    int PermitReminderDays = 30
 );

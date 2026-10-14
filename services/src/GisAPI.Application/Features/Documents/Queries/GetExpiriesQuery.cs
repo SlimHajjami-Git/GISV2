@@ -21,7 +21,10 @@ public record VehicleExpiryDto(
     int DaysUntilExpiry,
     DateTime? LastRenewalDate,
     decimal? LastRenewalCost,
-    string? DocumentNumber
+    string? DocumentNumber,
+    // « Rappel avant (jours) » de l'échéance (migration 059) : seuil de « bientôt » et
+    // valeur proposée par la fenêtre de renouvellement.
+    int ReminderDays = ExpiryCalendar.ExpiringSoonDays
 );
 
 public record ExpiryStatsDto(

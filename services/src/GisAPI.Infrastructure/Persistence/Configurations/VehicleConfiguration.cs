@@ -52,6 +52,8 @@ public class VehicleConfiguration : IEntityTypeConfiguration<Vehicle>
         builder.Property(e => e.InsuranceReminderDays).HasColumnName("insurance_reminder_days");
         builder.Property(e => e.TaxReminderDays).HasColumnName("tax_reminder_days");
         builder.Property(e => e.TechnicalInspectionReminderDays).HasColumnName("technical_inspection_reminder_days");
+        builder.Property(e => e.RegistrationReminderDays).HasColumnName("registration_reminder_days");          // migration 059
+        builder.Property(e => e.TransportPermitReminderDays).HasColumnName("transport_permit_reminder_days");  // migration 059
 
         // Immobilisation flag (suppresses all automatic alert services
         // while active). Mapped explicitly here as a safety belt — the

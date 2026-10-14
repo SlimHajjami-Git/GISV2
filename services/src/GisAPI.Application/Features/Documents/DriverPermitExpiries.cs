@@ -58,6 +58,7 @@ public static class DriverPermitExpiries
             daysUntil,
             null,
             null,
-            driver.PermitNumber);
+            driver.PermitNumber,
+            ExpiryCalendar.ReminderOrDefault(driver.PermitReminderDays));
     }
 }

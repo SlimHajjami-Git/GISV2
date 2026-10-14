@@ -327,9 +327,9 @@ export interface RenewalFormData {
           <!-- Quick Date Buttons -->
           <div class="quick-dates">
             <span class="quick-label">Expiration rapide:</span>
-            <button type="button" class="quick-btn" (click)="setExpiryFromNow(12)">+1 an</button>
-            <button type="button" class="quick-btn" (click)="setExpiryFromNow(6)">+6 mois</button>
-            <button type="button" class="quick-btn" (click)="setExpiryFromNow(24)">+2 ans</button>
+            <button type="button" class="quick-btn" (click)="prolongerEcheance(12)">+1 an</button>
+            <button type="button" class="quick-btn" (click)="prolongerEcheance(6)">+6 mois</button>
+            <button type="button" class="quick-btn" (click)="prolongerEcheance(24)">+2 ans</button>
           </div>
 
           <!-- Summary -->
@@ -1053,8 +1053,12 @@ export class DocumentRenewalPopupComponent implements OnChanges {
         this.formData.date = new Date().toISOString().split('T')[0];
         this.dateParDefaut = this.formData.date;
 
-        // Set default expiry to 1 year from now
-        this.setExpiryFromNow(12);
+        // Rappel déjà réglé pour cette échéance (30 par défaut) ; il était toujours
+        // proposé à 30 et jamais envoyé (erreur n°4 de la campagne GPA du 06/10/2026).
+        this.formData.reminderDays = this.document.reminderDays || 30;
+
+        // Échéance proposée : un an après l'échéance actuelle (ou après aujourd'hui).
+        this.prolongerEcheance(12);
 
         // Un renouvellement en chasse un autre : le récapitulatif du scan
         // précédent ne doit pas survivre à la réouverture de la modale.
@@ -1211,10 +1215,29 @@ export class DocumentRenewalPopupComponent implements OnChanges {
     return mapping[docType] || 'other';
   }
 
-  setExpiryFromNow(months: number): void {
-    const date = new Date();
+  /**
+   * Nouvelle échéance = début de la nouvelle période + N mois. Le début est l'échéance
+   * actuelle si elle est encore à venir (renouvellement anticipé : la couverture continue),
+   * sinon aujourd'hui. « Aujourd'hui + 1 an » faisait perdre les jours restants : assurance
+   * au 28/11/2026 renouvelée le 14/10 et proposée au 14/10/2027 (test de Karim du 14/10/2026).
+   */
+  prolongerEcheance(months: number): void {
+    const date = this.debutNouvellePeriode();
     date.setMonth(date.getMonth() + months);
-    this.formData.newExpiryDate = date.toISOString().split('T')[0];
+    const deux = (n: number) => String(n).padStart(2, '0');
+    // Date locale, pas toISOString() : en UTC+1, minuit local tombait la veille.
+    this.formData.newExpiryDate = `${date.getFullYear()}-${deux(date.getMonth() + 1)}-${deux(date.getDate())}`;
+  }
+
+  private debutNouvellePeriode(): Date {
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+    const actuelle = this.document?.expiryDate ? new Date(this.document.expiryDate) : null;
+    if (actuelle && !isNaN(actuelle.getTime())) {
+      actuelle.setHours(0, 0, 0, 0);
+      if (actuelle > aujourdhui) return actuelle;
+    }
+    return aujourdhui;
   }
 
   getTypeLabel(type: string | undefined): string {
@@ -1552,7 +1575,10 @@ export class DocumentRenewalPopupComponent implements OnChanges {
       provider: this.formData.provider || undefined,
       notes: this.formData.notes || undefined,
       // Quittance scannée : le serveur la range en ReceiptUrl du coût créé.
-      documentUrl: this.formData.documentUrl || undefined
+      documentUrl: this.formData.documentUrl || undefined,
+      // « Rappel avant (jours) » : décide quand l'échéance passe « Expire bientôt » et
+      // quand l'alerte part. Jamais envoyé jusqu'à l'erreur n°4 (campagne GPA du 06/10/2026).
+      reminderDays: this.formData.reminderDays || undefined
     };
 
     this.apiService.renewDocument(this.document.vehicleId, renewRequest).subscribe({

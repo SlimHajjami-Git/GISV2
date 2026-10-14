@@ -44,11 +44,11 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
 
         foreach (var vehicle in vehicles)
         {
-            CountExpiry(vehicle.InsuranceExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
-            CountExpiry(vehicle.TechnicalInspectionExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
-            CountExpiry(vehicle.TaxExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
-            CountExpiry(vehicle.RegistrationExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
-            CountExpiry(vehicle.TransportPermitExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(vehicle.InsuranceExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "insurance"), ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(vehicle.TechnicalInspectionExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "technical_inspection"), ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(vehicle.TaxExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "tax"), ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(vehicle.RegistrationExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "registration"), ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(vehicle.TransportPermitExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "transport_permit"), ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
         }
 
         // Include driver permit expiries in stats (from the standalone drivers table)
@@ -56,13 +56,13 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
 
         foreach (var driver in drivers)
         {
-            CountExpiry(driver.PermitExpiry, today, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
+            CountExpiry(driver.PermitExpiry, today, driver.PermitReminderDays, ref expiredCount, ref expiringSoonCount, ref okCount, ref totalCount);
         }
 
         return new ExpiryStatsDto(expiredCount, expiringSoonCount, okCount, totalCount);
     }
 
-    private void CountExpiry(DateTime? expiryDate, DateTime today, 
+    private void CountExpiry(DateTime? expiryDate, DateTime today, int reminderDays,
         ref int expired, ref int expiringSoon, ref int ok, ref int total)
     {
         if (!expiryDate.HasValue) return;
@@ -70,7 +70,7 @@ public class GetExpiryStatsQueryHandler : IRequestHandler<GetExpiryStatsQuery, E
         total++;
 
         // Même statut que la liste (jours calendaires) : les compteurs et les lignes concordent.
-        switch (ExpiryCalendar.Status(expiryDate, today))
+        switch (ExpiryCalendar.Status(expiryDate, today, reminderDays))
         {
             case ExpiryCalendar.Expired: expired++; break;
             case ExpiryCalendar.ExpiringSoon: expiringSoon++; break;

@@ -252,12 +252,12 @@ public class VehicleHealthScoreService : IVehicleHealthScoreService
         var today = now.Date;
         int docScore = 15;
 
-        switch (ExpiryCalendar.Status(vehicle.InsuranceExpiry, today))
+        switch (ExpiryCalendar.Status(vehicle.InsuranceExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "insurance")))
         {
             case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Assurance expirée"); break;
             case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Assurance expire le {ExpiryDay(vehicle.InsuranceExpiry!.Value)}"); break;
         }
-        switch (ExpiryCalendar.Status(vehicle.TechnicalInspectionExpiry, today))
+        switch (ExpiryCalendar.Status(vehicle.TechnicalInspectionExpiry, today, ExpiryCalendar.ReminderDays(vehicle, "technical_inspection")))
         {
             case ExpiryCalendar.Expired: docScore -= 5; warnings.Add("Contrôle technique expiré"); break;
             case ExpiryCalendar.ExpiringSoon: docScore -= 2; warnings.Add($"Contrôle technique expire le {ExpiryDay(vehicle.TechnicalInspectionExpiry!.Value)}"); break;

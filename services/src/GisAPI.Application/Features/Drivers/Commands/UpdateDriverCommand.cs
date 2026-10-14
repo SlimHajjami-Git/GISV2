@@ -20,7 +20,9 @@ public record UpdateDriverCommand(
     DateTime? DateOfBirth,
     DateTime? HireDate,
     int? AssignedVehicleId,
-    string? Status
+    string? Status,
+    // « Rappel avant (jours) » du permis (migration 059). Null = réglage inchangé.
+    int? PermitReminderDays = null
 ) : IRequest;
 
 public class UpdateDriverCommandHandler : IRequestHandler<UpdateDriverCommand>
@@ -70,6 +72,8 @@ public class UpdateDriverCommandHandler : IRequestHandler<UpdateDriverCommand>
         driver.DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null;
         driver.HireDate = request.HireDate.HasValue ? DateTime.SpecifyKind(request.HireDate.Value, DateTimeKind.Utc) : null;
         driver.AssignedVehicleId = assignedVehicleId;
+        if (DriverReminder.Valider(request.PermitReminderDays) is { } rappel)
+            driver.PermitReminderDays = rappel;
         if (!string.IsNullOrEmpty(request.Status))
             driver.Status = request.Status;
         driver.UpdatedAt = DateTime.UtcNow;

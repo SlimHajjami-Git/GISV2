@@ -24,7 +24,10 @@ public record CreateDriverCommand(
     string? CIN,
     DateTime? DateOfBirth,
     DateTime? HireDate,
-    int? AssignedVehicleId
+    int? AssignedVehicleId,
+    // « Rappel avant (jours) » du permis : envoyé par la fiche chauffeur et perdu jusqu'à
+    // l'erreur n°4 de la campagne GPA (06/10/2026). Null = 30 jours.
+    int? PermitReminderDays = null
 ) : IRequest<DriverDto>;
 
 public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, DriverDto>
@@ -68,6 +71,7 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
             DateOfBirth = request.DateOfBirth.HasValue ? DateTime.SpecifyKind(request.DateOfBirth.Value, DateTimeKind.Utc) : null,
             HireDate = request.HireDate.HasValue ? DateTime.SpecifyKind(request.HireDate.Value, DateTimeKind.Utc) : null,
             AssignedVehicleId = request.AssignedVehicleId,
+            PermitReminderDays = DriverReminder.Valider(request.PermitReminderDays) ?? 30,
             Status = "active"
         };
         _context.Drivers.Add(driver);
@@ -104,7 +108,8 @@ public class CreateDriverCommandHandler : IRequestHandler<CreateDriverCommand, D
             driver.CIN, driver.DateOfBirth, driver.HireDate,
             driver.AssignedVehicleId,
             vehicle?.Name, vehicle?.Plate,
-            driver.Status, driver.CreatedAt
+            driver.Status, driver.CreatedAt,
+            PermitReminderDays: driver.PermitReminderDays
         );
     }
 }

@@ -191,7 +191,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
     const days = this.getDaysUntilPermitExpiry(driver);
     if (days < 0) return 'expired';
     if (days <= 15) return 'critical';
-    if (days <= 30) return 'warning';
+    if (days <= (driver.permitReminderDays || 30)) return 'warning'; // « Rappel avant » du permis
     return 'ok';
   }
 
@@ -199,7 +199,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
     const days = this.getDaysUntilPermitExpiry(driver);
     if (days < 0) return 'Permis expiré';
     if (days === 0) return "Permis expire aujourd'hui";
-    if (days <= 30) return `Permis expire dans ${days}j`;
+    if (days <= (driver.permitReminderDays || 30)) return `Permis expire dans ${days}j`;
     return `Permis valide (${days}j)`;
   }
 
@@ -214,7 +214,7 @@ export class EmployeesComponent implements OnInit, OnDestroy {
   getExpiringPermitsCount(): number {
     return this.allDrivers.filter(d => {
       const days = this.getDaysUntilPermitExpiry(d);
-      return days <= 30;
+      return days <= (d.permitReminderDays || 30);
     }).length;
   }
 
