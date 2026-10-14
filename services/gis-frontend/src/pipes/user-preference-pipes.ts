@@ -111,6 +111,17 @@ export class AppCurrencyPipe implements PipeTransform, OnDestroy {
   }
 }
 
+/** Nombre au format français, sans unité : « 42 383 », « 45,50 ». Le pipe `number`
+ *  d'Angular suit la locale de l'application, restée en-US : il écrivait « 42,383 » km,
+ *  virgule des milliers à l'anglaise (recette de Karim du 14/10/2026). */
+@Pipe({ name: 'appNumber', standalone: true })
+export class AppNumberPipe implements PipeTransform {
+  transform(value: number | null | undefined, digits: number = 0): string {
+    if (value === null || value === undefined || isNaN(value as number)) return '-';
+    return fmt(value, digits);
+  }
+}
+
 @Pipe({ name: 'appDate', standalone: true, pure: false })
 export class AppDatePipe implements PipeTransform, OnDestroy {
   private sub: Subscription;
@@ -134,5 +145,6 @@ export const USER_PREF_PIPES = [
   AppVolumePipe,
   AppTempPipe,
   AppCurrencyPipe,
+  AppNumberPipe,
   AppDatePipe,
 ] as const;

@@ -193,6 +193,14 @@ export class UserPreferencesService {
     return `${formatted}\u202F${UserPreferencesService.currencySymbol(this.current.currency)}`;
   }
 
+  /** Décimales d'un prix unitaire (prix au litre) : 3 en dinar tunisien, qui se compte en
+   *  millimes (2,075 TND), 2 dans les autres devises (1,98 €). Les 3 décimales s'affichaient
+   *  partout, euros compris (recette de Karim du 14/10/2026). « DT » = ancien code du dinar. */
+  get unitPriceDigits(): number {
+    const code = (this.current.currency || '').toUpperCase();
+    return code === 'TND' || code === 'DT' ? 3 : 2;
+  }
+
   /** Symbole d’affichage d’une devise, code ISO par defaut.
    *  Recette du 10/09/2026 : « 1 385,28 EUR » occupe 20,4 mm dans un tableau
    *  PDF contre 16,5 mm pour « 1 385,28 € ». Le symbole aere le rapport et se

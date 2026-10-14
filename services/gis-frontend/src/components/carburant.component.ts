@@ -9,6 +9,7 @@ import {
 } from './shared/scan-facture.component';
 import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto } from '../services/api.service';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { UserPreferencesService } from '../services/user-preferences.service';
 declare const XLSX: any;
 
 interface FuelEntry {
@@ -154,7 +155,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getAveragePrice() | number:'1.2-2' }}</span>
+              <span class="stat-value">{{ getAveragePrice() | appNumber:2 }}</span>
               <span class="stat-label">Prix Moyen/L</span>
             </div>
           </div>
@@ -165,7 +166,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalVolume() | number:'1.0-0' }} L</span>
+              <span class="stat-value">{{ getTotalVolume() | appNumber:0 }} L</span>
               <span class="stat-label">Volume Total</span>
             </div>
           </div>
@@ -176,7 +177,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
               </svg>
             </div>
             <div class="stat-content">
-              <span class="stat-value">{{ getTotalAmount() | number:'1.2-2' }}</span>
+              <span class="stat-value">{{ getTotalAmount() | appNumber:2 }}</span>
               <span class="stat-label">Montant Total</span>
             </div>
           </div>
@@ -260,7 +261,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                 </div>
                 <div class="form-group">
                   <label>Prix par Litre</label>
-                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" placeholder="Ex: 1.750" step="0.001" min="0">
+                  <input type="number" [(ngModel)]="manualEntry.pricePerLiter" (ngModelChange)="onVolumeOrPriceChange()" class="form-control" [placeholder]="prefs.unitPriceDigits === 3 ? 'Ex: 1.750' : 'Ex: 1.85'" [step]="prefs.unitPriceDigits === 3 ? 0.001 : 0.01" min="0">
                 </div>
                 <div class="form-group">
                   <label>Date Facture <span class="required">*</span></label>
@@ -317,9 +318,9 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                     <td>{{ entry.invoiceDate | date:'dd/MM/yyyy' }}</td>
                     <td><span class="plate-badge">{{ entry.vehiclePlate || '-' }}</span></td>
                     <td><span class="fuel-badge">{{ entry.fuelTypeName }}</span></td>
-                    <td>{{ entry.volume | number:'1.2-2' }} L</td>
-                    <td>{{ entry.pricePerLiter | number:'1.3-3' }}</td>
-                    <td class="total-cell">{{ entry.totalAmount | number:'1.2-2' }}</td>
+                    <td>{{ entry.volume | appNumber:2 }} L</td>
+                    <td>{{ entry.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
+                    <td class="total-cell">{{ entry.totalAmount | appNumber:2 }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -431,11 +432,11 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                   <tr *ngFor="let e of importEntries" [class.invalid]="!e.isValid">
                     <td><span class="status-dot" [class.valid]="e.isValid"></span></td>
                     <td>{{ e.vehiclePlate }}</td>
-                    <td>{{ e.volume | number:'1.2-2' }} L</td>
-                    <td>{{ e.pricePerLiter | number:'1.3-3' }}</td>
-                    <td>{{ e.totalAmount | number:'1.2-2' }}</td>
+                    <td>{{ e.volume | appNumber:2 }} L</td>
+                    <td>{{ e.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
+                    <td>{{ e.totalAmount | appNumber:2 }}</td>
                     <td>{{ e.invoiceDate }}</td>
-                    <td>{{ e.odometerKm ? (e.odometerKm | number:'1.0-0') : '—' }}</td>
+                    <td>{{ e.odometerKm ? (e.odometerKm | appNumber:0) : '—' }}</td>
                     <td><select [(ngModel)]="e.fuelTypeId" *ngIf="e.isValid"><option *ngFor="let ft of fuelTypes" [ngValue]="ft.id">{{ ft.name }}</option></select></td>
                     <td><span *ngFor="let err of e.errors" class="error-tag">{{ err }}</span></td>
                   </tr>
@@ -491,10 +492,10 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                     <td>{{ entry.invoiceDate | date:'dd/MM/yyyy' }}</td>
                     <td><span class="plate-badge">{{ entry.vehiclePlate || '-' }}</span></td>
                     <td><span class="fuel-badge">{{ entry.fuelTypeName }}</span></td>
-                    <td>{{ entry.volume | number:'1.2-2' }} L</td>
-                    <td>{{ entry.pricePerLiter | number:'1.3-3' }}</td>
-                    <td class="total-cell">{{ entry.totalAmount | number:'1.2-2' }}</td>
-                    <td>{{ entry.odometerKm ? (entry.odometerKm | number:'1.0-0') : '—' }}</td>
+                    <td>{{ entry.volume | appNumber:2 }} L</td>
+                    <td>{{ entry.pricePerLiter | appCurrency:prefs.unitPriceDigits }}</td>
+                    <td class="total-cell">{{ entry.totalAmount | appNumber:2 }}</td>
+                    <td>{{ entry.odometerKm ? (entry.odometerKm | appNumber:0) : '—' }}</td>
                     <td><button class="btn-icon-delete" (click)="deleteEntry(entry)" title="Supprimer">🗑️</button></td>
                   </tr>
                 </tbody>
@@ -528,19 +529,19 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                 </div>
                 <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
                   <div style="font-size:11px;color:#64748b;">Litres</div>
-                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalLiters | number:'1.0-0' }} L</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalLiters | appNumber:0 }} L</div>
                 </div>
                 <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
                   <div style="font-size:11px;color:#64748b;">Distance</div>
-                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalDistanceKm | number:'1.0-0' }} km</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.totalDistanceKm | appNumber:0 }} km</div>
                 </div>
                 <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
                   <div style="font-size:11px;color:#64748b;">Conso. moyenne</div>
-                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetConsumptionPer100Km != null ? (consumption.fleetConsumptionPer100Km | number:'1.1-1') + ' L/100km' : '—' }}</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetConsumptionPer100Km != null ? (consumption.fleetConsumptionPer100Km | appNumber:1) + ' L/100km' : '—' }}</div>
                 </div>
                 <div style="flex:1;min-width:130px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:10px 14px;">
                   <div style="font-size:11px;color:#64748b;">Coût / km</div>
-                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetCostPerKm != null ? (consumption.fleetCostPerKm | appCurrency:3) : '—' }}</div>
+                  <div style="font-size:18px;font-weight:700;color:#1e293b;">{{ consumption.fleetCostPerKm != null ? (consumption.fleetCostPerKm | appCurrency:prefs.unitPriceDigits) : '—' }}</div>
                 </div>
               </div>
 
@@ -569,13 +570,13 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                       <td><span class="plate-badge">{{ v.plate || v.vehicleName }}</span></td>
                       <td><span class="fuel-badge">{{ v.fuelType || '-' }}</span></td>
                       <td>{{ v.entryCount }}</td>
-                      <td>{{ v.distanceKm != null ? (v.distanceKm | number:'1.0-0') + ' km' : '—' }}</td>
-                      <td>{{ v.totalLiters | number:'1.0-0' }} L</td>
+                      <td>{{ v.distanceKm != null ? (v.distanceKm | appNumber:0) + ' km' : '—' }}</td>
+                      <td>{{ v.totalLiters | appNumber:0 }} L</td>
                       <td>
-                        {{ v.consumptionPer100Km != null ? (v.consumptionPer100Km | number:'1.1-1') : '—' }}
+                        {{ v.consumptionPer100Km != null ? (v.consumptionPer100Km | appNumber:1) : '—' }}
                         <span *ngIf="v.consumptionPer100Km != null && !v.reliableOdometer" title="Relevés compteur incomplets — fiabilité réduite" style="color:#f59e0b;">⚠</span>
                       </td>
-                      <td>{{ v.costPerKm != null ? (v.costPerKm | appCurrency:3) : '—' }}</td>
+                      <td>{{ v.costPerKm != null ? (v.costPerKm | appCurrency:prefs.unitPriceDigits) : '—' }}</td>
                       <td class="total-cell">{{ v.totalCost | appCurrency:0 }}</td>
                     </tr>
                   </tbody>
@@ -780,7 +781,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   consumption: any = null;
   loadingConso = false;
 
-  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(private apiService: ApiService, private cdr: ChangeDetectorRef, public prefs: UserPreferencesService) {}
 
   ngOnInit() {
     this.loadFuelTypes();
@@ -821,11 +822,13 @@ export class CarburantComponent implements OnInit, OnDestroy {
       this.onVolumeOrPriceChange();
       return;
     }
+    // Sans tarif de référence (société hors dinar, ou tarif non saisi), champ VIDE : un 0
+    // prérempli se lisait comme un prix et donnait « 01.95 » à la frappe.
     if (!fuelTypeId) {
-      this.manualEntry.pricePerLiter = 0;
+      this.manualEntry.pricePerLiter = null;
     } else {
       const price = this.fuelPrices.find(p => p.fuelTypeId === fuelTypeId);
-      this.manualEntry.pricePerLiter = price ? price.pricePerLiter : 0;
+      this.manualEntry.pricePerLiter = price ? price.pricePerLiter : null;
     }
     // Pricing just changed under the hood — keep the total in sync so
     // long as the operator hasn't pinned a custom total themselves.

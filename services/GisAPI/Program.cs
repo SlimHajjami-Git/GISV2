@@ -804,9 +804,12 @@ static async Task SeedFuelTypesAndPricing(GisAPI.Infrastructure.Persistence.GisD
         // Reload fuel types to get IDs
         var allFuelTypes = await context.FuelTypes.ToListAsync();
 
-        // Seed default pricing for every company that has no pricing yet
+        // Seed default pricing for every company that has no pricing yet — en dinar tunisien
+        // seulement : ce sont des prix tunisiens. Une société en EUR (offre GPA) recevait 2,075
+        // le litre de diesel, prérempli à la saisie d'un plein (tests GPA 06/10/2026, migration 058).
+        // Sans prix de référence, le champ reste vide et le client saisit le prix du ticket.
         var companies = await context.Societes.IgnoreQueryFilters().ToListAsync();
-        foreach (var company in companies)
+        foreach (var company in companies.Where(c => IsDinarTunisien(c.Settings?.Currency)))
         {
             var existingPricing = await context.FuelPricings
                 .IgnoreQueryFilters()
@@ -869,6 +872,14 @@ static async Task SeedFuelTypesAndPricing(GisAPI.Infrastructure.Persistence.GisD
     {
         Console.WriteLine($"[Seed] Warning: Could not seed fuel types/pricing: {ex.Message}");
     }
+}
+
+// Devise vide = devise du déploiement (AppCurrency.Default). « DT » est l'ancien code du dinar,
+// encore porté par plusieurs sociétés de TN.
+static bool IsDinarTunisien(string? currency)
+{
+    var code = string.IsNullOrWhiteSpace(currency) ? GisAPI.Domain.Common.AppCurrency.Default : currency.Trim();
+    return code.Equals("TND", StringComparison.OrdinalIgnoreCase) || code.Equals("DT", StringComparison.OrdinalIgnoreCase);
 }
 
 // =============================================================================
