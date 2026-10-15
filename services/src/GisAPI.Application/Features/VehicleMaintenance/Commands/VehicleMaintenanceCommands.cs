@@ -2,9 +2,14 @@ using GisAPI.Application.Common.Interfaces;
 
 namespace GisAPI.Application.Features.VehicleMaintenance.Commands;
 
+/// <param name="AllowSimilar">
+/// Affecter même si le véhicule a déjà un entretien du même type (<see cref="MaintenanceTemplateFamily"/>) :
+/// l'écran le demande après confirmation. Sans lui, le serveur refuse (409) avec le nom de l'entretien existant.
+/// </param>
 public record AssignMaintenanceTemplateCommand(
     int VehicleId,
-    int TemplateId
+    int TemplateId,
+    bool AllowSimilar = false
 ) : ICommand<int>;
 
 public record RemoveMaintenanceScheduleCommand(int ScheduleId) : ICommand<bool>;

@@ -90,7 +90,7 @@ public class MaintenanceSchedulerController : ControllerBase
     [HttpPost("vehicles/{vehicleId}/schedules")]
     public async Task<ActionResult<int>> AssignTemplate(int vehicleId, [FromBody] SchedulerAssignTemplateRequest request)
     {
-        var result = await _mediator.Send(new AssignMaintenanceTemplateCommand(vehicleId, request.TemplateId));
+        var result = await _mediator.Send(new AssignMaintenanceTemplateCommand(vehicleId, request.TemplateId, request.AllowSimilar));
         return CreatedAtAction(nameof(GetVehicleSchedules), new { vehicleId }, result);
     }
 
@@ -214,7 +214,8 @@ public class MaintenanceSchedulerController : ControllerBase
 
 #region Request DTOs
 
-public record SchedulerAssignTemplateRequest(int TemplateId);
+/// <param name="AllowSimilar">Confirmé dans l'écran : le véhicule a déjà un entretien du même type (erreur n°17).</param>
+public record SchedulerAssignTemplateRequest(int TemplateId, bool AllowSimilar = false);
 
 public record PauseScheduleRequest(string? Reason);
 

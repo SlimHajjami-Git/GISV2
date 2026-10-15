@@ -8,6 +8,7 @@ import { UserPreferencesService } from '../services/user-preferences.service';
 import { ApiService, MarkMaintenanceDoneRequest, SupplierDto } from '../services/api.service';
 import { ToastService } from '../services/toast.service';
 import { PermissionService } from '../services/permission.service';
+import { entretiensDuMemeType } from './maintenance-template-family';
 import { trigger, transition, style, animate } from '@angular/animations';
 import {
   ScanFactureComponent, ResultatScanFacture, EchecScanFacture
@@ -2250,8 +2251,21 @@ export class MaintenanceTemplatesComponent implements OnInit, OnDestroy {
     if (this.isAssignSubmitting || this.addToVehicleData.selectedTemplateIds.length === 0) return;
     const vid = parseInt(this.addToVehicleData.vehicleId);
     const templateIds: string[] = [...this.addToVehicleData.selectedTemplateIds];
+
+    // Deux modèles du même type sur un véhicule (« Vidange + filtre à huile » et « Vidange
+    // Moteur ») font deux échéances : la vidange faite sur l'une laisse l'autre en retard
+    // (campagne GPA, erreur n°17). On le dit avant d'envoyer ; « Annuler » laisse la sélection.
+    const dejaAffectes = (this.vehicleSchedules.find(x => x.vehicleId === this.addToVehicleData.vehicleId)?.maintenanceItems ?? [])
+      .map(m => m.templateName);
+    const choisis = templateIds.map(tid => this.templates.find(t => t.id === tid)?.name ?? '');
+    const doublons = entretiensDuMemeType(dejaAffectes, choisis);
+    if (doublons.length > 0 && !confirm(
+      doublons.join('\n') + '\n\nAvec deux échéances pour le même entretien, celui fait sur l\'une laisse l\'autre en retard.' +
+      '\n\nAffecter quand même ?')) return;
+    const allowSimilar = doublons.length > 0;
+
     // Chaque appel émet null en cas de succès, l'erreur sinon : forkJoin attend toutes les affectations.
-    const saves = templateIds.map(tid => this.apiService.assignMaintenanceTemplate(vid, parseInt(tid)).pipe(
+    const saves = templateIds.map(tid => this.apiService.assignMaintenanceTemplate(vid, parseInt(tid), allowSimilar).pipe(
       map(() => null), catchError(err => of(err))));
 
     this.isAssignSubmitting = true;

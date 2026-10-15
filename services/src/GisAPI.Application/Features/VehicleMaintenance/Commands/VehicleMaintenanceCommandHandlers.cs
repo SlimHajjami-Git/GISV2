@@ -80,6 +80,22 @@ public class AssignMaintenanceTemplateCommandHandler : IRequestHandler<AssignMai
             throw new GisAPI.Domain.Exceptions.DomainException(
                 "Ce véhicule n'appartient pas à la société de ce modèle d'entretien : affectation refusée.");
 
+        // Deux modèles du même type sur un véhicule (« Vidange + filtre à huile » et « Vidange
+        // Moteur ») faisaient deux échéances : la vidange faite sur l'une laissait l'autre en
+        // retard (campagne GPA, erreur n°17). Refus, sauf confirmation explicite de l'écran.
+        if (!request.AllowSimilar)
+        {
+            var dejaAffectes = await _context.VehicleMaintenanceSchedules.AsNoTracking()
+                .Where(s => s.VehicleId == request.VehicleId && s.TemplateId != request.TemplateId && s.Template != null)
+                .Select(s => s.Template!.Name)
+                .ToListAsync(cancellationToken);
+            var semblable = dejaAffectes.FirstOrDefault(n => MaintenanceTemplateFamily.SameFamily(n, template.Name));
+            if (semblable != null)
+                throw new ConflictException(
+                    $"Ce véhicule a déjà l'entretien « {semblable} », du même type que « {template.Name} ». " +
+                    "Avec deux échéances, l'entretien fait sur l'une laisse l'autre en retard.");
+        }
+
         // Calypso 7 (P-maint-bis): use the smart mileage resolver instead of
         // raw vehicle.Mileage. The resolver cascades GPS odometer → manual
         // mileage → trips total, which is the correct snapshot when the

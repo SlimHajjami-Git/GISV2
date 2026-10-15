@@ -2077,8 +2077,9 @@ export class ApiService {
     return this.http.get<MaintenanceStatsDto>(`${this.API_URL}/vehicle-maintenance/stats`, { headers: this.getHeaders() });
   }
 
-  assignMaintenanceTemplate(vehicleId: number, templateId: number): Observable<{ scheduleId: number }> {
-    return this.http.post<{ scheduleId: number }>(`${this.API_URL}/vehicle-maintenance/assign`, { vehicleId, templateId }, { headers: this.getHeaders() });
+  /** allowSimilar : confirmé par l'utilisateur, le véhicule a déjà un entretien du même type (sinon 409). */
+  assignMaintenanceTemplate(vehicleId: number, templateId: number, allowSimilar = false): Observable<{ scheduleId: number }> {
+    return this.http.post<{ scheduleId: number }>(`${this.API_URL}/vehicle-maintenance/assign`, { vehicleId, templateId, allowSimilar }, { headers: this.getHeaders() });
   }
 
   removeMaintenanceSchedule(scheduleId: number): Observable<void> {

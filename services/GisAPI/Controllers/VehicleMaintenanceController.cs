@@ -70,7 +70,7 @@ public class VehicleMaintenanceController : ControllerBase
     [HttpPost("assign")]
     public async Task<ActionResult<int>> AssignTemplate([FromBody] AssignTemplateRequest request)
     {
-        var scheduleId = await _mediator.Send(new AssignMaintenanceTemplateCommand(request.VehicleId, request.TemplateId));
+        var scheduleId = await _mediator.Send(new AssignMaintenanceTemplateCommand(request.VehicleId, request.TemplateId, request.AllowSimilar));
         return Ok(new { ScheduleId = scheduleId });
     }
 
@@ -211,7 +211,8 @@ public class VehicleMaintenanceController : ControllerBase
 }
 
 // Request DTOs
-public record AssignTemplateRequest(int VehicleId, int TemplateId);
+/// <param name="AllowSimilar">Confirmé dans l'écran : le véhicule a déjà un entretien du même type (erreur n°17).</param>
+public record AssignTemplateRequest(int VehicleId, int TemplateId, bool AllowSimilar = false);
 
 /// <param name="LaborCost">Part main-d'œuvre du coût, facultative.</param>
 /// <param name="PartsCost">Part pièces du coût, facultative.</param>
