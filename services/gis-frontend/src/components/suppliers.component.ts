@@ -110,7 +110,7 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
             </div>
             <div class="stat-content">
               <span class="stat-value">{{ allGarages.length }}</span>
-              <span class="stat-label">Total garages</span>
+              <span class="stat-label">Total fournisseurs</span>
             </div>
           </div>
           <div class="stat-item">
@@ -251,8 +251,8 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
                 <path d="M14 16h1"/>
                 <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/>
               </svg>
-              <h3>Aucun garage trouvé</h3>
-              <p>Modifiez vos filtres ou ajoutez un nouveau garage</p>
+              <h3>Aucun fournisseur trouvé</h3>
+              <p>Modifiez vos filtres ou ajoutez un nouveau fournisseur</p>
             </div>
           </div>
         </div>
@@ -262,6 +262,7 @@ export const SUPPLIER_TYPES: Record<string, { label: string; icon: string }> = {
       <app-garage-popup
         [isOpen]="isPopupOpen"
         [garage]="selectedGarage"
+        [errorMessage]="saveError"
         (closed)="closePopup()"
         (saved)="saveGarage($event)"
       />
@@ -890,17 +891,30 @@ export class SuppliersComponent implements OnInit, OnDestroy {
 
   openAddPopup(): void {
     this.selectedGarage = null;
+    this.saveError = null;
     this.isPopupOpen = true;
   }
 
   openEditPopup(garage: Garage): void {
     this.selectedGarage = { ...garage };
+    this.saveError = null;
     this.isPopupOpen = true;
   }
 
   closePopup(): void {
     this.isPopupOpen = false;
     this.selectedGarage = null;
+    this.saveError = null;
+  }
+
+  /** Motif d'échec affiché dans la fiche, qui reste ouverte avec la saisie. */
+  saveError: string | null = null;
+
+  // Seuls les refus métier (400, 409) portent un message en français ; une erreur serveur
+  // renvoie « An unexpected error occurred », remplacé par le message par défaut.
+  private signalerEchec(err: any): void {
+    this.saveError = ((err?.status === 400 || err?.status === 409) && err?.error?.message)
+      || "L'enregistrement du fournisseur a échoué. Vérifiez les champs puis réessayez.";
   }
 
   saveGarage(garage: Garage): void {
@@ -908,7 +922,9 @@ export class SuppliersComponent implements OnInit, OnDestroy {
       // Mise à jour via API
       this.apiService.updateSupplier(parseInt(garage.id), {
         name: garage.name,
-        type: 'garage',
+        // Type choisi dans la fiche : envoyé « garage » en dur, un assureur modifié depuis
+        // cet écran repassait garage (erreur n°11 de la campagne GPA du 06/10/2026).
+        type: garage.type || 'garage',
         address: garage.address,
         city: garage.city,
         postalCode: garage.postalCode,
@@ -924,13 +940,15 @@ export class SuppliersComponent implements OnInit, OnDestroy {
           this.loadGarages();
           this.closePopup();
         },
-        error: (err) => console.error('Error updating garage:', err)
+        error: (err) => this.signalerEchec(err)
       });
     } else {
       // Création via API
       this.apiService.createSupplier({
         name: garage.name,
-        type: 'garage',
+        // Type choisi dans la fiche : envoyé « garage » en dur, un assureur modifié depuis
+        // cet écran repassait garage (erreur n°11 de la campagne GPA du 06/10/2026).
+        type: garage.type || 'garage',
         address: garage.address,
         city: garage.city,
         postalCode: garage.postalCode,
@@ -946,7 +964,7 @@ export class SuppliersComponent implements OnInit, OnDestroy {
           this.loadGarages();
           this.closePopup();
         },
-        error: (err) => console.error('Error creating garage:', err)
+        error: (err) => this.signalerEchec(err)
       });
     }
   }

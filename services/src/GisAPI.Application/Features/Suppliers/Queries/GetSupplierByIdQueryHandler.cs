@@ -41,7 +41,7 @@ public class GetSupplierByIdQueryHandler : IRequestHandler<GetSupplierByIdQuery,
             supplier.Type,
             supplier.Address,
             supplier.City,
-            null,
+            supplier.PostalCode, // vide en dur faute de colonne avant la migration 061 (erreur n°11)
             supplier.ContactName,
             supplier.Phone,
             supplier.Email,

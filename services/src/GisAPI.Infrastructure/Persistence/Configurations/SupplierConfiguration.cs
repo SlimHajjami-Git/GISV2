@@ -17,6 +17,8 @@ public class SupplierConfiguration : IEntityTypeConfiguration<Supplier>
         builder.Property(e => e.Type).HasColumnName("Type").HasMaxLength(50).HasDefaultValue("general");
         builder.Property(e => e.Address).HasColumnName("Address").HasMaxLength(500);
         builder.Property(e => e.City).HasColumnName("City").HasMaxLength(100);
+        // Migration 061 : ignoré faute de colonne, le code postal saisi disparaissait (erreur n°11).
+        builder.Property(e => e.PostalCode).HasColumnName("PostalCode").HasMaxLength(20);
         builder.Property(e => e.ContactName).HasColumnName("ContactName").HasMaxLength(200);
         builder.Property(e => e.Phone).HasColumnName("Phone").HasMaxLength(50);
         builder.Property(e => e.Email).HasColumnName("Email").HasMaxLength(200);
@@ -35,7 +37,6 @@ public class SupplierConfiguration : IEntityTypeConfiguration<Supplier>
         builder.HasIndex(e => e.Name);
 
         // Ignore properties that don't exist in database
-        builder.Ignore(e => e.PostalCode);
         builder.Ignore(e => e.MaintenanceRecords);
         builder.Ignore(e => e.Services);
     }

@@ -232,6 +232,10 @@ export const SUPPLIER_TYPES = [
             </div>
           </div>
 
+          <!-- Échec d'enregistrement : il était silencieux, la fenêtre restait ouverte sans
+               explication (campagne de tests GPA du 06/10/2026, erreur n°11). -->
+          <div class="form-error" *ngIf="errorMessage">{{ errorMessage }}</div>
+
           <!-- Actions -->
           <div class="popup-actions">
             <button type="button" class="btn-cancel" (click)="close()">Annuler</button>
@@ -241,7 +245,7 @@ export const SUPPLIER_TYPES = [
                 <polyline points="17 21 17 13 7 13 7 21"/>
                 <polyline points="7 3 7 8 15 8"/>
               </svg>
-              {{ garage?.id ? 'Enregistrer' : 'Créer le garage' }}
+              {{ garage?.id ? 'Enregistrer' : 'Créer le fournisseur' }}
             </button>
           </div>
         </form>
@@ -538,6 +542,16 @@ export const SUPPLIER_TYPES = [
       border-top: 1px solid #e2e8f0;
     }
 
+    .form-error {
+      margin: 0 24px 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #b91c1c;
+      font-size: 13px;
+    }
+
     .btn-cancel {
       padding: 10px 20px;
       background: white;
@@ -599,6 +613,8 @@ export class GaragePopupComponent implements OnChanges {
   @Input() garage: Garage | null = null;
   @Input() defaultType: string | null = null;  // Type pré-sélectionné
   @Input() lockType = false;  // Désactiver la modification du type
+  /** Motif d'un échec d'enregistrement, fourni par l'écran qui enregistre. */
+  @Input() errorMessage: string | null = null;
   @Output() closed = new EventEmitter<void>();
   @Output() saved = new EventEmitter<Garage>();
 

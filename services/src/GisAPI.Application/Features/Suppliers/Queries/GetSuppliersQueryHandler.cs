@@ -66,7 +66,7 @@ public class GetSuppliersQueryHandler : IRequestHandler<GetSuppliersQuery, Pagin
                 s.Type,
                 s.Address,
                 s.City,
-                null,
+                s.PostalCode, // vide en dur faute de colonne avant la migration 061 (erreur n°11)
                 s.ContactName,
                 s.Phone,
                 s.Email,
