@@ -306,15 +306,11 @@ export class AuthService {
     }
 
     const url = `${this.API_URL}/auth/login`;
-    console.log('AuthService.login - URL:', url);
-    console.log('AuthService.login - Payload:', { email, password: '***' });
-    
+
+    // Aucune trace en console : la réponse complète (jeton et jeton de rafraîchissement compris),
+    // l'e-mail et les permissions y étaient écrits à chaque connexion, lisibles par toute
+    // personne ou extension qui ouvre F12 (campagne de tests GPA du 06/10/2026, erreur n°8).
     return this.http.post<AuthResponse>(url, { email, password }).pipe(
-      tap(response => {
-        console.log('AuthService.login - Full response:', JSON.stringify(response, null, 2));
-        console.log('AuthService.login - subscriptionFeatures from API:', response.user.subscriptionFeatures);
-        console.log('AuthService.login - user object keys:', Object.keys(response.user));
-      }),
       map(response => {
         // Ceinture : un compte chauffeur n'ouvre JAMAIS de session sur le site, même
         // si le serveur en renvoyait une. Rien n'est stocké ; l'erreur porte le message.
@@ -341,15 +337,12 @@ export class AuthService {
           accountType: response.user.accountType,
           firstLogin: response.firstLogin === true
         };
-        console.log('AuthService.login - Mapped subscriptionFeatures:', user.subscriptionFeatures);
-        console.log('AuthService.login - User permissions:', user.userPermissions);
         localStorage.setItem('auth_token', response.token);
         localStorage.setItem('refresh_token', response.refreshToken);
         localStorage.setItem('auth_user', JSON.stringify(user));
         this.setSessionPersistence(rememberMe);
         this.currentUser$.next(user);
         this.applyAccountCurrency(user.currency);
-        console.log('AuthService.login - User mapped:', user);
         return user;
       }),
       catchError(err => {
