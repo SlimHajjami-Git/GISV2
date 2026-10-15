@@ -1,8 +1,8 @@
 import { Component, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
-import { AdminService } from '../services/admin.service';
+import { ActivatedRoute, Router } from '@angular/router';
+import { AdminService, ADMIN_ACCESS_DENIED, MESSAGE_ACCES_ADMIN_REFUSE } from '../services/admin.service';
 
 @Component({
   selector: 'admin-login',
@@ -588,10 +588,15 @@ export class AdminLoginComponent {
   constructor(
     private router: Router,
     private adminService: AdminService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private route: ActivatedRoute
   ) {
     if (this.adminService.isAuthenticated()) {
       this.router.navigate(['/admin/dashboard']);
+    }
+    // Renvoyé ici par l'intercepteur : la session n'avait pas accès à l'administration.
+    if (this.route.snapshot?.queryParamMap?.get('raison') === 'acces') {
+      this.error = MESSAGE_ACCES_ADMIN_REFUSE;
     }
   }
 
@@ -613,7 +618,9 @@ export class AdminLoginComponent {
         // pousserait à réessayer aussitôt, donc à prolonger le blocage.
         this.error = err?.status === 429
           ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
-          : 'E-mail ou mot de passe incorrect';
+          : err?.code === ADMIN_ACCESS_DENIED
+            ? MESSAGE_ACCES_ADMIN_REFUSE
+            : 'E-mail ou mot de passe incorrect';
         this.loading = false;
         // Callback potentiellement hors cycle Angular : sans detectChanges,
         // l'erreur ne s'affichait qu'à l'interaction suivante.

@@ -562,7 +562,10 @@ public class PermissionMiddleware
                 if (user == null || user.Role == null || !user.Role.IsSystemRole)
                 {
                     context.Response.StatusCode = 403;
-                    await context.Response.WriteAsJsonAsync(new { message = "Accès réservé aux administrateurs système" });
+                    // « admin_required » : l'espace /admin y reconnaît une session qui n'y a pas
+                    // accès (compte supprimé ou non administrateur système) et renvoie à la
+                    // connexion ; ses pages avalaient ce 403 et restaient vides (15/10/2026).
+                    await context.Response.WriteAsJsonAsync(new { error = "admin_required", message = "Accès réservé aux administrateurs système" });
                     return;
                 }
             }

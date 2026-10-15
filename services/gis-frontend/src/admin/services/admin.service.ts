@@ -498,6 +498,13 @@ export interface CompanyResetResult {
   driverAccountsClosed?: number;
 }
 
+/** Compte valide mais sans accès à l'administration (pas administrateur système). */
+export const ADMIN_ACCESS_DENIED = 'admin_access_denied';
+
+/** Message de la page de connexion admin pour un compte ou une session sans accès. */
+export const MESSAGE_ACCES_ADMIN_REFUSE =
+  "Ce compte n'a pas accès à l'administration Calypso. Connectez-vous avec un compte administrateur système.";
+
 @Injectable({
   providedIn: 'root'
 })
@@ -525,6 +532,11 @@ export class AdminService {
   login(email: string, password: string): Observable<AdminUser> {
     return this.http.post<any>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
       map(response => {
+        // Toutes les routes /api/admin exigent un administrateur système : un autre compte
+        // entrait, puis ne voyait que des pages vides. Refusé ici, sans rien enregistrer.
+        if (!response?.user?.isSystemAdmin) {
+          throw { code: ADMIN_ACCESS_DENIED };
+        }
         const user: AdminUser = {
           id: response.user.id?.toString() || '',
           email: response.user.email,
@@ -543,8 +555,8 @@ export class AdminService {
       }),
       catchError(err => {
         console.error('Login error:', err);
-        // Le 429 garde son statut et son message, que l'écran de connexion affiche.
-        return throwError(() => err?.status === 429 ? err : new Error('Invalid credentials'));
+        // Le 429 et le refus d'accès gardent leur forme, que l'écran de connexion affiche.
+        return throwError(() => err?.status === 429 || err?.code === ADMIN_ACCESS_DENIED ? err : new Error('Invalid credentials'));
       })
     );
   }

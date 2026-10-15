@@ -98,6 +98,16 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
         router.navigate(['/abonnement-suspendu'], { queryParams: { reason } });
         return throwError(() => error);
       }
+      // Session d'administration refusée par le serveur (compte supprimé, ou qui n'est pas
+      // administrateur système) : les écrans /admin avalaient ce 403 et restaient vides, sans
+      // un mot (constat de Karim du 15/10/2026). Retour à la connexion, avec l'explication.
+      if (error.status === 403 && isAdminRoute && error.error?.error === 'admin_required') {
+        clearAdminSession();
+        if (!router.url.startsWith('/admin/login')) {
+          router.navigate(['/admin/login'], { queryParams: { raison: 'acces' } });
+        }
+        return throwError(() => error);
+      }
       if (error.status === 401 && !req.url.includes('/auth/')) {
         // ── Session ADMIN expirée (jeton 24 h) ────────────────────────────
         // Cause du « dashboard admin à zéros » : l'ancien code lançait le
