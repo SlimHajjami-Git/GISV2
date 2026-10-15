@@ -8,6 +8,7 @@ using GisAPI.Application.Features.Auth.Commands.Login;
 using GisAPI.Application.Features.Auth.Commands.Impersonate;
 using GisAPI.Application.Features.Auth.Commands.Logout;
 using GisAPI.Application.Features.Auth.Commands.RefreshToken;
+using GisAPI.Middleware;
 using GisAPI.Application.Features.Users.Commands.ChangeMyPassword;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
@@ -41,7 +42,24 @@ public class AuthController : ControllerBase
         // un appelant qui ment n'obtient rien de plus qu'un jeton cloisonné par le serveur.
         var client = request.Client ?? Request.Headers[ClientHeader].FirstOrDefault();
         var result = await _mediator.Send(new LoginCommand(request.Email, request.Password, GetClientIp(), GetUserAgent(), client));
+        UploadsAccess.Poser(Request, Response, result.Token);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Pose le cookie des fichiers /uploads pour une session déjà ouverte (ouverte avant ce
+    /// cookie, ou navigateur rouvert) : l'écran l'appelle au démarrage, avec son jeton. Même
+    /// action pour l'espace /admin (route sous /api/admin, donc avec le jeton administrateur).
+    /// </summary>
+    [Authorize]
+    [HttpPost("fichiers")]
+    [HttpPost("/api/admin/fichiers")]
+    public IActionResult FilesCookie()
+    {
+        var entete = Request.Headers.Authorization.FirstOrDefault() ?? string.Empty;
+        if (!entete.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return BadRequest();
+        UploadsAccess.Poser(Request, Response, entete["Bearer ".Length..].Trim());
+        return NoContent();
     }
 
     // ── Limitation de débit des routes d'authentification anonymes ──────────────
@@ -231,6 +249,7 @@ public class AuthController : ControllerBase
     public async Task<ActionResult<LoginResponse>> Impersonate([FromBody] ImpersonateRequest request)
     {
         var result = await _mediator.Send(new ImpersonateCommand(request.UserId));
+        UploadsAccess.Poser(Request, Response, result.Token);
         return Ok(result);
     }
 
@@ -243,6 +262,7 @@ public class AuthController : ControllerBase
         var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
         var companyId = int.Parse(User.FindFirst("companyId")?.Value ?? "0");
         await _mediator.Send(new LogoutCommand(userId, companyId, GetClientIp(), GetUserAgent()));
+        UploadsAccess.Effacer(Request, Response, User);
         return NoContent();
     }
 
@@ -266,6 +286,7 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _mediator.Send(new RefreshTokenCommand(request.Token, request.RefreshToken, GetClientIp(), GetUserAgent()));
+            UploadsAccess.Poser(Request, Response, result.Token);
             return Ok(result);
         }
         catch (GisAPI.Domain.Exceptions.DomainException ex)

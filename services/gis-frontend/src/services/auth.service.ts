@@ -216,10 +216,23 @@ export class AuthService {
           firstLogin: parsed.firstLogin === true
         });
         this.applyAccountCurrency(parsed.currency);
+        // Différé : l'intercepteur injecte ce service, encore en construction ici.
+        setTimeout(() => this.reprendreCookieFichiers());
       } catch (e) {
         console.error('Error loading stored auth:', e);
       }
     }
+  }
+
+  /**
+   * Fichiers /uploads (factures scannées, photos de sinistre) : réservés aux comptes connectés
+   * depuis le 15/10/2026 (campagne GPA, erreur n°18). La connexion pose le cookie qui les ouvre ;
+   * une session déjà ouverte (page rechargée, session d'avant ce cookie) le reprend ici. Pas
+   * depuis l'espace /admin, qui reprend le sien. Silencieux en cas d'échec.
+   */
+  private reprendreCookieFichiers(): void {
+    if (typeof location !== 'undefined' && location.pathname.startsWith('/admin')) return;
+    this.http.post(`${this.API_URL}/auth/fichiers`, {}).subscribe({ error: () => {} });
   }
 
   login(email: string, password: string, rememberMe: boolean = true): Observable<AuthUser | null> {

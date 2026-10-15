@@ -277,6 +277,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                     context.Token = accessToken;
                 }
 
+                // Fichiers /uploads : le navigateur n'y joint que le cookie posé à la connexion
+                // (UploadsAccess, campagne GPA n°18). Seulement ces adresses : l'API reste au jeton.
+                if (path.StartsWithSegments("/uploads")
+                    && string.IsNullOrEmpty(context.Request.Headers.Authorization.FirstOrDefault()))
+                {
+                    context.Token = GisAPI.Middleware.UploadsAccess.JetonDuCookie(context.Request);
+                }
+
                 return Task.CompletedTask;
             }
         };
@@ -376,19 +384,12 @@ app.UseResponseCompression();
 
 // app.UseHttpsRedirection(); // Disabled for Docker HTTP
 
-// Static file serving for uploads (photos, documents)
+// Fichiers téléversés (factures, justificatifs, photos de sinistre) : servis plus bas,
+// APRÈS l'authentification — ils se lisaient sans connexion (campagne GPA, erreur n°18).
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(uploadsPath)) Directory.CreateDirectory(uploadsPath);
 var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
 contentTypeProvider.Mappings[".webp"] = "image/webp";
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
-    RequestPath = "/uploads",
-    ContentTypeProvider = contentTypeProvider,
-    ServeUnknownFileTypes = true,
-    DefaultContentType = "application/octet-stream"
-});
 
 app.UseCors();
 
@@ -398,6 +399,24 @@ app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+// /uploads : compte connecté de la société propriétaire (ou administrateur système), sinon
+// 401 / 404 ; le jeton vient du cookie posé à la connexion (voir UploadsAccess).
+app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/uploads"), uploads =>
+{
+    uploads.UseMiddleware<GisAPI.Middleware.UploadsAccessMiddleware>();
+    uploads.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(uploadsPath),
+        RequestPath = "/uploads",
+        ContentTypeProvider = contentTypeProvider,
+        ServeUnknownFileTypes = true,
+        DefaultContentType = "application/octet-stream",
+        // Revalidé à chaque affichage : après une déconnexion, le navigateur ne ressert pas
+        // une facture de son cache ; « private » : jamais gardée par un proxy partagé.
+        OnPrepareResponse = fichier => fichier.Context.Response.Headers.CacheControl = "private, no-cache"
+    });
+});
 
 // Subscription expiration middleware - blocks access for expired/suspended subscriptions
 app.UseSubscriptionExpiration();

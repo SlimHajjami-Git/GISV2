@@ -529,6 +529,15 @@ export class AdminService {
     }
   }
 
+  /**
+   * Cookie des fichiers /uploads pour la session d'administration déjà ouverte (voir
+   * AuthService.reprendreCookieFichiers) : appelé par le gabarit de l'espace /admin.
+   */
+  reprendreCookieFichiers(): void {
+    if (!this.isAuthenticated()) return;
+    this.http.post(`${this.apiUrl}/admin/fichiers`, {}).subscribe({ error: () => {} });
+  }
+
   login(email: string, password: string): Observable<AdminUser> {
     return this.http.post<any>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
       map(response => {

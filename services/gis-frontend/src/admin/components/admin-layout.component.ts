@@ -449,6 +449,7 @@ export class AdminLayoutComponent implements OnInit {
 
   ngOnInit() {
     this.adminUser = this.adminService.getAdminUser();
+    this.adminService.reprendreCookieFichiers();
     this.updateTime();
     setInterval(() => this.updateTime(), 1000);
     this.adminService.getBillingOverview().subscribe({
