@@ -94,9 +94,11 @@ public class ExceptionHandlingMiddleware
 
         var (statusCode, message, errors) = exception switch
         {
+            // Le premier message de la règle violée (en français) : les écrans l'affichent tel quel,
+            // « Validation failed » ne disait rien à l'utilisateur.
             ValidationException validationEx => (
                 HttpStatusCode.BadRequest,
-                "Validation failed",
+                validationEx.Errors.FirstOrDefault()?.ErrorMessage ?? "Saisie invalide.",
                 validationEx.Errors.Select(e => new { e.PropertyName, e.ErrorMessage })
             ),
             NotFoundException notFoundEx => (

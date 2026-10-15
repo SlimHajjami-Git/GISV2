@@ -131,7 +131,7 @@ export interface CompanyOption {
               <div class="form-row">
                 <div class="form-group">
                   <label for="year">Année</label>
-                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" max="2100" placeholder="Ex: 2023" data-guide="vehicule-annee" />
+                  <input type="number" id="year" name="year" [(ngModel)]="formData.year" required min="1900" [max]="anneeMax" placeholder="Ex: 2023" data-guide="vehicule-annee" />
                 </div>
                 <div class="form-group">
                   <label for="type">Type</label>
@@ -1988,10 +1988,27 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     return manquants;
   }
 
+  /** Modèle de l'an prochain au plus : même borne que l'API (campagne GPA, erreur n°15). */
+  get anneeMax(): number {
+    return new Date().getFullYear() + 1;
+  }
+
+  /** Année facultative, mais 1800 ou 2100 étaient acceptées. */
+  anneeHorsBornes(): boolean {
+    const a = this.formData.year as unknown;
+    if (a === null || a === undefined || String(a).trim() === '') return false;
+    const n = Number(a);
+    return !Number.isInteger(n) || n < 1900 || n > this.anneeMax;
+  }
+
   onSubmit() {
     const manquants = this.champsObligatoiresManquants();
     if (manquants.length) {
       alert('Renseignez les champs obligatoires (*) : ' + manquants.join(', ') + '.');
+      return;
+    }
+    if (this.anneeHorsBornes()) {
+      alert(`L'année doit être comprise entre 1900 et ${this.anneeMax}.`);
       return;
     }
     // Calypso 7: when the popup runs in non-admin context the GPS section
