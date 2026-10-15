@@ -155,7 +155,10 @@ public class EmailService : IEmailService
             : text;
     }
 
-    public async Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default)
+    public Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default) =>
+        SendNotificationEmailAsync(toEmail, toName, notificationType, title, message, actionUrl, throwOnFailure: false, ct);
+
+    public async Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl, bool throwOnFailure, CancellationToken ct = default)
     {
         var typeColor = notificationType switch
         {
@@ -223,6 +226,6 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendEmailAsync(toEmail, toName, $"[GPA] {title}", htmlBody, ct);
+        await SendEmailAsync(toEmail, toName, $"[GPA] {title}", htmlBody, ct, throwOnFailure);
     }
 }

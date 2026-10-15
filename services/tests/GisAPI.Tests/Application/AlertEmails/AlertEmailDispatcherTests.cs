@@ -224,7 +224,7 @@ public class AlertEmailDispatcherTests
         // Act
         await dispatcher.SendTestAsync(42);
 
-        // Assert
+        // Assert — l'envoi de test demande à connaître l'échec (throwOnFailure: true).
         emailService.Verify(
             x => x.SendNotificationEmailAsync(
                 "test@example.com",
@@ -233,8 +233,31 @@ public class AlertEmailDispatcherTests
                 It.IsAny<string>(),
                 It.IsAny<string>(),
                 It.IsAny<string?>(),
+                true,
                 It.IsAny<CancellationToken>()),
             Times.Once);
+    }
+
+    [Fact]
+    public async Task SendTestAsync_RelaisInjoignable_LEcranLeSait()
+    {
+        // Le bouton « Tester » répondait « envoyé » même quand l'e-mail ne partait pas
+        // (campagne de tests GPA du 06/10/2026, erreur n°7).
+        using var context = TestDbContextFactory.Create();
+        context.AlertEmails.Add(new AlertEmail { Id = 43, Email = "test@example.com", AlertType = "assurance", CompanyId = 1 });
+        await context.SaveChangesAsync();
+
+        var emailService = new Mock<IEmailService>();
+        emailService
+            .Setup(x => x.SendNotificationEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>(), true, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new System.Net.Mail.SmtpException("Relais injoignable"));
+        var dispatcher = new AlertEmailDispatcher(context, emailService.Object, NullLogger<AlertEmailDispatcher>.Instance);
+
+        var act = () => dispatcher.SendTestAsync(43);
+
+        await act.Should().ThrowAsync<GisAPI.Domain.Exceptions.DomainException>()
+            .WithMessage("L'e-mail de test n'a pas pu partir*");
     }
 
     [Fact]

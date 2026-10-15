@@ -771,9 +771,11 @@ export class AlertEmailsComponent implements OnInit, OnDestroy {
         this.testingId = null;
         this.showToast('success', `Email de test envoyé à ${item.email}`);
       },
-      error: () => {
+      // Le serveur dit maintenant pourquoi l'envoi a échoué (relais injoignable, adresse
+      // refusée) : il répondait « envoyé » dans tous les cas (erreur n°7 de la campagne GPA).
+      error: (err) => {
         this.testingId = null;
-        this.showToast('error', `Échec de l'envoi à ${item.email}`);
+        this.showToast('error', this.apiErrorMessage(err, `Échec de l'envoi à ${item.email}`));
       }
     });
   }

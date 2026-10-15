@@ -22,6 +22,13 @@ public interface IEmailService
     Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl = null, CancellationToken ct = default);
 
     /// <summary>
+    /// Même e-mail, mais l'appelant choisit de connaître l'échec (<paramref name="throwOnFailure"/>) :
+    /// le bouton « Tester » d'une adresse d'alerte annonçait « envoyé » même relais injoignable
+    /// (campagne de tests GPA du 06/10/2026, erreur n°7).
+    /// </summary>
+    Task SendNotificationEmailAsync(string toEmail, string toName, string notificationType, string title, string message, string? actionUrl, bool throwOnFailure, CancellationToken ct = default);
+
+    /// <summary>
     /// Send an email with a single binary attachment (e.g. a PDF/.xlsx report).
     /// Optionally copies a second address in CC.
     /// </summary>

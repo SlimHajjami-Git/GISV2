@@ -214,14 +214,29 @@ public class AlertEmailDispatcher : IAlertEmailDispatcher
             throw new InvalidOperationException($"AlertEmail {alertEmailId} introuvable");
         }
 
-        await _emailService.SendNotificationEmailAsync(
-            entry.Email,
-            entry.Email,
-            entry.AlertType,
-            "Test de notification GIS Fleet",
-            $"Ceci est un email de test pour confirmer que les alertes de type '{entry.AlertType}' sont bien reçues à cette adresse. Si vous recevez ce message, la configuration est correcte.",
-            null,
-            ct);
+        // L'issue compte ici : l'écran annonce « envoyé » ou « échec ». Le service d'e-mail avale
+        // ses erreurs par défaut, et le bouton « Tester » répondait « envoyé » même relais
+        // injoignable (campagne de tests GPA du 06/10/2026, erreur n°7).
+        try
+        {
+            await _emailService.SendNotificationEmailAsync(
+                entry.Email,
+                entry.Email,
+                entry.AlertType,
+                "Test de notification GIS Fleet",
+                $"Ceci est un email de test pour confirmer que les alertes de type '{entry.AlertType}' sont bien reçues à cette adresse. Si vous recevez ce message, la configuration est correcte.",
+                null,
+                throwOnFailure: true,
+                ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "AlertEmailDispatcher: test email to {Recipient} failed (alert_email id={Id})",
+                entry.Email, entry.Id);
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                "L'e-mail de test n'a pas pu partir : le serveur d'envoi ne répond pas ou a refusé l'adresse. "
+                + "Vérifiez l'adresse, puis réessayez plus tard.");
+        }
 
         _logger.LogInformation(
             "AlertEmailDispatcher: sent test email to {Recipient} (alert_email id={Id}, type={AlertType})",
