@@ -737,7 +737,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
   // champ vaut encore cette valeur, personne ne l'a choisie : c'est ce qui permet
   // à saisieCommencee() de distinguer une date saisie d'une date par défaut.
   private dateParDefaut = new Date().toISOString().split('T')[0];
-  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: 0 as number | null, pricePerLiter: 0 as number | null, totalAmount: 0 as number | null, invoiceDate: this.dateParDefaut, odometerKm: null as number | null };
+  manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: null as number | null, pricePerLiter: null as number | null, totalAmount: null as number | null, invoiceDate: this.dateParDefaut, odometerKm: null as number | null };
   totalAmountTouched = false;
 
   /** Ticket scanné en cours de revue (voir onTicketScanne). */
@@ -908,7 +908,8 @@ export class CarburantComponent implements OnInit, OnDestroy {
     if (this.totalAmountTouched) return;
     const v = Number(this.manualEntry.volume) || 0;
     const p = Number(this.manualEntry.pricePerLiter) || 0;
-    this.manualEntry.totalAmount = +(v * p).toFixed(2);
+    // Rien à multiplier : total vide plutôt que « 0 » (erreur n°12 de la campagne GPA).
+    this.manualEntry.totalAmount = v > 0 && p > 0 ? +(v * p).toFixed(2) : null;
   }
 
   // Mark the total as user-edited so volume/price changes stop
@@ -1133,7 +1134,7 @@ export class CarburantComponent implements OnInit, OnDestroy {
 
   resetManualEntry() {
     this.dateParDefaut = new Date().toISOString().split('T')[0];
-    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: 0, pricePerLiter: 0, totalAmount: 0, invoiceDate: this.dateParDefaut, odometerKm: null };
+    this.manualEntry = { vehiclePlate: '', fuelTypeId: null, volume: null, pricePerLiter: null, totalAmount: null, invoiceDate: this.dateParDefaut, odometerKm: null };
     this.totalAmountTouched = false;
     this.prixLuSurTicket = false;
     // Le ticket scanné ne survit pas à une remise à zéro : sinon sa station et son

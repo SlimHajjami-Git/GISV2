@@ -25,7 +25,8 @@ import { ResultatScanFacture } from './scan-facture.component';
 /** Une ligne facturée, telle qu'elle est relue et corrigée dans le panneau. */
 export interface LigneRevueFacture {
   label: string;
-  amount: number;
+  /** Vide pour une ligne ajoutée à la main (« 045 » avec un 0 prérempli, erreur n°12). */
+  amount: number | null;
   category: string;
 }
 
@@ -617,7 +618,7 @@ export class VerifierFactureComponent {
   }
 
   ajouterLigne(): void {
-    this.modele.items.push({ label: '', amount: 0, category: this.modele.category || 'other' });
+    this.modele.items.push({ label: '', amount: null, category: this.modele.category || 'other' });
   }
 
   retirerLigne(i: number): void { this.modele.items.splice(i, 1); }

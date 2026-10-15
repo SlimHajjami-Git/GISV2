@@ -284,7 +284,7 @@ describe('DocumentRenewalPopupComponent — scan de la quittance', () => {
     fixture.detectChanges();
 
     expect(composant.formData.documentUrl).toBe('/uploads/invoices/7/panne.pdf');
-    expect(composant.formData.amount).toBe(0);
+    expect(composant.formData.amount).toBeNull();   // intact : vide, plus 0 (erreur n°12)
     expect(texte()).toContain('saisissez les informations à la main');
   });
 

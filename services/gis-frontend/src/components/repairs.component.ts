@@ -23,7 +23,7 @@ interface RepairPart {
   partName: string;
   partReference: string;
   quantity: number;
-  unitPrice: number;
+  unitPrice: number | null;
   subtotal: number;
   notes: string;
 }
@@ -1223,7 +1223,9 @@ export class RepairsComponent implements OnInit, OnDestroy {
       description: '',
       invoiceNumber: '',
       status: 'completed',
-      laborCost: 0,
+      // Champ VIDE au départ, pas 0 : on tapait « 45 » derrière le 0 et on obtenait « 045 »
+      // (campagne de tests GPA du 06/10/2026, erreur n°12).
+      laborCost: null as number | null,
       notes: '',
       repairType: '' as string,
       parts: [] as RepairPart[]
@@ -2016,7 +2018,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
       partName: '',
       partReference: '',
       quantity: 1,
-      unitPrice: 0,
+      unitPrice: null,   // vide, pas 0 (erreur n°12)
       subtotal: 0,
       notes: ''
     });
@@ -2027,11 +2029,11 @@ export class RepairsComponent implements OnInit, OnDestroy {
   }
 
   calculatePartSubtotal(part: RepairPart) {
-    part.subtotal = part.quantity * part.unitPrice;
+    part.subtotal = part.quantity * (part.unitPrice ?? 0);
   }
 
   getPartsCost(): number {
-    return this.form.parts.reduce((sum, p) => sum + (p.quantity * p.unitPrice), 0);
+    return this.form.parts.reduce((sum, p) => sum + (p.quantity * (p.unitPrice ?? 0)), 0);
   }
 
   getTotalCost(): number {

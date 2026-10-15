@@ -29,7 +29,8 @@ export interface VehicleDocument {
 export interface RenewalFormData {
   vehicleId: number;
   type: string;
-  amount: number;
+  /** Vide au départ (« 045 » avec un 0 prérempli, erreur n°12) ; vide ou 0 = pas de dépense. */
+  amount: number | null;
   date: string;
   newExpiryDate: string;
   documentNumber: string;
@@ -333,7 +334,7 @@ export interface RenewalFormData {
           </div>
 
           <!-- Summary -->
-          <div class="summary-box" *ngIf="formData.amount > 0">
+          <div class="summary-box" *ngIf="(formData.amount ?? 0) > 0">
             <div class="summary-row">
               <span>Type de dépense</span>
               <span class="summary-value">{{ getTypeLabel(document?.type) }}</span>
@@ -1193,7 +1194,7 @@ export class DocumentRenewalPopupComponent implements OnChanges {
     return {
       vehicleId: 0,
       type: '',
-      amount: 0,
+      amount: null,
       date: '',
       newExpiryDate: '',
       documentNumber: '',
@@ -1568,7 +1569,7 @@ export class DocumentRenewalPopupComponent implements OnChanges {
     const renewRequest = {
       vehicleId: this.document.vehicleId,
       documentType: this.document.type,
-      amount: this.formData.amount,
+      amount: this.formData.amount ?? 0,
       paymentDate: this.formData.date,
       newExpiryDate: this.formData.newExpiryDate,
       documentNumber: this.formData.documentNumber || undefined,

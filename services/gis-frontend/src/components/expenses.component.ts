@@ -122,7 +122,9 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   formVehicleId = '';
   formDate = new Date().toISOString().split('T')[0];
   formDescription = '';
-  formAmount = 0;
+  // Champ VIDE au départ, pas 0 : on tapait « 45 » derrière le 0 et on obtenait « 045 »
+  // (campagne de tests GPA du 06/10/2026, erreur n°12).
+  formAmount: number | null = null;
 
   // Delete
   showDeleteConfirm = false;
@@ -155,7 +157,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     /** Lignes de la facture (détail extrait par l'IA, éditable). Enregistrées
      *  AVEC la dépense (details_json) — une facture reste UNE seule dépense,
      *  le détail décortiqué s'affiche dans le panneau de la dépense. */
-    items: Array<{ label: string; amount: number; category: string }>;
+    items: Array<{ label: string; amount: number | null; category: string }>;
   } = this.emptyScan();
   readonly scanCategories = [
     { value: 'fuel', label: 'Carburant' },
@@ -494,12 +496,12 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     this.formVehicleId = '';
     this.formDate = new Date().toISOString().split('T')[0];
     this.formDescription = '';
-    this.formAmount = 0;
+    this.formAmount = null;
     this.editingExpense = null;
   }
 
   isFormValid(): boolean {
-    return !!this.formVehicleId && !!this.selectedCategory && !!this.formDate && this.formAmount > 0;
+    return !!this.formVehicleId && !!this.selectedCategory && !!this.formDate && (this.formAmount ?? 0) > 0;
   }
 
   saveExpense(): void {
@@ -527,7 +529,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       vehicleId: parseInt(this.formVehicleId),
       type: this.selectedCategory,
       description: this.formDescription,
-      amount: this.formAmount,
+      amount: this.formAmount ?? 0,
       date: new Date(this.formDate).toISOString(),
       mileage: null,
       receiptNumber: null
@@ -544,7 +546,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
       vehicleId: '', category: 'other', date: new Date().toISOString().split('T')[0],
       amount: 0, supplierName: '', invoiceNumber: '', description: '',
       vehiclePlate: '', confidence: '', receiptUrl: '', creditNote: false,
-      items: [] as Array<{ label: string; amount: number; category: string }>
+      items: [] as Array<{ label: string; amount: number | null; category: string }>
     };
   }
 
@@ -618,7 +620,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   }
 
   addScanItem(): void {
-    this.scan.items.push({ label: '', amount: 0, category: this.scan.category || 'other' });
+    this.scan.items.push({ label: '', amount: null, category: this.scan.category || 'other' });
   }
 
   removeScanItem(i: number): void { this.scan.items.splice(i, 1); }

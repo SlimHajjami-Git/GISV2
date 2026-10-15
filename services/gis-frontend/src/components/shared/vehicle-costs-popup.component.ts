@@ -564,7 +564,7 @@ export class VehicleCostsPopupComponent implements OnInit, OnChanges {
   costForm: any = {
     type: '',
     dateStr: '',
-    amount: 0,
+    amount: null,   // vide, pas 0 : « 045 » à la frappe (erreur n°12)
     mileage: null,
     description: '',
     receiptNumber: '',
@@ -649,7 +649,7 @@ export class VehicleCostsPopupComponent implements OnInit, OnChanges {
     this.costForm = {
       type: '',
       dateStr: today,
-      amount: 0,
+      amount: null,
       mileage: this.vehicle?.mileage || null,
       description: '',
       receiptNumber: '',
