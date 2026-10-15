@@ -160,7 +160,7 @@ function dateSeule(d: string | null | undefined): string {
           </div>
           <select class="filter-select" [(ngModel)]="filterVehicle" (change)="onFiltreServeur()">
             <option value="">Tous les vehicules</option>
-            <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
+            <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }}{{ v.plateNumber ? ' - ' + v.plateNumber : '' }}</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="onFiltreServeur()">
             <option value="">Tous les statuts</option>
@@ -477,7 +477,7 @@ function dateSeule(d: string | null | undefined): string {
               <div class="vehicle-select-wrapper">
                 <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()" data-guide="reparation-vehicule">
                   <option value="">Selectionnez un vehicule</option>
-                  <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }} - {{ v.plateNumber }}</option>
+                  <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }}{{ v.plateNumber ? ' - ' + v.plateNumber : '' }}</option>
                 </select>
               </div>
               <div class="vehicle-info-box" *ngIf="selectedVehicle">
@@ -1233,19 +1233,20 @@ export class RepairsComponent implements OnInit, OnDestroy {
   loadVehicles() {
     this.apiService.getVehicles().pipe(takeUntil(this.destroy$)).subscribe({
       next: (vehicles) => {
+        // L'API renvoie la plaque sous `plate` : lue sous `plateNumber`, elle restait vide et
+        // la liste affichait « AMAL - », « Commercial 02 - » deux fois, impossibles à distinguer
+        // (campagne de tests GPA du 06/10/2026, erreur n°9).
         this.vehicles = vehicles.map(v => ({
           id: v.id,
           name: v.name,
-          plateNumber: v.plateNumber,
+          plateNumber: v.plate ?? v.plateNumber ?? '',
           mileage: v.mileage || 0
         }));
       },
+      // Jamais de véhicules fictifs : sans réponse de l'API, la liste s'affichait avec trois
+      // véhicules inventés (« Peugeot 208 »…) sur lesquels on pouvait saisir une réparation.
       error: () => {
-        this.vehicles = [
-          { id: 1, name: 'Peugeot 208', plateNumber: 'AB-123-CD', mileage: 52000 },
-          { id: 2, name: 'Renault Clio', plateNumber: 'CD-456-EF', mileage: 78500 },
-          { id: 3, name: 'Citroen Berlingo', plateNumber: 'EF-789-GH', mileage: 125000 }
-        ];
+        this.vehicles = [];
       }
     });
   }

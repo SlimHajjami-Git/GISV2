@@ -93,10 +93,12 @@ describe('exemples des écrans clients (marché français)', () => {
     expect(carburant).not.toContain('568.45');
   });
 
-  // Ce repli s'affiche dans le sélecteur de véhicule quand l'API ne répond pas.
-  it('le repli de l\'écran réparations montre des immatriculations françaises', () => {
+  // Sans réponse de l'API, l'écran réparations proposait trois véhicules INVENTÉS sur lesquels
+  // on pouvait saisir une réparation : la liste reste vide (erreur n°9 de la campagne GPA).
+  it('l\'écran réparations ne propose jamais de véhicules fictifs', () => {
     const reparations = source('repairs.component.ts');
-    expect(reparations).toContain("plateNumber: 'AB-123-CD'");
+    expect(reparations).not.toContain("name: 'Peugeot 208'");
+    expect(/plateNumber: '[A-Z]{2}-\d{3}-[A-Z]{2}'/.test(reparations)).toBe(false);
     expect(/plateNumber: '\d{3} TUN \d{4}'/.test(reparations)).toBe(false);
   });
 
