@@ -8,7 +8,7 @@ import {
   ResultatScanFacture, EchecScanFacture
 } from './shared/scan-facture.component';
 import { ApiService, FuelTypeDto, VehicleWithPositionDto, FuelEntryDto, FuelPriceFullDto, FuelEntriesSummary } from '../services/api.service';
-import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
+import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
 declare const XLSX: any;
 
@@ -599,9 +599,34 @@ const ECART_MAX_RAPPROCHEMENT = 2;
           </div>
         </div>
       </div>
+      <!-- Plein incohérent (erreur n°14 de la campagne GPA du 06/10/2026) : quantité supérieure
+           au réservoir = refus ; carburant différent de celui du véhicule = confirmation. -->
+      @if (alerteSaisie) {
+        <div class="alerte-voile" (click)="fermerAlerte()">
+          <div class="alerte-boite" role="alertdialog" aria-modal="true" (click)="$event.stopPropagation()">
+            <h3>{{ alerteSaisie.titre }}</h3>
+            <p>{{ alerteSaisie.message }}</p>
+            <div class="alerte-actions">
+              @if (alerteSaisie.confirmer) {
+                <button type="button" class="alerte-secondaire" (click)="fermerAlerte()">Corriger</button>
+                <button type="button" class="alerte-principale" (click)="confirmerAlerte()">Enregistrer quand même</button>
+              } @else {
+                <button type="button" class="alerte-principale" (click)="fermerAlerte()">Compris</button>
+              }
+            </div>
+          </div>
+        </div>
+      }
     </app-layout>
   `,
   styles: [`
+    .alerte-voile { position: fixed; inset: 0; background: rgba(15, 23, 42, .45); display: flex; align-items: center; justify-content: center; z-index: 1200; padding: 16px; }
+    .alerte-boite { background: #fff; border-radius: 10px; max-width: 440px; width: 100%; padding: 20px 22px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+    .alerte-boite h3 { margin: 0 0 8px; font-size: 16px; color: #b45309; }
+    .alerte-boite p { margin: 0 0 18px; font-size: 14px; color: #334155; line-height: 1.5; }
+    .alerte-actions { display: flex; justify-content: flex-end; gap: 10px; }
+    .alerte-principale { padding: 8px 16px; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    .alerte-secondaire { padding: 8px 16px; background: #fff; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; cursor: pointer; }
     .carburant-page { flex: 1; background: #f1f5f9; display: flex; flex-direction: column; min-height: calc(100vh - 42px); }
     .filter-bar { display: flex; align-items: center; gap: 16px; padding: 10px 14px; background: white; border-bottom: 1px solid #e2e8f0; }
     .page-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: #1e293b; }
@@ -1150,11 +1175,69 @@ export class CarburantComponent implements OnInit, OnDestroy {
     this.scanTicket = this.revueVide();
   }
 
+  /** Fenêtre d'avertissement d'un plein incohérent ; confirmer = « Enregistrer quand même » possible. */
+  alerteSaisie: { titre: string; message: string; confirmer: boolean } | null = null;
+  private carburantConfirme = false;
+
+  fermerAlerte() { this.alerteSaisie = null; this.carburantConfirme = false; }
+
+  confirmerAlerte() {
+    this.alerteSaisie = null;
+    this.carburantConfirme = true;
+    this.saveManualEntry();
+  }
+
+  /** Familles de carburant incompatibles : diesel d'un côté, essence (et GPL/GNV) de l'autre.
+   *  Hybrides et électriques ne sont pas jugés : la fiche ne dit pas assez. */
+  private static famille(code: string | null | undefined): 'diesel' | 'essence' | null {
+    const c = (code || '').toLowerCase().trim();
+    if (c === 'diesel' || c === 'gasoil' || c === 'gazole') return 'diesel';
+    if (['essence', 'sans_plomb', 'gasoline', 'petrol', 'unleaded', 'gpl', 'lpg', 'gnv', 'cng'].includes(c)) return 'essence';
+    return null;
+  }
+
+  /**
+   * Plein incohérent (erreur n°14 de la campagne GPA du 06/10/2026). Quantité supérieure au
+   * réservoir : refus, l'API le refuse aussi ; réservoir non renseigné (0 ou vide) : rien n'est
+   * bloqué (décision de Karim du 15/10/2026). Carburant d'une autre famille que celui du
+   * véhicule : confirmation, la fiche du véhicule peut être fausse.
+   */
+  private alerteAvantEnregistrement(): boolean {
+    const v: any = this.vehicles.find(x => (x.plate || x.name) === this.manualEntry.vehiclePlate);
+    if (!v) return false;
+    const nom = v.plate || v.name;
+    const volume = Number(this.manualEntry.volume) || 0;
+    const capacite = Number(v.fuelTankCapacity) || 0;
+    if (capacite > 0 && volume > capacite) {
+      this.alerteSaisie = {
+        titre: 'Quantité supérieure au réservoir',
+        message: `La quantité saisie (${nombreFr(volume, volume % 1 ? 2 : 0)} L) dépasse la capacité du réservoir de ${nom} (${capacite} L). Vérifiez la quantité, ou corrigez la capacité du réservoir dans la fiche du véhicule.`,
+        confirmer: false
+      };
+      return true;
+    }
+    if (!this.carburantConfirme) {
+      const choisi = this.fuelTypes.find(t => t.id === this.manualEntry.fuelTypeId);
+      const fv = CarburantComponent.famille(v.fuelType), fc = CarburantComponent.famille(choisi?.code);
+      if (fv && fc && fv !== fc) {
+        this.alerteSaisie = {
+          titre: 'Carburant différent de celui du véhicule',
+          message: `${nom} roule au ${fv === 'diesel' ? 'diesel' : 'essence'}, et vous avez choisi « ${choisi?.name} ». Vérifiez le type de carburant avant d'enregistrer.`,
+          confirmer: true
+        };
+        return true;
+      }
+    }
+    return false;
+  }
+
   saveManualEntry() {
     if (!this.isManualEntryValid()) {
       alert('Renseignez matricule, type, date et soit (volume + prix) soit le montant total.');
       return;
     }
+    if (this.alerteAvantEnregistrement()) return;
+    this.carburantConfirme = false;
     this.isSaving = true;
     // Use the user-entered total when they typed one directly; otherwise
     // fall back to volume × price (already kept in sync by onVolumeOrPriceChange).

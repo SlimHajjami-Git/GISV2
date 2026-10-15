@@ -86,6 +86,15 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
                     "Vérifiez le matricule ou créez d'abord le véhicule.");
         }
 
+        // Quantité supérieure au réservoir refusée : 95 L dans un réservoir de 60 L étaient
+        // enregistrés (campagne de tests GPA du 06/10/2026, erreur n°14). Réservoir non
+        // renseigné (vide ou 0) : rien n'est bloqué (décision de Karim du 15/10/2026).
+        if (vehicle?.FuelTankCapacity is int capacite && capacite > 0 && request.Volume > capacite)
+            throw new GisAPI.Domain.Exceptions.DomainException(
+                $"La quantité saisie ({GisAPI.Domain.Common.FormatFr.N(request.Volume, request.Volume % 1 == 0 ? 0 : 2)} L) " +
+                $"dépasse la capacité du réservoir de ce véhicule ({capacite} L). Vérifiez la quantité, " +
+                "ou corrigez la capacité du réservoir dans la fiche du véhicule.");
+
         // Type de carburant : une valeur hors référentiel n'était arrêtée que par la
         // clé étrangère au SaveChanges, d'où un 500 anonyme en saisie unitaire et un
         // message EF en anglais dans le bilan d'import. On la refuse en amont.
