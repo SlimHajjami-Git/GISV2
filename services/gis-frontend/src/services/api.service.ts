@@ -406,6 +406,11 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/brands/${brandId}/models`, { headers: this.getHeaders() });
   }
 
+  /** Historique effacé avec le véhicule (pleins, dépenses…), pour la fenêtre de confirmation. */
+  getVehicleDeletionPreview(id: number): Observable<{ id: number; name: string; plate: string | null; history: { count: number; label: string }[]; kept: { count: number; label: string }[] }> {
+    return this.http.get<any>(`${this.API_URL}/vehicles/${id}/deletion-preview`, { headers: this.getHeaders() });
+  }
+
   deleteVehicle(id: number): Observable<void> {
     if (this.isMockUser()) {
       this.mockDataService.deleteVehicle(id.toString());

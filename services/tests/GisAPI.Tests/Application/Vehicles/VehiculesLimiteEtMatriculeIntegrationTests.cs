@@ -163,6 +163,27 @@ public class VehiculesLimiteEtMatriculeIntegrationTests
         bilan.Notes.Should().NotContain(n => n.Contains("limite de l'abonnement"));
     }
 
+    [Fact]
+    public async Task Un_compte_GPS_ne_cree_pas_de_vehicule_par_l_import_mais_importe_le_reste()
+    {
+        // Règle du 15/10/2026 : les véhicules d'un compte GPS arrivent avec leur boîtier,
+        // par l'équipe Calypso — l'import ne contourne pas le bouton « Nouveau véhicule » masqué.
+        using var ctx = await ParcAsync(maxVehicles: 50, prixParVehicule: false);
+        (await ctx.SubscriptionTypes.SingleAsync(s => s.Id == 10)).ModuleMonitoring = true;
+        await ctx.SaveChangesAsync();
+
+        var bilan = await ImporterAsync(ctx);
+
+        bilan.VehiclesCreated.Should().Be(0);
+        bilan.VehiclesUpdated.Should().Be(1);
+        bilan.MaintenanceCreated.Should().Be(1);
+        bilan.Notes.Should().Contain(new[]
+        {
+            "Véhicule « QA-IMP-1 » non créé : les véhicules d'un compte GPS sont ajoutés par l'équipe Calypso.",
+            "Entretien ignoré : véhicule « qa imp 3 » non créé (compte GPS)."
+        });
+    }
+
     // ── DEF-037 : administration système ─────────────────────────────────────
 
     private static async Task<TestGisDbContext> AdminAsync(params Vehicle[] vehicles)

@@ -24,6 +24,10 @@ public class CreateVehicleCommandHandler : IRequestHandler<CreateVehicleCommand,
     {
         var companyId = _tenantService.CompanyId ?? 0;
 
+        // Compte GPS : les véhicules arrivent avec leur boîtier, par l'équipe Calypso.
+        await VehicleWriteRules.EnsureClientManagesFleetAsync(
+            _context, _tenantService, companyId, VehicleWriteRules.GpsFleetCreateMessage, ct);
+
         // Limite de la formule d'abord : si elle est atteinte, corriger la
         // saisie ne servirait à rien.
         await VehicleWriteRules.EnsureVehicleQuotaAsync(_context, companyId, ct);

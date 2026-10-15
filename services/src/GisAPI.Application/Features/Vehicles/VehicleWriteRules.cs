@@ -1,6 +1,7 @@
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.FuelEntries;
 using GisAPI.Domain.Exceptions;
+using GisAPI.Domain.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Features.Vehicles;
@@ -136,6 +137,34 @@ public static class VehicleWriteRules
             .CountAsync(v => v.CompanyId == companyId, ct);
 
         return new VehicleQuota(plan.MaxVehicles, count);
+    }
+
+    public const string GpsFleetCreateMessage =
+        "Les véhicules d'un compte GPS sont ajoutés par l'équipe Calypso avec leur boîtier : contactez-la pour en ajouter un.";
+
+    public const string GpsFleetDeleteMessage =
+        "Les véhicules d'un compte GPS sont retirés par l'équipe Calypso : contactez-la pour en supprimer un.";
+
+    /// <summary>
+    /// Calypso GPS (abonnement avec suivi, moduleMonitoring) : les véhicules arrivent avec
+    /// leur boîtier, créés et retirés par l'équipe Calypso. Seul Calypso GPA (sans boîtier)
+    /// ajoute et supprime lui-même ses véhicules — règle donnée par Karim le 15/10/2026.
+    /// Même lecture que l'écran (estSocieteSansGps) : il faut un abonnement GPA explicite,
+    /// une société sans abonnement ne voit pas le bouton et n'ajoute rien par l'API.
+    /// </summary>
+    public static async Task<bool> ClientManagesFleetAsync(IGisDbContext context, int companyId, CancellationToken ct) =>
+        await context.Societes.AsNoTracking()
+            .Where(s => s.Id == companyId && s.SubscriptionType != null)
+            .Select(s => (bool?)s.SubscriptionType!.ModuleMonitoring)
+            .FirstOrDefaultAsync(ct) == false;
+
+    /// <summary>Refuse (403) l'ajout ou la suppression d'un véhicule hors Calypso GPA ; l'équipe Calypso passe.</summary>
+    public static async Task EnsureClientManagesFleetAsync(
+        IGisDbContext context, ICurrentTenantService tenant, int companyId, string message, CancellationToken ct)
+    {
+        if (tenant.IsSystemAdmin) return;
+        if (!await ClientManagesFleetAsync(context, companyId, ct))
+            throw new ForbiddenAccessException(message);
     }
 
     /// <summary>Refuse une création au-delà de la limite de <see cref="GetVehicleQuotaAsync"/>.</summary>

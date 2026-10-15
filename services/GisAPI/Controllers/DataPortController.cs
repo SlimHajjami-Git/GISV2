@@ -394,10 +394,17 @@ public class DataPortController : ControllerBase
         // suivantes étaient notées « matricule introuvable », alors que le matricule
         // figure bien dans la feuille Véhicules.
         var quotaRefusedPlates = new HashSet<string>(StringComparer.Ordinal);
+        // Compte GPS : les véhicules arrivent avec leur boîtier, par l'équipe Calypso ; l'import
+        // ne les crée pas, comme le bouton « Nouveau véhicule » (règle du 15/10/2026). Les pleins,
+        // entretiens et dépenses des véhicules existants restent importés.
+        var fleetNotClientManaged = !await VehicleWriteRules.ClientManagesFleetAsync(_context, companyId, default);
+        var gpsRefusedPlates = new HashSet<string>(StringComparer.Ordinal);
         string MissingVehicleNote(string ignored, string plate) =>
             quotaRefusedPlates.Contains(Normalize(plate))
                 ? $"{ignored} : véhicule « {plate} » non créé (limite de l'abonnement)."
-                : $"{ignored} : matricule « {plate} » introuvable.";
+                : gpsRefusedPlates.Contains(Normalize(plate))
+                    ? $"{ignored} : véhicule « {plate} » non créé (compte GPS)."
+                    : $"{ignored} : matricule « {plate} » introuvable.";
 
         // 1) Véhicules
         var vs = FindSheet(wb, "Véhicules");
@@ -432,6 +439,14 @@ public class DataPortController : ControllerBase
                         result.VehiclesIgnored++;
                         result.AddNote($"Véhicule « {plate} » ignoré : matricule déjà présent.");
                     }
+                    continue;
+                }
+
+                if (fleetNotClientManaged)
+                {
+                    result.VehiclesIgnored++;
+                    if (gpsRefusedPlates.Add(key))
+                        result.AddNote($"Véhicule « {plate} » non créé : les véhicules d'un compte GPS sont ajoutés par l'équipe Calypso.");
                     continue;
                 }
 

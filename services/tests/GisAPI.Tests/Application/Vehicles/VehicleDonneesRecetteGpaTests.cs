@@ -24,8 +24,11 @@ public class VehicleDonneesRecetteGpaTests
 {
     private const int CompanyId = 7;
 
-    private static CreateVehicleCommandHandler CreateHandler(TestGisDbContext ctx) =>
-        new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object, new Mock<IPublisher>().Object);
+    private static CreateVehicleCommandHandler CreateHandler(TestGisDbContext ctx)
+    {
+        TestDataBuilder.EnsureGpaCompany(ctx, CompanyId);
+        return new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object, new Mock<IPublisher>().Object);
+    }
 
     private static Vehicle Veh(int id, int mileage = 8_000) => new()
     {

@@ -28,6 +28,10 @@ public class DeleteVehicleCommandHandler : IRequestHandler<DeleteVehicleCommand>
         if (vehicle == null)
             throw new NotFoundException("Vehicle", request.Id);
 
+        // Calypso GPA seulement : un compte GPS ne retire pas lui-même un véhicule équipé.
+        await VehicleWriteRules.EnsureClientManagesFleetAsync(
+            _context, _tenantService, companyId, VehicleWriteRules.GpsFleetDeleteMessage, ct);
+
         // Cascade-delete the vehicle and all its history in one transaction —
         // otherwise RESTRICT foreign keys on the child tables (costs, maintenance,
         // fuel, documents, trips…) reject the delete with Postgres 23503.

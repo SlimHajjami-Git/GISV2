@@ -4,6 +4,23 @@ namespace GisAPI.Tests.Common;
 
 public static class TestDataBuilder
 {
+    /// <summary>
+    /// Société Calypso GPA (abonnement sans suivi GPS) : seule offre où le client ajoute et
+    /// supprime lui-même ses véhicules (règle du 15/10/2026). Sans limite de véhicules, comme
+    /// une société sans abonnement avant cette règle. Sans effet si la société existe déjà.
+    /// </summary>
+    public static void EnsureGpaCompany(TestGisDbContext ctx, int companyId)
+    {
+        if (ctx.Societes.Any(s => s.Id == companyId)) return;
+        var plan = CreateSubscriptionType(900 + companyId);
+        plan.Name = "Calypso GPA";
+        plan.ModuleMonitoring = false;
+        plan.MaxVehicles = 0;
+        ctx.SubscriptionTypes.Add(plan);
+        ctx.Societes.Add(CreateSociete(companyId, plan.Id));
+        ctx.SaveChanges();
+    }
+
     public static SubscriptionType CreateSubscriptionType(int id = 1)
     {
         return new SubscriptionType

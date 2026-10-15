@@ -12,6 +12,8 @@ using GisAPI.Application.Features.Vehicles.Queries.GetVehiclesStatus;
 using GisAPI.Application.Features.Vehicles.Commands.SyncMileage;
 using GisAPI.Application.Features.Vehicles.Commands.CorrectMileage;
 using GisAPI.Application.Features.Vehicles.Commands.SetVehicleImmobilization;
+using GisAPI.Application.Features.Vehicles.Queries.GetVehicleDeletionPreview;
+using GisAPI.Attributes;
 using GisAPI.Services;
 using Microsoft.Extensions.Caching.Memory;
 
@@ -78,7 +80,10 @@ public class VehiclesController : ControllerBase
         return Ok(history);
     }
 
+    // Ajout et suppression : administrateur de la société seulement (le droit « Véhicules »
+    // suffisait), et Calypso GPA seulement — contrôlé dans les handlers (15/10/2026).
     [HttpPost]
+    [RequireCompanyAdmin]
     public async Task<ActionResult<int>> CreateVehicle([FromBody] CreateVehicleCommand command)
     {
         var vehicleId = await _mediator.Send(command);
@@ -120,7 +125,14 @@ public class VehiclesController : ControllerBase
 
     public record CorrectVehicleMileageRequest(int Mileage, string? Reason);
 
+    /// <summary>Ce que la suppression effacera avec le véhicule, pour la fenêtre de confirmation.</summary>
+    [HttpGet("{id}/deletion-preview")]
+    [RequireCompanyAdmin]
+    public async Task<ActionResult<VehicleDeletionPreviewDto>> GetDeletionPreview(int id, CancellationToken ct) =>
+        Ok(await _mediator.Send(new GetVehicleDeletionPreviewQuery(id), ct));
+
     [HttpDelete("{id}")]
+    [RequireCompanyAdmin]
     public async Task<ActionResult> DeleteVehicle(int id)
     {
         await _mediator.Send(new DeleteVehicleCommand(id));

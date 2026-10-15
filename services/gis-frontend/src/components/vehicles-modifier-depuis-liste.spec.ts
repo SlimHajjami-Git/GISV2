@@ -32,7 +32,7 @@ describe('Véhicules — « Modifier » depuis la liste garde le carburant et le
   function modifierLaLigne() {
     const ecran = new VehiclesComponent(
       { navigate() {} } as any, api, {} as any, { run: (f: any) => f() } as any, cdr,
-      { tick() {} } as any, {} as any, {} as any);
+      { tick() {} } as any, {} as any, {} as any, { getSubscriptionFeatures: () => ({ moduleMonitoring: false }) } as any);
     ecran.loadVehicles();
     const ligne = (ecran as any).filteredVehicles[0];
     ecran.openEditPopup(ligne);

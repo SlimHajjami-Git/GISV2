@@ -14,6 +14,8 @@ import { VehicleCostsPopupComponent } from './shared/vehicle-costs-popup.compone
 import { costCreditFamily, normalizeCostType } from './vehicle-costs.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
 import { UserPreferencesService } from '../services/user-preferences.service';
+import { PermissionService } from '../services/permission.service';
+import { estSocieteSansGps } from './dashboard-gpa.helpers';
 // Calypso 7: VehicleInfoComponent has been folded into VehiclePopupComponent.
 // The unified popup handles identification + GPS (admin-only) + acquisition
 // in a single surface, so the legacy slide-panel is no longer needed here.
@@ -110,7 +112,9 @@ interface VehicleTrip {
               <option value="suv">SUV</option>
               <option value="utilitaire">Utilitaire</option>
             </select>
-            <button class="btn-add" *ngIf="isAdmin" (click)="openAddPopup()" data-guide="vehicules-nouveau">
+            <!-- Calypso GPS : les véhicules arrivent avec leur boîtier, par l'équipe Calypso ;
+                 seul Calypso GPA ajoute et supprime ses véhicules (règle du 15/10/2026). -->
+            <button class="btn-add" *ngIf="isAdmin && estGpa" (click)="openAddPopup()" data-guide="vehicules-nouveau">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -348,6 +352,51 @@ interface VehicleTrip {
             <button class="btn-secondary" (click)="closeMileageFix()" [disabled]="mileageFix.saving">Annuler</button>
             <button class="btn-primary" (click)="saveMileageFix()" [disabled]="!canSaveMileageFix()">
               {{ mileageFix.saving ? 'Enregistrement…' : 'Corriger' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUPPRESSION D'UN VÉHICULE (Calypso GPA) — l'historique part avec lui : il est chiffré
+           avant de confirmer, et la plaque est demandée dès qu'il y a un historique. -->
+      <div class="credit-overlay" *ngIf="vehicleDeletion.open" (click)="closeVehicleDeletion()">
+        <div class="credit-modal" (click)="$event.stopPropagation()">
+          <div class="credit-head vdel-head">
+            <div class="credit-head-text">
+              <h3>Supprimer le véhicule</h3>
+              <span>{{ vehicleDeletion.name }}<span *ngIf="vehicleDeletion.plate"> — {{ vehicleDeletion.plate }}</span></span>
+            </div>
+            <button class="credit-close" (click)="closeVehicleDeletion()">✕</button>
+          </div>
+          <div class="credit-body">
+            <p class="vdel-text" *ngIf="vehicleDeletion.loading">Recherche de l'historique du véhicule…</p>
+            <ng-container *ngIf="!vehicleDeletion.loading && vehicleDeletion.history">
+              <p class="vdel-text" *ngIf="vehicleDeletion.history.length === 0 && vehicleDeletion.kept.length === 0">Ce véhicule n'a aucun historique enregistré.</p>
+              <ng-container *ngIf="vehicleDeletion.history.length > 0">
+                <p class="vdel-text">Seront effacés définitivement avec le véhicule :</p>
+                <ul class="vdel-list">
+                  <li *ngFor="let h of vehicleDeletion.history"><b>{{ h.count | appNumber:0 }}</b> {{ h.label }}</li>
+                </ul>
+                <p class="vdel-warning">Ces montants disparaîtront aussi des rapports. La suppression est définitive.</p>
+              </ng-container>
+              <ng-container *ngIf="vehicleDeletion.kept.length > 0">
+                <p class="vdel-text vdel-kept">Restent enregistrés, sans véhicule, avec la plaque <b>{{ vehicleDeletion.plate || vehicleDeletion.name }}</b> :</p>
+                <ul class="vdel-list">
+                  <li *ngFor="let h of vehicleDeletion.kept"><b>{{ h.count | appNumber:0 }}</b> {{ h.label }}</li>
+                </ul>
+              </ng-container>
+              <ng-container *ngIf="vehicleDeletion.history.length > 0">
+                <label class="mfix-label" for="vdelConfirm">Pour confirmer, saisissez la plaque <b>{{ vehicleDeletion.plate || vehicleDeletion.name }}</b></label>
+                <input id="vdelConfirm" class="mfix-input" type="text" autocomplete="off"
+                       [(ngModel)]="vehicleDeletion.confirmText" [disabled]="vehicleDeletion.deleting">
+              </ng-container>
+            </ng-container>
+            <p class="vdel-error" *ngIf="vehicleDeletion.error">{{ vehicleDeletion.error }}</p>
+          </div>
+          <div class="credit-foot">
+            <button class="btn-secondary" (click)="closeVehicleDeletion()" [disabled]="vehicleDeletion.deleting">Annuler</button>
+            <button class="btn-delete-confirm" (click)="confirmVehicleDeletion()" [disabled]="!canConfirmVehicleDeletion()">
+              {{ vehicleDeletion.deleting ? 'Suppression…' : 'Supprimer définitivement' }}
             </button>
           </div>
         </div>
@@ -621,6 +670,16 @@ interface VehicleTrip {
                 <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
               </svg>
               Entretiens offerts
+            </button>
+          </div>
+          <div class="panel-danger" *ngIf="isAdmin && estGpa">
+            <button class="btn-delete-vehicle" (click)="openVehicleDeletion(selectedDetailVehicle)">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+              Supprimer ce véhicule
             </button>
           </div>
         </div>
@@ -1177,6 +1236,29 @@ interface VehicleTrip {
       font-size: 13px; color: #0f172a; box-sizing: border-box;
     }
     .mfix-input:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
+    /* Suppression d'un véhicule */
+    .panel-danger { padding: 0 20px 16px; background: #f8fafc; }
+    .btn-delete-vehicle {
+      width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px; border: 1px solid #fecaca; border-radius: 8px; background: white;
+      color: #b91c1c; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-delete-vehicle:hover { background: #fef2f2; border-color: #f87171; }
+    .credit-head.vdel-head { background: linear-gradient(135deg, #ef4444, #b91c1c); }
+    .vdel-text { margin: 0 0 8px; font-size: 13px; color: #334155; }
+    .vdel-text.vdel-kept { margin-top: 14px; }
+    .vdel-list { margin: 0 0 12px; padding-left: 20px; font-size: 13px; color: #0f172a; line-height: 1.7; }
+    .vdel-warning {
+      margin: 0; padding: 10px 12px; background: #fef2f2; border: 1px solid #fecaca;
+      border-radius: 8px; font-size: 12px; color: #991b1b;
+    }
+    .vdel-error { margin: 12px 0 0; font-size: 12px; color: #b91c1c; }
+    .credit-foot .btn-delete-confirm {
+      padding: 8px 14px; border: none; background: #dc2626; color: white;
+      border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .credit-foot .btn-delete-confirm:hover:not(:disabled) { background: #b91c1c; }
+    .credit-foot .btn-delete-confirm:disabled { opacity: .45; cursor: not-allowed; }
     .credit-foot {
       display: flex; gap: 8px; justify-content: flex-end;
       padding: 14px 20px; border-top: 1px solid #f1f5f9;
@@ -2610,8 +2692,14 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     private cdr: ChangeDetectorRef,
     private appRef: ApplicationRef,
     private userPrefs: UserPreferencesService,
-    private authService: AuthService
+    private authService: AuthService,
+    private permissionService: PermissionService
   ) {}
+
+  /** Calypso GPA (société sans boîtier) : seule offre où le client ajoute et supprime ses véhicules. */
+  get estGpa(): boolean {
+    return estSocieteSansGps(this.permissionService.getSubscriptionFeatures());
+  }
 
   ngOnInit() {
     if (!this.apiService.isAuthenticated()) {
@@ -2844,6 +2932,77 @@ export class VehiclesComponent implements OnInit, OnDestroy {
   closeCreditPopup() {
     this.creditPopupVehicle = null;
     this.creditSchedule = null;
+  }
+
+  // ── Suppression d'un véhicule (Calypso GPA) ───────────────────────────────
+  // Le serveur efface le véhicule et son historique (choix A de Karim, 15/10/2026) :
+  // la fenêtre le chiffre d'abord, et demande la plaque dès qu'il y a un historique.
+  // Les pleins et les sinistres ne partent pas : ils restent enregistrés, détachés du
+  // véhicule, avec sa plaque (même règle que la suppression par l'administration).
+  vehicleDeletion: { open: boolean; vehicleId: number; name: string; plate: string; loading: boolean;
+                     history: { count: number; label: string }[] | null; kept: { count: number; label: string }[];
+                     confirmText: string; deleting: boolean; error: string } =
+    { open: false, vehicleId: 0, name: '', plate: '', loading: false, history: null, kept: [], confirmText: '', deleting: false, error: '' };
+
+  openVehicleDeletion(vehicle: any): void {
+    const id = parseInt(String(vehicle?.id));
+    if (isNaN(id)) return;
+    this.vehicleDeletion = {
+      open: true, vehicleId: id, name: vehicle.name || '', plate: vehicle.plate || '',
+      loading: true, history: null, kept: [], confirmText: '', deleting: false, error: ''
+    };
+    this.apiService.getVehicleDeletionPreview(id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (apercu) => {
+        if (this.vehicleDeletion.vehicleId !== id) return;
+        this.vehicleDeletion = { ...this.vehicleDeletion, loading: false, history: apercu?.history ?? [], kept: apercu?.kept ?? [] };
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        if (this.vehicleDeletion.vehicleId !== id) return;
+        this.vehicleDeletion = { ...this.vehicleDeletion, loading: false,
+          error: err?.error?.message || "Impossible de lire l'historique du véhicule. Réessayez." };
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  closeVehicleDeletion(): void {
+    if (this.vehicleDeletion.deleting) return;
+    this.vehicleDeletion = { ...this.vehicleDeletion, open: false };
+  }
+
+  /** Plaque comparée sans tenir compte des majuscules, espaces et tirets. */
+  private static cleDePlaque(v: string): string {
+    return (v || '').toUpperCase().replace(/[\s-]/g, '');
+  }
+
+  canConfirmVehicleDeletion(): boolean {
+    const d = this.vehicleDeletion;
+    if (d.loading || d.deleting || !d.history) return false;
+    if (d.history.length === 0) return true;
+    const attendu = VehiclesComponent.cleDePlaque(d.plate || d.name);
+    return attendu.length > 0 && VehiclesComponent.cleDePlaque(d.confirmText) === attendu;
+  }
+
+  confirmVehicleDeletion(): void {
+    if (!this.canConfirmVehicleDeletion()) return;
+    const id = this.vehicleDeletion.vehicleId;
+    this.vehicleDeletion = { ...this.vehicleDeletion, deleting: true, error: '' };
+    this.apiService.deleteVehicle(id).pipe(takeUntil(this.destroy$)).subscribe({
+      next: () => {
+        this.vehicleDeletion = { ...this.vehicleDeletion, open: false, deleting: false };
+        if (this.selectedDetailVehicle && parseInt(String(this.selectedDetailVehicle.id)) === id) {
+          this.closeVehicleDetail();
+        }
+        this.loadVehicles();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.vehicleDeletion = { ...this.vehicleDeletion, deleting: false,
+          error: err?.error?.message || 'La suppression a échoué. Réessayez.' };
+        this.cdr.detectChanges();
+      }
+    });
   }
 
   // ── Correction du compteur ────────────────────────────────────────────────

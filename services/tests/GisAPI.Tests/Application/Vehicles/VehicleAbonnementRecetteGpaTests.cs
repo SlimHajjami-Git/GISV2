@@ -28,8 +28,11 @@ public class VehicleAbonnementRecetteGpaTests
     private const int CompanyId = 7;
     private const int OtherCompanyId = 5;
 
-    private static CreateVehicleCommandHandler CreateHandler(TestGisDbContext ctx) =>
-        new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object, new Mock<IPublisher>().Object);
+    private static CreateVehicleCommandHandler CreateHandler(TestGisDbContext ctx)
+    {
+        TestDataBuilder.EnsureGpaCompany(ctx, CompanyId);
+        return new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object, new Mock<IPublisher>().Object);
+    }
 
     private static UpdateVehicleCommandHandler UpdateHandler(TestGisDbContext ctx) =>
         new(ctx, TestDbContextFactory.CreateMockTenantService(CompanyId).Object);
