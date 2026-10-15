@@ -31,6 +31,17 @@ public class DoublonBaseEnConflitTests
     }
 
     [Fact]
+    public void Deux_creations_simultanees_de_la_meme_plaque_rendent_la_phrase_du_matricule()
+    {
+        // Migration 062 : le double clic sur « Ajouter » (campagne GPA, n°16) — la seconde
+        // création heurte l'index unique et doit le dire comme le contrôle de l'API.
+        var message = ExceptionHandlingMiddleware.MessageDeDoublon(
+            Enregistrement(Postgres(PostgresErrorCodes.UniqueViolation, "ux_vehicles_societe_plaque")));
+
+        message.Should().Be("Ce matricule est déjà utilisé par un autre véhicule de la société.");
+    }
+
+    [Fact]
     public void Une_contrainte_inconnue_reste_un_doublon_annonce_comme_tel()
     {
         var message = ExceptionHandlingMiddleware.MessageDeDoublon(

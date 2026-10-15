@@ -582,8 +582,8 @@ export interface CompanyOption {
         <div class="panel-footer">
           <button type="button" class="btn-secondary" (click)="close()">Annuler</button>
           <!-- data-guide : dernier geste du tutoriel Véhicules (help-content.ts), en création seulement. -->
-          <button type="button" class="btn-primary" (click)="onSubmit()" [attr.data-guide]="vehicle?.id ? null : 'vehicule-ajouter'">
-            {{ vehicle?.id ? 'Mettre à jour' : 'Ajouter' }}
+          <button type="button" class="btn-primary" (click)="onSubmit()" [disabled]="saving" [attr.data-guide]="vehicle?.id ? null : 'vehicule-ajouter'">
+            {{ saving ? 'Enregistrement…' : (vehicle?.id ? 'Mettre à jour' : 'Ajouter') }}
           </button>
         </div>
       </div>
@@ -1196,6 +1196,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     (environment as any).simOperators ?? [];
 
   @Input() isOpen = false;
+  /** Enregistrement envoyé, réponse attendue : le bouton est grisé (double clic = deux véhicules, n°16). */
+  @Input() saving = false;
   @Input() vehicle: Vehicle | null = null;
   @Input() companies: CompanyOption[] = [];
 
@@ -2002,6 +2004,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   }
 
   onSubmit() {
+    if (this.saving) return;
     const manquants = this.champsObligatoiresManquants();
     if (manquants.length) {
       alert('Renseignez les champs obligatoires (*) : ' + manquants.join(', ') + '.');

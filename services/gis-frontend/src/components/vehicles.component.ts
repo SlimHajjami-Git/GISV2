@@ -821,6 +821,7 @@ interface VehicleTrip {
       <app-vehicle-popup
         [isOpen]="isPopupOpen"
         [vehicle]="selectedVehicle"
+        [saving]="savingVehicle"
         (closed)="closePopup()"
         (saved)="saveVehicle($event)"
       />
@@ -3394,8 +3395,15 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.selectedVehicle = null;
   }
 
+  /**
+   * Enregistrement en cours : un double clic sur « Ajouter » envoyait deux créations et
+   * donnait deux véhicules de même plaque (campagne GPA, erreur n°16). La fenêtre grise son
+   * bouton, et un second envoi est ignoré tant que le premier n'a pas répondu.
+   */
+  savingVehicle = false;
+
   saveVehicle(vehicleData: any) {
-    console.log('Saving vehicle:', vehicleData);
+    if (this.savingVehicle) return;
 
     // Build payload matching backend CreateVehicleCommand / UpdateVehicleCommand
     const payload: any = {
@@ -3444,14 +3452,17 @@ export class VehiclesComponent implements OnInit, OnDestroy {
       }
     }
 
+    this.savingVehicle = true;
     if (this.selectedVehicle && this.selectedVehicle.id) {
       payload.id = parseInt(this.selectedVehicle.id, 10);
       this.apiService.updateVehicle(payload.id, payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
+          this.savingVehicle = false;
           this.closePopup();
           this.loadVehicles();
         },
         error: (err) => {
+          this.savingVehicle = false;
           console.error('Error updating vehicle:', err);
           // Message précis du serveur (ex. contrôle du kilométrage décroissant)
           // plutôt qu'un texte générique.
@@ -3461,10 +3472,12 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     } else {
       this.apiService.createVehicle(payload).pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
+          this.savingVehicle = false;
           this.closePopup();
           this.loadVehicles();
         },
         error: (err) => {
+          this.savingVehicle = false;
           console.error('Error creating vehicle:', err);
           alert(err?.error?.message || 'Erreur lors de la création du véhicule');
         }

@@ -37,7 +37,9 @@ public class ExceptionHandlingMiddleware
     /// </summary>
     private static readonly Dictionary<string, string> MessagesParContrainte = new()
     {
-        ["idx_users_email"] = "Cet email est déjà utilisé"
+        ["idx_users_email"] = "Cet email est déjà utilisé",
+        // Migration 062 : deux créations simultanées de la même plaque (double clic, n°16).
+        ["ux_vehicles_societe_plaque"] = "Ce matricule est déjà utilisé par un autre véhicule de la société."
     };
 
     /// <summary>Message d'un doublon PostgreSQL (23505), ou null si ce n'en est pas un.</summary>
