@@ -14,6 +14,20 @@ public class PredictiveAlertService : BackgroundService
     private readonly ILogger<PredictiveAlertService> _logger;
     private const int CHECK_INTERVAL_HOURS = 6;
 
+    /// <summary>
+    /// Un même rappel (échéance de document, permis, entretien) n'est renvoyé qu'au bout de 48 h :
+    /// l'anti-doublon valait l'intervalle du contrôle (6 h), il repartait donc à chaque passage,
+    /// e-mails compris. Sur TN du 08 au 15/10/2026 : 10 983 rappels d'entretien chez HERTZ, chaque
+    /// sujet ≈ 25 fois par destinataire (campagne GPA du 06/10/2026, erreur n°10 ; « une fois tous
+    /// les deux jours », décision de Karim du 15/10/2026). Le contrôle garde son rythme de 6 h : un
+    /// NOUVEAU sujet est signalé vite, seul son renvoi est espacé.
+    /// </summary>
+    internal const int RappelToutesLesHeures = 48;
+
+    /// <summary>Instant avant lequel un rappel déjà envoyé n'empêche plus d'en renvoyer un.</summary>
+    internal static DateTime SeuilDeRenvoi(DateTime maintenantUtc, TimeSpan? fenetre = null) =>
+        maintenantUtc - (fenetre ?? TimeSpan.FromHours(RappelToutesLesHeures));
+
     public PredictiveAlertService(IServiceProvider serviceProvider, ILogger<PredictiveAlertService> logger)
     {
         _serviceProvider = serviceProvider;
@@ -413,7 +427,7 @@ public class PredictiveAlertService : BackgroundService
     private async Task<bool> HasRecentNotification(GisDbContext context, int companyId,
         string type, int vehicleId, string keyword, CancellationToken ct, TimeSpan? dedupWindow = null)
     {
-        var cutoff = DateTime.UtcNow - (dedupWindow ?? TimeSpan.FromHours(CHECK_INTERVAL_HOURS));
+        var cutoff = SeuilDeRenvoi(DateTime.UtcNow, dedupWindow);
         // Le mot-cle etait accepte mais IGNORE : un vehicule dont l assurance
         // ET la vignette expirent n alertait que pour le premier document du
         // cycle, l autre restant supprime a chaque tour (constate en recette
