@@ -121,6 +121,14 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   // ne se saisissent plus ici : les sous-formulaires dédiés ont été retirés.
   formVehicleId = '';
   formDate = new Date().toISOString().split('T')[0];
+  /** Date du jour LOCALE (aaaa-mm-jj) : borne des dates de saisie, pas de date future
+   *  (erreur n°13 de la campagne GPA du 06/10/2026). Pas toISOString() : en UTC+1, peu
+   *  après minuit, il rendait la veille et aurait interdit la date du jour. */
+  get dateMax(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   formDescription = '';
   // Champ VIDE au départ, pas 0 : on tapait « 45 » derrière le 0 et on obtenait « 045 »
   // (campagne de tests GPA du 06/10/2026, erreur n°12).

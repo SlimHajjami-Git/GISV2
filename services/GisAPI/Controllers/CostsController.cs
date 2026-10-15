@@ -403,6 +403,10 @@ public class CostsController : ControllerBase
         if (VehicleCostRules.AmountError(cost.Amount) is { } amountError)
             return BadRequest(new { message = amountError });
 
+        // Pas de dépense datée dans le futur (erreur n°13 de la campagne GPA du 06/10/2026).
+        if (GisAPI.Application.Common.DateSaisie.ErreurDateFuture(cost.Date, "de la dépense") is { } dateError)
+            return BadRequest(new { message = dateError });
+
         _context.VehicleCosts.Add(cost);
         await _context.SaveChangesAsync(ct);
 
@@ -457,6 +461,7 @@ public class CostsController : ControllerBase
         // Montant d'origine : une dépense à 0 écrite par l'application (entretien gratuit,
         // « marquer fait ») doit rester modifiable (date, description…) sans inventer un montant.
         var originalAmount = cost.Amount;
+        var originalDate = cost.Date;
 
         cost.Type = type;
         cost.Description = updated.Description;
@@ -482,6 +487,11 @@ public class CostsController : ControllerBase
         if ((cost.Amount != originalAmount || cost.Amount < 0)
             && VehicleCostRules.AmountError(cost.Amount) is { } amountError)
             return BadRequest(new { message = amountError });
+
+        // Date future refusée si elle CHANGE : une dépense déjà enregistrée reste corrigeable.
+        if (cost.Date != originalDate
+            && GisAPI.Application.Common.DateSaisie.ErreurDateFuture(cost.Date, "de la dépense") is { } dateError)
+            return BadRequest(new { message = dateError });
 
         // Le journal d'entretien lié (MaintenanceLog.CostId) suit la dépense : l'historique
         // Entretiens (écran, total et PDF) lit ActualCost / DoneDate / DoneKm. Corrigée ici

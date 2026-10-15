@@ -267,7 +267,7 @@ const ECART_MAX_RAPPROCHEMENT = 2;
                 </div>
                 <div class="form-group">
                   <label>Date Facture <span class="required">*</span></label>
-                  <input type="date" [(ngModel)]="manualEntry.invoiceDate" class="form-control">
+                  <input type="date" [(ngModel)]="manualEntry.invoiceDate" [max]="dateMax" class="form-control">
                 </div>
                 <div class="form-group">
                   <label>Montant Total <span class="required">*</span></label>
@@ -737,6 +737,14 @@ export class CarburantComponent implements OnInit, OnDestroy {
   // champ vaut encore cette valeur, personne ne l'a choisie : c'est ce qui permet
   // à saisieCommencee() de distinguer une date saisie d'une date par défaut.
   private dateParDefaut = new Date().toISOString().split('T')[0];
+  /** Date du jour LOCALE (aaaa-mm-jj) : borne des dates de saisie, pas de date future
+   *  (erreur n°13 de la campagne GPA du 06/10/2026). Pas toISOString() : en UTC+1, peu
+   *  après minuit, il rendait la veille et aurait interdit la date du jour. */
+  get dateMax(): string {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   manualEntry = { vehiclePlate: '', fuelTypeId: null as number | null, volume: null as number | null, pricePerLiter: null as number | null, totalAmount: null as number | null, invoiceDate: this.dateParDefaut, odometerKm: null as number | null };
   totalAmountTouched = false;
 

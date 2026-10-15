@@ -32,6 +32,11 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
             ? DateTime.SpecifyKind(request.InvoiceDate, DateTimeKind.Utc)
             : request.InvoiceDate.ToUniversalTime();
 
+        // Pas de plein daté dans le futur (erreur n°13 de la campagne GPA du 06/10/2026) ;
+        // l'import Excel passe par ici, une ligne future y est refusée avec ce motif.
+        if (GisAPI.Application.Common.DateSaisie.ErreurDateFuture(invoiceDate, "du plein") is { } dateError)
+            throw new GisAPI.Domain.Exceptions.DomainException(dateError);
+
         // Rattachement au véhicule par matricule.
         //
         // L'égalité stricte laissait échapper « 123 TU 4567 » face à « 123TU4567 »
