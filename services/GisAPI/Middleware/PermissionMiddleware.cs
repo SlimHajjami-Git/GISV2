@@ -334,11 +334,12 @@ public class PermissionMiddleware
 
     /// <summary>
     /// Routes du compte de l'appelant lui-même, ouvertes à tout utilisateur connecté (voir
-    /// InvokeAsync) : lire son profil, changer son mot de passe (mot de passe actuel exigé),
-    /// régler ses heures silencieuses. Chemins et méthodes EXACTS.
+    /// InvokeAsync) : lire et modifier son profil, changer son mot de passe (mot de passe
+    /// actuel exigé), régler ses heures silencieuses. Chemins et méthodes EXACTS.
     /// </summary>
     internal static bool IsSelfServiceUserRoute(string path, string method) =>
-        (string.Equals(path, "/api/users/me", StringComparison.OrdinalIgnoreCase) && HttpMethods.IsGet(method))
+        (string.Equals(path, "/api/users/me", StringComparison.OrdinalIgnoreCase)
+            && (HttpMethods.IsGet(method) || HttpMethods.IsPut(method)))
         || (HttpMethods.IsPut(method)
             && (string.Equals(path, "/api/users/me/password", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(path, "/api/users/me/quiet-hours", StringComparison.OrdinalIgnoreCase)));
@@ -430,9 +431,11 @@ public class PermissionMiddleware
         // /api/users, elles exigeaient CanUsers : un employé sans ce droit (utilisateur 51
         // de la recette du 11/09/2026) ne pouvait ni lire son propre profil ni régler ses
         // heures silencieuses. Liste EXACTE, pas de préfixe : /api/users/{id} et la gestion
-        // des autres comptes restent soumis à CanUsers. PUT /api/users/me (nom, e-mail) N'EN
-        // FAIT PAS PARTIE : changer son e-mail reste réservé à CanUsers — l'unicité de
-        // l'e-mail n'y est vérifiée que dans la société et en respectant la casse.
+        // des autres comptes restent soumis à CanUsers. PUT /api/users/me (nom, e-mail,
+        // téléphone) en fait partie depuis que l'unicité de l'e-mail est vérifiée sur toute la
+        // base et sans la casse (UserEmailRules, 03/10/2026) : sans la case Utilisateurs, « Mon
+        // profil » répondait 403 et ni téléphone, ni langue, ni préférences n'étaient gardés
+        // (campagne de tests GPA du 06/10/2026, erreur n°6).
         if (IsSelfServiceUserRoute(path, method))
             return RouteGate.SelfService;
 

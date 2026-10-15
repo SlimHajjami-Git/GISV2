@@ -77,6 +77,7 @@ public class PermissionMiddlewareDriverTests
     [InlineData("GET", "/api/statistics/fleet")]         // _skipRoutes
     [InlineData("GET", "/api/notifications")]            // _skipRoutes
     [InlineData("GET", "/api/users/me")]                 // libre-service
+    [InlineData("PUT", "/api/users/me")]                 // « Mon profil » : web seulement, pas le chauffeur
     [InlineData("GET", "/api/chat/users")]               // annuaire, sans clé de permission
     [InlineData("POST", "/hubs/gps/negotiate")]          // hub mobile, hors /api
     [InlineData("POST", "/api/hubs/gps/negotiate")]      // hub web
@@ -192,4 +193,22 @@ public class PermissionMiddlewareDriverTests
     [InlineData("/hubs/gps", false)]
     public void La_liste_blanche_respecte_la_frontiere_de_segment(string path, bool attendu) =>
         PermissionMiddleware.IsDriverAppRoute(path).Should().Be(attendu);
+
+    // « Mon profil » sans la case Utilisateurs : 403, ni téléphone ni langue ni préférences
+    // n'étaient gardés (campagne de tests GPA du 06/10/2026, erreur n°6). Le profil des
+    // AUTRES comptes reste réservé à la case Utilisateurs.
+    [Theory]
+    [InlineData("PUT", "/api/users/me", true)]
+    [InlineData("PUT", "/api/users/61", false)]
+    [InlineData("GET", "/api/users", false)]
+    public async Task Sans_la_case_Utilisateurs_un_salarie_modifie_son_profil_mais_pas_celui_des_autres(
+        string method, string path, bool atteint)
+    {
+        await using var ctx = await SeedAsync();
+        (await ctx.Users.FindAsync(SalarieId))!.CanUsers.Should().BeFalse();
+
+        var outcome = await SendAsync(ctx, method, path, SalarieId, claimChauffeur: false);
+
+        outcome.ReachedController.Should().Be(atteint, $"{method} {path}");
+    }
 }

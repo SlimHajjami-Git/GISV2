@@ -199,7 +199,8 @@ public class QuietHoursDeliveryTests
     [InlineData("/api/users/me", "GET", true)]
     [InlineData("/api/users/me/quiet-hours", "PUT", true)]
     [InlineData("/api/users/me/password", "PUT", true)]
-    [InlineData("/api/users/me", "PUT", false)]              // nom et e-mail : restent réservés à CanUsers
+    [InlineData("/api/users/me", "PUT", true)]               // « Mon profil » (erreur n°6 de la campagne GPA)
+    [InlineData("/api/users/me", "DELETE", false)]
     [InlineData("/api/users/me/quiet-hours", "GET", false)]
     [InlineData("/api/users/me/autre", "PUT", false)]
     [InlineData("/api/users/5", "GET", false)]
