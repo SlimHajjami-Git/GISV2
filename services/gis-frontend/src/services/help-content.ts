@@ -322,7 +322,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
     ],
     etapes: [
       "Ouvrez « Réparations » dans le menu Maintenance.",
-      "Cliquez sur « Nouvelle reparation ».",
+      "Cliquez sur « Nouvelle réparation ».",
       "Choisissez le véhicule et la « Date » — les deux seuls champs obligatoires.",
       "Précisez le « Type d'intervention », la description et le numéro de facture.",
       "Ajoutez les pièces une par une (désignation, référence, quantité, prix unitaire) et le coût de main-d'œuvre.",
@@ -1632,7 +1632,7 @@ export const VISITES_ECRANS: VisiteEcran[] = [
       {
         id: "tuto-reparation-nouvelle",
         titre: "Enregistrez votre première réparation",
-        texte: "Cliquez sur « Nouvelle reparation » : la fiche à remplir s'ouvre.",
+        texte: "Cliquez sur « Nouvelle réparation » : la fiche à remplir s'ouvre.",
         cible: "reparations-nouvelle",
         action: "clic"
       },

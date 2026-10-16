@@ -8,6 +8,7 @@ import { USER_PREF_PIPES, nombreFr } from '../pipes/user-preference-pipes';
 import { ApiService, RepairDto } from '../services/api.service';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PdfExportService, PdfGroup } from '../services/pdf-export.service';
+import { SUPPLIER_TYPES } from './suppliers.component';
 import {
   ScanFactureComponent, ResultatScanFacture, EchecScanFacture, LigneFactureScannee
 } from './shared/scan-facture.component';
@@ -156,10 +157,10 @@ function dateSeule(d: string | null | undefined): string {
             <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
             </svg>
-            <input type="text" class="search-input" placeholder="Rechercher une reparation..." [(ngModel)]="searchQuery" (input)="filterRepairs()">
+            <input type="text" class="search-input" placeholder="Rechercher une réparation..." [(ngModel)]="searchQuery" (input)="filterRepairs()">
           </div>
           <select class="filter-select" [(ngModel)]="filterVehicle" (change)="onFiltreServeur()">
-            <option value="">Tous les vehicules</option>
+            <option value="">Tous les véhicules</option>
             <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }}{{ v.plateNumber ? ' - ' + v.plateNumber : '' }}</option>
           </select>
           <select class="filter-select" [(ngModel)]="filterStatus" (change)="onFiltreServeur()">
@@ -217,7 +218,7 @@ function dateSeule(d: string | null | undefined): string {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
-            Nouvelle reparation
+            Nouvelle réparation
           </button>
         </div>
 
@@ -413,8 +414,8 @@ function dateSeule(d: string | null | undefined): string {
             <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
             </svg>
-            <h3>{{ chargementEnCours ? 'Chargement des reparations...' : 'Aucune reparation trouvee' }}</h3>
-            <p *ngIf="!chargementEnCours">Modifiez vos filtres ou ajoutez une nouvelle reparation</p>
+            <h3>{{ chargementEnCours ? 'Chargement des réparations...' : 'Aucune réparation trouvée' }}</h3>
+            <p *ngIf="!chargementEnCours">Modifiez vos filtres ou ajoutez une nouvelle réparation</p>
           </div>
         </div>
       </div>
@@ -423,7 +424,7 @@ function dateSeule(d: string | null | undefined): string {
       <div class="overlay" *ngIf="isPanelOpen" @fadeIn (click)="closePanel()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
           <div class="panel-header">
-            <h2>{{ editingRepair ? 'Modifier la reparation' : 'Nouvelle reparation' }}</h2>
+            <h2>{{ editingRepair ? 'Modifier la réparation' : 'Nouvelle réparation' }}</h2>
             <button class="btn-close" (click)="closePanel()">×</button>
           </div>
 
@@ -473,10 +474,10 @@ function dateSeule(d: string | null | undefined): string {
 
             <!-- Vehicle Selection -->
             <div class="form-section">
-              <h4>Vehicule</h4>
+              <h4>Véhicule</h4>
               <div class="vehicle-select-wrapper">
                 <select class="form-control" [(ngModel)]="form.vehicleId" (change)="onVehicleChange()" data-guide="reparation-vehicule">
-                  <option value="">Selectionnez un vehicule</option>
+                  <option value="">Sélectionnez un véhicule</option>
                   <option *ngFor="let v of vehicles" [value]="v.id">{{ v.name }}{{ v.plateNumber ? ' - ' + v.plateNumber : '' }}</option>
                 </select>
               </div>
@@ -492,7 +493,7 @@ function dateSeule(d: string | null | undefined): string {
               <div class="supplier-select-row">
                 <select class="form-control" [(ngModel)]="form.supplierId" style="flex:1" data-guide="reparation-fournisseur">
                   <option value="">-- Aucun fournisseur --</option>
-                  <option *ngFor="let s of suppliers" [value]="s.id">{{ s.name }} <span *ngIf="s.type">({{ s.type }})</span></option>
+                  <option *ngFor="let s of suppliers" [value]="s.id">{{ s.name }} <span *ngIf="s.type">({{ libelleTypeFournisseur(s.type) }})</span></option>
                 </select>
                 <button class="btn-add-supplier" (click)="showAddSupplier = true" title="Ajouter un fournisseur">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -516,7 +517,7 @@ function dateSeule(d: string | null | undefined): string {
 
             <!-- Repair Details -->
             <div class="form-section">
-              <h4>Details de la reparation</h4>
+              <h4>Détails de la réparation</h4>
               <div class="form-row">
                 <div class="form-group">
                   <label>Date *</label>
@@ -536,7 +537,7 @@ function dateSeule(d: string | null | undefined): string {
               </div>
               <div class="form-group">
                 <label>Description</label>
-                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Decrivez la reparation..." data-guide="reparation-description"></textarea>
+                <textarea class="form-control" [(ngModel)]="form.description" rows="2" placeholder="Décrivez la réparation..." data-guide="reparation-description"></textarea>
               </div>
               <div class="form-row">
                 <div class="form-group">
@@ -565,7 +566,7 @@ function dateSeule(d: string | null | undefined): string {
             <!-- Parts Section -->
             <div class="form-section">
               <div class="section-header">
-                <h4>Pieces detachees</h4>
+                <h4>Pièces détachées</h4>
                 <button class="btn-add-part" (click)="addPart()" data-guide="reparation-piece-ajouter">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
@@ -576,16 +577,16 @@ function dateSeule(d: string | null | undefined): string {
 
               <div class="parts-table" *ngIf="form.parts.length > 0">
                 <div class="parts-header">
-                  <span class="col-name">Designation</span>
-                  <span class="col-ref">Reference</span>
-                  <span class="col-qty">Qte</span>
+                  <span class="col-name">Désignation</span>
+                  <span class="col-ref">Référence</span>
+                  <span class="col-qty">Qté</span>
                   <span class="col-price">Prix unit.</span>
                   <span class="col-subtotal">Sous-total</span>
                   <span class="col-action"></span>
                 </div>
                 <div class="parts-row" *ngFor="let part of form.parts; let i = index">
-                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la piece" [attr.data-guide]="i === 0 ? 'reparation-piece-nom' : null">
-                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Ref" [attr.data-guide]="i === 0 ? 'reparation-piece-reference' : null">
+                  <input class="col-name" [(ngModel)]="part.partName" placeholder="Nom de la pièce" [attr.data-guide]="i === 0 ? 'reparation-piece-nom' : null">
+                  <input class="col-ref" [(ngModel)]="part.partReference" placeholder="Réf." [attr.data-guide]="i === 0 ? 'reparation-piece-reference' : null">
                   <input class="col-qty" type="number" [(ngModel)]="part.quantity" min="1" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-quantite' : null">
                   <input class="col-price" type="number" [(ngModel)]="part.unitPrice" min="0" step="0.01" (change)="calculatePartSubtotal(part)" [attr.data-guide]="i === 0 ? 'reparation-piece-prix' : null">
                   <span class="col-subtotal">{{ part.subtotal | appCurrency }}</span>
@@ -594,15 +595,15 @@ function dateSeule(d: string | null | undefined): string {
               </div>
 
               <div class="empty-parts" *ngIf="form.parts.length === 0">
-                <p>Aucune piece ajoutee</p>
+                <p>Aucune pièce ajoutée</p>
               </div>
             </div>
 
             <!-- Labor Cost -->
             <div class="form-section">
-              <h4>Main d'oeuvre</h4>
+              <h4>Main-d'œuvre</h4>
               <div class="form-group">
-                <label>Cout main d'oeuvre ({{ currencyCode }})</label>
+                <label>Coût main-d'œuvre ({{ currencyCode }})</label>
                 <input type="number" class="form-control" [(ngModel)]="form.laborCost" min="0" step="0.01" placeholder="0.00" data-guide="reparation-main-oeuvre">
               </div>
             </div>
@@ -610,11 +611,11 @@ function dateSeule(d: string | null | undefined): string {
             <!-- Cost Summary -->
             <div class="cost-summary">
               <div class="summary-row">
-                <span>Total pieces</span>
+                <span>Total pièces</span>
                 <span>{{ getPartsCost() | appCurrency }}</span>
               </div>
               <div class="summary-row">
-                <span>Main d'oeuvre</span>
+                <span>Main-d'œuvre</span>
                 <span>{{ form.laborCost | appCurrency }}</span>
               </div>
               <div class="summary-row total">
@@ -627,7 +628,7 @@ function dateSeule(d: string | null | undefined): string {
             <div class="form-section">
               <div class="form-group">
                 <label>Notes</label>
-                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplementaires..." data-guide="reparation-notes"></textarea>
+                <textarea class="form-control" [(ngModel)]="form.notes" rows="2" placeholder="Notes supplémentaires..." data-guide="reparation-notes"></textarea>
               </div>
             </div>
           </div>
@@ -636,7 +637,7 @@ function dateSeule(d: string | null | undefined): string {
           <div class="panel-footer">
             <button class="btn-cancel" (click)="closePanel()">Annuler</button>
             <button class="btn-save" (click)="saveRepair()" [disabled]="!isFormValid()" [attr.data-guide]="editingRepair ? null : 'reparation-enregistrer'">
-              {{ editingRepair ? 'Mettre a jour' : 'Enregistrer' }}
+              {{ editingRepair ? 'Mettre à jour' : 'Enregistrer' }}
             </button>
           </div>
         </div>
@@ -646,7 +647,7 @@ function dateSeule(d: string | null | undefined): string {
       <div class="overlay" *ngIf="viewingRepair" @fadeIn (click)="closeView()">
         <div class="panel" @slideIn (click)="$event.stopPropagation()">
           <div class="panel-header view">
-            <h2>Details de la reparation</h2>
+            <h2>Détails de la réparation</h2>
             <button class="btn-close" (click)="closeView()">×</button>
           </div>
 
@@ -657,9 +658,9 @@ function dateSeule(d: string | null | undefined): string {
             </div>
 
             <div class="detail-section">
-              <h4>Vehicule</h4>
+              <h4>Véhicule</h4>
               <div class="detail-row">
-                <span class="detail-label">Vehicule</span>
+                <span class="detail-label">Véhicule</span>
                 <span class="detail-value">{{ viewingRepair.vehicleName }} - {{ viewingRepair.vehiclePlate }}</span>
               </div>
               <div class="detail-row" *ngIf="viewingRepair.mileageAtRepair">
@@ -669,7 +670,7 @@ function dateSeule(d: string | null | undefined): string {
             </div>
 
             <div class="detail-section">
-              <h4>Reparation</h4>
+              <h4>Réparation</h4>
               <div class="detail-row">
                 <span class="detail-label">Date</span>
                 <span class="detail-value">{{ viewingRepair.repairDate | date:'dd/MM/yyyy' }}</span>
@@ -703,11 +704,11 @@ function dateSeule(d: string | null | undefined): string {
             </div>
 
             <div class="detail-section" *ngIf="viewingRepair.parts.length > 0">
-              <h4>Pieces ({{ viewingRepair.parts.length }})</h4>
+              <h4>Pièces ({{ viewingRepair.parts.length }})</h4>
               <div class="detail-parts-table">
                 <div class="detail-parts-row header">
-                  <span>Designation</span>
-                  <span>Qte</span>
+                  <span>Désignation</span>
+                  <span>Qté</span>
                   <span>Prix unit.</span>
                   <span>Sous-total</span>
                 </div>
@@ -722,11 +723,11 @@ function dateSeule(d: string | null | undefined): string {
 
             <div class="detail-costs">
               <div class="detail-cost-row">
-                <span>Total pieces</span>
+                <span>Total pièces</span>
                 <span>{{ viewingRepair.partsCost | appCurrency }}</span>
               </div>
               <div class="detail-cost-row">
-                <span>Main d'oeuvre</span>
+                <span>Main-d'œuvre</span>
                 <span>{{ viewingRepair.laborCost | appCurrency }}</span>
               </div>
               <div class="detail-cost-row total">
@@ -752,8 +753,8 @@ function dateSeule(d: string | null | undefined): string {
             </svg>
             <h3>Confirmer la suppression</h3>
           </div>
-          <p>Etes-vous sur de vouloir supprimer la reparation <strong>{{ repairToDelete?.reference }}</strong> ?</p>
-          <p class="warning-text">Cette action est irreversible.</p>
+          <p>Êtes-vous sûr de vouloir supprimer la réparation <strong>{{ repairToDelete?.reference }}</strong> ?</p>
+          <p class="warning-text">Cette action est irréversible.</p>
           <!-- Motif du refus renvoyé par le serveur (réparation née d'un sinistre, par exemple) :
                sans lui la fenêtre se fermait sans un mot et la ligne restait à l'écran. -->
           <div class="save-error" *ngIf="saveError" role="alert">{{ saveError }}</div>
@@ -1140,6 +1141,12 @@ export class RepairsComponent implements OnInit, OnDestroy {
    */
   vehiculesRevue: { id: number; plate: string; name: string }[] = [];
 
+  /** Type du fournisseur en français dans la liste (« Assurance » et non « insurance »), comme l'écran Fournisseurs. */
+  libelleTypeFournisseur(type: string): string {
+    // Code inconnu (saisie ancienne) : affiché tel quel, avec sa majuscule.
+    return SUPPLIER_TYPES[type]?.label || (type ? type.charAt(0).toUpperCase() + type.slice(1) : type);
+  }
+
   /**
    * Catégories proposées dans le panneau de revue — les DIX du vocabulaire du scan,
    * à l'identique de l'écran Dépenses. Il faut la liste complète : l'IA peut rendre
@@ -1182,7 +1189,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
   /**
    * Une fenêtre est ouverte (saisie, détail, confirmation de suppression) : TOUT ce qui
    * ouvrirait ou remplacerait une fenêtre depuis l'arrière-plan est alors VERROUILLÉ —
-   * « Scanner une facture », « Nouvelle reparation » et, sur chaque ligne, Détails,
+   * « Scanner une facture », « Nouvelle réparation » et, sur chaque ligne, Détails,
    * Modifier et Supprimer.
    * Ces boutons vivent hors de la fenêtre : l'ombre les cachait mais ne les sortait pas
    * de l'ordre de tabulation — à la touche Tab on les atteignait encore, le formulaire
@@ -1190,7 +1197,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
    */
   get fenetreOuverte(): boolean {
     // `revueOuverte` en fait partie depuis le 29/09/2026 : sans lui, une touche Tab
-    // atteignait « Nouvelle reparation » DERRIÈRE le panneau de revue et ouvrait le
+    // atteignait « Nouvelle réparation » DERRIÈRE le panneau de revue et ouvrait le
     // tiroir par-dessus (z-index 1200 contre 1051), revue invisible dessous ; et le
     // bouton de scan relançait une analyse, crédit IA consommé, par-dessus une revue
     // en cours. C'est exactement le piège de l'ordre de TABULATION que ce getter existe
@@ -1737,7 +1744,7 @@ export class RepairsComponent implements OnInit, OnDestroy {
    *
    * Le verrou du bouton (`fenetreOuverte`) empêche de LANCER un scan par-dessus une
    * saisie ; il reste la course inverse — scan lancé fenêtre fermée, l'analyse dure
-   * quelques secondes et l'utilisateur ouvre « Nouvelle reparation » entre-temps.
+   * quelques secondes et l'utilisateur ouvre « Nouvelle réparation » entre-temps.
    * Refuser tout court perdrait un scan déjà décompté du quota : on demande.
    */
   private peutRemplacerLaSaisie(): boolean {
