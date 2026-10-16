@@ -89,6 +89,18 @@ describe('Aide — un abonnement GPA ne montre jamais les articles GPS', () => {
     expect(aide.articleParId('suivre-en-direct')).toBeUndefined();
   });
 
+  it('GPA : chaque mot d\'exemple du Centre d\'aide donne des resultats (« zone » ne figure plus)', () => {
+    // Campagne GPA du 06/10/2026, finitions : l'en-tete suggerait « zone », sans aucun resultat.
+    const aide = aideAvecCompte({
+      id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true,
+      subscriptionFeatures: abonnementGpa, userPermissions: null
+    });
+
+    for (const mot of ['plein', 'rapport', 'kilométrage', 'échéance']) {
+      expect(aide.rechercher(mot).length).toBeGreaterThan(0);
+    }
+  });
+
   it('GPA : plus de visite guidee, les premiers pas la remplacent (Karim, 25/09/2026)', () => {
     const aide = aideAvecCompte({
       id: 'u-admin-gpa', isSystemAdmin: false, isCompanyAdmin: true, firstLogin: true,

@@ -23,7 +23,9 @@ import { HelpArticle } from '../services/help-content.model';
       <header class="aide-entete">
         <div>
           <h1>Centre d'aide</h1>
-          <p>Cherchez un mot : « plein », « rapport », « kilométrage », « zone »…</p>
+          <!-- « zone » (géozones) n'existe qu'en offre GPS : en GPA, la recherche ne rendait rien
+               (campagne GPA du 06/10/2026, finitions). -->
+          <p>Cherchez un mot : « plein », « rapport », « kilométrage », {{ offreGpa ? '« échéance »' : '« zone »' }}…</p>
         </div>
         <div class="aide-boutons">
           <!-- GPA : plus de visite guidee ; le bouton rejoue les premiers pas
