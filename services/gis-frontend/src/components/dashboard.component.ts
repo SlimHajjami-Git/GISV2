@@ -117,27 +117,27 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
         </div>
       </div>
 
-      <!-- Offre GPA (sans GPS) : cinq indicateurs de gestion, une icône chacun -->
-      <div class="kpis k5" *ngIf="isGpaCompany">
-        <div class="kpi kpi-ic" title="Coût total sur la période : carburant, entretiens, réparations et autres dépenses, remboursements d'assurance déduits. Les achats de véhicules sont à part.">
+      <!-- Offre GPA (sans GPS) : cinq indicateurs de gestion, une icône chacun. Un indicateur
+           que l'utilisateur n'a pas le droit de voir est masqué (il affichait « accès non
+           autorisé », campagne GPA du 06/10/2026, finitions) ; la rangée garde sa largeur. -->
+      <div class="kpis k5" *ngIf="isGpaCompany && (!gpa || nbTuilesGpa > 0)" [style.--nk]="nbTuilesGpa">
+        <div class="kpi kpi-ic" *ngIf="!gpa || gpa.costs" title="Coût total sur la période : carburant, entretiens, réparations et autres dépenses, remboursements d'assurance déduits. Les achats de véhicules sont à part.">
           <span class="kic" style="--kc:#a5b4fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 6.2A7 7 0 1 0 17.5 17.8"/><path d="M4 10.2h9M4 13.8h9"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Coût total</span>
             <span class="kpi-v"><ng-container *ngIf="gpa?.costs as c; else kDash"><span class="kpi-num">{{ entier(c.total) }}<span class="kpi-dec">{{ decimales(c.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
             <span class="kpi-s" *ngIf="!gpa || gpa.costs">sur la période · hors achats</span>
-            <span class="kpi-s" *ngIf="gpa && !gpa.costs">accès non autorisé</span>
           </div>
         </div>
-        <div class="kpi kpi-ic" [title]="achatsInfoBulle">
+        <div class="kpi kpi-ic" *ngIf="!gpa || gpa.acquisition" [title]="achatsInfoBulle">
           <span class="kic" style="--kc:#7dd3fc"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7.5h16l-1.4 11a2 2 0 0 1-2 1.7H7.4a2 2 0 0 1-2-1.7z"/><path d="M8.5 10V6.5a3.5 3.5 0 0 1 7 0V10"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Coût d'achats</span>
             <span class="kpi-v"><ng-container *ngIf="gpa?.acquisition as a; else kDash"><span class="kpi-num">{{ entier(a.total) }}<span class="kpi-dec">{{ decimales(a.total) }}</span></span><span class="kpi-u">{{ currencySym }}</span></ng-container></span>
             <span class="kpi-s" *ngIf="gpa?.acquisition">{{ achatsSousTitre }}</span>
-            <span class="kpi-s" *ngIf="gpa && !gpa.acquisition">accès non autorisé</span>
           </div>
         </div>
-        <div class="kpi kpi-ic" title="Somme des mensualités de leasing et de crédit encore à venir, tous contrats confondus.">
+        <div class="kpi kpi-ic" *ngIf="!gpa || gpa.leasingRemaining" title="Somme des mensualités de leasing et de crédit encore à venir, tous contrats confondus.">
           <span class="kic" style="--kc:#c4b5fd"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14.5h3"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Reste à payer leasing</span>
@@ -146,19 +146,17 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
               <span class="kpi-s" *ngIf="l.installments>0">{{ l.installments }}&nbsp;échéance{{ l.installments>1?'s':'' }} · {{ l.contracts }}&nbsp;contrat{{ l.contracts>1?'s':'' }}</span>
               <span class="kpi-s" *ngIf="l.installments===0">aucune échéance à venir</span>
             </ng-container>
-            <span class="kpi-s" *ngIf="gpa && !gpa.leasingRemaining">accès non autorisé</span>
           </div>
         </div>
-        <div class="kpi kpi-ic" title="Nombre d'interventions sur la période : entretiens et réparations enregistrés (réparations annulées exclues).">
+        <div class="kpi kpi-ic" *ngIf="!gpa || gpa.interventions" title="Nombre d'interventions sur la période : entretiens et réparations enregistrés (réparations annulées exclues).">
           <span class="kic" style="--kc:#fcd34d"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3.8 17a1.8 1.8 0 0 0 2.6 2.6l5.5-5.5a4 4 0 0 0 5.2-5.4l-2.5 2.5-2.1-.5-.5-2.1z"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Interventions</span>
             <span class="kpi-v"><ng-container *ngIf="gpa?.interventions as n; else kDash">{{ nombre(n.total) }}</ng-container></span>
             <span class="kpi-s" *ngIf="gpa?.interventions as n">{{ n.maintenance }}&nbsp;entretien{{ n.maintenance>1?'s':'' }} · {{ n.repairs }}&nbsp;réparation{{ n.repairs>1?'s':'' }}</span>
-            <span class="kpi-s" *ngIf="gpa && !gpa.interventions">accès non autorisé</span>
           </div>
         </div>
-        <div class="kpi kpi-ic" title="Entretiens planifiés qui arrivent à échéance dans les 30 prochains jours ; les entretiens déjà dépassés sont comptés à part.">
+        <div class="kpi kpi-ic" *ngIf="!gpa || gpa.upcomingMaintenance" title="Entretiens planifiés qui arrivent à échéance dans les 30 prochains jours ; les entretiens déjà dépassés sont comptés à part.">
           <span class="kic" [style.--kc]="(gpa?.upcomingMaintenance?.overdue ?? 0)>0 ? '#fca5a5' : '#6ee7b7'"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.8M9.5 2.8h5"/></svg></span>
           <div class="ktx">
             <span class="kpi-l">Entretiens à venir</span>
@@ -166,7 +164,6 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
             <span class="kpi-s" *ngIf="gpa?.upcomingMaintenance as u">sous 30&nbsp;jours
               <span class="kchip kchip-danger" *ngIf="u.overdue>0">{{ u.overdue }}&nbsp;en retard</span>
             </span>
-            <span class="kpi-s" *ngIf="gpa && !gpa.upcomingMaintenance">accès non autorisé</span>
           </div>
         </div>
         <ng-template #kDash><span class="kpi-na">—</span></ng-template>
@@ -874,7 +871,7 @@ export function partDuTotal(valeur:number|null|undefined,total:number|null|undef
     /* ── rangée KPI (filets) ── */
     .kpis{display:grid;grid-template-columns:repeat(6,1fr);padding-top:16px}
     /* Offre GPA : cinq KPI avec icône, sur une ligne */
-    .kpis.k5{grid-template-columns:repeat(5,minmax(0,1fr))}
+    .kpis.k5{grid-template-columns:repeat(var(--nk,5),minmax(0,1fr))}
     .kpi.kpi-ic{display:flex;align-items:flex-start;gap:12px;cursor:default}
     .kic{
       width:34px;height:34px;border-radius:10px;flex:none;display:grid;place-items:center;margin-top:1px;
@@ -1401,6 +1398,12 @@ export class DashboardComponent implements OnInit, OnDestroy, AfterViewInit {
   get hasGps():boolean{return this.permissionService.hasModuleAccess('monitoring');}
   /** Disposition du tableau de bord, décidée par la SOCIÉTÉ (abonnement sans suivi GPS),
    *  jamais par le droit de l'utilisateur ni par le code d'abonnement. */
+  /** Tuiles GPA visibles : toutes pendant le chargement, puis celles que l'utilisateur a le droit de voir. */
+  get nbTuilesGpa():number{
+    const g=this.gpa;
+    if(!g) return 5;
+    return [g.costs,g.acquisition,g.leasingRemaining,g.interventions,g.upcomingMaintenance].filter(Boolean).length;
+  }
   get isGpaCompany():boolean{return estSocieteSansGps(this.permissionService.getSubscriptionFeatures());}
   /** Carte « Consommation par véhicule » : /fuelexpenses/real-consumption exige le module Carburant. */
   get fuelAllowed():boolean{return this.permissionService.hasModuleAccess('carburant');}
