@@ -147,7 +147,7 @@ interface VehicleOption {
         <!-- USERS TAB -->
         <ng-container *ngIf="activeTab === 'users'">
         <!-- Stats Cards -->
-        <div class="stats-row">
+        <div class="stats-row" [style.--nc]="carteChauffeursVisible ? 5 : 4">
           <div class="stat-card">
             <div class="stat-icon users">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -192,7 +192,7 @@ interface VehicleOption {
               <span class="stat-label">Inactifs</span>
             </div>
           </div>
-          <div class="stat-card stat-driver-accounts">
+          <div class="stat-card stat-driver-accounts" *ngIf="carteChauffeursVisible">
             <div class="stat-icon driver-accounts">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M5 17h-2v-6l2-5h9l4 5v6h-2"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
@@ -367,7 +367,9 @@ interface VehicleOption {
                      reflète et propose. -->
                 <!-- Jamais sur son propre compte : le passage en chauffeur coupe l'accès au
                      site à la requête suivante, sans retour possible (le serveur refuse aussi). -->
-                <div class="form-section" *ngIf="!isEditingOwnAccount">
+                <!-- Sans le module Tournées (offre GPA), un compte chauffeur n'a pas d'objet : la case
+                     n'est proposée que pour un compte qui l'est déjà (campagne GPA, finitions). -->
+                <div class="form-section" *ngIf="!isEditingOwnAccount && (tourneesDansLAbonnement || userForm.isDriverAccount)">
                   <label class="perm-check perm-driver" style="display:flex; align-items:flex-start; gap:10px;">
                     <input type="checkbox" class="driver-account-toggle" [(ngModel)]="userForm.isDriverAccount"
                            (ngModelChange)="onDriverAccountToggle()" style="margin-top:3px;">
@@ -836,7 +838,7 @@ interface VehicleOption {
     /* Stats Row */
     .stats-row {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(var(--nc, 5), 1fr);
       gap: 16px;
       margin-bottom: 24px;
     }
@@ -2123,6 +2125,16 @@ export class UserManagementComponent implements OnInit, OnDestroy {
    * proposée : convertir son propre compte coupe l'accès au site à la requête suivante,
    * sans retour possible (le serveur le refuse aussi, UpdateUserCommandHandler).
    */
+  /** Comptes chauffeur (application mobile, tournées) : seulement si l'abonnement a le module Tournées. */
+  get tourneesDansLAbonnement(): boolean {
+    return this.permissions.abonnementComprend('tours');
+  }
+
+  /** Carte « Chauffeurs (app mobile) » : utile avec les tournées, ou s'il existe déjà de tels comptes. */
+  get carteChauffeursVisible(): boolean {
+    return this.tourneesDansLAbonnement || this.getDriverAccountsCount() > 0;
+  }
+
   /** Plafond d'utilisateurs de l'abonnement (0 = inconnu : rien n'est bloqué ici, le serveur tranche). */
   get placesMax(): number {
     return this.permissions.getLimit('maxUsers');

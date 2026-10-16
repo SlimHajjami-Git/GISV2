@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { Router, RouterModule } from '@angular/router';
 import { Subject, takeUntil } from 'rxjs';
 import { ApiService } from '../services/api.service';
+import { PermissionService } from '../services/permission.service';
 import { MockDataService } from '../services/mock-data.service';
 import { Employee, Company, Vehicle, DriverScore } from '../models/types';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -41,8 +42,18 @@ export class EmployeesComponent implements OnInit, OnDestroy {
     private mockDataService: MockDataService,
     private ngZone: NgZone,
     private cdr: ChangeDetectorRef,
-    private appRef: ApplicationRef
+    private appRef: ApplicationRef,
+    private permissionService: PermissionService
   ) {}
+
+  /**
+   * Le compte chauffeur sert à recevoir ses tournées dans l'application mobile : sans le
+   * module Tournées (offre Calypso GPA), « Créer son compte » n'a pas d'objet (campagne GPA
+   * du 06/10/2026, finitions).
+   */
+  get tourneesDansLAbonnement(): boolean {
+    return this.permissionService.abonnementComprend('tours');
+  }
 
   ngOnInit() {
     if (!this.apiService.isAuthenticated()) {

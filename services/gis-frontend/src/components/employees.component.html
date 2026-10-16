@@ -195,7 +195,7 @@
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>
                       Application : {{ driver.accountStatus === 'active' ? 'active' : 'désactivée' }}
                     </span>
-                  } @else {
+                  } @else if (tourneesDansLAbonnement) {
                     <!-- driverId : le compte créé est relié à CETTE fiche (véhicule, permis,
                          tournées), même sans e-mail ou si l'e-mail est corrigé dans le formulaire. -->
                     <a class="app-create-link" [routerLink]="['/users']"

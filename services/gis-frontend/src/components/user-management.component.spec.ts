@@ -175,7 +175,8 @@ describe('UserManagementComponent — compte chauffeur (application mobile)', ()
 
   it('la case « Chauffeur » n’est pas proposée sur son propre compte, elle l’est sur les autres', () => {
     // Convertir son propre compte coupe l'accès au site sans retour (le serveur refuse aussi).
-    jest.spyOn(TestBed.inject(AuthService), 'getCurrentUserSync').mockReturnValue({ id: '10' } as any);
+    // Offre avec tournées (GPS) : le compte chauffeur y a un objet.
+    jest.spyOn(TestBed.inject(AuthService), 'getCurrentUserSync').mockReturnValue({ id: '10', subscriptionFeatures: { moduleTours: true } } as any);
 
     component.openUserModal(utilisateurs[0] as any);   // Amel = le compte connecté
     fixture.detectChanges();
@@ -194,7 +195,28 @@ describe('UserManagementComponent — compte chauffeur (application mobile)', ()
     expect(fixture.nativeElement.querySelector('.driver-account-toggle')).not.toBeNull();
   });
 
+  it("offre sans tournées (GPA) : pas de case « Chauffeur » à la création, ni de carte « Chauffeurs (app mobile) »", () => {
+    // Campagne GPA du 06/10/2026, finitions : le compte chauffeur sert à recevoir ses tournées.
+    jest.spyOn(TestBed.inject(AuthService), 'getCurrentUserSync').mockReturnValue({ id: '99', subscriptionFeatures: { moduleTours: false } } as any);
+    component.users = [utilisateurs[0] as any];
+
+    component.openUserModal();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.driver-account-toggle')).toBeNull();
+    expect(component.carteChauffeursVisible).toBe(false);
+
+    // Un compte chauffeur déjà existant garde sa case et sa carte.
+    component.closeUserModal();
+    component.users = utilisateurs as any;
+    component.openUserModal(utilisateurs[1] as any);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.driver-account-toggle')).not.toBeNull();
+    expect(component.carteChauffeursVisible).toBe(true);
+  });
+
   it('sous la case « Chauffeur », une ligne dit quelle application installer (1.2 ou plus récente)', () => {
+    // Offre avec tournées (GPS) : la case « Chauffeur » y est proposée.
+    jest.spyOn(TestBed.inject(AuthService), 'getCurrentUserSync').mockReturnValue({ id: '99', subscriptionFeatures: { moduleTours: true } } as any);
     component.openUserModal();
     fixture.detectChanges();
 
