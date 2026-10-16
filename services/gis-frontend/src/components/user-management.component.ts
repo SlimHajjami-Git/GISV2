@@ -107,6 +107,11 @@ interface VehicleOption {
           <div class="header-left">
             <h1>Gestion des Utilisateurs</h1>
             <p class="subtitle">Comptes Calypso et destinataires d'alertes par email</p>
+            <!-- Places de l'abonnement (campagne GPA, erreur n°20) : le plafond ne se
+                 découvrait qu'au refus, après les trois étapes du formulaire. -->
+            <p class="places-abonnement" *ngIf="placesMax > 0" [class.pleines]="placesPleines">
+              {{ placesUtilisees }} / {{ placesMax }} utilisateurs de votre abonnement<span *ngIf="getDriverAccountsCount() > 0"> (les comptes chauffeur ne comptent pas)</span>
+            </p>
           </div>
           <div class="header-actions">
             <button class="btn-primary" (click)="openUserModal()" *ngIf="activeTab === 'users'">
@@ -319,6 +324,10 @@ interface VehicleOption {
             </div>
 
             <div class="modal-body">
+              <div class="places-alerte" *ngIf="creationBloqueeParLesPlaces">
+                Les {{ placesMax }} places d'utilisateur de votre abonnement sont prises : ce compte ne peut pas être créé.
+                Supprimez un utilisateur pour libérer une place, ou changez d'abonnement.
+              </div>
               <!-- Step 1: Général -->
               <div *ngIf="userModalStep === 1">
                 <div class="form-section">
@@ -658,11 +667,11 @@ interface VehicleOption {
               </button>
               <div style="flex:1"></div>
               <button class="btn-secondary" (click)="closeUserModal()">Annuler</button>
-              <button class="btn-primary" *ngIf="hasNextUserStep()" (click)="nextUserStep()">
+              <button class="btn-primary" *ngIf="hasNextUserStep()" (click)="nextUserStep()" [disabled]="creationBloqueeParLesPlaces">
                 Suivant
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
-              <button class="btn-primary" *ngIf="!hasNextUserStep()" (click)="saveUser()">
+              <button class="btn-primary" *ngIf="!hasNextUserStep()" (click)="saveUser()" [disabled]="creationBloqueeParLesPlaces">
                 {{ editingUser ? 'Enregistrer' : 'Créer' }}
               </button>
             </div>
@@ -737,6 +746,13 @@ interface VehicleOption {
       color: #6b7280;
       font-size: 14px;
       margin: 0;
+    }
+
+    .places-abonnement { margin: 4px 0 0; font-size: 13px; color: #475569; }
+    .places-abonnement.pleines { color: #b45309; font-weight: 600; }
+    .places-alerte {
+      margin-bottom: 16px; padding: 10px 12px; border-radius: 8px;
+      background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-size: 13px;
     }
 
     .btn-primary {
@@ -2107,6 +2123,25 @@ export class UserManagementComponent implements OnInit, OnDestroy {
    * proposée : convertir son propre compte coupe l'accès au site à la requête suivante,
    * sans retour possible (le serveur le refuse aussi, UpdateUserCommandHandler).
    */
+  /** Plafond d'utilisateurs de l'abonnement (0 = inconnu : rien n'est bloqué ici, le serveur tranche). */
+  get placesMax(): number {
+    return this.permissions.getLimit('maxUsers');
+  }
+
+  /** Places prises : tous les comptes sauf les chauffeurs, comme le serveur (DriverAccountRules). */
+  get placesUtilisees(): number {
+    return this.users.filter(u => u.accountType !== 'driver').length;
+  }
+
+  get placesPleines(): boolean {
+    return this.placesMax > 0 && this.placesUtilisees >= this.placesMax;
+  }
+
+  /** Création d'un compte de gestion alors que les places sont prises (un chauffeur reste possible). */
+  get creationBloqueeParLesPlaces(): boolean {
+    return !this.editingUser && this.placesPleines && !this.userForm.isDriverAccount;
+  }
+
   get isEditingOwnAccount(): boolean {
     const me = this.auth.getCurrentUserSync()?.id;
     return !!this.editingUser && !!me && String(this.editingUser.id) === String(me);
