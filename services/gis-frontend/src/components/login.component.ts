@@ -4,7 +4,7 @@ import { FranceAuthComponent } from './france/france-auth.component';
 import { RegionService } from '../services/region.service';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { AuthService } from '../services/auth.service';
+import { AuthService, MESSAGE_SERVEUR_INDISPONIBLE } from '../services/auth.service';
 import { environment } from '../environments/environment';
 
 @Component({
@@ -495,11 +495,13 @@ export class LoginComponent {
         // pousserait à réessayer aussitôt, donc à prolonger le blocage.
         // driverAccount = compte chauffeur, réservé à l'application mobile : le message
         // dit où se connecter, au lieu d'un faux « mot de passe incorrect ».
+        // Serveur indisponible ou refus métier (abonnement suspendu, compte désactivé…) : dit
+        // tel quel ; « Email ou mot de passe incorrect » ne reste que pour les identifiants.
         this.errorMessage = err?.status === 429
           ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
-          : err?.driverAccount
-            ? err.error?.message
-            : 'Email ou mot de passe incorrect';
+          : err?.serveurIndisponible
+            ? MESSAGE_SERVEUR_INDISPONIBLE
+            : err?.error?.message || 'Email ou mot de passe incorrect';
         this.cdr.detectChanges();
       }
     });

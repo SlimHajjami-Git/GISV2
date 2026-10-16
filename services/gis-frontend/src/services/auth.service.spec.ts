@@ -78,7 +78,7 @@ describe('AuthService — compte chauffeur refusé sur le site', () => {
     expect(localStorage.getItem('auth_token')).toBeNull();
   });
 
-  it('un mot de passe faux (400 ordinaire) reste réduit à null, comme avant', () => {
+  it('un mot de passe faux : le message du serveur est relayé tel quel', () => {
     let utilisateur: any = 'non appelé';
     let erreur: any = null;
     service.login('amel@transporttest.tn', 'faux').subscribe({
@@ -91,8 +91,28 @@ describe('AuthService — compte chauffeur refusé sur le site', () => {
       { status: 400, statusText: 'Bad Request' }
     );
 
-    expect(utilisateur).toBeNull();
-    expect(erreur).toBeNull();
+    expect(utilisateur).toBe('non appelé');
+    expect(erreur.error.message).toBe('Email ou mot de passe incorrect');
+  });
+
+  // Campagne GPA du 06/10/2026 : tout échec se lisait « Email ou mot de passe incorrect ».
+  it('serveur arrêté (aucune réponse) ou en erreur 5xx : « serveur indisponible », pas « mot de passe incorrect »', () => {
+    for (const status of [0, 502, 504, 500]) {
+      let erreur: any = null;
+      service.login('amel@transporttest.tn', 'Secret@2026').subscribe({ error: e => { erreur = e; } });
+      httpMock.expectOne('/api/auth/login').flush(null, { status, statusText: 'Erreur' });
+      expect(erreur?.serveurIndisponible).toBe(true);
+    }
+  });
+
+  it('abonnement suspendu, compte désactivé : le refus du serveur est relayé avec son message', () => {
+    for (const message of ["L'abonnement de votre société est suspendu. Contactez votre prestataire.", "Compte désactivé"]) {
+      let erreur: any = null;
+      service.login('amel@transporttest.tn', 'Secret@2026').subscribe({ error: e => { erreur = e; } });
+      httpMock.expectOne('/api/auth/login').flush({ message }, { status: 400, statusText: 'Bad Request' });
+      expect(erreur?.error?.message).toBe(message);
+      expect(localStorage.getItem('auth_token')).toBeNull();
+    }
   });
 
   it('le refus dit quelle version de l’application installer, et le texte du serveur est reconnu', () => {

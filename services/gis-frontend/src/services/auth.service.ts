@@ -366,6 +366,15 @@ export class AuthService {
         // Compte chauffeur (refus du serveur en 400, ou de la ceinture ci-dessus) :
         // relayé avec son message, sinon il se lirait « mot de passe incorrect ».
         if (AuthService.isDriverRefusal(err)) return throwError(() => AuthService.driverRefusal());
+        // Serveur arrêté ou en erreur (pas de réponse, 5xx) : rien à voir avec le mot de passe,
+        // qui s'affichait pourtant « incorrect » (campagne GPA du 06/10/2026).
+        if (estServeurIndisponible(err)) return throwError(() => ({ status: err?.status ?? 0, serveurIndisponible: true }));
+        // Refus métier du serveur (abonnement suspendu ou expiré, adresse non confirmée,
+        // compte désactivé) : relayé avec son message, au lieu de « mot de passe incorrect ».
+        const message = err?.error?.message;
+        if (err?.status >= 400 && err?.status < 500 && typeof message === 'string' && message.trim()) {
+          return throwError(() => ({ status: err.status, error: { message } }));
+        }
         return of(null);
       })
     );
@@ -603,4 +612,14 @@ export class AuthService {
       })
     );
   }
+}
+
+/** Message des écrans de connexion quand le serveur ne répond pas (arrêté, réseau coupé, erreur 5xx). */
+export const MESSAGE_SERVEUR_INDISPONIBLE =
+  "Le serveur ne répond pas pour le moment. Réessayez dans un instant ; si cela continue, contactez le support.";
+
+/** Aucune réponse du serveur (0 : arrêté ou réseau coupé ; 502/503/504 : proxy sans réponse) ou erreur 5xx. */
+export function estServeurIndisponible(err: any): boolean {
+  const status = err?.status;
+  return status === 0 || (typeof status === 'number' && status >= 500);
 }

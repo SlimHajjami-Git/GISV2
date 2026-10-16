@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 import { AdminService, ADMIN_ACCESS_DENIED, MESSAGE_ACCES_ADMIN_REFUSE } from '../services/admin.service';
+import { MESSAGE_SERVEUR_INDISPONIBLE } from '../../services/auth.service';
 
 @Component({
   selector: 'admin-login',
@@ -620,7 +621,9 @@ export class AdminLoginComponent {
           ? (err.error?.message || 'Trop de tentatives de connexion. Patientez une minute.')
           : err?.code === ADMIN_ACCESS_DENIED
             ? MESSAGE_ACCES_ADMIN_REFUSE
-            : 'E-mail ou mot de passe incorrect';
+            : err?.serveurIndisponible
+              ? MESSAGE_SERVEUR_INDISPONIBLE
+              : 'E-mail ou mot de passe incorrect';
         this.loading = false;
         // Callback potentiellement hors cycle Angular : sans detectChanges,
         // l'erreur ne s'affichait qu'à l'interaction suivante.

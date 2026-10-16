@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
+import { estServeurIndisponible } from '../../services/auth.service';
 import { environment } from '../../environments/environment';
 
 export interface AdminUser {
@@ -565,6 +566,7 @@ export class AdminService {
       catchError(err => {
         console.error('Login error:', err);
         // Le 429 et le refus d'accès gardent leur forme, que l'écran de connexion affiche.
+        if (estServeurIndisponible(err)) return throwError(() => ({ status: err?.status ?? 0, serveurIndisponible: true }));
         return throwError(() => err?.status === 429 || err?.code === ADMIN_ACCESS_DENIED ? err : new Error('Invalid credentials'));
       })
     );
