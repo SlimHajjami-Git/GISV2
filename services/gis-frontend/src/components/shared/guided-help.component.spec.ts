@@ -727,6 +727,46 @@ describe('Tutoriel pas à pas — un nouvel administrateur ouvre l\'écran Véhi
     expect(guide.componentInstance.actif).toBe(false);
   });
 
+  // Campagne GPA du 06/10/2026, erreur n°22 (écran Réparations) : le tutoriel démarrait une
+  // fois l'écran chargé ; si le client avait déjà ouvert la fiche, la bulle pointait le bouton
+  // caché dessous et le voile bloquait la saisie.
+  it('le client agit avant que la première bulle ne se montre : le tutoriel ne s\'impose pas, il revient au prochain accès', async () => {
+    EcranVehicules.admin = false;                       // bouton pas encore là (écran qui charge)
+    await ouvrir('/vehicles');
+    expect(guide.componentInstance.actif).toBe(true);   // il attend sa cible, rien d'affiché
+    document.body.click();                              // le client est déjà à l'œuvre
+    const ecran = harness.routeDebugElement!.componentInstance as EcranVehicules;
+    ecran.admin = true;
+    ecran.ouverte = true;                               // le bouton paraît, la fiche est ouverte
+    await rafraichir(6);
+    expect(guide.componentInstance.actif).toBe(false);
+    expect(bulle()).toBeNull();
+
+    EcranVehicules.admin = true;
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(etape()).toBe('tuto-vehicule-nouveau');
+  });
+
+  it('bouton caché sous une fiche déjà ouverte : pas de bulle sur un bouton invisible, il revient au prochain accès', async () => {
+    const mesure = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      { left: 10, top: 10, width: 100, height: 30, right: 110, bottom: 40, x: 10, y: 10, toJSON: () => ({}) } as DOMRect);
+    const fiche = document.createElement('div');
+    const origine = Object.getOwnPropertyDescriptor(document, 'elementFromPoint');
+    Object.defineProperty(document, 'elementFromPoint', { configurable: true, value: () => fiche });
+    try {
+      await ouvrir('/vehicles');
+      expect(guide.componentInstance.actif).toBe(false);
+      expect(bulle()).toBeNull();
+    } finally {
+      mesure.mockRestore();
+      if (origine) { Object.defineProperty(document, 'elementFromPoint', origine); } else { delete (document as any).elementFromPoint; }
+    }
+    await ouvrir('/dashboard');
+    await ouvrir('/vehicles');
+    expect(etape()).toBe('tuto-vehicule-nouveau');
+  });
+
   it('Échap le ferme pour cette fois : il revient au prochain accès à l\'écran', async () => {
     await ouvrir('/vehicles');
     guide.componentInstance.auEchap();

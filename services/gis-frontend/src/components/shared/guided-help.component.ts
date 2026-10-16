@@ -309,6 +309,11 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * client ne l'a jamais lu.
    */
   private etapeMontree = false;
+  /**
+   * Geste du client (clic, touche) pendant que le premier geste d'un tutoriel d'écran attend
+   * encore sa cible : il est déjà à l'œuvre (campagne GPA, erreur n°22, écran Réparations).
+   */
+  private gesteAvantGuide = false;
   /** Etapes sautees faute de cible : « Precedent » les enjambe. */
   private sautees = new Set<number>();
 
@@ -395,6 +400,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * bien clique « Ajouter » — seule une fiche fermee APRES ce clic vaut succes.
    */
   private auClic(e: MouseEvent): void {
+    if (this.enAttenteDuPremierGeste()) { this.gesteAvantGuide = true; return; }
     const action = this.etape?.action;
     if (!this.actif || !this.cibleTrouvee || (action !== 'clic' && action !== 'disparition')) { return; }
     const cible = this.chercher(this.cibleSuivie);
@@ -433,6 +439,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
    * Diesel, Karim 25/09/2026 ; « Quantite », a 1, sur Reparations).
    */
   private auClavier(e: KeyboardEvent): void {
+    if (this.enAttenteDuPremierGeste()) { this.gesteAvantGuide = true; }
     this.oublierClicRefuse();
     if (e.key !== 'Enter' || !this.actif || this.etape?.action !== 'valeur') { return; }
     const champ = e.target as HTMLElement | null;
@@ -652,6 +659,7 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     this.etapes = etapes;
     this.index = 0;
     this.etapeMontree = false;
+    this.gesteAvantGuide = false;
     this.sautees.clear();
     this.actif = this.etapes.length > 0;
     if (this.actif) { this.allerA(0); }
@@ -813,6 +821,16 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
     if (this.detruit || generation !== this.generation) { return; }
     const cible = this.chercher(etape.cible);
 
+    // Tutoriel d'écran pas encore montré, mais le client a commencé sans lui (fiche ouverte
+    // pendant que l'écran chargeait), ou son bouton est caché sous une fiche : la bulle
+    // pointait un bouton invisible et son voile bloquait la saisie (campagne GPA, erreur
+    // n°22). Il ne s'impose pas : il revient au prochain accès, sans être marqué vu.
+    if (this.mode === 'ecran' && !this.etapeMontree && (this.gesteAvantGuide || (cible && this.estRecouverte(cible)))) {
+      this.arreter();
+      this.cdr.detectChanges();
+      return;
+    }
+
     if (cible) {
       this.cibleSuivie = etape.cible;
       this.sautees.delete(this.index);
@@ -841,6 +859,24 @@ export class GuidedHelpComponent implements OnInit, OnDestroy {
 
     if (essais > limite) { this.sauter(); return; }
     this.attente = requestAnimationFrame(() => this.attendreCible(etape, essais + 1, generation, limite));
+  }
+
+  /** Le premier geste d'un tutoriel d'écran attend sa cible : rien n'est encore affiché. */
+  private enAttenteDuPremierGeste(): boolean {
+    return this.actif && this.mode === 'ecran' && !this.etapeMontree && !this.cibleTrouvee;
+  }
+
+  /** Cible présente mais recouverte (fiche ouverte par-dessus) : la pointer bloquerait la saisie. */
+  private estRecouverte(cible: HTMLElement): boolean {
+    if (typeof document.elementFromPoint !== 'function') { return false; }
+    const r = cible.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) { return false; }   // pas encore peinte : on attend
+    const x = r.left + r.width / 2;
+    const y = r.top + r.height / 2;
+    // Hors de l'écran : elle sera ramenée par le défilement, pas recouverte.
+    if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) { return false; }
+    const dessus = document.elementFromPoint(x, y);
+    return !!dessus && !cible.contains(dessus) && !this.hote.nativeElement.contains(dessus);
   }
 
   private chercher(selecteur: string): HTMLElement | null {
