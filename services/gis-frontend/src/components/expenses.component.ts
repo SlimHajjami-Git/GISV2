@@ -88,6 +88,11 @@ export class ExpensesComponent implements OnInit, OnDestroy {
   /** Message de refus du serveur affiché dans le formulaire « Nouvelle dépense ». */
   saveError = '';
   filterMonth = '';
+  /**
+   * Année entière (campagne GPA, erreur n°19) : sans elle, le Total portait sur toutes les
+   * années, achats de véhicules de 2019 compris, sans le dire. Mois et année s'excluent.
+   */
+  filterYear = '';
   /** Case « Afficher les échéances à venir » → GET /acquisition-payments?includeFuture=true. */
   showFuturePayments = false;
 
@@ -484,9 +489,69 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     if (this.filterMonth) {
       const [year, month] = this.filterMonth.split('-').map(Number);
       result = result.filter(e => { const d = new Date(e.date); return d.getFullYear() === year && d.getMonth() + 1 === month; });
+    } else if (this.filterYear) {
+      const year = Number(this.filterYear);
+      result = result.filter(e => new Date(e.date).getFullYear() === year);
     }
     result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     this.filteredExpenses = result;
+  }
+
+  onMonthChange(): void {
+    if (this.filterMonth) this.filterYear = '';
+    this.filterExpenses();
+  }
+
+  onYearChange(): void {
+    if (this.filterYear) this.filterMonth = '';
+    this.filterExpenses();
+  }
+
+  /** Années présentes dans les dépenses chargées, la plus récente d'abord. */
+  get anneesDisponibles(): number[] {
+    return [...new Set(this.expenses.map(e => new Date(e.date).getFullYear()).filter(a => !isNaN(a)))]
+      .sort((a, b) => b - a);
+  }
+
+  /** Période du Total, dite à côté du montant (« toutes périodes », « année 2026 », « octobre 2026 »). */
+  get libellePeriode(): string {
+    if (this.filterMonth) {
+      const [year, month] = this.filterMonth.split('-').map(Number);
+      return new Date(year, month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+    }
+    return this.filterYear ? `année ${this.filterYear}` : 'toutes périodes';
+  }
+
+  /**
+   * Familles du détail du Total (campagne GPA, erreur n°19) : chez Belive GPA, 266 900 €
+   * d'achats de véhicules (2019 à 2023) noyaient 66 000 € de frais courants dans un seul
+   * « Total » de 346 773 €.
+   */
+  private static familleDuTotal(categorie: string): string {
+    switch (categorie) {
+      case 'achat': return 'Achat de véhicules';
+      case 'credit': return 'Crédit / leasing';
+      case 'carburant': return 'Carburant';
+      case 'reparation': case 'repair': return 'Réparations';
+      case 'entretien': case 'maintenance': return 'Entretien';
+      case 'insurance': case 'technical_inspection': case 'tax': case 'registration': case 'transport_permit':
+        return 'Assurance et papiers';
+      case 'insurance_refund': case 'credit_note': return 'Remboursements et avoirs';
+      default: return 'Autres frais';
+    }
+  }
+
+  /** Ce que contient le Total, par famille, du plus gros au plus petit (mêmes lignes que le Total). */
+  get repartitionTotal(): { libelle: string; montant: number }[] {
+    const parFamille = new Map<string, number>();
+    for (const e of this.countedExpenses()) {
+      const f = ExpensesComponent.familleDuTotal(e.category);
+      parFamille.set(f, (parFamille.get(f) ?? 0) + this.signedAmount(e));
+    }
+    return [...parFamille]
+      .map(([libelle, montant]) => ({ libelle, montant: Math.round(montant * 100) / 100 }))
+      .filter(r => r.montant !== 0)
+      .sort((a, b) => Math.abs(b.montant) - Math.abs(a.montant));
   }
 
   openAddForm(): void {
@@ -1074,7 +1139,7 @@ export class ExpensesComponent implements OnInit, OnDestroy {
     const config: GroupedPdfReportConfig = {
       title: 'Depenses par categories',
       subtitle: 'Rapport de depenses',
-      dateRange: this.filterMonth ? `Mois: ${this.filterMonth}` : 'Toutes periodes',
+      dateRange: this.filterMonth ? `Mois: ${this.filterMonth}` : this.filterYear ? `Annee: ${this.filterYear}` : 'Toutes periodes',
       statistics: {
         'Total': this.userPrefs.formatCurrency(this.getTotalAmount()),
         'Entrees': '' + exported.length,
