@@ -239,7 +239,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     // remettant cette entrée.
     {
       id: '15',
-      name: 'Coûts mensuel par véhicule',
+      name: 'Coûts mensuels par véhicule',
       type: 'monthly-costs',
       icon: '📋',
       description: 'Carburant, entretien, réparation par département',
@@ -247,7 +247,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
     },
     {
       id: '16',
-      name: 'Consommation carburant mensuel',
+      name: 'Consommation carburant mensuelle',
       type: 'monthly-fuel',
       icon: '🛢️',
       description: 'Litres consommés par département',
@@ -6166,7 +6166,7 @@ export class ReportsComponent implements OnInit, OnDestroy {
         };
 
     return {
-      title: this.selectedTemplate?.name || (isCosts ? 'Coûts mensuel par véhicule' : 'Consommation carburant mensuel'),
+      title: this.selectedTemplate?.name || (isCosts ? 'Coûts mensuels par véhicule' : 'Consommation carburant mensuelle'),
       dateRange: r.reportPeriod || `${r.monthName || ''} ${r.year || ''}`.trim(),
       statistics,
       columns,

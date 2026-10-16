@@ -509,11 +509,11 @@ interface VehicleOption {
                         </label>
                         <label class="sub-perm-item" *ngIf="canReport('monthly_costs')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyCosts">
-                          <span>📋 Coûts mensuel par véhicule</span>
+                          <span>📋 Coûts mensuels par véhicule</span>
                         </label>
                         <label class="sub-perm-item" *ngIf="canReport('monthly_fuel')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportMonthlyFuel">
-                          <span>🛢️ Consommation carburant mensuel</span>
+                          <span>🛢️ Consommation carburant mensuelle</span>
                         </label>
                         <label class="sub-perm-item" *ngIf="canReport('operating_cost')">
                           <input type="checkbox" [(ngModel)]="userForm.canReportOperatingCost">

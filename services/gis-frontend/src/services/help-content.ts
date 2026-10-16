@@ -241,7 +241,7 @@ export const ARTICLES_AIDE: HelpArticle[] = [
       { rapports: ['speed_infraction'], texte: "« Infractions vitesse » : les dépassements de la limite que vous fixez." },
       { rapports: ['driving_behavior'], texte: "« Comportement conduite » : freinages et accélérations brusques." },
       { rapports: ['fuel'], texte: "« Consommation carburant » : l'analyse de la consommation de chaque véhicule." },
-      { rapports: ['monthly_fuel'], texte: "« Consommation carburant mensuel » : les litres par département, mois par mois." },
+      { rapports: ['monthly_fuel'], texte: "« Consommation carburant mensuelle » : les litres par département, mois par mois." },
       { rapports: ['maintenance'], texte: "« Coûts maintenance » : les entretiens réalisés et leur coût." },
       { rapports: ['costs'], texte: "« Réparations véhicules » : les réparations, avec la main-d'œuvre et les pièces." },
       { rapports: ['operating_cost'], texte: "« Coût d'exploitation réel » : toutes les dépenses cumulées, ramenées au kilomètre." },
