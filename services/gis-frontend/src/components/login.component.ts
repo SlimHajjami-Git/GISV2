@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FranceAuthComponent } from './france/france-auth.component';
 import { RegionService } from '../services/region.service';
 import { FormsModule } from '@angular/forms';
-import { Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
 
@@ -425,6 +425,7 @@ import { environment } from '../environments/environment';
 export class LoginComponent {
   /** L habillage commercial n est servi qu au parcours europeen. */
   readonly europe = inject(RegionService).isEurope;
+  private readonly route = inject(ActivatedRoute);
 
   /** Bascule de visibilite du mot de passe, comme sur la capture validee. */
   showPassword = false;
@@ -477,7 +478,9 @@ export class LoginComponent {
           } else {
             localStorage.removeItem('remembered_email');
           }
-          this.router.navigate(['/dashboard']);
+          // La page demandée avant la connexion (?returnUrl=, posé par AuthGuard) : le
+          // tableau de bord s'ouvrait toujours (campagne GPA, erreur n°21).
+          this.router.navigateByUrl(cibleApresConnexion(this.route.snapshot?.queryParamMap?.get('returnUrl')));
         } else {
           this.errorMessage = 'Email ou mot de passe incorrect';
         }
@@ -501,4 +504,17 @@ export class LoginComponent {
       }
     });
   }
+}
+
+/**
+ * Où aller après la connexion : la page demandée avant (?returnUrl=), si c'est une page de
+ * l'application, sinon le tableau de bord (campagne GPA du 06/10/2026, erreur n°21).
+ * Chemin interne seulement : « //site » ou « https://… » mèneraient hors de Calypso ; la
+ * connexion, l'inscription et l'espace /admin (qui a sa propre connexion) sont écartés.
+ */
+export function cibleApresConnexion(returnUrl: string | null | undefined): string {
+  const url = (returnUrl || '').trim();
+  if (!url.startsWith('/') || url.startsWith('//') || url.startsWith('/\\')) return '/dashboard';
+  if (/^\/(login|admin|inscription|register)(\/|\?|#|$)/.test(url)) return '/dashboard';
+  return url;
 }
