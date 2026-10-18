@@ -5,7 +5,7 @@ import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { AdminService, ServiceHealth } from '../services/admin.service';
+import { AdminService, ServiceHealth, UnidentifiedConnections } from '../services/admin.service';
 
 @Component({
   selector: 'admin-health',
@@ -55,6 +55,31 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- Connexions GPS rejetées faute d'identité : un NEMS_LITE (SIM Ooredoo)
+             qui se reconnecte sans renvoyer son AA00 devient muet EN SILENCE —
+             six véhicules EL MOUSSEM sont restés invisibles des jours (10/2026).
+             Cette carte rend le phénomène visible à la minute, avec la consigne. -->
+        <div class="unident-card" *ngIf="unidentified && unidentified.traces24h > 0">
+          <div class="unident-head">
+            <span class="unident-badge">{{ unidentified.traces24h }}</span>
+            <div>
+              <h3>Connexions GPS non identifiées (24 h)</h3>
+              <p>Des boîtiers émettent mais leurs trames sont rejetées : pas d'identité AA00 reçue sur la connexion et pas de préfixe MAT (cas type : NEMS_LITE sur SIM Ooredoo après reconnexion). <strong>Consigne : redémarrer le boîtier par SMS</strong> — il revient en ~2 minutes. Dernier rejet : {{ unidentified.lastAt | date:'dd/MM HH:mm' }}.</p>
+            </div>
+          </div>
+          <table class="unident-table">
+            <thead><tr><th>Heure</th><th>Source</th><th>Type</th><th>Détail</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let t of unidentified.latest.slice(0, 8)">
+                <td>{{ t.at | date:'dd/MM HH:mm' }}</td>
+                <td class="mono">{{ t.peer || '—' }}</td>
+                <td class="mono">{{ t.frameType }}</td>
+                <td>{{ t.reason }}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <div class="services-grid">
@@ -288,6 +313,32 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
     .refresh-btn:hover {
       background: var(--adm-indigo-ink);
     }
+
+    .unident-card {
+      background: var(--adm-card, #fff);
+      border: 1px solid rgba(220, 38, 38, .35);
+      border-left: 4px solid #dc2626;
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+    }
+    .unident-head { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 12px; }
+    .unident-badge {
+      min-width: 44px; height: 44px; border-radius: 12px;
+      background: rgba(220, 38, 38, .10); color: #dc2626;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; flex-shrink: 0; padding: 0 8px;
+    }
+    .unident-head h3 { margin: 0 0 6px; font-size: 15px; font-weight: 700; color: var(--adm-ink, #0f172a); }
+    .unident-head p { margin: 0; font-size: 13px; color: var(--adm-sub, #64748b); line-height: 1.5; }
+    .unident-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .unident-table th {
+      text-align: left; padding: 8px 10px; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em; color: var(--adm-sub, #64748b);
+      border-bottom: 1px solid var(--adm-border, #e6eaf2);
+    }
+    .unident-table td { padding: 7px 10px; border-bottom: 1px solid var(--adm-track, #f1f5f9); color: var(--adm-ink, #0f172a); }
+    .unident-table .mono { font-family: ui-monospace, monospace; font-size: 12px; }
 
     .services-grid {
       display: grid;
@@ -557,6 +608,7 @@ import { AdminService, ServiceHealth } from '../services/admin.service';
 export class AdminHealthComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   services: ServiceHealth[] = [];
+  unidentified: UnidentifiedConnections | null = null;
   autoRefresh = true;
   refreshInterval: any;
   lastCheck = '';
@@ -608,6 +660,9 @@ export class AdminHealthComponent implements OnInit, OnDestroy {
     this.adminService.getServiceHealth().pipe(takeUntil(this.destroy$)).subscribe(services => {
       this.services = services;
       this.lastCheck = new Date().toLocaleTimeString();
+    });
+    this.adminService.getUnidentifiedConnections().pipe(takeUntil(this.destroy$)).subscribe(u => {
+      this.unidentified = u;
     });
   }
 

@@ -702,6 +702,20 @@ public class AdminController : ControllerBase
 
     // ==================== SERVICE HEALTH ====================
 
+    /// <summary>
+    /// Connexions GPS rejetées faute d'identité (24 h) — cas NEMS_LITE Ooredoo qui
+    /// n'envoient leur AA00 qu'au démarrage : le véhicule devient muet en silence.
+    /// Affiché sur System Health avec la consigne (redémarrage SMS).
+    /// </summary>
+    [HttpGet("gps/connexions-non-identifiees")]
+    public async Task<ActionResult<GisAPI.Application.Features.Admin.Monitoring.UnidentifiedConnectionsDto>> GetUnidentifiedConnections(
+        [FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Admin.Monitoring.GetUnidentifiedConnectionsQuery());
+        return Ok(result);
+    }
+
     [HttpGet("health")]
     public async Task<ActionResult<List<ServiceHealthDto>>> GetServiceHealth()
     {

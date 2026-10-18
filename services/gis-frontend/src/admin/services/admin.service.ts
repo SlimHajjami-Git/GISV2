@@ -467,6 +467,22 @@ export interface SubscriptionType {
   updatedAt: Date;
 }
 
+/** Trace d'une connexion GPS rejetée faute d'identité (frame_debug_log, 24 h). */
+export interface UnidentifiedConnectionTrace {
+  at: string;
+  peer: string | null;
+  mat: string | null;
+  frameType: string;
+  reason: string;
+  rawFrameExtract: string;
+}
+
+export interface UnidentifiedConnections {
+  traces24h: number;
+  lastAt: string | null;
+  latest: UnidentifiedConnectionTrace[];
+}
+
 /** Commande d'abonnement passée en libre-service (miroir de SubscriptionOrderDto côté API). */
 export interface SubscriptionOrderAdmin {
   id: number;
@@ -1001,6 +1017,21 @@ export class AdminService {
       catchError(err => {
         console.error('Error fetching service health:', err);
         return of([]);
+      })
+    );
+  }
+
+  /**
+   * Connexions GPS rejetées faute d'identité (24 h) — boîtiers NEMS_LITE (SIM
+   * Ooredoo) qui n'envoient leur AA00 qu'au démarrage : muets à chaque
+   * reconnexion, sans aucune trace à l'écran avant ceci.
+   */
+  getUnidentifiedConnections(): Observable<UnidentifiedConnections> {
+    return this.http.get<UnidentifiedConnections>(
+      `${this.apiUrl}/admin/gps/connexions-non-identifiees`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching unidentified connections:', err);
+        return of({ traces24h: 0, lastAt: null, latest: [] } as UnidentifiedConnections);
       })
     );
   }

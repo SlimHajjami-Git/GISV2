@@ -56,6 +56,14 @@ pub struct TelemetryServices {
     pub speed_filter: SpeedFilter,
     /// Tracks last device event timestamp per device_id to prevent duplicates
     pub device_event_cooldown: Mutex<HashMap<i32, DateTime<Utc>>>,
+    /// Trames rejetées « connexion non identifiée » : (dernier traçage, rejets depuis)
+    /// par IP source. Les NEMS_LITE (EL MOUSSEM, SIM Ooredoo) n'envoient leur
+    /// identité AA00/AA01 qu'au démarrage : à la reconnexion suivante, leurs
+    /// positions sans préfixe MAT sont toutes rejetées en silence et le véhicule
+    /// devient muet sans trace en base. On trace dans frame_debug_log, throttlé
+    /// par IP (l'APN partage quelques adresses de sortie) pour ne pas remplir la
+    /// table — leçon de gps_alerts noyée sous la télémétrie.
+    pub unidentified_drop_throttle: Mutex<HashMap<String, (DateTime<Utc>, u64)>>,
 }
 
 pub async fn run_listeners(
@@ -95,6 +103,7 @@ pub async fn run_listeners(
         driving_events_detector: DrivingEventsDetector::new(),
         speed_filter: SpeedFilter::new(),
         device_event_cooldown: Mutex::new(HashMap::new()),
+        unidentified_drop_throttle: Mutex::new(HashMap::new()),
     });
     info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector, SpeedFilter)");
 
@@ -1070,6 +1079,51 @@ async fn process_single_frame(
                             warn!(%peer, mat = ?mat_prefix, "Dropping frame - no IMEI learned and no valid MAT prefix");
                         } else {
                             warn!("Dropping frame - no device UID available");
+                        }
+
+                        // Trace en base (frame_debug_log), throttlé par IP source :
+                        // sans cette trace, un NEMS_LITE qui se reconnecte sans
+                        // renvoyer son AA00 devient muet des JOURS sans que rien
+                        // ne le signale (EL MOUSSEM, 6 véhicules, 10/2026). Le
+                        // premier rejet d'une IP s'écrit tout de suite, puis un
+                        // cumul au plus toutes les 10 minutes.
+                        let peer_full = peer_addr.map(|p| p.to_string()).unwrap_or_else(|| "inconnu".to_string());
+                        let peer_ip = peer_full.split(':').next().unwrap_or("inconnu").to_string();
+                        let now_drop = Utc::now();
+                        let to_log: Option<u64> = {
+                            let mut throttle = services.unidentified_drop_throttle.lock().await;
+                            if throttle.len() > 1000 {
+                                throttle.retain(|_, (t, _)| now_drop.signed_duration_since(*t).num_seconds() < 3600);
+                            }
+                            match throttle.get_mut(&peer_ip) {
+                                Some((last, count)) => {
+                                    *count += 1;
+                                    if now_drop.signed_duration_since(*last).num_seconds() >= 600 {
+                                        let n = *count;
+                                        *last = now_drop;
+                                        *count = 0;
+                                        Some(n)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                None => {
+                                    throttle.insert(peer_ip.clone(), (now_drop, 0));
+                                    Some(1)
+                                }
+                            }
+                        };
+                        if let Some(n) = to_log {
+                            let frame_type = actual_frame.get(..4).unwrap_or("????");
+                            let extrait = actual_frame.get(..actual_frame.len().min(500)).unwrap_or(actual_frame);
+                            let reason = format!("connexion_non_identifiee ({n} trame(s), ip {peer_ip})");
+                            if let Err(e) = database
+                                .log_frame_debug(None, None, mat_prefix.as_deref(), frame_type,
+                                                 None, None, extrait, &reason, Some(&peer_full))
+                                .await
+                            {
+                                warn!(error = %e, "frame_debug_log: échec d'écriture (trame non identifiée)");
+                            }
                         }
                         return Ok(());
                     }
@@ -2949,6 +3003,7 @@ mod tests {
             driving_events_detector: DrivingEventsDetector::new(),
             speed_filter: SpeedFilter::new(),
             device_event_cooldown: Mutex::new(HashMap::new()),
+        unidentified_drop_throttle: Mutex::new(HashMap::new()),
         });
         let peer = "127.0.0.1:1234";
 
@@ -3010,6 +3065,7 @@ mod tests {
             driving_events_detector: DrivingEventsDetector::new(),
             speed_filter: SpeedFilter::new(),
             device_event_cooldown: Mutex::new(HashMap::new()),
+        unidentified_drop_throttle: Mutex::new(HashMap::new()),
         });
         let peer = "10.0.0.5:5555";
 
