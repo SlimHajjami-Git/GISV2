@@ -303,6 +303,68 @@ public class SubscriptionOrderCommandsTests
         await act.Should().ThrowAsync<DomainException>().WithMessage("*déjà*");
     }
 
+    // Validation à écriture unique (préparation du paiement en ligne, 19/10/2026) :
+    // une commande ne prolonge l'abonnement qu'UNE fois, quoi qu'il arrive.
+
+    [Fact]
+    public async Task Confirm_Twice_ExtendsTheSubscriptionOnlyOnce()
+    {
+        var (context, tenant) = SetupContext();
+        var order = await CreateHandler(context, tenant)
+            .Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+        var expiryBefore = (await context.Societes.FindAsync(CompanyId))!.SubscriptionExpiresAt!.Value;
+        var renew = RealRenewMediator(context);
+        var handler = new ConfirmSubscriptionOrderCommandHandler(
+            context, tenant.Object, renew.Object, Mock.Of<ILogger<ConfirmSubscriptionOrderCommandHandler>>());
+
+        await handler.Handle(new ConfirmSubscriptionOrderCommand(order.Id), CancellationToken.None);
+        // Deuxième opérateur, ou confirmation répétée du prestataire : pas d'erreur, rien de refait.
+        var again = await handler.Handle(new ConfirmSubscriptionOrderCommand(order.Id), CancellationToken.None);
+
+        again.Status.Should().Be("confirmed");
+        renew.Verify(m => m.Send(It.IsAny<RenewSubscriptionCommand>(), It.IsAny<CancellationToken>()), Times.Once);
+        (await context.Societes.FindAsync(CompanyId))!.SubscriptionExpiresAt
+            .Should().BeCloseTo(expiryBefore.AddDays(365), TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
+    public async Task Confirm_AfterTheClientCancelled_IsRefused_AndTheSubscriptionIsUntouched()
+    {
+        var (context, tenant) = SetupContext();
+        var order = await CreateHandler(context, tenant)
+            .Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+        var expiryBefore = (await context.Societes.FindAsync(CompanyId))!.SubscriptionExpiresAt;
+        await new CancelMySubscriptionOrderCommandHandler(context, tenant.Object)
+            .Handle(new CancelMySubscriptionOrderCommand(order.Id), CancellationToken.None);
+        var renew = RealRenewMediator(context);
+        var handler = new ConfirmSubscriptionOrderCommandHandler(
+            context, tenant.Object, renew.Object, Mock.Of<ILogger<ConfirmSubscriptionOrderCommandHandler>>());
+
+        var act = () => handler.Handle(new ConfirmSubscriptionOrderCommand(order.Id), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("Cette commande a déjà été annulée par le client.");
+        renew.Verify(m => m.Send(It.IsAny<RenewSubscriptionCommand>(), It.IsAny<CancellationToken>()), Times.Never);
+        (await context.Societes.FindAsync(CompanyId))!.SubscriptionExpiresAt.Should().Be(expiryBefore);
+    }
+
+    [Fact]
+    public async Task Cancel_AfterConfirmation_IsRefused()
+    {
+        var (context, tenant) = SetupContext();
+        var order = await CreateHandler(context, tenant)
+            .Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+        await new ConfirmSubscriptionOrderCommandHandler(
+                context, tenant.Object, RealRenewMediator(context).Object,
+                Mock.Of<ILogger<ConfirmSubscriptionOrderCommandHandler>>())
+            .Handle(new ConfirmSubscriptionOrderCommand(order.Id), CancellationToken.None);
+
+        var act = () => new CancelMySubscriptionOrderCommandHandler(context, tenant.Object)
+            .Handle(new CancelMySubscriptionOrderCommand(order.Id), CancellationToken.None);
+
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*déjà été traitée*");
+        (await context.SubscriptionOrders.FindAsync(order.Id))!.Status.Should().Be("confirmed");
+    }
+
     // ── RejectSubscriptionOrder (plateforme) ──
 
     [Fact]
