@@ -93,7 +93,10 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
       // les requêtes → écran de blocage dédié (pas d'espace admin concerné).
       if (error.status === 403 && !isAdminRoute
           && typeof error.error?.error === 'string' && error.error.error.startsWith('subscription_')
-          && !router.url.startsWith('/abonnement-suspendu')) {
+          && !router.url.startsWith('/abonnement-suspendu')
+          // Écran Abonnement : les appels de la barre (notifications…) sont refusés, mais
+          // le client y renouvelle son abonnement ; on ne le renvoie pas au blocage.
+          && !router.url.startsWith('/subscription')) {
         const reason = error.error.error.replace('subscription_', '');
         router.navigate(['/abonnement-suspendu'], { queryParams: { reason } });
         return throwError(() => error);

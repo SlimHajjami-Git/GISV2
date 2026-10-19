@@ -60,8 +60,8 @@ type NotifBucket = Notification | NotifThreadGroup;
       </div>
       <!-- Bandeau abonnement : ambre = expire bientôt (admins société), rouge = J-7 ou grâce après expiration (tous) -->
       <ng-container *ngIf="subStatus.banner$ | async as subBanner">
-        <div *ngIf="subBannerVisible(subBanner)" [style.background]="subBanner.level==='danger' ? 'linear-gradient(90deg,#dc2626,#b91c1c)' : 'linear-gradient(90deg,#d97706,#b45309)'" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
-          <span>{{ subBanner.level==='danger' ? '🔴' : '⏳' }} {{ subBannerText(subBanner) }}</span>
+        <div *ngIf="subBannerVisible(subBanner)" [style.background]="subBanner.level==='danger' || subBanner.level==='blocked' ? 'linear-gradient(90deg,#dc2626,#b91c1c)' : 'linear-gradient(90deg,#d97706,#b45309)'" style="display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;color:#fff;padding:8px 16px;font-size:13px;font-weight:600;position:sticky;top:0;z-index:3000;box-shadow:0 2px 8px rgba(0,0,0,0.2);">
+          <span>{{ subBanner.level==='warning' ? '⏳' : '🔴' }} {{ subBannerText(subBanner) }}</span>
           <button *ngIf="subBanner.level==='warning'" type="button" (click)="dismissSubBanner()" aria-label="Masquer" style="background:transparent;border:none;color:rgba(255,255,255,0.85);font-size:16px;line-height:1;cursor:pointer;padding:2px 6px;">✕</button>
         </div>
       </ng-container>
@@ -1662,6 +1662,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
     if (!this.subscriptionModuleEnabled) return false;
     if (!b) return false;
     if (b.level === 'danger') return true;
+    // Société bloquée venue renouveler depuis l'écran de blocage.
+    if (b.level === 'blocked') return this.router.url.startsWith('/subscription');
     if (b.level === 'warning') {
       if (sessionStorage.getItem('sub_banner_dismissed') === '1') return false;
       const u = this.authService.getCurrentUserSync() as any;
@@ -1671,6 +1673,8 @@ export class AppLayoutComponent implements OnInit, OnDestroy {
   }
 
   subBannerText(b: SubscriptionBanner): string {
+    if (b.level === 'blocked')
+      return "L'accès de votre société est suspendu : choisissez une formule ci-dessous pour renouveler l'abonnement";
     if (b.reason === 'grace')
       return `L'abonnement de votre société a expiré — l'accès sera suspendu dans ${b.graceDaysLeft} jour${(b.graceDaysLeft ?? 0) > 1 ? 's' : ''}`;
     if (b.reason === 'expired')   // suspension auto désactivée : expirée mais tolérée

@@ -56,7 +56,9 @@ export class SubscriptionStatusService implements OnDestroy {
       next: (b) => {
         this.banner$.next(b);
         // Bloqué (suspension sys_admin ou grâce écoulée) : écran dédié.
-        if (b?.level === 'blocked' && !this.router.url.startsWith('/abonnement-suspendu')) {
+        // L'écran Abonnement reste ouvert : c'est là qu'une société bloquée renouvelle.
+        if (b?.level === 'blocked' && !this.router.url.startsWith('/abonnement-suspendu')
+            && !this.router.url.startsWith('/subscription')) {
           this.router.navigate(['/abonnement-suspendu'], { queryParams: { reason: b.reason } });
         }
       },

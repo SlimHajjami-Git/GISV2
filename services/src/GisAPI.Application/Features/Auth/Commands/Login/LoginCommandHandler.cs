@@ -73,27 +73,28 @@ public class LoginCommandHandler : IRequestHandler<LoginCommand, LoginResponse>
             throw new DomainException(LoginClients.DriverWebLoginRefused);
         }
 
-        // Société suspendue ou expirée au-delà de la grâce : pas de nouveau token
-        // (le sys_admin plateforme, lui, doit toujours pouvoir se connecter).
-        if (user.Societe != null && user.Role?.IsSystemRole != true)
-        {
-            var subState = Common.SubscriptionPolicy.Evaluate(user.Societe, DateTime.UtcNow);
-            if (subState.IsBlocked)
-            {
-                var expired = subState.Reason == "expired";
-                await RecordFailedLoginAsync(request, user,
-                    expired ? "abonnement expiré" : "abonnement suspendu", ct);
-                throw new DomainException(expired
-                    ? "L'abonnement de votre société a expiré. Contactez votre prestataire pour le renouveler."
-                    : "L'abonnement de votre société est suspendu. Contactez votre prestataire.");
-            }
-        }
-
-        // Explicitly load SubscriptionType if Societe has one
+        // Explicitly load SubscriptionType if Societe has one — AVANT le contrôle d'abonnement,
+        // qui a besoin de savoir si la société est en libre-service.
         if (user.Societe?.SubscriptionTypeId != null)
         {
             user.Societe.SubscriptionType = await _context.SubscriptionTypes
                 .FirstOrDefaultAsync(st => st.Id == user.Societe.SubscriptionTypeId, ct);
+        }
+
+        // Société suspendue ou expirée au-delà de la grâce : pas de nouveau token
+        // (le sys_admin plateforme, lui, doit toujours pouvoir se connecter), sauf
+        // l'administrateur d'une société en libre-service venu renouveler.
+        if (user.Societe != null && user.Role?.IsSystemRole != true)
+        {
+            var subState = Common.SubscriptionPolicy.Evaluate(user.Societe, DateTime.UtcNow);
+            var libreService = IsSelfServiceSubscription(user.Societe);
+            if (subState.IsBlocked && !Common.SubscriptionPolicy.PeutRegulariser(subState, libreService && user.IsCompanyAdmin))
+            {
+                var expired = subState.Reason == "expired";
+                await RecordFailedLoginAsync(request, user,
+                    expired ? "abonnement expiré" : "abonnement suspendu", ct);
+                throw new DomainException(Common.SubscriptionPolicy.MessageDeBlocage(subState, libreService));
+            }
         }
 
         // Lu AVANT d'écrire la date du jour : vide, c'est la toute première connexion.

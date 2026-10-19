@@ -31,6 +31,25 @@ public static class SubscriptionPolicy
     public static State Evaluate(Societe s, DateTime nowUtc) => Evaluate(s, nowUtc, TimeZoneInfo.Local);
 
     /// <summary>
+    /// Société bloquée : la connexion (et le rafraîchissement de session) reste ouverte au seul
+    /// administrateur d'une société en LIBRE-SERVICE dont l'abonnement ou l'essai est arrivé à
+    /// échéance, pour qu'il renouvelle. Un essai expiré n'avait sinon aucun moyen de payer
+    /// (préparation du paiement en ligne, 19/10/2026). Sa session reste confinée :
+    /// SubscriptionExpirationMiddleware ne laisse passer que l'abonnement et l'authentification.
+    /// Une suspension ou une résiliation par Belive reste refusée.
+    /// </summary>
+    public static bool PeutRegulariser(State state, bool administrateurEnLibreService) =>
+        state.IsBlocked && state.Reason == "expired" && administrateurEnLibreService;
+
+    /// <summary>Message du refus de connexion d'une société bloquée.</summary>
+    public static string MessageDeBlocage(State state, bool societeEnLibreService) =>
+        state.Reason != "expired"
+            ? "L'abonnement de votre société est suspendu. Contactez votre prestataire."
+            : societeEnLibreService
+                ? "L'abonnement de votre société a expiré. Demandez à l'administrateur de votre société de le renouveler."
+                : "L'abonnement de votre société a expiré. Contactez votre prestataire pour le renouveler.";
+
+    /// <summary>
     /// <paramref name="readZone"/> : fuseau dans lequel sont exprimées les dates
     /// Kind=Local (celui du serveur en production). Paramétrable pour que les tests
     /// reproduisent un poste hors UTC sur n'importe quelle machine.

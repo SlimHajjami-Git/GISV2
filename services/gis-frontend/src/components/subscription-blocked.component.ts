@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { AuthService } from '../services/auth.service';
+import { PermissionService } from '../services/permission.service';
 import { environment } from '../environments/environment';
 
 /**
@@ -28,6 +29,8 @@ import { environment } from '../environments/environment';
       L'abonnement de votre société a expiré et la période de régularisation est écoulée.
       L'accès à Calypso est suspendu jusqu'au renouvellement.
     </p>
+    <p *ngIf="peutRegler">Vous pouvez le renouveler dès maintenant : choisissez une formule et passez votre commande.</p>
+    <p *ngIf="reason==='expired' && demanderAdministrateur">Demandez à l'administrateur de votre société de renouveler l'abonnement.</p>
     <p *ngIf="reason!=='expired'">
       L'accès de votre société à Calypso a été suspendu.
       Veuillez contacter votre prestataire pour régulariser la situation.
@@ -35,7 +38,8 @@ import { environment } from '../environments/environment';
     <p class="contact">Contact : <b>{{ contactEmail }}</b></p>
     <div class="actions">
       <button class="btn ghost" (click)="logout()">Se déconnecter</button>
-      <button class="btn primary" (click)="retry()" [disabled]="checking">{{ checking ? 'Vérification…' : 'Réessayer' }}</button>
+      <button class="btn" [class.primary]="!peutRegler" [class.ghost]="peutRegler" (click)="retry()" [disabled]="checking">{{ checking ? 'Vérification…' : 'Réessayer' }}</button>
+      <button *ngIf="peutRegler" class="btn primary" (click)="regler()">Régler mon abonnement</button>
     </div>
   </div>
 </div>
@@ -80,7 +84,30 @@ export class SubscriptionBlockedComponent implements OnInit {
   contactEmail = 'contact@belive.tn';
 
   constructor(private route: ActivatedRoute, private router: Router,
-              private http: HttpClient, private auth: AuthService) {}
+              private http: HttpClient, private auth: AuthService,
+              private permissions: PermissionService) {}
+
+  /**
+   * Fin d'abonnement (ou d'essai) d'une société en libre-service, vue par son administrateur :
+   * il peut renouveler lui-même depuis l'écran Abonnement, que le serveur laisse ouvert aux
+   * sociétés bloquées. Une suspension ou une résiliation vient de Belive : « contactez ».
+   * (Préparation du paiement en ligne, 19/10/2026.)
+   */
+  get peutRegler(): boolean {
+    return this.reason === 'expired'
+      && (environment as any).subscriptionModule !== false
+      && this.permissions.canManageOwnSubscription();
+  }
+
+  /** Utilisateur d'une société en libre-service qui n'en est pas l'administrateur. */
+  get demanderAdministrateur(): boolean {
+    const u = this.auth.getCurrentUserSync();
+    return !!u?.selfServiceSubscription && !u?.isCompanyAdmin && !u?.isSystemAdmin;
+  }
+
+  regler(): void {
+    this.router.navigate(['/subscription']);
+  }
 
   ngOnInit(): void {
     this.reason = this.route.snapshot.queryParamMap.get('reason') || 'suspended';
