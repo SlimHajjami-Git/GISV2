@@ -101,6 +101,58 @@ public class SubscriptionOrderCommandsTests
         second.Amount.Should().Be(30m);
     }
 
+    // Changement de formule (préparation du paiement en ligne, 19/10/2026) : la
+    // nouvelle commande REMPLACE celle en attente, sans annulation préalable.
+
+    [Fact]
+    public async Task Create_WithReplaceOrderId_ReplacesThePendingOrder()
+    {
+        var (context, tenant) = SetupContext();
+        var handler = CreateHandler(context, tenant);
+
+        var first = await handler.Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+        var second = await handler.Handle(
+            new CreateSubscriptionOrderCommand(GpaPlanId, "monthly", first.Id), CancellationToken.None);
+
+        second.Status.Should().Be("pending");
+        second.Amount.Should().Be(30m);
+        var old = await context.SubscriptionOrders.FindAsync(first.Id);
+        old!.Status.Should().Be("cancelled");
+        old.Note.Should().Contain("Remplacée");
+        context.SubscriptionOrders.Count(o => o.Status == "pending").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Create_ReplacingWithTheSameFormula_IsRejected()
+    {
+        var (context, tenant) = SetupContext();
+        var handler = CreateHandler(context, tenant);
+
+        var first = await handler.Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+
+        var act = () => handler.Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly", first.Id), CancellationToken.None);
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*déjà celle de votre commande en attente*");
+        (await context.SubscriptionOrders.FindAsync(first.Id))!.Status.Should().Be("pending");
+    }
+
+    [Fact]
+    public async Task Create_ReplacingAnOrderConfirmedMeanwhile_IsRejected_SoTheClientNeverPaysTwice()
+    {
+        var (context, tenant) = SetupContext();
+        var handler = CreateHandler(context, tenant);
+
+        var first = await handler.Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "yearly"), CancellationToken.None);
+        // La plateforme valide la commande pendant que le client change de formule.
+        var saved = await context.SubscriptionOrders.FindAsync(first.Id);
+        saved!.Status = "confirmed";
+        await context.SaveChangesAsync();
+
+        var act = () => handler.Handle(new CreateSubscriptionOrderCommand(GpaPlanId, "monthly", first.Id), CancellationToken.None);
+        await act.Should().ThrowAsync<DomainException>().WithMessage("*vient d'être traitée*");
+        context.SubscriptionOrders.Count().Should().Be(1);
+        saved.Status.Should().Be("confirmed");
+    }
+
     [Fact]
     public async Task Create_RejectsNonSelfPurchasablePlan()
     {

@@ -159,7 +159,7 @@ public class SubscriptionsController : ControllerBase
     {
         var result = await mediator.Send(
             new GisAPI.Application.Features.Subscriptions.Commands.SubscriptionOrders.CreateSubscriptionOrderCommand(
-                request.SubscriptionTypeId, request.BillingCycle));
+                request.SubscriptionTypeId, request.BillingCycle, request.ReplaceOrderId));
         return Ok(result);
     }
 
@@ -202,4 +202,4 @@ public class SubscriptionsController : ControllerBase
 }
 
 /// <summary>Corps de commande : AUCUN montant — il est calculé côté serveur.</summary>
-public record CreateOrderRequest(int SubscriptionTypeId, string BillingCycle);
+public record CreateOrderRequest(int SubscriptionTypeId, string BillingCycle, int? ReplaceOrderId = null);

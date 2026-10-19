@@ -142,6 +142,7 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                     Nous activerons votre abonnement dès réception du règlement, sous 24&nbsp;h ouvrées.
                     Vous serez averti dans l'application.
                   </p>
+                  <p class="order-hint">Pour changer de formule, choisissez-en une autre ci-dessous : elle remplacera cette commande.</p>
                 </div>
                 <button class="btn-cancel-order" [disabled]="busy" (click)="cancelPending()">Annuler</button>
               </div>
@@ -202,9 +203,9 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                   <li>7 jours d'essai gratuits</li>
                 </ul>
                 <button class="btn-plan buy"
-                        [disabled]="busy || !!pendingOrder || !canBuyCycle(euroPlan, 'yearly')"
+                        [disabled]="busy || isPendingChoice(euroPlan, 'yearly') || !canBuyCycle(euroPlan, 'yearly')"
                         (click)="openPurchase(euroPlan, 'yearly')">
-                  {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                  {{ isPendingChoice(euroPlan, 'yearly') ? 'Commande en attente' : 'Choisir cette formule' }}
                 </button>
               </article>
               <article class="plan" [class.is-current]="euroCurrentCycle === 'semiannual'">
@@ -230,9 +231,9 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                   <li>Sans engagement pendant l'essai</li>
                 </ul>
                 <button class="btn-plan buy"
-                        [disabled]="busy || !!pendingOrder || !canBuyCycle(euroPlan, 'semiannual')"
+                        [disabled]="busy || isPendingChoice(euroPlan, 'semiannual') || !canBuyCycle(euroPlan, 'semiannual')"
                         (click)="openPurchase(euroPlan, 'semiannual')">
-                  {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                  {{ isPendingChoice(euroPlan, 'semiannual') ? 'Commande en attente' : 'Choisir cette formule' }}
                 </button>
               </article>
             </div>
@@ -272,9 +273,9 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                        une intervention — elles se vendent avec un humain au bout
                        du fil. Le serveur refuse de toute façon les autres. -->
                   @if (isPurchasable(p)) {
-                    <button class="btn-plan buy" [disabled]="busy || !!pendingOrder"
+                    <button class="btn-plan buy" [disabled]="busy"
                             (click)="openPurchase(p)">
-                      {{ pendingOrder ? 'Commande en cours…' : 'Choisir cette formule' }}
+                      Choisir cette formule
                     </button>
                   } @else {
                     <button class="btn-plan" disabled title="Offre avec matériel GPS — contactez-nous">Nous contacter</button>
@@ -289,24 +290,30 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                  serveur à la commande — l'affichage ici n'est qu'un aperçu. -->
             @if (purchasePlan) {
               <div class="purchase-panel">
-                <h4>Commander « {{ purchasePlan.name }} »</h4>
-                @if (purchasePlan.pricePerVehicle) {
-                  <p class="order-hint">
-                    Tarif par véhicule — montants calculés pour votre parc de
-                    {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}.
-                  </p>
-                }
-                <div class="cycle-choices">
-                  @for (c of availableCycles(purchasePlan); track c.value) {
-                    <label class="cycle" [class.active]="selectedCycle === c.value">
-                      <input type="radio" name="cycle" [value]="c.value"
-                             [checked]="selectedCycle === c.value"
-                             (change)="selectedCycle = c.value" />
-                      <span class="cycle-name">{{ c.label }}</span>
-                      <span class="cycle-price">{{ c.price | appCurrency }}</span>
-                    </label>
+                <!-- Formule choisie depuis une carte « annuel / semestriel » : le cycle
+                     est fixé par la carte, au montant écrit dessus. Redemander
+                     « Semestriel / Annuel » ici doublonnait les cartes et brouillait
+                     les montants de la page (recette du 19/10/2026). -->
+                @if (!purchaseCycleFromCard) {
+                  <h4>Commander « {{ purchasePlan.name }} »</h4>
+                  @if (purchasePlan.pricePerVehicle) {
+                    <p class="order-hint">
+                      Tarif par véhicule — montants calculés pour votre parc de
+                      {{ vehiclesBilled }} véhicule{{ vehiclesBilled > 1 ? 's' : '' }}.
+                    </p>
                   }
-                </div>
+                  <div class="cycle-choices">
+                    @for (c of availableCycles(purchasePlan); track c.value) {
+                      <label class="cycle" [class.active]="selectedCycle === c.value">
+                        <input type="radio" name="cycle" [value]="c.value"
+                               [checked]="selectedCycle === c.value"
+                               (change)="selectedCycle = c.value" />
+                        <span class="cycle-name">{{ c.label }}</span>
+                        <span class="cycle-price">{{ c.price | appCurrency }}</span>
+                      </label>
+                    }
+                  </div>
+                }
                 <!-- Ce que change le choix, AVANT de confirmer : cocher un cycle
                      n'enregistre rien, et une commande validée PROLONGE
                      l'abonnement à partir de l'échéance en cours. Le client qui
@@ -314,14 +321,19 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                      en haut de page croyait à une erreur de prix (recette client
                      du 11/09/2026). Aperçu seulement : le serveur fait foi. -->
                 <p class="cycle-effect">
-                  @if (isTrial) {
-                    Votre essai gratuit se poursuit jusqu'à la validation de votre règlement.
-                  } @else if (currentPlan) {
-                    @if (billingCycleLabel && nextPaymentAmount != null) {
-                      Votre offre en cours ({{ billingCycleLabel }}, {{ nextPaymentAmount | appCurrency }})
-                      reste inchangée jusqu'à la validation de votre règlement.
-                    } @else {
-                      Votre offre en cours reste inchangée jusqu'à la validation de votre règlement.
+                  <!-- Commande en attente : le panneau dit seulement ce qui la remplace,
+                       sans redire l'offre en cours (trois montants dans un même
+                       encadré, recette du 19/10/2026). -->
+                  @if (!pendingOrder) {
+                    @if (isTrial) {
+                      Votre essai gratuit se poursuit jusqu'à la validation de votre règlement.
+                    } @else if (currentPlan) {
+                      @if (billingCycleLabel && nextPaymentAmount != null) {
+                        Votre offre en cours ({{ billingCycleLabel }}, {{ nextPaymentAmount | appCurrency }})
+                        reste inchangée jusqu'à la validation de votre règlement.
+                      } @else {
+                        Votre offre en cours reste inchangée jusqu'à la validation de votre règlement.
+                      }
                     }
                   }
                   @if (selectedCyclePrice !== null && projectedExpiryLabel) {
@@ -330,9 +342,21 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                     {{ extendsCurrentTerm ? 'repoussée' : 'fixée' }} au <strong>{{ projectedExpiryLabel }}</strong>.
                   }
                 </p>
+                <!-- Changement de formule : dit AVANT de confirmer que la commande
+                     en attente sera remplacée (préparation du paiement en ligne). -->
+                @if (pendingOrder) {
+                  <p class="order-replace">
+                    @if (selectionIsPending) {
+                      Cette formule est déjà celle de votre commande en attente.
+                    } @else {
+                      Votre commande en attente ({{ pendingOrder.planName }} — {{ cycleLabel(pendingOrder.billingCycle) }} —
+                      {{ pendingOrder.amount | appCurrency }}) sera remplacée par celle-ci.
+                    }
+                  </p>
+                }
                 <div class="purchase-actions">
-                  <button class="btn-plan buy" [disabled]="busy" (click)="confirmPurchase()">
-                    {{ busy ? 'Envoi…' : 'Confirmer ma commande' }}
+                  <button class="btn-plan buy" [disabled]="busy || selectionIsPending" (click)="confirmPurchase()">
+                    {{ busy ? 'Envoi…' : (pendingOrder ? 'Remplacer ma commande' : 'Confirmer ma commande') }}
                   </button>
                   <button class="btn-cancel-order" [disabled]="busy" (click)="purchasePlan = null">Retour</button>
                 </div>
@@ -489,9 +513,15 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
       font-size: 13px; line-height: 1.55; color: var(--text-primary, #0f172a);
     }
     .cycle-effect:empty { display: none; }
+    .cycle-effect:first-child { margin-top: 0; }
     .purchase-actions { display: flex; gap: 10px; margin-top: 14px; }
     .purchase-actions .btn-plan { margin-top: 0; width: auto; padding: 10px 22px; }
     .purchase-error { margin: 10px 0 0; font-size: 13px; color: #b91c1c; }
+    .order-replace {
+      margin: 12px 0 0; padding: 9px 12px; border-radius: 9px; font-size: 13px; line-height: 1.5;
+      background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.45);
+      color: var(--text-primary, #0f172a);
+    }
 
     .notice {
       display: flex; gap: 12px; align-items: flex-start;
@@ -531,6 +561,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   orders: SubscriptionOrder[] = [];
   purchasePlan: any = null;
   selectedCycle: BillingCycle = 'yearly';
+  /** Le cycle vient de la carte cliquée (formules annuel / semestriel) : pas de second choix. */
+  purchaseCycleFromCard = false;
   busy = false;
   purchaseError: string | null = null;
 
@@ -588,6 +620,23 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   get lastRejection(): SubscriptionOrder | null {
     const latest = this.orders[0]; // le serveur renvoie les plus récentes en tête
     return latest?.status === 'rejected' && latest.note ? latest : null;
+  }
+
+  /**
+   * Cette formule (plan + cycle, au montant actuel) est-elle déjà la commande en
+   * attente ? La recommander n'aurait pas de sens : son bouton est grisé. Toute
+   * autre formule reste commandable et remplace la commande en attente.
+   */
+  isPendingChoice(plan: any, cycle: BillingCycle): boolean {
+    const o = this.pendingOrder;
+    if (!o || !plan || o.subscriptionTypeId !== plan.id || o.billingCycle !== cycle) return false;
+    const price = this.availableCycles(plan).find(c => c.value === cycle)?.price;
+    return price == null || Math.abs(price - o.amount) < 0.005;
+  }
+
+  /** Le choix en cours dans le panneau de commande est-il déjà la commande en attente ? */
+  get selectionIsPending(): boolean {
+    return !!this.purchasePlan && this.isPendingChoice(this.purchasePlan, this.selectedCycle);
   }
 
   isPurchasable(plan: any): boolean {
@@ -725,6 +774,7 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     // Le cycle demandé (carte « annuel » ou « semestriel ») fait foi s'il est
     // vendable ; sinon l'annuel (le moins cher au mois), sinon le premier.
     const wanted = cycle && cycles.some(c => c.value === cycle) ? cycle : null;
+    this.purchaseCycleFromCard = !!wanted;
     this.selectedCycle = wanted
       ?? (cycles.some(c => c.value === 'yearly') ? 'yearly' : (cycles[0]?.value ?? 'yearly'));
   }
@@ -733,7 +783,9 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     if (!this.purchasePlan || this.busy) return;
     this.busy = true;
     this.purchaseError = null;
-    this.apiService.createSubscriptionOrder(this.purchasePlan.id, this.selectedCycle)
+    // Une commande en attente est REMPLACÉE par celle-ci : le serveur reçoit
+    // laquelle, et refuse si elle a été traitée entre-temps.
+    this.apiService.createSubscriptionOrder(this.purchasePlan.id, this.selectedCycle, this.pendingOrder?.id)
       .pipe(takeUntil(this.destroy$)).subscribe({
         next: () => {
           this.busy = false;
@@ -744,6 +796,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
           this.busy = false;
           this.purchaseError = err?.error?.message || err?.error?.error
             || 'La commande n\'a pas pu être enregistrée. Réessayez ou contactez-nous.';
+          // La commande en attente a pu être traitée entre-temps : état à jour.
+          this.loadOrders();
           this.cdr.detectChanges();
         }
       });
@@ -789,36 +843,67 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   }
 
   // ── Montant en tête de page ──
-  // Il suit le cycle coché dans le panneau d'achat : le client qui cochait
-  // « Semestriel — 96 € » lisait toujours « 144 € » en haut et croyait à une
-  // erreur de prix (recette client du 11/09/2026). Panneau fermé : prochain
-  // règlement tel que le serveur le connaît. L'échéance, elle, ne bouge pas :
-  // rien n'est commandé tant que le client n'a pas confirmé.
+  // Une commande en attente fait foi, panneau ouvert ou non : c'est elle que le
+  // client va régler, et la carte de la commande juste en dessous doit dire la
+  // même chose (« 336 € semestriel » en haut, « annuel 504 € » dans la commande,
+  // recette du 19/10/2026). Sans commande en attente, il suit le cycle coché dans
+  // le panneau d'achat : le client qui cochait « Semestriel — 96 € » lisait
+  // toujours « 144 € » en haut et croyait à une erreur de prix (recette client
+  // du 11/09/2026). Sinon : prochain règlement tel que le serveur le connaît.
+  // L'échéance, elle, ne bouge pas : rien n'est appliqué avant la validation.
 
-  /** Le panneau d'achat est ouvert sur un cycle chiffré. */
+  /**
+   * Une commande attend : le montant en tête est le sien, MÊME panneau ouvert.
+   * Il doit dire la même chose que la carte « Commande en attente » juste en
+   * dessous ; c'est le panneau qui annonce ce que le remplacement changera
+   * (« 504 € » en haut, « semestriel 336 € » dans la commande : recette du 19/10/2026).
+   */
+  private get headerFollowsPending(): boolean {
+    return !!this.pendingOrder;
+  }
+
+  /** Pas de commande en attente, panneau d'achat ouvert sur un cycle chiffré. */
   private get headerFollowsPurchase(): boolean {
-    return !!this.purchasePlan && this.selectedCyclePrice != null;
+    return !this.pendingOrder && !!this.purchasePlan && this.selectedCyclePrice != null;
   }
 
   get headerAmount(): number | null {
-    return this.headerFollowsPurchase ? this.selectedCyclePrice : this.nextPaymentAmount;
+    if (this.headerFollowsPurchase) return this.selectedCyclePrice;
+    return this.headerFollowsPending ? this.pendingOrder!.amount : this.nextPaymentAmount;
   }
 
   get headerCycleLabel(): string {
-    return this.headerFollowsPurchase ? this.billingLabelOf(this.selectedCycle) : this.billingCycleLabel;
+    if (this.headerFollowsPurchase) return this.billingLabelOf(this.selectedCycle);
+    return this.headerFollowsPending ? this.billingLabelOf(this.pendingOrder!.billingCycle) : this.billingCycleLabel;
   }
 
   get headerCycleMonths(): number {
-    return this.headerFollowsPurchase ? this.monthsOf(this.selectedCycle) : this.cycleMonths;
+    if (this.headerFollowsPurchase) return this.monthsOf(this.selectedCycle);
+    return this.headerFollowsPending ? this.monthsOf(this.pendingOrder!.billingCycle) : this.cycleMonths;
   }
 
-  /** Tarif par véhicule du plan affiché en tête (plan commandé, sinon plan en cours). */
+  /** Tarif par véhicule du plan affiché en tête (plan coché, plan commandé, sinon plan en cours). */
   get headerPerVehicle(): boolean {
-    return this.headerFollowsPurchase ? !!this.purchasePlan.pricePerVehicle : this.pricePerVehicle;
+    if (this.headerFollowsPurchase) return !!this.purchasePlan.pricePerVehicle;
+    const commande = this.headerFollowsPending ? this.pendingPlan : null;
+    return commande ? !!commande.pricePerVehicle : this.pricePerVehicle;
+  }
+
+  /** Le plan de la commande en attente (grille des offres, ou plan en cours). */
+  private get pendingPlan(): any | null {
+    const id = this.pendingOrder?.subscriptionTypeId;
+    if (id == null) return null;
+    return this.plans.find(p => p.id === id) ?? (this.currentPlan?.id === id ? this.currentPlan : null);
   }
 
   /** Ce que le montant en tête reflète : le cycle coché, ou l'offre ET le cycle si le plan commandé n'est pas le plan en cours. */
   get headerChoiceNote(): string {
+    if (this.headerFollowsPending) {
+      const o = this.pendingOrder!;
+      const autreOffre = !!this.currentPlan && o.subscriptionTypeId !== this.currentPlan.id;
+      return (autreOffre ? `votre commande en attente (offre « ${o.planName} »)` : 'votre commande en attente')
+        + ' — appliquée après validation de votre règlement';
+    }
     const autrePlan = !!this.purchasePlan && !!this.currentPlan && this.purchasePlan.id !== this.currentPlan.id;
     return (autrePlan
       ? `selon l'offre « ${this.purchasePlan?.name} » et le cycle choisis ci-dessous`
@@ -827,6 +912,10 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
 
   /** Le montant affiché diffère du prochain règlement connu : on le dit sous le montant. */
   get headerFollowsChoice(): boolean {
+    if (this.headerFollowsPending) {
+      const o = this.pendingOrder!;
+      return o.amount !== this.nextPaymentAmount || o.billingCycle !== (this.billingCycle || '').toLowerCase();
+    }
     return this.headerFollowsPurchase
       && (this.selectedCyclePrice !== this.nextPaymentAmount
         || this.selectedCycle !== (this.billingCycle || '').toLowerCase());

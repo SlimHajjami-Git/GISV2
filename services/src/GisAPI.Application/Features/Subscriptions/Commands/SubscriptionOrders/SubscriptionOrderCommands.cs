@@ -37,10 +37,15 @@ public record SubscriptionOrderDto(
 /// Seule l'offre GPA (plan-basique) est achetable en ligne pour l'instant — les
 /// offres avec GPS impliquent du matériel, et pour l'installation une
 /// intervention : elles se vendent avec un humain au bout du fil.
+///
+/// ReplaceOrderId : la commande en attente que cette commande REMPLACE (le client
+/// change de formule sans annuler d'abord). C'est celle qu'il voit à l'écran ; si
+/// elle a été traitée entre-temps, la commande est refusée.
 /// </summary>
 public record CreateSubscriptionOrderCommand(
     int SubscriptionTypeId,
-    string BillingCycle
+    string BillingCycle,
+    int? ReplaceOrderId = null
 ) : ICommand<SubscriptionOrderDto>;
 
 public class CreateSubscriptionOrderCommandHandler
@@ -103,13 +108,38 @@ public class CreateSubscriptionOrderCommandHandler
         }
 
         // Une seule commande en attente à la fois : deux commandes validées coup
-        // sur coup factureraient deux fois. Le client modifie en annulant d'abord.
+        // sur coup factureraient deux fois. Changer de formule REMPLACE la commande
+        // en attente (préparation du paiement en ligne, 19/10/2026) : le client
+        // n'annule plus d'abord, mais il désigne la commande qu'il remplace. Une
+        // commande traitée entre-temps (validée par la plateforme) n'est jamais
+        // remplacée en silence : il paierait deux fois.
         var pending = await _context.SubscriptionOrders
-            .AnyAsync(o => o.CompanyId == companyId && o.Status == "pending", ct);
-        if (pending)
+            .Where(o => o.CompanyId == companyId && o.Status == "pending")
+            .ToListAsync(ct);
+        SubscriptionOrder? replaced = null;
+        if (request.ReplaceOrderId is int replaceId)
+        {
+            replaced = pending.FirstOrDefault(o => o.Id == replaceId)
+                ?? throw new DomainException(
+                    "Votre commande en attente vient d'être traitée ou annulée. "
+                    + "Rechargez la page avant de commander.");
+            if (replaced.SubscriptionTypeId == plan.Id && replaced.BillingCycle == cycle && replaced.Amount == amount)
+                throw new DomainException("Cette formule est déjà celle de votre commande en attente.");
+            pending.Remove(replaced);
+        }
+        if (pending.Count > 0)
             throw new DomainException(
                 "Vous avez déjà une commande en attente de validation. "
-                + "Annulez-la d'abord si vous souhaitez la modifier.");
+                + "Rechargez la page : vous pourrez l'annuler ou choisir une autre formule pour la remplacer.");
+
+        if (replaced != null)
+        {
+            // « cancelled » (c'est le client qui renonce), motif lisible côté plateforme.
+            replaced.Status = "cancelled";
+            replaced.Note = "Remplacée par le client par une autre formule.";
+            replaced.ProcessedAt = DateTime.UtcNow;
+            replaced.UpdatedAt = DateTime.UtcNow;
+        }
 
         var order = new SubscriptionOrder
         {
@@ -121,11 +151,14 @@ public class CreateSubscriptionOrderCommandHandler
             CreatedByUserId = userId
         };
         _context.SubscriptionOrders.Add(order);
+        // Une seule écriture : l'ancienne commande annulée et la nouvelle créée
+        // ensemble, ou rien.
         await _context.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Commande d'abonnement #{OrderId} : société {CompanyId}, plan {Plan}, cycle {Cycle}, {Amount}",
-            order.Id, companyId, plan.Code, cycle, amount);
+            "Commande d'abonnement #{OrderId} : société {CompanyId}, plan {Plan}, cycle {Cycle}, {Amount}{Remplace}",
+            order.Id, companyId, plan.Code, cycle, amount,
+            replaced != null ? $" (remplace #{replaced.Id})" : "");
 
         var companyName = await _context.Societes
             .Where(s => s.Id == companyId).Select(s => s.Name).FirstOrDefaultAsync(ct) ?? "";

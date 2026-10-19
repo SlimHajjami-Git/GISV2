@@ -1407,9 +1407,12 @@ export class ApiService {
   // depuis le plan et le cycle — un montant venu du client serait un prix
   // libre-service.
 
-  createSubscriptionOrder(subscriptionTypeId: number, billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly'): Observable<SubscriptionOrder> {
-    return this.http.post<SubscriptionOrder>(`${this.API_URL}/subscriptions/orders`,
-      { subscriptionTypeId, billingCycle }, { headers: this.getHeaders() });
+  /** replaceOrderId : la commande en attente que celle-ci remplace (changement de formule). */
+  createSubscriptionOrder(subscriptionTypeId: number, billingCycle: 'monthly' | 'quarterly' | 'semiannual' | 'yearly',
+                          replaceOrderId?: number): Observable<SubscriptionOrder> {
+    const body: any = { subscriptionTypeId, billingCycle };
+    if (replaceOrderId) body.replaceOrderId = replaceOrderId;
+    return this.http.post<SubscriptionOrder>(`${this.API_URL}/subscriptions/orders`, body, { headers: this.getHeaders() });
   }
 
   getMySubscriptionOrders(): Observable<SubscriptionOrder[]> {
