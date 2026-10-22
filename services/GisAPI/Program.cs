@@ -242,6 +242,10 @@ builder.Services.AddHttpClient();
 // instant over-the-socket delivery of operator commands (immobilisation, go)
 builder.Services.AddScoped<IRustCommandPusher, GisAPI.Services.RustCommandPusher>();
 
+// Connexions GPS en attente d'identification (trames retenues par l'ingestion
+// Rust, rattachées à un véhicule sur confirmation d'un administrateur)
+builder.Services.AddScoped<IGpsIngestConnexions, GisAPI.Services.GpsIngestConnexions>();
+
 // JWT Authentication — require a real key in production
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrEmpty(jwtKey))

@@ -483,6 +483,53 @@ export interface UnidentifiedConnections {
   latest: UnidentifiedConnectionTrace[];
 }
 
+/** Position lue dans une trame retenue (heure GPS, UTC). */
+export interface HeldPosition {
+  lat: number;
+  lon: number;
+  at: string;
+  speedKph: number;
+}
+
+/** Véhicule probable d'une connexion en attente (dernière position connue la plus proche). */
+export interface HeldConnectionSuggestion {
+  deviceId: number;
+  imei: string;
+  plate: string | null;
+  companyName: string | null;
+  lastCommunication: string | null;
+  lastPositionAt: string;
+  distanceMeters: number;
+  gapMinutes: number;
+}
+
+/** Connexion dont les trames sont retenues par l'ingestion, faute d'identité. */
+export interface HeldConnection {
+  peer: string;
+  open: boolean;
+  firstReceivedAt: string;
+  lastReceivedAt: string;
+  frames: number;
+  droppedFrames: number;
+  firstPosition: HeldPosition | null;
+  lastPosition: HeldPosition | null;
+  suggestions: HeldConnectionSuggestion[];
+  ambiguous: boolean;
+}
+
+export interface HeldConnections {
+  ingestReachable: boolean;
+  connections: HeldConnection[];
+}
+
+export interface HeldConnectionAttributionResult {
+  ok: boolean;
+  message: string;
+  plate: string | null;
+  replayedFrames: number;
+  connectionOpen: boolean;
+}
+
 /** Commande d'abonnement passée en libre-service (miroir de SubscriptionOrderDto côté API). */
 export interface SubscriptionOrderAdmin {
   id: number;
@@ -1033,6 +1080,30 @@ export class AdminService {
         console.error('Error fetching unidentified connections:', err);
         return of({ traces24h: 0, lastAt: null, latest: [] } as UnidentifiedConnections);
       })
+    );
+  }
+
+  /**
+   * Connexions dont les trames sont RETENUES par l'ingestion faute d'identité,
+   * avec le véhicule probable. Rien n'est rattaché sans confirmation.
+   */
+  getHeldConnections(): Observable<HeldConnections> {
+    return this.http.get<HeldConnections>(
+      `${this.apiUrl}/admin/gps/connexions-en-attente`, { headers: this.getHeaders() }).pipe(
+      catchError(err => {
+        console.error('Error fetching held connections:', err);
+        return of({ ingestReachable: false, connections: [] } as HeldConnections);
+      })
+    );
+  }
+
+  /** Confirme le véhicule d'une connexion en attente : suivi repris, trames retenues enregistrées. */
+  attributeHeldConnection(peer: string, deviceId: number): Observable<HeldConnectionAttributionResult> {
+    return this.http.post<HeldConnectionAttributionResult>(
+      `${this.apiUrl}/admin/gps/connexions-en-attente/attribuer`, { peer, deviceId }, { headers: this.getHeaders() }).pipe(
+      catchError(err => of((err?.error ?? {
+        ok: false, message: 'Erreur de communication avec le serveur.', plate: null, replayedFrames: 0, connectionOpen: false
+      }) as HeldConnectionAttributionResult))
     );
   }
 

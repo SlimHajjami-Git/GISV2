@@ -5,7 +5,10 @@ import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
-import { AdminService, ServiceHealth, UnidentifiedConnections } from '../services/admin.service';
+import {
+  AdminService, ServiceHealth, UnidentifiedConnections,
+  HeldConnections, HeldConnection, HeldConnectionSuggestion, HeldPosition
+} from '../services/admin.service';
 
 @Component({
   selector: 'admin-health',
@@ -57,6 +60,40 @@ import { AdminService, ServiceHealth, UnidentifiedConnections } from '../service
           </div>
         </div>
 
+        <!-- Véhicules perdus à confirmer : les trames d'une connexion non identifiée
+             sont désormais RETENUES par l'ingestion (plus jetées). On propose le
+             véhicule dont la dernière position connue est la plus proche de la
+             première trame retenue ; un administrateur confirme. Jamais de
+             rattachement automatique : deux véhicules garés côte à côte au dépôt
+             ne doivent pas pouvoir être confondus. -->
+        <div class="held-card" *ngIf="held && (held.connections.length > 0 || heldMessage)">
+          <div class="unident-head">
+            <span class="held-badge">{{ held.connections.length }}</span>
+            <div>
+              <h3>Véhicules perdus à confirmer</h3>
+              <p>Ces boîtiers émettent sans s'être présentés ; leurs trames sont gardées en attente. Vérifiez le véhicule proposé (sa dernière position connue est juste à côté de la première trame reçue), puis <strong>confirmez</strong> : le suivi reprend et le trajet est récupéré. Sans proposition, ou en cas de doute : redémarrer le boîtier par SMS.</p>
+            </div>
+          </div>
+          <div class="held-message" *ngIf="heldMessage" [class.error]="!heldMessage.ok">{{ heldMessage.text }}</div>
+          <div class="held-row" *ngFor="let c of held.connections">
+            <div class="held-info">
+              <span class="mono">{{ c.peer }}</span>
+              <span class="held-state" [class.closed]="!c.open">{{ c.open ? 'connexion ouverte' : 'connexion fermée' }}</span>
+              <span>depuis {{ c.firstReceivedAt | date:'dd/MM HH:mm' }} · {{ c.frames }} trame(s) gardée(s)</span>
+              <a *ngIf="c.firstPosition" [href]="mapLink(c.firstPosition)" target="_blank" rel="noopener">voir la position</a>
+            </div>
+            <div class="held-warning" *ngIf="c.ambiguous">Attention : plusieurs véhicules perdus sont garés tout près. Choisissez avec soin, ou redémarrez le boîtier par SMS.</div>
+            <div class="held-none" *ngIf="c.suggestions.length === 0">Aucun véhicule plausible : redémarrer le boîtier par SMS.</div>
+            <div class="held-suggestion" *ngFor="let s of c.suggestions; let i = index">
+              <span class="plate">{{ s.plate || s.imei }}</span>
+              <span class="sub">{{ s.companyName }} · à {{ s.distanceMeters }} m de sa dernière position · perdu {{ s.gapMinutes }} min avant</span>
+              <button class="held-confirm" [class.secondary]="i > 0" [disabled]="busyPeer !== null" (click)="confirmHeld(c, s)">
+                {{ busyPeer === c.peer ? 'Rattachement…' : 'Confirmer' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- Connexions GPS rejetées faute d'identité : un NEMS_LITE (SIM Ooredoo)
              qui se reconnecte sans renvoyer son AA00 devient muet EN SILENCE —
              six véhicules EL MOUSSEM sont restés invisibles des jours (10/2026).
@@ -66,7 +103,8 @@ import { AdminService, ServiceHealth, UnidentifiedConnections } from '../service
             <span class="unident-badge">{{ unidentified.traces24h }}</span>
             <div>
               <h3>Connexions GPS non identifiées (24 h)</h3>
-              <p>Des boîtiers émettent mais leurs trames sont rejetées : pas d'identité AA00 reçue sur la connexion et pas de préfixe MAT (cas type : NEMS_LITE sur SIM Ooredoo après reconnexion). <strong>Consigne : redémarrer le boîtier par SMS</strong> — il revient en ~2 minutes. Dernier rejet : {{ unidentified.lastAt | date:'dd/MM HH:mm' }}.</p>
+              <p>Des boîtiers émettent sans identité : pas d'AA00 reçu sur la connexion et pas de préfixe MAT (cas type : NEMS_LITE sur SIM Ooredoo après reconnexion). Leurs trames sont gardées en attente : <strong>confirmez le véhicule dans « Véhicules perdus à confirmer »</strong> ; à défaut, redémarrer le boîtier par SMS — il revient en ~2 minutes. Dernier rejet : {{ unidentified.lastAt | date:'dd/MM HH:mm' }}.</p>
+              <p class="held-down" *ngIf="held && !held.ingestReachable">L'ingestion GPS ne répond pas : la liste des véhicules perdus est indisponible.</p>
             </div>
           </div>
           <table class="unident-table">
@@ -339,6 +377,48 @@ import { AdminService, ServiceHealth, UnidentifiedConnections } from '../service
     }
     .unident-table td { padding: 7px 10px; border-bottom: 1px solid var(--adm-track, #f1f5f9); color: var(--adm-ink, #0f172a); }
     .unident-table .mono { font-family: ui-monospace, monospace; font-size: 12px; }
+    .held-down { margin-top: 8px !important; color: #b45309 !important; font-weight: 600; }
+
+    .held-card {
+      background: var(--adm-card, #fff);
+      border: 1px solid rgba(217, 119, 6, .35);
+      border-left: 4px solid #d97706;
+      border-radius: 14px;
+      padding: 18px 20px;
+      margin-bottom: 24px;
+    }
+    .held-badge {
+      min-width: 44px; height: 44px; border-radius: 12px;
+      background: rgba(217, 119, 6, .12); color: #b45309;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; font-weight: 800; flex-shrink: 0; padding: 0 8px;
+    }
+    .held-message {
+      margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 13px;
+      background: rgba(22, 163, 74, .10); color: #15803d;
+    }
+    .held-message.error { background: rgba(220, 38, 38, .10); color: #b91c1c; }
+    .held-row { border-top: 1px solid var(--adm-track, #f1f5f9); padding: 12px 0; }
+    .held-info {
+      display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center;
+      font-size: 12.5px; color: var(--adm-sub, #64748b); margin-bottom: 8px;
+    }
+    .held-info .mono { font-family: ui-monospace, monospace; color: var(--adm-ink, #0f172a); }
+    .held-info a { color: var(--adm-indigo, #4f46e5); }
+    .held-state { padding: 2px 8px; border-radius: 999px; background: rgba(22, 163, 74, .10); color: #15803d; font-weight: 600; }
+    .held-state.closed { background: var(--adm-track, #f1f5f9); color: var(--adm-sub, #64748b); }
+    .held-warning, .held-none { font-size: 12.5px; margin-bottom: 8px; }
+    .held-warning { color: #b45309; font-weight: 600; }
+    .held-none { color: var(--adm-sub, #64748b); }
+    .held-suggestion { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 4px 0; }
+    .held-suggestion .plate { font-weight: 700; color: var(--adm-ink, #0f172a); min-width: 110px; }
+    .held-suggestion .sub { font-size: 12.5px; color: var(--adm-sub, #64748b); flex: 1; min-width: 200px; }
+    .held-confirm {
+      border: none; border-radius: 9px; padding: 7px 14px; font-weight: 700; font-size: 13px;
+      background: #d97706; color: #fff; cursor: pointer;
+    }
+    .held-confirm.secondary { background: transparent; color: #b45309; border: 1px solid rgba(217, 119, 6, .5); }
+    .held-confirm:disabled { opacity: .5; cursor: default; }
 
     .services-grid {
       display: grid;
@@ -609,6 +689,10 @@ export class AdminHealthComponent implements OnInit, OnDestroy {
   private destroy$ = new Subject<void>();
   services: ServiceHealth[] = [];
   unidentified: UnidentifiedConnections | null = null;
+  held: HeldConnections | null = null;
+  /** Connexion en cours de rattachement (un seul à la fois). */
+  busyPeer: string | null = null;
+  heldMessage: { ok: boolean; text: string } | null = null;
   autoRefresh = true;
   refreshInterval: any;
   lastCheck = '';
@@ -663,6 +747,33 @@ export class AdminHealthComponent implements OnInit, OnDestroy {
     });
     this.adminService.getUnidentifiedConnections().pipe(takeUntil(this.destroy$)).subscribe(u => {
       this.unidentified = u;
+    });
+    this.loadHeld();
+  }
+
+  loadHeld() {
+    this.adminService.getHeldConnections().pipe(takeUntil(this.destroy$)).subscribe(h => {
+      this.held = h;
+    });
+  }
+
+  mapLink(p: HeldPosition): string {
+    return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`;
+  }
+
+  confirmHeld(c: HeldConnection, s: HeldConnectionSuggestion) {
+    const vehicule = s.plate || s.imei;
+    const doute = c.ambiguous ? '\n\nAttention : un autre véhicule perdu est garé tout près.' : '';
+    if (!confirm(`Rattacher la connexion ${c.peer} au véhicule ${vehicule} (${s.companyName ?? ''}) ?\n` +
+                 `Sa dernière position connue est à ${s.distanceMeters} m de la première trame reçue.${doute}`)) {
+      return;
+    }
+    this.busyPeer = c.peer;
+    this.heldMessage = null;
+    this.adminService.attributeHeldConnection(c.peer, s.deviceId).pipe(takeUntil(this.destroy$)).subscribe(r => {
+      this.busyPeer = null;
+      this.heldMessage = { ok: r.ok, text: r.message };
+      this.loadHeld();
     });
   }
 

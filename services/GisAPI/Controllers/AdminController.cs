@@ -716,6 +716,33 @@ public class AdminController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>
+    /// Connexions GPS dont les trames sont retenues faute d'identité, avec le
+    /// véhicule probable (dernière position connue la plus proche).
+    /// </summary>
+    [HttpGet("gps/connexions-en-attente")]
+    public async Task<ActionResult<GisAPI.Application.Features.Admin.Monitoring.HeldConnectionsDto>> GetHeldConnections(
+        [FromServices] MediatR.IMediator mediator)
+    {
+        return Ok(await mediator.Send(new GisAPI.Application.Features.Admin.Monitoring.GetHeldConnectionsQuery()));
+    }
+
+    public record AttributeHeldConnectionRequest(string Peer, int DeviceId);
+
+    /// <summary>
+    /// Un administrateur confirme le véhicule d'une connexion en attente : elle
+    /// est rattachée à ce boîtier et ses trames retenues sont enregistrées.
+    /// </summary>
+    [HttpPost("gps/connexions-en-attente/attribuer")]
+    public async Task<ActionResult<GisAPI.Application.Features.Admin.Monitoring.AttributeHeldConnectionResult>> AttributeHeldConnection(
+        [FromBody] AttributeHeldConnectionRequest request,
+        [FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Admin.Monitoring.AttributeHeldConnectionCommand(request.Peer, request.DeviceId));
+        return result.Ok ? Ok(result) : Conflict(result);
+    }
+
     [HttpGet("health")]
     public async Task<ActionResult<List<ServiceHealthDto>>> GetServiceHealth()
     {

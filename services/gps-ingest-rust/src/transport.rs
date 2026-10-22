@@ -11,6 +11,7 @@ use tokio::{
 use tracing::{debug, error, info, warn};
 
 use crate::{
+    attente::RegistreAttente,
     config::{AppConfig, ListenerConfig, TransportKind},
     ports::{TelemetryEventPublisher, TelemetryStore},
     redis_cache::RedisCache,
@@ -64,6 +65,128 @@ pub struct TelemetryServices {
     /// par IP (l'APN partage quelques adresses de sortie) pour ne pas remplir la
     /// table — leçon de gps_alerts noyée sous la télémétrie.
     pub unidentified_drop_throttle: Mutex<HashMap<String, (DateTime<Utc>, u64)>>,
+    /// Trames de ces mêmes connexions, RETENUES au lieu d'être jetées, en
+    /// attendant qu'un administrateur confirme le véhicule (voir attente.rs).
+    pub attente: Arc<RegistreAttente>,
+}
+
+/// Ce qu'il faut pour ingérer après coup les trames d'une connexion confirmée.
+/// Rempli par run_listeners, lu par l'API HTTP (POST /connexions/attribuer).
+pub struct ContexteRejeu {
+    pub database: Arc<dyn TelemetryStore>,
+    pub publisher: Option<Arc<dyn TelemetryEventPublisher>>,
+    pub services: Arc<TelemetryServices>,
+    pub redis_cache: Option<Arc<RedisCache>>,
+    /// Table de connexions de chaque écoute TCP, par protocole.
+    pub cartes: HashMap<String, ConnectionMap>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct RapportAttribution {
+    pub peer: String,
+    pub imei: String,
+    /// La connexion était encore ouverte : ses trames suivantes arrivent
+    /// désormais directement sous ce boîtier.
+    pub connexion_ouverte: bool,
+    pub trames_rejouees: usize,
+    pub trames_en_echec: usize,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum ErreurAttribution {
+    ConnexionInconnue,
+    /// Entre-temps, le boîtier s'est annoncé lui-même sous un autre IMEI.
+    DejaIdentifieeAutrement(String),
+}
+
+/// Rattache une connexion en attente au boîtier `imei` confirmé par un
+/// administrateur (`par`), puis ingère ses trames retenues, dans l'ordre.
+pub async fn attribuer_connexion(
+    ctx: &ContexteRejeu,
+    peer: &str,
+    imei: &str,
+    par: &str,
+) -> std::result::Result<RapportAttribution, ErreurAttribution> {
+    let (connexion, trames) = ctx
+        .services
+        .attente
+        .extraire(peer)
+        .await
+        .ok_or(ErreurAttribution::ConnexionInconnue)?;
+    let protocole = connexion.protocole.clone();
+
+    // Connexion encore ouverte : on la rattache dans la table de son écoute.
+    // Si le boîtier s'est annoncé entre-temps sous un autre IMEI, on refuse et
+    // on remet ses trames en attente — l'identité matérielle prime toujours.
+    let carte = match (connexion.ouverte, ctx.cartes.get(&protocole)) {
+        (true, Some(carte)) => {
+            let mut map = carte.lock().await;
+            if let Some(annonce) = map.get(peer) {
+                if annonce != imei {
+                    let annonce = annonce.clone();
+                    drop(map);
+                    for t in &trames {
+                        if let Ok(f) = telemetry::hh::parse_frame(extract_mat_prefix(t).1) {
+                            ctx.services.attente.retenir(peer, &protocole, t, &f).await;
+                        }
+                    }
+                    return Err(ErreurAttribution::DejaIdentifieeAutrement(annonce));
+                }
+            }
+            map.insert(peer.to_string(), imei.to_string());
+            Arc::clone(carte)
+        }
+        // Connexion fermée : une table à usage unique suffit pour le rejeu.
+        _ => {
+            let carte: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+            carte.lock().await.insert(peer.to_string(), imei.to_string());
+            carte
+        }
+    };
+    if connexion.ouverte {
+        ctx.services.attente.noter_attribution(peer, imei).await;
+    }
+
+    let mut en_echec = 0;
+    for t in &trames {
+        if let Err(err) = process_single_frame(
+            &protocole,
+            t,
+            Arc::clone(&ctx.database),
+            Some(peer),
+            Arc::clone(&carte),
+            ctx.publisher.clone(),
+            Arc::clone(&ctx.services),
+            ctx.redis_cache.clone(),
+        )
+        .await
+        {
+            en_echec += 1;
+            warn!(?err, %peer, %imei, "Rejeu d'une trame retenue en échec");
+        }
+    }
+
+    let reason = format!(
+        "attribution_confirmee (IMEI {imei}, par {par}, {} trame(s) rejouée(s), connexion {})",
+        trames.len(),
+        if connexion.ouverte { "ouverte" } else { "fermée" }
+    );
+    warn!(%peer, %imei, %par, trames = trames.len(), en_echec, "Connexion non identifiée rattachée par un administrateur");
+    if let Err(e) = ctx
+        .database
+        .log_frame_debug(None, Some(imei), None, "ATTR", None, None, &format!("connexion {peer}"), &reason, Some(peer))
+        .await
+    {
+        warn!(error = %e, "frame_debug_log: échec d'écriture (attribution)");
+    }
+
+    Ok(RapportAttribution {
+        peer: peer.to_string(),
+        imei: imei.to_string(),
+        connexion_ouverte: connexion.ouverte,
+        trames_rejouees: trames.len() - en_echec,
+        trames_en_echec: en_echec,
+    })
 }
 
 pub async fn run_listeners(
@@ -72,6 +195,8 @@ pub async fn run_listeners(
     publisher: Option<Arc<dyn TelemetryEventPublisher>>,
     redis_cache: Option<Arc<RedisCache>>,
     command_senders: CommandSenders,
+    attente: Arc<RegistreAttente>,
+    rejeu: Arc<tokio::sync::OnceCell<ContexteRejeu>>,
 ) -> Result<()> {
     if config.listeners.is_empty() {
         info!("No listeners configured; nothing to start");
@@ -104,8 +229,27 @@ pub async fn run_listeners(
         speed_filter: SpeedFilter::new(),
         device_event_cooldown: Mutex::new(HashMap::new()),
         unidentified_drop_throttle: Mutex::new(HashMap::new()),
+        attente,
     });
     info!("Telemetry services initialized (StopDetector, FuelTracker, Geocoding, GeofenceDetector, GpsStabilizer, GpsValidator, TripDetector, DrivingEventsDetector, SpeedFilter)");
+
+    // Une table de connexions par écoute TCP ; celles-ci sont aussi confiées à
+    // l'API pour rattacher une connexion confirmée par un administrateur.
+    let mut cartes: HashMap<String, ConnectionMap> = HashMap::new();
+    for listener in &config.listeners {
+        if matches!(listener.transport, TransportKind::Tcp) {
+            cartes
+                .entry(listener.protocol.clone())
+                .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())));
+        }
+    }
+    let _ = rejeu.set(ContexteRejeu {
+        database: Arc::clone(&database),
+        publisher: publisher.clone(),
+        services: Arc::clone(&services),
+        redis_cache: redis_cache.clone(),
+        cartes: cartes.clone(),
+    });
 
     let mut handles = Vec::new();
     for listener in &config.listeners {
@@ -113,7 +257,7 @@ pub async fn run_listeners(
             TransportKind::Tcp => {
                 let cfg = listener.clone();
                 let db = Arc::clone(&database);
-                let mapping: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+                let mapping: ConnectionMap = Arc::clone(&cartes[&listener.protocol]);
                 let publisher_clone = publisher.clone();
                 let services_clone = Arc::clone(&services);
                 let redis_clone = redis_cache.clone();
@@ -216,6 +360,8 @@ async fn run_tcp_listener(
         let services_clone = Arc::clone(&services);
         let redis_clone = redis_cache.clone();
         let cmd_senders_clone = Arc::clone(&command_senders);
+        let attente_clone = Arc::clone(&services.attente);
+        let peer_ferme = peer_addr.to_string();
         tokio::spawn(async move {
             // Stateful binary / ASCII protocols dispatch to dedicated handlers
             // rather than squeezing their logic into the generic NEMS handler.
@@ -237,6 +383,9 @@ async fn run_tcp_listener(
             if let Err(err) = result {
                 error!(?err, "TCP connection handler exited with error");
             }
+            // Fin de connexion, normale ou sur erreur : ses trames retenues
+            // restent attribuables, mais plus rien n'arrivera sur ce peer.
+            attente_clone.fermer(&peer_ferme).await;
         });
         info!(protocol = %cfg.protocol, peer = %peer_addr, "Accepted TCP connection");
     }
@@ -863,6 +1012,20 @@ async fn process_single_frame(
                 if let (Some(peer), Some(imei_annonce)) = (peer_addr, info.imei.as_deref()) {
                     let imei_annonce = imei_annonce.trim();
                     if !imei_annonce.is_empty() {
+                        // Connexion rattachée à la main (attente.rs) : le boîtier
+                        // s'annonce enfin, on vérifie que l'administrateur avait vu juste.
+                        if let Some(attribue) = services.attente.attribution(peer).await {
+                            let (verdict, motif) = if attribue == imei_annonce {
+                                ("confirmée", format!("attribution_verifiee (IMEI {imei_annonce})"))
+                            } else {
+                                ("CONTREDITE", format!("attribution_contredite (rattachée à {attribue}, le boîtier annonce {imei_annonce})"))
+                            };
+                            warn!(%peer, attribue = %attribue, annonce = %imei_annonce, "Attribution manuelle {verdict} par le boîtier");
+                            let _ = database
+                                .log_frame_debug(None, Some(imei_annonce), None, frame_str.get(..4).unwrap_or("????"),
+                                                 None, None, &frame_str[..frame_str.len().min(200)], &motif, Some(peer))
+                                .await;
+                        }
                         let mut map = connection_map.lock().await;
                         map.insert(peer.to_string(), imei_annonce.to_string());
                     }
@@ -1124,6 +1287,11 @@ async fn process_single_frame(
                             {
                                 warn!(error = %e, "frame_debug_log: échec d'écriture (trame non identifiée)");
                             }
+                        }
+                        // Plus jetée : retenue jusqu'à ce qu'un administrateur
+                        // confirme le véhicule (attente.rs, POST /connexions/attribuer).
+                        if let Some(peer) = peer_addr {
+                            services.attente.retenir(peer, protocol, frame_str, &frame).await;
                         }
                         return Ok(());
                     }
@@ -2831,6 +2999,7 @@ mod tests {
         imei: String,
         info_calls: StdMutex<Vec<String>>,
         frame_calls: StdMutex<Vec<String>>,
+        debug_reasons: StdMutex<Vec<String>>,
     }
 
     impl MockStore {
@@ -2839,6 +3008,7 @@ mod tests {
                 imei: imei.to_string(),
                 info_calls: StdMutex::new(Vec::new()),
                 frame_calls: StdMutex::new(Vec::new()),
+                debug_reasons: StdMutex::new(Vec::new()),
             }
         }
     }
@@ -2952,9 +3122,10 @@ mod tests {
             _flags_hex: Option<&str>,
             _flags_raw: Option<i16>,
             _raw_frame: &str,
-            _reason: &str,
+            reason: &str,
             _peer: Option<&str>,
         ) -> anyhow::Result<()> {
+            self.debug_reasons.lock().unwrap().push(reason.to_string());
             Ok(())
         }
     }
@@ -3004,6 +3175,7 @@ mod tests {
             speed_filter: SpeedFilter::new(),
             device_event_cooldown: Mutex::new(HashMap::new()),
         unidentified_drop_throttle: Mutex::new(HashMap::new()),
+            attente: Arc::new(RegistreAttente::new()),
         });
         let peer = "127.0.0.1:1234";
 
@@ -3066,6 +3238,7 @@ mod tests {
             speed_filter: SpeedFilter::new(),
             device_event_cooldown: Mutex::new(HashMap::new()),
         unidentified_drop_throttle: Mutex::new(HashMap::new()),
+            attente: Arc::new(RegistreAttente::new()),
         });
         let peer = "10.0.0.5:5555";
 
@@ -3093,5 +3266,195 @@ mod tests {
             calls[0],
             format!("{}:{}:{}", protocol, store.imei, "2015-05-28 10:35:36")
         );
+    }
+
+    // ── Connexions en attente : trames retenues, puis rattachées sur confirmation ──
+
+    /// Positions réelles d'un NEMS_LITE R00C03 d'EL MOUSSEM, rejetées le 19/10/2026
+    /// faute d'identité (ni IMEI, ni préfixe MAT) ; la seconde 10 s plus tard.
+    const AA13_SANS_IDENTITE: &str =
+        "AA130082CC021BB7C60091D13B00001D2A0002FEFDE3804C00000000010000000026F10C15";
+    const AA13_SUIVANTE: &str =
+        "AA130082D6021BB7C60091D13B00001D2A0002FEFDE3804C00000000010000000026F10C15";
+    const IMEI_A: &str = "860000000000178";
+    const AA01_AUTRE_BOITIER: &str =
+        "AA01NEMS_LITE-HWv2-BELIVE--1.0.120R00C03, ICC:8921602080356623119F, IMEI:860000000000209";
+
+    fn services_de_test() -> Arc<TelemetryServices> {
+        Arc::new(TelemetryServices {
+            stop_detector: StopDetector::new(),
+            fuel_tracker: FuelTracker::new(),
+            geocoding: GeocodingService::new(None),
+            geofence_detector: GeofenceDetector::new(),
+            gps_stabilizer: GpsStabilizer::new(),
+            gps_validator: GpsValidator::new(),
+            trip_detector: TripDetector::new(),
+            driving_events_detector: DrivingEventsDetector::new(),
+            speed_filter: SpeedFilter::new(),
+            device_event_cooldown: Mutex::new(HashMap::new()),
+            unidentified_drop_throttle: Mutex::new(HashMap::new()),
+            attente: Arc::new(RegistreAttente::new()),
+        })
+    }
+
+    fn contexte(store: &Arc<MockStore>, services: &Arc<TelemetryServices>, carte: &ConnectionMap) -> ContexteRejeu {
+        let mut cartes = HashMap::new();
+        cartes.insert("gps_type_1".to_string(), Arc::clone(carte));
+        ContexteRejeu {
+            database: Arc::clone(store) as Arc<dyn TelemetryStore>,
+            publisher: None,
+            services: Arc::clone(services),
+            redis_cache: None,
+            cartes,
+        }
+    }
+
+    async fn recevoir(store: &Arc<MockStore>, services: &Arc<TelemetryServices>, carte: &ConnectionMap, peer: &str, trame: &str) {
+        route_payload(
+            "gps_type_1",
+            trame.as_bytes(),
+            Arc::clone(store) as Arc<dyn TelemetryStore>,
+            Some(peer),
+            Arc::clone(carte),
+            None,
+            Arc::clone(services),
+            None,
+        )
+        .await
+        .expect("trame traitée");
+    }
+
+    /// Attend (15 s au plus) qu'une condition devienne vraie : le serveur TCP
+    /// traite les trames dans sa propre tâche, et le géocodage sans serveur
+    /// Nominatim prend plusieurs secondes par trame en test.
+    async fn attendre(quoi: &str, mut condition: impl FnMut() -> bool) {
+        for _ in 0..750 {
+            if condition() {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        panic!("jamais vu en 15 s : {quoi}");
+    }
+
+    #[tokio::test]
+    async fn une_trame_sans_identite_est_retenue_au_lieu_d_etre_jetee() {
+        let store = Arc::new(MockStore::new(IMEI_A));
+        let services = services_de_test();
+        let carte: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+
+        recevoir(&store, &services, &carte, "203.0.113.10:2618", AA13_SANS_IDENTITE).await;
+
+        assert!(store.frame_calls.lock().unwrap().is_empty());
+        let liste = services.attente.lister().await;
+        assert_eq!(liste.len(), 1);
+        assert_eq!(liste[0].peer, "203.0.113.10:2618");
+        assert_eq!(liste[0].trames, 1);
+        assert!(liste[0].premiere_position.is_some());
+    }
+
+    #[tokio::test]
+    async fn une_connexion_fermee_confirmee_est_ingeree_apres_coup() {
+        let store = Arc::new(MockStore::new(IMEI_A));
+        let services = services_de_test();
+        let carte: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+        let peer = "203.0.113.10:2618";
+        recevoir(&store, &services, &carte, peer, AA13_SANS_IDENTITE).await;
+        recevoir(&store, &services, &carte, peer, AA13_SUIVANTE).await;
+        services.attente.fermer(peer).await;
+
+        let rapport = attribuer_connexion(&contexte(&store, &services, &carte), peer, IMEI_A, "admin@test")
+            .await
+            .expect("attribution");
+
+        assert!(!rapport.connexion_ouverte);
+        assert_eq!(rapport.trames_rejouees, 2);
+        let ingerees = store.frame_calls.lock().unwrap().clone();
+        assert_eq!(ingerees.len(), 2, "{ingerees:?}");
+        assert!(ingerees.iter().all(|c| c.contains(IMEI_A)));
+        // La table de l'écoute n'est pas touchée pour une connexion fermée.
+        assert!(carte.lock().await.is_empty());
+        assert!(services.attente.lister().await.is_empty());
+        assert!(store.debug_reasons.lock().unwrap().iter().any(|r| r.starts_with("attribution_confirmee (IMEI 860000000000178, par admin@test, 2 trame(s)")));
+        // Une seconde confirmation ne trouve plus rien.
+        assert_eq!(
+            attribuer_connexion(&contexte(&store, &services, &carte), peer, IMEI_A, "admin@test").await.unwrap_err(),
+            ErreurAttribution::ConnexionInconnue
+        );
+    }
+
+    #[tokio::test]
+    async fn une_connexion_annoncee_sous_un_autre_imei_refuse_l_attribution() {
+        let store = Arc::new(MockStore::new(IMEI_A));
+        let services = services_de_test();
+        let carte: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+        let peer = "203.0.113.11:3071";
+        recevoir(&store, &services, &carte, peer, AA13_SANS_IDENTITE).await;
+        carte.lock().await.insert(peer.to_string(), "860000000000209".to_string());
+
+        let erreur = attribuer_connexion(&contexte(&store, &services, &carte), peer, IMEI_A, "admin@test")
+            .await
+            .unwrap_err();
+
+        assert_eq!(erreur, ErreurAttribution::DejaIdentifieeAutrement("860000000000209".to_string()));
+        assert!(store.frame_calls.lock().unwrap().is_empty());
+        assert_eq!(services.attente.lister().await[0].trames, 1, "trames remises en attente");
+        assert_eq!(carte.lock().await.get(peer).map(String::as_str), Some("860000000000209"));
+    }
+
+    #[tokio::test]
+    async fn une_connexion_ouverte_confirmee_reprend_en_direct_et_reste_verifiee() {
+        let store = Arc::new(MockStore::new(IMEI_A));
+        let services = services_de_test();
+        let carte: ConnectionMap = Arc::new(Mutex::new(HashMap::new()));
+
+        // Un vrai boîtier simulé sur une connexion TCP locale.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let adresse = listener.local_addr().unwrap();
+        {
+            let (store, services, carte) = (Arc::clone(&store), Arc::clone(&services), Arc::clone(&carte));
+            tokio::spawn(async move {
+                let (stream, _) = listener.accept().await.unwrap();
+                let cfg = Arc::new(ListenerConfig { port: 6100, protocol: "gps_type_1".to_string(), transport: TransportKind::Tcp });
+                let _ = handle_tcp_connection(
+                    stream, cfg, store as Arc<dyn TelemetryStore>, carte, None, services, None,
+                    Arc::new(Mutex::new(HashMap::new())),
+                )
+                .await;
+            });
+        }
+        let mut boitier = TcpStream::connect(adresse).await.unwrap();
+        let peer = boitier.local_addr().unwrap().to_string();
+
+        boitier.write_all(AA13_SANS_IDENTITE.as_bytes()).await.unwrap();
+        let attente = Arc::clone(&services.attente);
+        for _ in 0..100 {
+            if !attente.lister().await.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert_eq!(attente.lister().await.len(), 1);
+
+        let rapport = attribuer_connexion(&contexte(&store, &services, &carte), &peer, IMEI_A, "admin@test")
+            .await
+            .expect("attribution");
+        assert!(rapport.connexion_ouverte);
+        assert_eq!(rapport.trames_rejouees, 1);
+        assert_eq!(carte.lock().await.get(&peer).map(String::as_str), Some(IMEI_A));
+
+        // La trame suivante passe directement, sans attente.
+        boitier.write_all(AA13_SUIVANTE.as_bytes()).await.unwrap();
+        attendre("la trame suivante ingérée", || store.frame_calls.lock().unwrap().len() == 2).await;
+        assert!(attente.lister().await.is_empty());
+
+        // Si le boîtier s'annonce sous un autre IMEI, l'erreur se voit.
+        boitier.write_all(AA01_AUTRE_BOITIER.as_bytes()).await.unwrap();
+        attendre("l'attribution contredite", || {
+            store.debug_reasons.lock().unwrap().iter().any(|r| {
+                r.starts_with("attribution_contredite (rattachée à 860000000000178, le boîtier annonce 860000000000209)")
+            })
+        })
+        .await;
     }
 }

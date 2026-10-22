@@ -1,3 +1,4 @@
+mod attente;
 mod config;
 mod db;
 mod ports;
@@ -155,6 +156,65 @@ async fn push_command(
     }
 }
 
+type EtatRejeu = Arc<tokio::sync::OnceCell<transport::ContexteRejeu>>;
+
+/// GET /connexions/en-attente
+///
+/// Connexions dont les trames sont retenues faute d'identité (NEMS_LITE R00C03
+/// reconnectés sans AA00), avec leur première et dernière position : l'API .NET
+/// y ajoute le véhicule probable pour System Health.
+async fn connexions_en_attente(
+    axum::extract::State(rejeu): axum::extract::State<EtatRejeu>,
+) -> (axum::http::StatusCode, axum::Json<Vec<attente::ConnexionEnAttente>>) {
+    match rejeu.get() {
+        Some(ctx) => (axum::http::StatusCode::OK, axum::Json(ctx.services.attente.lister().await)),
+        None => (axum::http::StatusCode::SERVICE_UNAVAILABLE, axum::Json(Vec::new())),
+    }
+}
+
+#[derive(serde::Deserialize, Debug)]
+struct AttribuerRequest {
+    peer: String,
+    imei: String,
+    /// Qui a confirmé (tracé dans frame_debug_log).
+    par: String,
+}
+
+/// POST /connexions/attribuer
+///
+/// Body: { "peer": "203.0.113.10:2618", "imei": "860000000000178", "par": "admin@exemple.test" }
+///
+/// Appelé par l'API .NET quand un administrateur confirme le véhicule d'une
+/// connexion en attente. Rattache la connexion (si elle est encore ouverte) et
+/// ingère ses trames retenues.
+///   - 200 + rapport
+///   - 404 { erreur: "connexion_inconnue" }   — plus en attente (déjà attribuée, oubliée)
+///   - 409 { erreur: "deja_identifiee", imei } — le boîtier s'est annoncé sous un autre IMEI
+///   - 503 — ingestion pas encore démarrée
+async fn attribuer_connexion(
+    axum::extract::State(rejeu): axum::extract::State<EtatRejeu>,
+    axum::Json(req): axum::Json<AttribuerRequest>,
+) -> (axum::http::StatusCode, axum::Json<serde_json::Value>) {
+    let Some(ctx) = rejeu.get() else {
+        return (axum::http::StatusCode::SERVICE_UNAVAILABLE, axum::Json(serde_json::json!({ "erreur": "ingestion_non_demarree" })));
+    };
+    let imei = req.imei.trim();
+    if imei.is_empty() || req.peer.trim().is_empty() {
+        return (axum::http::StatusCode::BAD_REQUEST, axum::Json(serde_json::json!({ "erreur": "peer_et_imei_requis" })));
+    }
+    match transport::attribuer_connexion(ctx, req.peer.trim(), imei, req.par.trim()).await {
+        Ok(rapport) => (axum::http::StatusCode::OK, axum::Json(serde_json::json!(rapport))),
+        Err(transport::ErreurAttribution::ConnexionInconnue) => (
+            axum::http::StatusCode::NOT_FOUND,
+            axum::Json(serde_json::json!({ "erreur": "connexion_inconnue" })),
+        ),
+        Err(transport::ErreurAttribution::DejaIdentifieeAutrement(annonce)) => (
+            axum::http::StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({ "erreur": "deja_identifiee", "imei": annonce })),
+        ),
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -263,14 +323,24 @@ async fn main() -> Result<()> {
                 .and_then(|p| p.parse().ok())
                 .unwrap_or(3000);
             let api_senders = Arc::clone(&command_senders);
+            // Connexions non identifiées : trames retenues + rejeu sur confirmation.
+            let attente = Arc::new(attente::RegistreAttente::new());
+            let rejeu: EtatRejeu = Arc::new(tokio::sync::OnceCell::new());
+            let api_rejeu = Arc::clone(&rejeu);
             tokio::spawn(async move {
                 let app = axum::Router::new()
                     .route("/api/health", axum::routing::get(|| async { "OK" }))
                     .route("/health", axum::routing::get(|| async { "OK" }))
                     .route("/commands/push", axum::routing::post(push_command))
-                    .with_state(api_senders);
+                    .with_state(api_senders)
+                    .merge(
+                        axum::Router::new()
+                            .route("/connexions/en-attente", axum::routing::get(connexions_en_attente))
+                            .route("/connexions/attribuer", axum::routing::post(attribuer_connexion))
+                            .with_state(api_rejeu),
+                    );
                 let addr = std::net::SocketAddr::from(([0, 0, 0, 0], api_port));
-                info!("HTTP API listening on port {} (health + /commands/push)", api_port);
+                info!("HTTP API listening on port {} (health + /commands/push + /connexions)", api_port);
                 if let Err(e) = axum::serve(
                     tokio::net::TcpListener::bind(addr).await.unwrap(),
                     app.into_make_service(),
@@ -284,7 +354,7 @@ async fn main() -> Result<()> {
                 warn!("No listeners configured; service will idle");
             }
 
-            transport::run_listeners(&app_config, database, publisher, redis_cache, command_senders).await?;
+            transport::run_listeners(&app_config, database, publisher, redis_cache, command_senders, attente, rejeu).await?;
         }
     }
 
