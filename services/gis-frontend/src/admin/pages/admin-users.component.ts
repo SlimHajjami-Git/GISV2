@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -123,7 +123,7 @@ interface EditUserForm {
                         <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
                       </svg>
                     </button>
-                    <button class="action-btn danger" (click)="askDelete(user)" title="Supprimer">
+                    <button class="action-btn danger" *ngIf="!restreint" (click)="askDelete(user)" title="Supprimer">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="3 6 5 6 21 6"/>
                         <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -1018,6 +1018,8 @@ interface EditUserForm {
   `]
 })
 export class AdminUsersComponent implements OnInit, OnDestroy {
+  /** Administrateur restreint : pas de suppression ni de réinitialisation (migration 063). */
+  readonly restreint = inject(AdminService).isRestricted();
   private destroy$ = new Subject<void>();
 
   // Calypso 7 — bug tenace : la liste affichait 0 utilisateurs au chargement

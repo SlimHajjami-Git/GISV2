@@ -17,7 +17,15 @@ export class AdminGuard implements CanActivate {
       
       // Check if user has admin role
       if (user && (user.role === 'super_admin' || user.role === 'admin')) {
-        return true;
+        // Administrateur restreint (migration 063) : seuls ses écrans s'ouvrent ; le tableau de
+        // bord, où mène la connexion, renvoie à son premier écran autorisé.
+        const screen = (route.routeConfig?.path ?? '').split('/')[0];
+        if (this.adminService.canAccessScreen(screen)) {
+          return true;
+        }
+        const first = this.adminService.allowedScreens()?.[0];
+        this.router.navigate(first ? ['/admin', first] : ['/admin/login']);
+        return false;
       }
       
       // Redirect to dashboard if not admin

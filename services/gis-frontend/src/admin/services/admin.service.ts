@@ -12,6 +12,11 @@ export interface AdminUser {
   role: 'super_admin' | 'admin' | 'support';
   permissions: string[];
   lastLogin?: Date;
+  /**
+   * Écrans de la console autorisés (administrateur restreint, migration 063), par nom de
+   * route : « clients », « users »… Absent ou null : accès complet.
+   */
+  screens?: string[] | null;
 }
 
 /** Ligne de /admin/billing/overview — abonnement à surveiller. */
@@ -569,7 +574,8 @@ export class AdminService {
           name: response.user.name,
           role: response.user.roles?.includes('admin') ? 'super_admin' : 'admin',
           permissions: response.user.permissions || ['*'],
-          lastLogin: new Date()
+          lastLogin: new Date(),
+          screens: Array.isArray(response.user.adminScreens) ? response.user.adminScreens : null
         };
         localStorage.setItem('admin_user', JSON.stringify(user));
         localStorage.setItem('admin_token', response.token);
@@ -602,6 +608,26 @@ export class AdminService {
 
   getAdminUser(): AdminUser | null {
     return this.adminUserSubject.value;
+  }
+
+  /** Écrans autorisés de l'administrateur restreint, ou null : accès complet. */
+  allowedScreens(): string[] | null {
+    const screens = this.getAdminUser()?.screens;
+    return Array.isArray(screens) ? screens : null;
+  }
+
+  /** Cet écran (nom de route : « clients », « users »…) est-il ouvert à ce compte ? */
+  canAccessScreen(screen: string): boolean {
+    const screens = this.allowedScreens();
+    return !screens || screens.includes(screen);
+  }
+
+  /**
+   * Administrateur restreint : ni suppression, ni réinitialisation des données d'une
+   * société, ni « voir en tant que » (le serveur les refuse ; les boutons sont masqués).
+   */
+  isRestricted(): boolean {
+    return this.allowedScreens() !== null;
   }
 
   /**

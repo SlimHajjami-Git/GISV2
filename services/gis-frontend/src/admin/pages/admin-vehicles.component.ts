@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
@@ -150,14 +150,14 @@ import {
                       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                     </svg>
                   </button>
-                  <button class="action-btn delete" (click)="confirmDelete(vehicle)" title="Supprimer">
+                  <button class="action-btn delete" *ngIf="!restreint" (click)="confirmDelete(vehicle)" title="Supprimer">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <polyline points="3,6 5,6 21,6"/>
                       <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                     </svg>
                   </button>
                   <!-- Suppression DÉFINITIVE du boîtier ET du véhicule, avec toutes leurs données (09/10/2026). -->
-                  <button class="action-btn device-delete" *ngIf="vehicle.gpsDeviceId" (click)="openDeviceDelete(vehicle)" title="Supprimer le boîtier et toutes ses données (véhicule compris)">
+                  <button class="action-btn device-delete" *ngIf="vehicle.gpsDeviceId && !restreint" (click)="openDeviceDelete(vehicle)" title="Supprimer le boîtier et toutes ses données (véhicule compris)">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/>
                       <line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/>
@@ -512,6 +512,8 @@ import {
   `]
 })
 export class AdminVehiclesComponent implements OnInit, OnDestroy {
+  /** Administrateur restreint : pas de suppression ni de réinitialisation (migration 063). */
+  readonly restreint = inject(AdminService).isRestricted();
   private destroy$ = new Subject<void>();
   vehicles: AdminVehicle[] = [];
   filteredVehicles: AdminVehicle[] = [];

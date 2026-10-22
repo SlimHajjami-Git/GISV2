@@ -31,7 +31,7 @@ interface NavItem {
         </div>
 
         <nav class="sidebar-nav">
-          <a *ngFor="let item of navItems"
+          <a *ngFor="let item of visibleNavItems"
              [routerLink]="['/admin', item.route]"
              routerLinkActive="active"
              class="nav-item"
@@ -446,6 +446,11 @@ export class AdminLayoutComponent implements OnInit {
 
   /** Nombre de sociétés dont l'abonnement demande une action (badge cloche). */
   billingAlertCount = 0;
+
+  /** Le menu d'un administrateur restreint ne montre que ses écrans (migration 063). */
+  get visibleNavItems(): NavItem[] {
+    return this.navItems.filter(item => this.adminService.canAccessScreen(item.route));
+  }
 
   ngOnInit() {
     this.adminUser = this.adminService.getAdminUser();

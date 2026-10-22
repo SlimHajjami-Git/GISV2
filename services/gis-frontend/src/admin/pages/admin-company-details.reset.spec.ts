@@ -41,6 +41,9 @@ describe('AdminCompanyDetailsComponent — remise à zéro et comptes chauffeurs
       getCompanyUsers: jest.fn(() => of([])),
       getSociete: jest.fn(() => of({})),
       getAdminUser: jest.fn(() => null),
+      // Administrateur sans restriction (migration 063) : boutons et menu complets.
+      isRestricted: jest.fn(() => false),
+      canAccessScreen: jest.fn(() => true),
       getBillingOverview: jest.fn(() => of({ count: 0, items: [] })),
       resetCompanyData: jest.fn((_id: number, _name: string, dryRun: boolean) =>
         of(dryRun ? apercu : (execution ?? resultat({ dryRun: false }))))

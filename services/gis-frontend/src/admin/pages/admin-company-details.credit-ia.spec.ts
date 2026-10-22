@@ -48,6 +48,9 @@ describe('AdminCompanyDetailsComponent — crédit IA mensuel', () => {
       getCompanyUsers: jest.fn(() => of([])),
       getSociete: jest.fn(() => of(fiche)),
       getAdminUser: jest.fn(() => null),
+      // Administrateur sans restriction (migration 063) : boutons et menu complets.
+      isRestricted: jest.fn(() => false),
+      canAccessScreen: jest.fn(() => true),
       getBillingOverview: jest.fn(() => of({ count: 0, items: [] })),
       setScanQuota: jest.fn((_id: number, tokens: number | null) => of({
         invoiceScanMonthlyTokens: tokens, budgetTokens: tokens ?? 60000, usedTokens: 45000,

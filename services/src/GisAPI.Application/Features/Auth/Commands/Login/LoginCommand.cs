@@ -92,6 +92,12 @@ public record UserDto(
     /// à plusieurs endroits, un paramètre positionnel de plus les casserait tous.
     /// </summary>
     public string AccountType { get; init; } = GisAPI.Domain.Entities.UserAccountTypes.Staff;
+
+    /// <summary>
+    /// Écrans de la console d'administration autorisés (administrateur restreint, migration
+    /// 063), ou null : accès complet. La console masque les autres ; le serveur les refuse.
+    /// </summary>
+    public IReadOnlyList<string>? AdminScreens { get; init; }
 }
 
 public record UserPermissionsDto(

@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -530,6 +531,34 @@ public class PermissionMiddleware
 
             await _next(context);
             return;
+        }
+
+        // ── Administrateur restreint (migration 063) : liste blanche, AVANT tout aiguillage ──
+        // Même place que le compte chauffeur, et pour la même raison : couvrir aussi ce que
+        // ClassifyRoute ouvre sans regarder. Le rôle est RELU EN BASE à chaque appel : un
+        // changement de rôle prend effet tout de suite. Seuls les administrateurs système
+        // paient cette lecture (jeton « system_admin »).
+        if (context.User.IsInRole("system_admin"))
+        {
+            var adminUid = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? context.User.FindFirst("sub")?.Value;
+            var adminRole = int.TryParse(adminUid, out var adminUserId)
+                ? await dbContext.Users.IgnoreQueryFilters().AsNoTracking()
+                    .Where(u => u.Id == adminUserId)
+                    .Select(u => u.Role)
+                    .FirstOrDefaultAsync()
+                : null;
+            var screens = AdminScreenAccess.AllowedScreens(adminRole);
+            if (screens != null && !AdminScreenAccess.CanCall(screens, context.Request.Method, path))
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    message = AdminScreenAccess.RefusalMessage,
+                    code = AdminScreenAccess.RefusalCode
+                });
+                return;
+            }
         }
 
         var gate = ClassifyRoute(path, context.Request.Method);
