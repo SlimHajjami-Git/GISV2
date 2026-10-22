@@ -1,6 +1,8 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,15 +12,20 @@ public class UpdateAdminUserCommandHandler : IRequestHandler<UpdateAdminUserComm
 {
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ICurrentTenantService _tenant;
 
-    public UpdateAdminUserCommandHandler(IGisDbContext context, IPasswordHasher passwordHasher)
+    public UpdateAdminUserCommandHandler(IGisDbContext context, IPasswordHasher passwordHasher, ICurrentTenantService tenant)
     {
         _context = context;
         _passwordHasher = passwordHasher;
+        _tenant = tenant;
     }
 
     public async Task<AdminUserDto> Handle(UpdateAdminUserCommand request, CancellationToken ct)
     {
+        // Administrateur restreint : jamais l'e-mail ni le mot de passe d'un compte à rôle système.
+        await AdminScreenAccess.EnsureCallerMayManageAsync(_context, _tenant.UserId, request.Id, null, ct);
+
         var user = await _context.Users
             .IgnoreQueryFilters()
             .Include(u => u.Societe)

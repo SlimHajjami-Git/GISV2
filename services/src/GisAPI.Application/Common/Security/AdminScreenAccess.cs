@@ -1,6 +1,9 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Entities;
+using GisAPI.Domain.Exceptions;
+using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Common.Security;
 
@@ -138,5 +141,53 @@ public static class AdminScreenAccess
             r.Methods.Split(' ').Contains(method)
             && r.Path.IsMatch(path)
             && (r.Screen == null || screens.Contains(r.Screen)));
+    }
+
+    /// <summary>
+    /// Ce que la liste blanche des routes ne peut PAS exprimer : l'écran Users est autorisé,
+    /// mais la société des administrateurs de la plateforme y figure comme les autres. Sans
+    /// cette règle, un administrateur restreint pouvait se donner le rôle « Administrateur »
+    /// complet (même société, donc accepté par UpdateAdminUserRole), créer un compte qui le
+    /// porte, ou réinitialiser le mot de passe d'un administrateur complet — et sortir de sa
+    /// restriction en un appel. Règle : un administrateur restreint ne touche jamais un compte
+    /// à rôle système et n'attribue jamais un rôle système.
+    /// </summary>
+    public static void EnsureMayManage(IReadOnlyCollection<string>? callerScreens, bool targetHasSystemRole, bool newRoleIsSystem)
+    {
+        if (callerScreens == null) return;
+        if (targetHasSystemRole || newRoleIsSystem)
+            throw new ForbiddenAccessException(RefusalMessage);
+    }
+
+    /// <summary>
+    /// Version branchée sur la base : relit le rôle de l'appelant (comme PermissionMiddleware,
+    /// pour qu'un changement de rôle prenne effet tout de suite), puis applique
+    /// <see cref="EnsureMayManage"/>. Appelant inconnu ou sans restriction : rien à faire.
+    /// </summary>
+    public static async Task EnsureCallerMayManageAsync(
+        IGisDbContext db, int? callerUserId, int? targetUserId, int? newRoleId, CancellationToken ct)
+    {
+        if (callerUserId is not int callerId) return;
+
+        var callerRole = await db.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(u => u.Id == callerId)
+            .Select(u => u.Role)
+            .FirstOrDefaultAsync(ct);
+        var screens = AllowedScreens(callerRole);
+        if (screens == null) return;
+
+        var targetHasSystemRole = targetUserId is int targetId
+            && await db.Users.IgnoreQueryFilters().AsNoTracking()
+                .Where(u => u.Id == targetId)
+                .Select(u => u.Role != null && u.Role.IsSystemRole)
+                .FirstOrDefaultAsync(ct);
+
+        var newRoleIsSystem = newRoleId is int roleId
+            && await db.Roles.IgnoreQueryFilters().AsNoTracking()
+                .Where(r => r.Id == roleId)
+                .Select(r => r.IsSystemRole)
+                .FirstOrDefaultAsync(ct);
+
+        EnsureMayManage(screens, targetHasSystemRole, newRoleIsSystem);
     }
 }

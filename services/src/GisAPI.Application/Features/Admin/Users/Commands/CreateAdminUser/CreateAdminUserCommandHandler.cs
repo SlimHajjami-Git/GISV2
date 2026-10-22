@@ -1,6 +1,8 @@
 using GisAPI.Application.Common.Interfaces;
+using GisAPI.Application.Common.Security;
 using GisAPI.Domain.Entities;
 using GisAPI.Domain.Exceptions;
+using GisAPI.Domain.Interfaces;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,15 +12,20 @@ public class CreateAdminUserCommandHandler : IRequestHandler<CreateAdminUserComm
 {
     private readonly IGisDbContext _context;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly ICurrentTenantService _tenant;
 
-    public CreateAdminUserCommandHandler(IGisDbContext context, IPasswordHasher passwordHasher)
+    public CreateAdminUserCommandHandler(IGisDbContext context, IPasswordHasher passwordHasher, ICurrentTenantService tenant)
     {
         _context = context;
         _passwordHasher = passwordHasher;
+        _tenant = tenant;
     }
 
     public async Task<AdminUserDto> Handle(CreateAdminUserCommand request, CancellationToken ct)
     {
+        // Administrateur restreint : jamais un compte qui porte un rôle système.
+        await AdminScreenAccess.EnsureCallerMayManageAsync(_context, _tenant.UserId, null, request.RoleId, ct);
+
         if (await _context.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == request.Email, ct))
             throw new ConflictException("Un utilisateur avec cet email existe déjà");
 
