@@ -111,11 +111,8 @@ public class SubscriptionsController : ControllerBase
         // un client GPA installé à la main avec un an d'échéance : ses
         // règlements se font hors application, LastPaymentAt peut rester vide
         // à vie (cf. commentaire de IsSelfServiceSubscription).
-        var isTrial = GisAPI.Application.Features.Auth.Commands.Login
-            .LoginCommandHandler.IsSelfServiceSubscription(company)
-            && company.LastPaymentAt == null
-            && company.SubscriptionExpiresAt.HasValue
-            && (company.SubscriptionExpiresAt.Value - company.SubscriptionStartedAt).TotalDays <= 31;
+        // Règle partagée avec les rappels d'échéance envoyés au client.
+        var isTrial = GisAPI.Application.Common.SubscriptionReminders.IsTrial(company);
 
         return Ok(new
         {

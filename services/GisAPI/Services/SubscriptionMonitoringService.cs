@@ -18,6 +18,9 @@ namespace GisAPI.Services;
 /// Une seule notification par sys_admin et par jour (déduplication par type
 /// 'subscription_digest' sur la date du jour) — pas de spam, pas de table d'état.
 /// Le détail temps réel est disponible dans l'admin via /api/admin/billing/overview.
+///
+/// Au même passage, les RAPPELS D'ÉCHÉANCE AU CLIENT (sociétés en libre-service :
+/// e-mail + cloche à l'administrateur de la société, voir <see cref="SubscriptionReminders"/>).
 /// </summary>
 public class SubscriptionMonitoringService : BackgroundService
 {
@@ -55,6 +58,17 @@ public class SubscriptionMonitoringService : BackgroundService
         var notifications = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
         var now = DateTime.UtcNow;
+
+        // Les rappels au client d'abord : le résumé ci-dessous s'arrête tôt quand
+        // aucune société n'est à surveiller.
+        try
+        {
+            var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            var sent = await SendClientRemindersAsync(db, notifications, email, now, ct);
+            if (sent > 0) _logger.LogInformation("Rappels d'échéance : {Count} envoyé(s) aux clients", sent);
+        }
+        catch (Exception ex) { _logger.LogError(ex, "Rappels d'échéance aux clients en échec"); }
+
         var societes = await db.Societes.AsNoTracking()
             .Include(s => s.SubscriptionType)
             .Where(s => s.SubscriptionExpiresAt != null)
@@ -132,5 +146,68 @@ public class SubscriptionMonitoringService : BackgroundService
         }
 
         _logger.LogInformation("Subscription digest: {Count} société(s) à risque signalées aux sys_admins", atRisk.Count);
+    }
+
+    /// <summary>
+    /// Rappels d'échéance aux administrateurs des sociétés en libre-service : l'étape du
+    /// jour (<see cref="SubscriptionReminders.Due(GisAPI.Domain.Entities.Societe, DateTime)"/>),
+    /// dans la cloche et par e-mail, une seule fois par étape et par échéance. La
+    /// notification est créée AVANT l'e-mail : c'est elle qui marque l'étape comme faite,
+    /// un relais de messagerie en panne ne fait pas renvoyer la cloche toutes les 6 h.
+    /// Renvoie le nombre d'administrateurs prévenus.
+    /// </summary>
+    public static async Task<int> SendClientRemindersAsync(
+        IGisDbContext db, INotificationService notifications, IEmailService email,
+        DateTime nowUtc, CancellationToken ct)
+    {
+        // IgnoreQueryFilters : service de fond, sans tenant.
+        var societes = await db.Societes.AsNoTracking().IgnoreQueryFilters()
+            .Include(s => s.SubscriptionType)
+            .Where(s => s.SubscriptionExpiresAt != null
+                        && s.SubscriptionType != null && s.SubscriptionType.Code == "plan-basique")
+            .ToListAsync(ct);
+
+        var sent = 0;
+        foreach (var societe in societes)
+        {
+            var reminder = SubscriptionReminders.Due(societe, nowUtc);
+            if (reminder == null) continue;
+
+            var type = SubscriptionReminders.NotificationTypePrefix + reminder.Step;
+            // Fenêtre de l'échéance en cours : une échéance repoussée (renouvellement)
+            // rouvre les trois étapes pour la suivante.
+            var since = reminder.ExpiresAtUtc.AddDays(-(SubscriptionReminders.RappelDays + 2));
+
+            var admins = await db.Users.AsNoTracking().IgnoreQueryFilters()
+                .Where(u => u.CompanyId == societe.Id && u.Status == "active"
+                            && u.Role != null && u.Role.IsCompanyAdmin)
+                .Select(u => new { u.Id, u.Email, u.FirstName, u.LastName })
+                .ToListAsync(ct);
+
+            foreach (var admin in admins)
+            {
+                var alreadySent = await db.Notifications.AsNoTracking().IgnoreQueryFilters()
+                    .AnyAsync(n => n.UserId == admin.Id && n.Type == type && n.CreatedAt >= since, ct);
+                if (alreadySent) continue;
+
+                await notifications.CreateAndSendAsync(
+                    companyId: societe.Id,
+                    userId: admin.Id,
+                    type: type,
+                    title: reminder.Title,
+                    message: reminder.Message,
+                    priority: reminder.Priority,
+                    actionUrl: SubscriptionReminders.ActionUrl,
+                    ct: ct);
+
+                if (!string.IsNullOrWhiteSpace(admin.Email))
+                    await email.SendNotificationEmailAsync(
+                        admin.Email, $"{admin.FirstName} {admin.LastName}".Trim(),
+                        SubscriptionReminders.EmailType, reminder.Title, reminder.Message,
+                        SubscriptionReminders.ActionUrl, ct);
+                sent++;
+            }
+        }
+        return sent;
     }
 }

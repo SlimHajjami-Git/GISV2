@@ -26,7 +26,7 @@ public class EmailService : IEmailService
             var smtpUser = _configuration["Emailer:SmtpUser"] ?? "";
             var smtpPassword = _configuration["Emailer:SmtpPassword"] ?? "";
             var fromEmail = _configuration["Emailer:FromEmail"] ?? "contact@belive.tn";
-            var fromName = _configuration["Emailer:FromName"] ?? "GPA Belive";
+            var fromName = _configuration["Emailer:FromName"] ?? "Calypso";
             var useSsl = (_configuration["Emailer:Ssl"] ?? "0") == "1";
 
             using var client = new SmtpClient(smtpHost, smtpPort)
@@ -82,7 +82,7 @@ public class EmailService : IEmailService
             var smtpUser = _configuration["Emailer:SmtpUser"] ?? "";
             var smtpPassword = _configuration["Emailer:SmtpPassword"] ?? "";
             var fromEmail = _configuration["Emailer:FromEmail"] ?? "contact@belive.tn";
-            var fromName = _configuration["Emailer:FromName"] ?? "GPA Belive";
+            var fromName = _configuration["Emailer:FromName"] ?? "Calypso";
             var useSsl = (_configuration["Emailer:Ssl"] ?? "0") == "1";
 
             using var client = new SmtpClient(smtpHost, smtpPort)
@@ -167,6 +167,7 @@ public class EmailService : IEmailService
             "driving_behavior" => "#dc2626",
             "maintenance_due" => "#7c3aed",
             "admin_action" => "#64748b",
+            "subscription_reminder" => "#4f46e5",
             _ => "#3b82f6"
         };
 
@@ -177,12 +178,16 @@ public class EmailService : IEmailService
             "driving_behavior" => "Conduite",
             "maintenance_due" => "Maintenance",
             "admin_action" => "Action",
+            "subscription_reminder" => "Abonnement",
             _ => "Notification"
         };
 
+        // Rappel d'échéance : le bouton dit ce qu'il fait (il ouvre l'écran Abonnement).
+        var actionLabel = notificationType == "subscription_reminder" ? "Renouveler mon abonnement" : "Voir les détails";
+
         var actionButton = !string.IsNullOrEmpty(actionUrl)
             ? $@"<tr><td style=""padding:24px 30px 0;"">
-                    <a href=""{GisAPI.Domain.Common.AppUrls.PublicBaseUrl}{actionUrl}"" style=""display:inline-block;padding:12px 28px;background:{typeColor};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;"">Voir les détails</a>
+                    <a href=""{GisAPI.Domain.Common.AppUrls.PublicBaseUrl}{actionUrl}"" style=""display:inline-block;padding:12px 28px;background:{typeColor};color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:14px;"">{actionLabel}</a>
                   </td></tr>"
             : "";
 
@@ -197,7 +202,7 @@ public class EmailService : IEmailService
         <!-- Header -->
         <tr><td style=""background:linear-gradient(135deg,#1e3a5f 0%,#2d5a87 100%);padding:24px 30px;"">
           <table width=""100%""><tr>
-            <td style=""color:#fff;font-size:20px;font-weight:700;"">GPA Belive</td>
+            <td style=""color:#fff;font-size:20px;font-weight:700;"">Calypso</td>
             <td align=""right""><span style=""background:rgba(255,255,255,0.2);color:#fff;padding:4px 12px;border-radius:12px;font-size:11px;font-weight:500;"">{typeLabel}</span></td>
           </tr></table>
         </td></tr>
@@ -216,8 +221,8 @@ public class EmailService : IEmailService
         <!-- Footer -->
         <tr><td style=""padding:28px 30px;border-top:1px solid #e2e8f0;margin-top:16px;"">
           <p style=""margin:0;font-size:11px;color:#94a3b8;line-height:1.5;"">
-            Cet email a été envoyé automatiquement par la plateforme GPA Belive.<br>
-            &copy; {DateTime.UtcNow.Year} Belive Technologies — Système de gestion de flotte
+            Cet email a été envoyé automatiquement par la plateforme Calypso.<br>
+            &copy; {DateTime.UtcNow.Year} Belive — Système de gestion de flotte
           </p>
         </td></tr>
       </table>
