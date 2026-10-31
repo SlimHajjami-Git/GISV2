@@ -101,6 +101,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
 
     // Auth
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
     // Device Commands
     public DbSet<DeviceCommand> DeviceCommands => Set<DeviceCommand>();

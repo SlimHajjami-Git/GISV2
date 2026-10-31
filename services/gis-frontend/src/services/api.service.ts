@@ -1514,6 +1514,18 @@ export class ApiService {
     return this.http.put<void>(`${this.API_URL}/users/me/password`, payload, { headers: this.getHeaders() });
   }
 
+  // ==================== JETONS D'API À USAGE UNIQUE ====================
+  // Migration 064. La génération ressaisit e-mail + mot de passe ; la réponse est la SEULE occasion
+  // de lire le jeton en clair. Un jeton n'ouvre qu'UN appel de lecture des arrêts.
+
+  generateApiToken(payload: { email: string; password: string }): Observable<ApiTokenCreated> {
+    return this.http.post<ApiTokenCreated>(`${this.API_URL}/api-tokens`, payload, { headers: this.getHeaders() });
+  }
+
+  getMyApiTokens(): Observable<ApiTokenListItem[]> {
+    return this.http.get<ApiTokenListItem[]>(`${this.API_URL}/api-tokens`, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL RECORDS ====================
 
   getFuelRecords(options: {
@@ -3785,6 +3797,27 @@ export interface VehicleStopsResult {
   totalCount: number;
   page: number;
   pageSize: number;
+}
+
+// ==================== JETONS D'API À USAGE UNIQUE ====================
+
+/** Réponse de la génération : la SEULE qui contient le jeton en clair. */
+export interface ApiTokenCreated {
+  id: number;
+  token: string;
+  tokenPrefix: string;
+  expiresAt: string;
+  expiresInSeconds: number;
+}
+
+/** Un jeton de la liste, sans son secret. status : pending | used | expired. */
+export interface ApiTokenListItem {
+  id: number;
+  tokenPrefix: string;
+  createdAt: string;
+  expiresAt: string;
+  usedAt: string | null;
+  status: string;
 }
 
 // ==================== GENERIC PAGINATED RESULT ====================

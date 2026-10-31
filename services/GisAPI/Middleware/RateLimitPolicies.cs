@@ -29,6 +29,18 @@ public static class RateLimitPolicies
 
     public static bool IsAssistant(HttpContext c) => c.Request.Path.StartsWithSegments("/api/assistant");
 
+    // Génération d'un jeton d'API (migration 064) : la route vérifie un MOT DE PASSE. Sans plafond,
+    // un jeton de session volé servirait à deviner le mot de passe du compte à la chaîne. Seul le
+    // POST est compté : la liste des jetons (GET) n'entame pas le quota.
+    public static bool IsApiTokenGeneration(HttpContext c) =>
+        HttpMethods.IsPost(c.Request.Method) && c.Request.Path.StartsWithSegments("/api/api-tokens");
+
+    public const string TooManyApiTokenAttemptsMessage =
+        "Trop de tentatives de génération de jeton depuis ce réseau. Patientez une minute avant de réessayer.";
+
+    /// <summary>Essais de génération de jeton par minute et par adresse IP.</summary>
+    public const int ApiTokenAttemptsPerMinutePerIp = 5;
+
     // Invoice scan hits the paid Groq VISION model per request — throttle per IP
     // so an authenticated user (or a runaway client retry) can't drain cost/disk.
     public static bool IsInvoiceScan(HttpContext c) => c.Request.Path.StartsWithSegments("/api/costs/scan-invoice");
@@ -79,6 +91,18 @@ public static class RateLimitPolicies
             // -3) connexion : plafond par IP contre la force brute (DEF-030)
             PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
                 GisAPI.Controllers.AuthController.LoginAttemptPartition(ctx, loginPerIpPerMin)),
+            // -2,5) génération de jeton d'API : 5 essais par minute et par IP (vérifie un mot de passe)
+            PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                IsApiTokenGeneration(ctx)
+                    ? RateLimitPartition.GetFixedWindowLimiter(
+                        "apitoken:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = ApiTokenAttemptsPerMinutePerIp,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        })
+                    : RateLimitPartition.GetNoLimiter("open")),
             // -2) mot de passe oublié : 5 demandes par heure et par IP
             PartitionedRateLimiter.Create<HttpContext, string>(
                 GisAPI.Controllers.AuthController.PasswordResetRequestPartition),

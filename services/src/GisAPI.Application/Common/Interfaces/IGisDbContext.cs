@@ -98,6 +98,7 @@ public interface IGisDbContext
 
     // Auth
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<ApiToken> ApiTokens { get; }
 
     // Reservations / Emprunts
     DbSet<Reservation> Reservations { get; }

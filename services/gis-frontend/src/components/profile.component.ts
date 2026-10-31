@@ -1,9 +1,12 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { ApiService } from '../services/api.service';
+import { ApiService, ApiTokenCreated, ApiTokenListItem } from '../services/api.service';
+import {
+  apiTokenErrorMessage, apiTokenStatusLabel, curlExample, formatCountdown, secondsUntil
+} from './api-token.helpers';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PermissionService } from '../services/permission.service';
 import { AppLayoutComponent } from './shared/app-layout.component';
@@ -406,6 +409,78 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
             </div>
             <div *ngIf="passwordMessage" class="inline-feedback" [class.error]="passwordMessage.type === 'error'">
               {{ passwordMessage.text }}
+            </div>
+          </div>
+        </article>
+
+
+        <!-- Accès API : jeton à usage unique (migration 064). Ressaisie de l'e-mail et du mot de passe,
+             jeton montré UNE fois, valable quelques minutes, un seul appel de lecture des arrêts. -->
+        <article class="section-card" style="--stagger:6; margin-top:20px;">
+          <header class="section-head">
+            <div class="section-medal gradient-amber" style="background:linear-gradient(140deg,#38bdf8 0%,#0369a1 100%);">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+            </div>
+            <div class="section-text">
+              <h2>Accès API</h2>
+              <p>Générez un jeton à usage unique pour lire les arrêts de vos véhicules depuis un autre logiciel.</p>
+            </div>
+          </header>
+          <div class="section-body">
+            <p class="api-note">
+              Pour votre sécurité, ressaisissez votre e-mail et votre mot de passe. Le jeton n'est affiché
+              <strong>qu'une seule fois</strong>, ne sert qu'à <strong>un seul appel</strong> de lecture des arrêts
+              (31 jours au plus) et expire au bout de 15 minutes. Il reprend vos droits et vos véhicules.
+            </p>
+            <div class="field-row">
+              <div class="field">
+                <label>E-mail</label>
+                <input type="email" [(ngModel)]="apiTokenForm.email" placeholder="vous@exemple.com" autocomplete="username">
+              </div>
+              <div class="field">
+                <label>Mot de passe</label>
+                <input type="password" [(ngModel)]="apiTokenForm.password" placeholder="••••••••" autocomplete="current-password"
+                       (keydown.enter)="generateApiToken()">
+              </div>
+            </div>
+            <div class="pwd-actions">
+              <button class="btn-save" (click)="generateApiToken()" [disabled]="generatingToken">
+                <span *ngIf="!generatingToken" class="save-content">Générer un jeton</span>
+                <span *ngIf="generatingToken" class="save-content"><span class="spinner"></span> Génération...</span>
+              </button>
+            </div>
+            <div *ngIf="apiTokenMessage" class="inline-feedback" [class.error]="apiTokenMessage.type === 'error'">
+              {{ apiTokenMessage.text }}
+            </div>
+
+            <div *ngIf="newApiToken" class="api-token-box">
+              <div class="api-token-head">
+                <strong>Votre jeton</strong>
+                <span class="api-token-timer" [class.expired]="tokenSecondsLeft <= 0">
+                  {{ tokenSecondsLeft > 0 ? 'expire dans ' + formatCountdown(tokenSecondsLeft) : 'expiré' }}
+                </span>
+              </div>
+              <code class="api-token-value">{{ newApiToken.token }}</code>
+              <div class="api-token-actions">
+                <button type="button" class="btn-ghost" (click)="copyText(newApiToken.token, 'jeton')">Copier le jeton</button>
+                <button type="button" class="btn-ghost" (click)="copyText(curlCommand, 'exemple')">Copier l'exemple d'appel</button>
+                <button type="button" class="btn-ghost" (click)="hideApiToken()">Masquer</button>
+              </div>
+              <p class="api-note">Il ne sera plus affiché : copiez-le maintenant. Exemple d'appel (7 derniers jours, tous vos véhicules) :</p>
+              <pre class="api-token-curl">{{ curlCommand }}</pre>
+              <div *ngIf="copyMessage" class="api-copy">{{ copyMessage }}</div>
+            </div>
+
+            <div *ngIf="apiTokens.length" class="api-token-list">
+              <div class="api-token-list-title">Vos derniers jetons</div>
+              <div class="api-token-row" *ngFor="let t of apiTokens">
+                <code>{{ t.tokenPrefix }}…</code>
+                <span>{{ t.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
+                <span class="api-badge" [ngClass]="'api-badge-' + t.status">{{ statusLabel(t.status) }}</span>
+                <span *ngIf="t.usedAt" class="api-token-used">utilisé le {{ t.usedAt | date:'dd/MM HH:mm' }}</span>
+              </div>
             </div>
           </div>
         </article>
@@ -861,6 +936,47 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
       background: var(--danger-soft); color: #991b1b; border-color: #fecaca;
     }
 
+
+    /* ============ ACCÈS API (jeton à usage unique) ============ */
+    .api-note { font-size: 12px; color: var(--ink-500); line-height: 1.5; margin: 0 0 12px; }
+    .api-token-box {
+      margin-top: 14px; padding: 14px; border-radius: 10px;
+      background: #f0f9ff; border: 1px solid #bae6fd;
+    }
+    .api-token-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-bottom: 8px; color: #0c4a6e; }
+    .api-token-head strong { color: #0c4a6e; }
+    .api-token-timer { font-size: 12px; font-weight: 600; color: #0369a1; }
+    .api-token-timer.expired { color: #991b1b; }
+    .api-token-value {
+      display: block; padding: 10px 12px; border-radius: 8px; background: #fff; border: 1px solid #bae6fd;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+      color: #0f172a; word-break: break-all; user-select: all;
+    }
+    .api-token-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .btn-ghost {
+      padding: 7px 12px; border-radius: 8px; border: 1px solid #bae6fd; background: #fff;
+      color: #0369a1; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .btn-ghost:hover { background: #e0f2fe; }
+    .api-token-curl {
+      margin: 6px 0 0; padding: 10px 12px; border-radius: 8px; background: #0f172a; color: #e2e8f0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+      white-space: pre-wrap; word-break: break-all;
+    }
+    .api-copy { margin-top: 8px; font-size: 12px; font-weight: 600; color: #047857; }
+    .api-token-list { margin-top: 16px; }
+    .api-token-list-title { font-size: 12px; font-weight: 700; color: var(--ink-700); margin-bottom: 6px; }
+    .api-token-row {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 7px 0;
+      border-top: 1px solid var(--line, #e2e8f0); font-size: 12px; color: var(--ink-700);
+    }
+    .api-token-row code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .api-token-used { color: var(--ink-500); }
+    .api-badge { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .api-badge-pending { background: #e0f2fe; color: #0369a1; }
+    .api-badge-used { background: #ecfdf5; color: #047857; }
+    .api-badge-expired { background: #f1f5f9; color: #64748b; }
+
     @media (max-width: 720px) {
       .alert-grid { grid-template-columns: 1fr; }
     }
@@ -1068,7 +1184,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
     }
   `]
 })
-export class ProfileComponent implements OnInit {
+export class ProfileComponent implements OnInit, OnDestroy {
   company: { name: string } | null = null;
   saving = false;
   message: { type: 'success' | 'error'; text: string } | null = null;
@@ -1077,6 +1193,20 @@ export class ProfileComponent implements OnInit {
   passwordForm = { current: '', next: '', confirm: '' };
   changingPassword = false;
   passwordMessage: { type: 'success' | 'error'; text: string } | null = null;
+
+  // Accès API : jeton à usage unique (migration 064). Le jeton en clair n'existe QUE dans
+  // newApiToken, le temps de l'écran : jamais dans localStorage, jamais dans une URL.
+  apiTokenForm = { email: '', password: '' };
+  generatingToken = false;
+  apiTokenMessage: { type: 'success' | 'error'; text: string } | null = null;
+  newApiToken: ApiTokenCreated | null = null;
+  tokenSecondsLeft = 0;
+  copyMessage = '';
+  apiTokens: ApiTokenListItem[] = [];
+  private tokenTimer: ReturnType<typeof setInterval> | null = null;
+
+  readonly formatCountdown = formatCountdown;
+  readonly statusLabel = apiTokenStatusLabel;
 
   // Alert preferences (local-only right now; read by notification bell to filter types)
   // `geofencingDocsTow` (ancienne case groupée) est remplacée par deux réglages
@@ -1135,6 +1265,80 @@ export class ProfileComponent implements OnInit {
       return;
     }
     this.loadProfile();
+    this.apiTokenForm.email = this.profile.email;
+    this.loadApiTokens();
+  }
+
+  ngOnDestroy() {
+    // Le jeton en clair ne survit pas à l'écran.
+    this.hideApiToken();
+  }
+
+  get curlCommand(): string {
+    return this.newApiToken ? curlExample(this.newApiToken.token, window.location.origin) : '';
+  }
+
+  loadApiTokens() {
+    this.apiService.getMyApiTokens().subscribe({
+      next: (rows) => { this.apiTokens = rows || []; },
+      error: () => { /* liste facultative : l'écran reste utilisable sans elle */ }
+    });
+  }
+
+  generateApiToken() {
+    if (this.generatingToken) return;
+    this.apiTokenMessage = null;
+    const { email, password } = this.apiTokenForm;
+    if (!email.trim() || !password) {
+      this.apiTokenMessage = { type: 'error', text: 'Saisissez votre e-mail et votre mot de passe.' };
+      return;
+    }
+
+    this.generatingToken = true;
+    this.apiService.generateApiToken({ email: email.trim(), password }).subscribe({
+      next: (created) => {
+        this.generatingToken = false;
+        this.apiTokenForm.password = '';
+        this.showApiToken(created);
+        this.loadApiTokens();
+      },
+      error: (err: any) => {
+        this.generatingToken = false;
+        this.apiTokenForm.password = '';
+        this.apiTokenMessage = { type: 'error', text: apiTokenErrorMessage(err) };
+      }
+    });
+  }
+
+  private showApiToken(created: ApiTokenCreated) {
+    this.hideApiToken();
+    this.newApiToken = created;
+    this.tokenSecondsLeft = secondsUntil(created.expiresAt, Date.now());
+    this.tokenTimer = setInterval(() => {
+      this.tokenSecondsLeft = secondsUntil(created.expiresAt, Date.now());
+      // À l'expiration le jeton ne sert plus à rien : on le retire de l'écran.
+      if (this.tokenSecondsLeft <= 0) {
+        this.hideApiToken();
+        this.loadApiTokens();
+      }
+    }, 1000);
+  }
+
+  hideApiToken() {
+    if (this.tokenTimer) { clearInterval(this.tokenTimer); this.tokenTimer = null; }
+    this.newApiToken = null;
+    this.tokenSecondsLeft = 0;
+    this.copyMessage = '';
+  }
+
+  async copyText(text: string, what: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copyMessage = what === 'jeton' ? 'Jeton copié.' : 'Exemple copié.';
+    } catch {
+      this.copyMessage = 'Copie impossible : sélectionnez le texte et copiez-le à la main.';
+    }
+    setTimeout(() => { this.copyMessage = ''; }, 3000);
   }
 
   private loadProfile() {

@@ -250,7 +250,11 @@ if (string.IsNullOrEmpty(jwtKey))
         throw new InvalidOperationException("Jwt:Key must be configured in production. Set it in appsettings or environment variables.");
     jwtKey = "DefaultSecretKeyForDevelopment123!";
 }
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// Schéma par défaut = « Smart » : aiguille vers le jeton d'API à usage unique (en-tête X-Api-Token, ou Bearer cly_…,
+// migration 064) ou vers le jeton de session. Tout le reste de l'API continue de voir une
+// identité ordinaire ; c'est ApiTokenScopeMiddleware qui borne ce qu'un jeton peut appeler.
+builder.Services.AddAuthentication(GisAPI.Middleware.ApiTokenAuthenticationExtensions.SmartScheme)
+    .AddApiTokenRouting()
     .AddJwtBearer(options =>
     {
         options.TokenValidationParameters = new TokenValidationParameters
@@ -398,6 +402,8 @@ app.UseCors();
 app.UseRateLimiter();
 
 app.UseAuthentication();
+// Jeton d'API : lecture des arrêts seulement (migration 064). Avant l'autorisation et tout le reste.
+app.UseMiddleware<GisAPI.Middleware.ApiTokenScopeMiddleware>();
 app.UseAuthorization();
 
 // /uploads : compte connecté de la société propriétaire (ou administrateur système), sinon
