@@ -10,6 +10,7 @@ import { trigger, transition, style, animate } from '@angular/animations';
 import { environment } from '../../environments/environment';
 import { fuelSensorModeForChosenDevice } from '../../admin/pages/vehicle-gps-save.helpers';
 import { rangerMarques } from '../../services/marques-courantes';
+import { typeDeLaListe } from '../../services/types-vehicule';
 
 interface Brand {
   id: number;
@@ -117,14 +118,22 @@ export interface CompanyOption {
                     <ng-template #toutesLesMarques>
                       <option *ngFor="let brand of autresMarques" [value]="brand.id">{{ brand.name }}</option>
                     </ng-template>
+                    <!-- Marque absente du catalogue : saisie libre (28/10/2026). -->
+                    <option value="autre">Autre (marque absente de la liste)</option>
                   </select>
+                  <input *ngIf="marqueLibre" type="text" id="brandLibre" name="brandLibre" [(ngModel)]="formData.brand"
+                         maxlength="50" placeholder="Saisissez la marque" class="saisie-libre" />
                 </div>
                 <div class="form-group">
                   <label for="modelId">Modèle</label>
-                  <select id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels" data-guide="vehicule-modele">
+                  <!-- Marque « Autre » : le modèle se saisit aussi librement, il n'y a pas de liste. -->
+                  <select *ngIf="!marqueLibre" id="modelId" name="modelId" [(ngModel)]="formData.modelId" (ngModelChange)="onModelChange($event)" required [disabled]="!formData.brandId || loadingModels" data-guide="vehicule-modele">
                     <option [value]="null">{{ loadingModels ? 'Chargement...' : '-- Sélectionner --' }}</option>
                     <option *ngFor="let model of models" [value]="model.id">{{ model.name }}</option>
+                    <option *ngIf="formData.brandId && !loadingModels" value="autre">Autre (modèle absent de la liste)</option>
                   </select>
+                  <input *ngIf="marqueLibre || modeleLibre" type="text" id="modelLibre" name="modelLibre" [(ngModel)]="formData.model"
+                         maxlength="50" placeholder="Saisissez le modèle" class="saisie-libre" />
                 </div>
               </div>
 
@@ -135,7 +144,7 @@ export interface CompanyOption {
                 </div>
                 <div class="form-group">
                   <label for="type">Type</label>
-                  <select id="type" name="type" [(ngModel)]="formData.type" required data-guide="vehicule-type">
+                  <select id="type" name="type" [(ngModel)]="formData.type" (change)="typeChoisi = true" required data-guide="vehicule-type">
                     <option value="">Sélectionner</option>
                     <option value="camion">Camion</option>
                     <option value="citadine">Citadine</option>
@@ -756,6 +765,7 @@ export interface CompanyOption {
       transition: all 0.15s;
     }
 
+    .form-group .saisie-libre { margin-top: 6px; }
     .form-group input:focus,
     .form-group select:focus {
       outline: none;
@@ -1228,6 +1238,18 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   brands: Brand[] = [];
   /** Liste « Marque » : les plus courantes, puis les autres (poserMarques). */
   marquesCourantes: Brand[] = [];
+
+  /**
+   * Le Type a été choisi (par l'utilisateur, ou enregistré sur le véhicule ouvert) : choisir
+   * un modèle ne l'écrase plus. Il ne sert qu'à PRÉREMPLIR un Type encore libre (28/10/2026).
+   */
+  typeChoisi = false;
+
+  /** Marque absente du catalogue, saisie librement. */
+  get marqueLibre(): boolean { return this.formData?.brandId === 'autre'; }
+
+  /** Modèle absent du catalogue (marque connue), saisi librement. */
+  get modeleLibre(): boolean { return this.formData?.modelId === 'autre'; }
   autresMarques: Brand[] = [];
   models: VehicleModel[] = [];
 
@@ -1670,8 +1692,12 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
       leasingPaymentDay: v.leasingPaymentDay == null
         ? null
         : Math.min(Math.max(Number(v.leasingPaymentDay) || 1, 1), this.paymentDays.length),
-      registrationDate: v.registrationDate ? String(v.registrationDate).substring(0, 10) : ''
+      registrationDate: v.registrationDate ? String(v.registrationDate).substring(0, 10) : '',
+      // « van », « hatchback »… venus du catalogue : ramenés à la liste, sinon le champ
+      // paraissait vide (18 véhicules en production le 28/10/2026).
+      type: typeDeLaListe(v.type)
     };
+    this.typeChoisi = !!this.formData.type;
   }
 
   /**
@@ -1734,6 +1760,9 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
           if (matchingBrand) {
             this.formData.brandId = matchingBrand.id;
             this.loadModels(matchingBrand.id);
+          } else {
+            // Marque hors catalogue : affichée dans la saisie libre au lieu d'une liste vide.
+            this.formData.brandId = 'autre';
           }
         } else if (this.formData.brandId) {
           this.loadModels(this.formData.brandId);
@@ -1780,6 +1809,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
           );
           if (matchingModel) {
             this.formData.modelId = matchingModel.id;
+          } else {
+            this.formData.modelId = 'autre';
           }
         }
         this.cdr.detectChanges();
@@ -1791,27 +1822,38 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     });
   }
 
-  onBrandChange(brandId: number) {
+  onBrandChange(brandId: number | string) {
     this.formData.modelId = null;
     this.formData.model = '';
     this.models = [];
     
+    if (brandId === 'autre') {
+      // Marque et modèle se saisissent librement.
+      this.formData.brand = '';
+      return;
+    }
     if (brandId) {
       const selectedBrand = this.brands.find(b => b.id === Number(brandId));
       if (selectedBrand) {
         this.formData.brand = selectedBrand.name;
       }
-      this.loadModels(brandId);
+      this.loadModels(Number(brandId));
     }
   }
 
-  onModelChange(modelId: number) {
+  onModelChange(modelId: number | string) {
+    if (modelId === 'autre') {
+      this.formData.model = '';
+      return;
+    }
     if (modelId) {
       const selectedModel = this.models.find(m => m.id === Number(modelId));
       if (selectedModel) {
         this.formData.model = selectedModel.name;
-        if (selectedModel.vehicleType) {
-          this.formData.type = selectedModel.vehicleType;
+        // Le type du modèle préremplit un Type encore libre, ramené à la liste ; il
+        // n'écrase jamais un Type choisi.
+        if (selectedModel.vehicleType && !this.typeChoisi) {
+          this.formData.type = typeDeLaListe(selectedModel.vehicleType) || this.formData.type;
         }
       }
     }
@@ -1929,6 +1971,7 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   }
 
   resetForm() {
+    this.typeChoisi = false;
     this.formData = {
       name: '',
       plate: '',
@@ -2021,6 +2064,14 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
     // assignment configured by a sysadmin earlier. Carry the original
     // vehicle's GPS columns over instead.
     const payload: any = { ...this.formData };
+    // Saisie libre : pas d'identifiant de catalogue ; la marque en majuscules, comme tout
+    // le catalogue (migration 053).
+    if (payload.brandId === 'autre') {
+      payload.brandId = null;
+      payload.brand = String(payload.brand ?? '').trim().toUpperCase();
+    }
+    if (payload.modelId === 'autre') payload.modelId = null;
+    if (typeof payload.model === 'string') payload.model = payload.model.trim();
     if (!this.isSystemAdminContext && this.vehicle) {
       payload.hasGPS = this.vehicle.hasGPS;
       payload.gpsDeviceId = this.vehicle.gpsDeviceId;
