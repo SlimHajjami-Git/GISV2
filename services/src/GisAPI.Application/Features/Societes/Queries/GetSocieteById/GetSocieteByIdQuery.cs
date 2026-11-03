@@ -57,7 +57,9 @@ public record SocieteDetailDto(
     DateTime? InvoiceScanResetsAt = null,
     // Ventilation du mois par fonction (scans, assistant, rapports IA…), en jetons :
     // le crédit couvre toute l'IA de la société depuis le 22/09/2026. null hors lecture GET.
-    IReadOnlyDictionary<string, int>? AiCreditByFeature = null
+    IReadOnlyDictionary<string, int>? AiCreditByFeature = null,
+    // Accès API ouvert à cette société (migration 065) : faux par défaut.
+    bool ApiAccessEnabled = false
 );
 
 public record SocieteSettingsDto(

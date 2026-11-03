@@ -27,6 +27,14 @@ public class ApiTokensController : ControllerBase
         Ok(await _mediator.Send(new GetMyApiTokensQuery()));
 
     /// <summary>
+    /// L'accès API est-il ouvert à ce compte (administrateur de la société, société activée par
+    /// Belive) ? Le profil n'affiche la section « Accès API » que dans ce cas.
+    /// </summary>
+    [HttpGet("acces")]
+    public async Task<ActionResult<ApiAccessDto>> Access() =>
+        Ok(await _mediator.Send(new GetMyApiAccessQuery()));
+
+    /// <summary>
     /// Génère un jeton après ressaisie de l'e-mail et du mot de passe. La réponse est la SEULE
     /// occasion de lire le jeton en clair.
     /// </summary>

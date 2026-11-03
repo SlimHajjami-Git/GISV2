@@ -84,6 +84,13 @@ public class Societe : AuditableEntity
     [Column("auto_suspend_enabled")]
     public bool AutoSuspendEnabled { get; set; } = true;
 
+    // Accès API (jetons à usage unique, Profil > Accès API) ouvert à CETTE société
+    // (migration 065, demande de Karim du 01/11/2026). Faux par défaut : Belive l'active
+    // client par client dans la fiche société de l'admin ; même alors, seul
+    // l'administrateur de la société génère des jetons.
+    [Column("api_access_enabled")]
+    public bool ApiAccessEnabled { get; set; }
+
     // Navigation collections
     public ICollection<User> Users { get; set; } = new List<User>();
     public ICollection<Role> Roles { get; set; } = new List<Role>();

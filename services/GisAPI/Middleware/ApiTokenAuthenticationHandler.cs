@@ -76,7 +76,8 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
         var user = await _db.Users.IgnoreQueryFilters().AsNoTracking()
             .Include(u => u.Role)
             .FirstOrDefaultAsync(u => u.Id == token.UserId && u.CompanyId == token.CompanyId, Context.RequestAborted);
-        if (user == null || ApiTokenAccess.AccountRefusal(user) != null)
+        if (user == null || ApiTokenAccess.AccountRefusal(user,
+                await ApiTokenAccess.CompanyApiAccessEnabledAsync(_db, token.CompanyId, Context.RequestAborted)) != null)
             return AuthenticateResult.Fail("Jeton d'API invalide.");
 
         // Appel qu'un jeton ne peut pas faire : on laisse passer SANS consommer, le verrou

@@ -1526,6 +1526,11 @@ export class ApiService {
     return this.http.get<ApiTokenListItem[]>(`${this.API_URL}/api-tokens`, { headers: this.getHeaders() });
   }
 
+  /** L'accès API est-il ouvert à ce compte (administrateur, société activée par Belive) ? */
+  getApiTokenAccess(): Observable<{ allowed: boolean; reason: string | null }> {
+    return this.http.get<{ allowed: boolean; reason: string | null }>(`${this.API_URL}/api-tokens/acces`, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL RECORDS ====================
 
   getFuelRecords(options: {

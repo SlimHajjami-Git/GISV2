@@ -416,7 +416,9 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
 
         <!-- Accès API : jeton à usage unique (migration 064). Ressaisie de l'e-mail et du mot de passe,
              jeton montré UNE fois, valable quelques minutes, un seul appel de lecture des arrêts. -->
-        <article class="section-card" style="--stagger:6; margin-top:20px;">
+        <!-- Réservé à l'administrateur d'une société dont Belive a activé l'accès API (migration 065,
+             01/11/2026) : la section n'apparaît pas pour les autres comptes. -->
+        <article class="section-card" *ngIf="apiAccess?.allowed" style="--stagger:6; margin-top:20px;">
           <header class="section-head">
             <div class="section-medal gradient-amber" style="background:linear-gradient(140deg,#38bdf8 0%,#0369a1 100%);">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -1203,6 +1205,8 @@ export class ProfileComponent implements OnInit, OnDestroy {
   tokenSecondsLeft = 0;
   copyMessage = '';
   apiTokens: ApiTokenListItem[] = [];
+  /** Accès API ouvert à ce compte ? null tant que le serveur n'a pas répondu (section masquée). */
+  apiAccess: { allowed: boolean; reason: string | null } | null = null;
   private tokenTimer: ReturnType<typeof setInterval> | null = null;
 
   readonly formatCountdown = formatCountdown;
@@ -1266,7 +1270,18 @@ export class ProfileComponent implements OnInit, OnDestroy {
     }
     this.loadProfile();
     this.apiTokenForm.email = this.profile.email;
-    this.loadApiTokens();
+    this.loadApiAccess();
+  }
+
+  /** La section « Accès API » et la liste des jetons, seulement si l'accès est ouvert. */
+  loadApiAccess() {
+    this.apiService.getApiTokenAccess().subscribe({
+      next: (access) => {
+        this.apiAccess = access;
+        if (access?.allowed) this.loadApiTokens();
+      },
+      error: () => { this.apiAccess = null; }
+    });
   }
 
   ngOnDestroy() {

@@ -152,19 +152,31 @@ public class ApiTokenTests
 
     // ── Le compte qui porte le jeton ──
 
+    // Règle de Karim (01/11/2026, migration 065) : l'administrateur de la société, et
+    // seulement si Belive a activé l'accès API pour cette société.
     [Fact]
-    public void Un_compte_actif_ordinaire_peut_porter_un_jeton() =>
-        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsSystemRole = false } })
+    public void L_administrateur_d_une_societe_activee_peut_porter_un_jeton() =>
+        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsCompanyAdmin = true } }, true)
             .Should().BeNull();
+
+    [Fact]
+    public void Un_utilisateur_qui_n_est_pas_administrateur_ne_porte_pas_de_jeton() =>
+        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsCompanyAdmin = false } }, true)
+            .Should().Be(ApiTokenAccess.AdminOnlyMessage);
+
+    [Fact]
+    public void Sans_activation_par_Belive_meme_l_administrateur_ne_porte_pas_de_jeton() =>
+        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsCompanyAdmin = true } }, false)
+            .Should().Be(ApiTokenAccess.NotEnabledMessage);
 
     [Fact]
     public void Compte_inactif_chauffeur_ou_systeme_ne_portent_pas_de_jeton()
     {
-        ApiTokenAccess.AccountRefusal(new User { Status = "suspended", Role = new Role() })
+        ApiTokenAccess.AccountRefusal(new User { Status = "suspended", Role = new Role() }, true)
             .Should().Be(ApiTokenAccess.InactiveMessage);
-        ApiTokenAccess.AccountRefusal(new User { Status = "active", AccountType = UserAccountTypes.Driver, Role = new Role() })
+        ApiTokenAccess.AccountRefusal(new User { Status = "active", AccountType = UserAccountTypes.Driver, Role = new Role() }, true)
             .Should().Be(ApiTokenAccess.DriverMessage);
-        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsSystemRole = true } })
+        ApiTokenAccess.AccountRefusal(new User { Status = "active", Role = new Role { IsSystemRole = true } }, true)
             .Should().Be(ApiTokenAccess.SystemRoleMessage);
     }
 
@@ -182,8 +194,8 @@ public class ApiTokenTests
     private static async Task<TestGisDbContext> SeedAsync()
     {
         var ctx = TestDbContextFactory.Create();
-        ctx.Societes.Add(TestDataBuilder.CreateSociete(1, null));
-        ctx.Societes.Add(TestDataBuilder.CreateSociete(2, null));
+        { var societe1 = TestDataBuilder.CreateSociete(1, null); societe1.ApiAccessEnabled = true; ctx.Societes.Add(societe1); } // accès API activé par Belive (migration 065)
+        { var societe2 = TestDataBuilder.CreateSociete(2, null); societe2.ApiAccessEnabled = true; ctx.Societes.Add(societe2); } // accès API activé par Belive (migration 065)
         ctx.Roles.Add(new Role { Id = 1, Name = "Gestionnaire", SocieteId = 1, IsCompanyAdmin = true });
         ctx.Roles.Add(new Role { Id = 2, Name = "Administrateur", SocieteId = 1, IsSystemRole = true });
         ctx.Roles.Add(new Role { Id = 3, Name = "Gestionnaire", SocieteId = 2, IsCompanyAdmin = true });
@@ -366,5 +378,54 @@ public class ApiTokenTests
         var liste = await new GetMyApiTokensQueryHandler(ctx, tenant).Handle(new GetMyApiTokensQuery(), CancellationToken.None);
 
         liste.Select(t => t.Status).Should().Equal("pending", "used", "expired");
+    }
+
+    // ── Règle de Karim (01/11/2026, migration 065) : administrateur, société activée ──
+
+    [Fact]
+    public async Task Un_utilisateur_qui_n_est_pas_administrateur_ne_genere_pas_de_jeton()
+    {
+        await using var ctx = await SeedAsync();
+        ctx.Roles.Add(new Role { Id = 4, Name = "Opérateur", SocieteId = 1, IsCompanyAdmin = false });
+        var employe = TestDataBuilder.CreateUser(id: 14, companyId: 1, email: "employe@exemple.tn");
+        employe.RoleId = 4;
+        employe.PasswordHash = new PasswordHasher().HashPassword(MotDePasse);
+        ctx.Users.Add(employe);
+        await ctx.SaveChangesAsync();
+
+        var act = () => Handler(ctx, 1, 14).Handle(
+            new GenerateApiTokenCommand("employe@exemple.tn", MotDePasse), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DomainException>()).WithMessage(ApiTokenAccess.AdminOnlyMessage);
+        ctx.ApiTokens.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Sans_activation_par_Belive_l_administrateur_ne_genere_pas_de_jeton()
+    {
+        await using var ctx = await SeedAsync();
+        (await ctx.Societes.FindAsync(2))!.ApiAccessEnabled = false;
+        await ctx.SaveChangesAsync();
+
+        var act = () => Handler(ctx, 2, 20).Handle(
+            new GenerateApiTokenCommand("autre@autre.tn", MotDePasse), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DomainException>()).WithMessage(ApiTokenAccess.NotEnabledMessage);
+        ctx.ApiTokens.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Le_profil_sait_si_l_acces_API_est_ouvert_a_ce_compte()
+    {
+        await using var ctx = await SeedAsync();
+        (await ctx.Societes.FindAsync(2))!.ApiAccessEnabled = false;
+        await ctx.SaveChangesAsync();
+        Task<ApiAccessDto> Acces(int companyId, int userId) =>
+            new GetMyApiAccessQueryHandler(ctx, TestDbContextFactory.CreateMockTenantService(companyId, userId).Object)
+                .Handle(new GetMyApiAccessQuery(), CancellationToken.None);
+
+        (await Acces(1, 10)).Should().Be(new ApiAccessDto(true, null));
+        (await Acces(2, 20)).Should().Be(new ApiAccessDto(false, ApiTokenAccess.NotEnabledMessage));
+        (await Acces(1, 12)).Should().Be(new ApiAccessDto(false, ApiTokenAccess.SystemRoleMessage));
     }
 }

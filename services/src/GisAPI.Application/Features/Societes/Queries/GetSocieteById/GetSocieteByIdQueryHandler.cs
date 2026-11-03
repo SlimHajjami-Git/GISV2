@@ -79,7 +79,8 @@ public class GetSocieteByIdQueryHandler : IRequestHandler<GetSocieteByIdQuery, S
             credit.UsedTokens,
             credit.PercentUsed,
             credit.ResetsAt,
-            credit.ByFeature
+            credit.ByFeature,
+            societe.ApiAccessEnabled
         );
     }
 }

@@ -39,7 +39,7 @@ public class ApiTokenAuthenticationTests
         Action<User>? userTweak = null, Action<ApiToken>? tokenTweak = null)
     {
         var ctx = TestDbContextFactory.Create();
-        ctx.Societes.Add(TestDataBuilder.CreateSociete(1, null));
+        { var societe1 = TestDataBuilder.CreateSociete(1, null); societe1.ApiAccessEnabled = true; ctx.Societes.Add(societe1); } // accès API activé par Belive (migration 065)
         ctx.Roles.Add(new Role { Id = 1, Name = "Gestionnaire", SocieteId = 1, IsCompanyAdmin = true });
         var user = TestDataBuilder.CreateUser(id: 10, companyId: 1, email: "client@exemple.tn");
         user.RoleId = 1;
@@ -251,5 +251,31 @@ public class ApiTokenAuthenticationTests
 
         passed.Should().BeTrue();
         status.Should().Be(200);
+    }
+
+    // ── Règle de Karim (01/11/2026, migration 065) : relue à CHAQUE appel ──
+
+    [Fact]
+    public async Task Un_jeton_ne_fonctionne_plus_quand_Belive_coupe_l_acces_de_la_societe()
+    {
+        var (ctx, token) = await SeedAsync();
+        await using var _ = ctx;
+        (await ctx.Societes.FindAsync(1))!.ApiAccessEnabled = false;
+        await ctx.SaveChangesAsync();
+
+        (await AuthentifierAsync(ctx, Requete("GET", "/api/reports/stops", header: token))).Succeeded.Should().BeFalse();
+        ctx.ApiTokens.Single().UsedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Un_jeton_ne_fonctionne_plus_quand_son_auteur_n_est_plus_administrateur()
+    {
+        var (ctx, token) = await SeedAsync();
+        await using var _ = ctx;
+        ctx.Roles.Add(new Role { Id = 3, Name = "Opérateur", SocieteId = 1, IsCompanyAdmin = false });
+        (await ctx.Users.FindAsync(10))!.RoleId = 3;
+        await ctx.SaveChangesAsync();
+
+        (await AuthentifierAsync(ctx, Requete("GET", "/api/reports/stops", header: token))).Succeeded.Should().BeFalse();
     }
 }

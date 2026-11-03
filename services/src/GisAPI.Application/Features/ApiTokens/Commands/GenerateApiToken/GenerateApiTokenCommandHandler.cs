@@ -62,7 +62,8 @@ public class GenerateApiTokenCommandHandler : IRequestHandler<GenerateApiTokenCo
             throw new DomainException(WrongCredentialsMessage);
         }
 
-        var refusal = ApiTokenAccess.AccountRefusal(user);
+        var refusal = ApiTokenAccess.AccountRefusal(user,
+            await ApiTokenAccess.CompanyApiAccessEnabledAsync(_context, companyId, ct));
         if (refusal != null)
             throw new DomainException(refusal);
 

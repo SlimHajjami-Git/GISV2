@@ -83,7 +83,7 @@ public static class AdminScreenAccess
         R("GET POST", "/api/admin/company", Clients),
         R("GET PUT", $"/api/admin/company/{Id}", Clients),
         R("POST", $"/api/admin/company/{Id}/(activate|suspend|mark-paid)", Clients),
-        R("PUT", $"/api/admin/company/{Id}/(auto-suspend|subscription-expiry)", Clients),
+        R("PUT", $"/api/admin/company/{Id}/(auto-suspend|subscription-expiry|api-access)", Clients),
         R("GET", $"/api/admin/company/{Id}/(roles|users|vehicles)", Clients),
         R("GET", $"/api/admin/societes/{Id}", Clients),
         R("PUT", $"/api/admin/societes/{Id}/scan-quota", Clients),

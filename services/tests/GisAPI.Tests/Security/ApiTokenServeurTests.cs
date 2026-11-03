@@ -39,7 +39,7 @@ public class ApiTokenServeurTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _db = TestDbContextFactory.Create();
-        _db.Societes.Add(TestDataBuilder.CreateSociete(1, null));
+        { var societe1 = TestDataBuilder.CreateSociete(1, null); societe1.ApiAccessEnabled = true; _db.Societes.Add(societe1); } // accès API activé par Belive (migration 065)
         _db.Roles.Add(new Role { Id = 1, Name = "Gestionnaire", SocieteId = 1, IsCompanyAdmin = true });
         var user = TestDataBuilder.CreateUser(id: 10, companyId: 1, email: "client@exemple.tn");
         user.RoleId = 1;

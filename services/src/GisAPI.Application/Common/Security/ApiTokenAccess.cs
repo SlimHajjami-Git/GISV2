@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using GisAPI.Application.Common.Interfaces;
+using Microsoft.EntityFrameworkCore;
 
 namespace GisAPI.Application.Common.Security;
 
@@ -108,13 +110,18 @@ public static class ApiTokenAccess
     public const string InactiveMessage = "Votre compte n'est pas actif.";
     public const string DriverMessage = "Un compte chauffeur ne peut pas générer de jeton d'API.";
     public const string SystemRoleMessage = "Un compte administrateur système ne peut pas générer de jeton d'API.";
+    public const string AdminOnlyMessage = "L'accès API est réservé à l'administrateur de la société.";
+    public const string NotEnabledMessage = "L'accès API n'est pas activé pour votre société. Contactez Belive pour l'activer.";
 
     /// <summary>
     /// Raison pour laquelle ce compte ne peut pas porter de jeton, ou <c>null</c>. Même règle à la
-    /// génération et à CHAQUE appel : un compte désactivé, converti en chauffeur ou promu
-    /// administrateur système après coup ferme ses jetons en attente. Le rôle doit être chargé.
+    /// génération et à CHAQUE appel : un compte désactivé, converti en chauffeur, promu
+    /// administrateur système, qui n'est plus administrateur de sa société, ou dont la société a vu
+    /// son accès API coupé par Belive ferme ses jetons en attente. Le rôle doit être chargé ;
+    /// <paramref name="companyApiAccessEnabled"/> est l'interrupteur de SA société (migration 065),
+    /// lu par l'appelant (demande de Karim du 01/11/2026).
     /// </summary>
-    public static string? AccountRefusal(GisAPI.Domain.Entities.User user)
+    public static string? AccountRefusal(GisAPI.Domain.Entities.User user, bool companyApiAccessEnabled)
     {
         if (!string.Equals(user.Status, "active", StringComparison.OrdinalIgnoreCase))
             return InactiveMessage;
@@ -122,6 +129,17 @@ public static class ApiTokenAccess
             return DriverMessage;
         if (user.Role?.IsSystemRole == true)
             return SystemRoleMessage;
+        if (user.Role?.IsCompanyAdmin != true)
+            return AdminOnlyMessage;
+        if (!companyApiAccessEnabled)
+            return NotEnabledMessage;
         return null;
     }
+
+    /// <summary>L'interrupteur d'accès API de la société (faux si elle est introuvable).</summary>
+    public static Task<bool> CompanyApiAccessEnabledAsync(IGisDbContext db, int companyId, CancellationToken ct) =>
+        db.Societes.IgnoreQueryFilters().AsNoTracking()
+            .Where(s => s.Id == companyId)
+            .Select(s => s.ApiAccessEnabled)
+            .FirstOrDefaultAsync(ct);
 }

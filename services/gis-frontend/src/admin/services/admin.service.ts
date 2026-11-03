@@ -754,6 +754,12 @@ export class AdminService {
   }
 
   /** Active/désactive la suspension AUTOMATIQUE à l'expiration pour une société. */
+  /** Accès API ouvert à cette société (migration 065). */
+  setApiAccess(id: number, enabled: boolean): Observable<{ apiAccessEnabled: boolean }> {
+    return this.http.put<{ apiAccessEnabled: boolean }>(
+      `${this.apiUrl}/admin/company/${id}/api-access`, { enabled }, { headers: this.getHeaders() });
+  }
+
   setAutoSuspend(id: number, enabled: boolean): Observable<{ autoSuspendEnabled: boolean }> {
     return this.http.put<{ autoSuspendEnabled: boolean }>(
       `${this.apiUrl}/admin/company/${id}/auto-suspend`, { enabled }, { headers: this.getHeaders() });

@@ -254,6 +254,28 @@ type CompanyRole = Role & { userCount?: number };
           <p class="scan-quota-msg" *ngIf="autoSuspendMsg">{{ autoSuspendMsg }}</p>
         </div>
 
+        <!-- Accès API (migration 065) : activé par Belive client par client ; seul l'administrateur
+             de la société génère alors des jetons, depuis son profil. -->
+        <div class="scan-quota-card">
+          <div class="scan-quota-head">
+            <div class="scan-quota-icon" [class.off]="!apiAccessEnabled">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+            </div>
+            <div class="scan-quota-txt">
+              <h3>Accès API</h3>
+              <p *ngIf="apiAccessEnabled">Activé — l'administrateur de la société peut générer, depuis son profil, des jetons à usage unique pour lire les arrêts de ses véhicules depuis son propre logiciel.</p>
+              <p *ngIf="!apiAccessEnabled">Désactivé — aucun utilisateur de cette société ne voit « Accès API » ni ne peut générer de jeton.</p>
+            </div>
+            <label class="auto-suspend-switch">
+              <input type="checkbox" [checked]="apiAccessEnabled" (change)="toggleApiAccess($event)" [disabled]="apiAccessSaving" />
+              <span>{{ apiAccessSaving ? '…' : (apiAccessEnabled ? 'Activé' : 'Désactivé') }}</span>
+            </label>
+          </div>
+          <p class="scan-quota-msg" *ngIf="apiAccessMsg">{{ apiAccessMsg }}</p>
+        </div>
+
         <!-- Tabs -->
         <div class="tabs-container">
           <div class="tabs">
@@ -2587,6 +2609,7 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         this.scanCreditLegacy = s?.invoiceScanMonthlyLimit ?? null;
         this.scanQuotaInput = saisieInitialeCredit(s);
         this.autoSuspendEnabled = (s as any)?.autoSuspendEnabled ?? true;
+        this.apiAccessEnabled = (s as any)?.apiAccessEnabled === true;
         // Échéance & facturation (carte Abonnement)
         this.subExpiresAt = (s as any)?.subscriptionExpiresAt ?? null;
         this.subExpiryInput = this.subExpiresAt ? String(this.subExpiresAt).substring(0, 10) : '';
@@ -2665,6 +2688,41 @@ export class AdminCompanyDetailsComponent implements OnInit, OnDestroy {
         this.loadCompanyDetails();          // rafraîchit le badge de statut du header
       },
       error: () => { this.subPaying = false; this.subMsg = 'Le renouvellement a échoué. Réessayez.'; this.cdr.detectChanges(); }
+    });
+  }
+
+  /** Interrupteur « accès API » (par société, migration 065). */
+  apiAccessEnabled = false;
+  apiAccessSaving = false;
+  apiAccessMsg = '';
+  toggleApiAccess(ev: Event) {
+    const input = ev.target as HTMLInputElement;
+    const enabled = input.checked;
+    if (enabled && !confirm(`Activer l'accès API pour « ${this.company?.name || 'cette société'} » ?\n\nSon administrateur pourra générer, depuis son profil, des jetons à usage unique pour lire les arrêts de ses véhicules depuis un logiciel extérieur.`)) {
+      input.checked = false;
+      this.apiAccessEnabled = false;
+      this.cdr.detectChanges();
+      return;
+    }
+    this.apiAccessSaving = true;
+    this.apiAccessMsg = '';
+    this.adminService.setApiAccess(this.companyId, enabled).pipe(takeUntil(this.destroy$)).subscribe({
+      next: (r) => {
+        this.apiAccessSaving = false;
+        this.apiAccessEnabled = r?.apiAccessEnabled ?? enabled;
+        input.checked = this.apiAccessEnabled;
+        this.apiAccessMsg = this.apiAccessEnabled
+          ? 'Accès API activé.'
+          : 'Accès API désactivé — les jetons en attente ne fonctionnent plus.';
+        this.cdr.detectChanges();
+        setTimeout(() => { this.apiAccessMsg = ''; this.cdr.detectChanges(); }, 3500);
+      },
+      error: (err) => {
+        this.apiAccessSaving = false;
+        input.checked = this.apiAccessEnabled;
+        this.apiAccessMsg = err?.error?.message || 'Le changement a échoué. Réessayez.';
+        this.cdr.detectChanges();
+      }
     });
   }
 

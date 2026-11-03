@@ -312,6 +312,24 @@ public class AdminController : ControllerBase
     }
 
     /// <summary>
+    /// Interrupteur PAR SOCIÉTÉ de l'accès API (migration 065, demande de Karim du 01/11/2026) :
+    /// faux par défaut ; activé, l'administrateur de la société peut générer des jetons à usage
+    /// unique pour lire ses arrêts depuis son propre logiciel. Le couper ferme aussitôt les
+    /// jetons en attente (règle relue à chaque appel).
+    /// </summary>
+    [HttpPut("company/{id}/api-access")]
+    public async Task<ActionResult> SetApiAccess(int id, [FromBody] SetApiAccessRequest request)
+    {
+        var societe = await _context.Societes.FindAsync(id);
+        if (societe == null) return NotFound();
+
+        societe.ApiAccessEnabled = request.Enabled;
+        societe.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+        return Ok(new { apiAccessEnabled = societe.ApiAccessEnabled });
+    }
+
+    /// <summary>
     /// Vue « facturation » plateforme : toutes les sociétés à surveiller —
     /// expirent sous 30 j, expirées en grâce (= facture IMPAYÉE), bloquées,
     /// ou suspendues manuellement. Alimente le bandeau d'alerte et la cloche
@@ -1497,6 +1515,7 @@ public class CreateAdminCompanyRequest
 }
 
 public record SetAutoSuspendRequest(bool Enabled);
+public record SetApiAccessRequest(bool Enabled);
 
 public record RejectOrderRequest(string? Reason);
 

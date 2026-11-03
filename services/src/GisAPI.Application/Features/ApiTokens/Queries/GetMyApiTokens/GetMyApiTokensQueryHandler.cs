@@ -39,3 +39,31 @@ public class GetMyApiTokensQueryHandler : IRequestHandler<GetMyApiTokensQuery, L
             .ToList();
     }
 }
+
+public class GetMyApiAccessQueryHandler : IRequestHandler<GetMyApiAccessQuery, ApiAccessDto>
+{
+    private readonly IGisDbContext _context;
+    private readonly ICurrentTenantService _tenant;
+
+    public GetMyApiAccessQueryHandler(IGisDbContext context, ICurrentTenantService tenant)
+    {
+        _context = context;
+        _tenant = tenant;
+    }
+
+    public async Task<ApiAccessDto> Handle(GetMyApiAccessQuery request, CancellationToken ct)
+    {
+        var userId = _tenant.UserId ?? throw new DomainException("Utilisateur non identifié");
+        var companyId = _tenant.CompanyId ?? throw new DomainException("Société non identifiée");
+
+        var user = await _context.Users.IgnoreQueryFilters().AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId, ct);
+        if (user == null)
+            return new ApiAccessDto(false, "Utilisateur introuvable.");
+
+        var refusal = GisAPI.Application.Common.Security.ApiTokenAccess.AccountRefusal(user,
+            await GisAPI.Application.Common.Security.ApiTokenAccess.CompanyApiAccessEnabledAsync(_context, companyId, ct));
+        return new ApiAccessDto(refusal == null, refusal);
+    }
+}
