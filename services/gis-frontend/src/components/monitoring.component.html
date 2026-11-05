@@ -88,14 +88,14 @@
                      (change)="toggleCompanyVisibility(group)"
                      (click)="$event.stopPropagation()" />
               <button class="layer-collapse-btn" (click)="toggleCompanyCollapsed(group.key)">
-                <svg class="chev" [class.rotated]="!collapsedCompanies.has(group.key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <svg class="chev" [class.rotated]="isCompanyExpanded(group.key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
               </button>
               <span class="layer-company-name">{{ group.name }}</span>
               <span class="layer-company-count">{{ group.vehicles.length }}</span>
             </div>
-            <div class="layer-company-vehicles" *ngIf="!collapsedCompanies.has(group.key)">
+            <div class="layer-company-vehicles" *ngIf="isCompanyExpanded(group.key)">
               <div class="layer-vehicle-row" *ngFor="let vehicle of group.vehicles; trackBy: trackByVehicleId"
                    [class.selected]="selectedVehicle?.id === vehicle.id">
                 <input type="checkbox" class="layer-check"

@@ -6,6 +6,7 @@ import { BehaviorSubject, Subject, combineLatest, forkJoin } from 'rxjs';
 import { map, takeUntil, finalize } from 'rxjs/operators';
 import { AdminLayoutComponent } from '../components/admin-layout.component';
 import { AdminService, SystemUser, Client, Role } from '../services/admin.service';
+import { trierParDerniereConnexion } from './admin-users.helpers';
 
 interface EditUserForm {
   name: string;
@@ -1051,7 +1052,8 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
   ]).pipe(
     map(([users, search, companyFilter, statusFilter]) => {
       const q = (search || '').toLowerCase();
-      return users.filter(user => {
+      // Tri par « Dernière connexion », la plus récente en haut (admin-users.helpers.ts).
+      return trierParDerniereConnexion(users.filter(user => {
         const matchesSearch = !q ||
           user.name?.toLowerCase().includes(q) ||
           user.email?.toLowerCase().includes(q);
@@ -1060,7 +1062,7 @@ export class AdminUsersComponent implements OnInit, OnDestroy {
           (statusFilter === 'online' && user.isOnline) ||
           (statusFilter !== 'online' && user.status === statusFilter);
         return matchesSearch && matchesCompany && matchesStatus;
-      });
+      }));
     })
   );
 
