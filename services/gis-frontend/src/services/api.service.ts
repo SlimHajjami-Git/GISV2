@@ -959,6 +959,15 @@ export class ApiService {
     return this.http.get<any[]>(`${this.API_URL}/gps/devices/available`, { headers: this.getHeaders() });
   }
 
+  /**
+   * Console admin (fiche véhicule, point 4 du 06/11/2026) : boîtiers libres de la société DU
+   * VÉHICULE, par la route admin — l'intercepteur y pose la clé admin. La route client ci-dessus
+   * partait avec la clé de l'espace client : refusée en session admin, la liste restait vide.
+   */
+  getAdminAvailableGpsDevices(companyId: number): Observable<any[]> {
+    return this.http.get<any[]>(`${this.API_URL}/admin/gps-devices/available`, { params: { companyId } });
+  }
+
   getAllGpsDevices(): Observable<any[]> {
     return this.http.get<any[]>(`${this.API_URL}/gps/devices`, { headers: this.getHeaders() });
   }

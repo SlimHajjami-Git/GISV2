@@ -34,6 +34,15 @@ public class AdminGpsDevicesController : ControllerBase
         return Ok(await _mediator.Send(new GetAdminGpsDevicesQuery(companyId, unassignedOnly, search), ct));
     }
 
+    /// <summary>
+    /// Boîtiers libres de la société d'un véhicule, pour sa fiche dans la console (point 4 du
+    /// 06/11/2026 : la fiche appelait la route client, refusée). Ouverte à l'écran Véhicules d'un
+    /// administrateur restreint (AdminScreenAccess).
+    /// </summary>
+    [HttpGet("available")]
+    public async Task<ActionResult<List<AdminAvailableGpsDeviceDto>>> Available([FromQuery] int companyId, CancellationToken ct) =>
+        Ok(await _mediator.Send(new GetAdminAvailableGpsDevicesQuery(companyId), ct));
+
     /// <summary>Ce que la suppression emporterait, table par table, et ce qu'elle refuse.</summary>
     [HttpGet("{id:int}/deletion-impact")]
     public async Task<ActionResult<GpsDeviceDeletionImpactDto>> DeletionImpact(int id, CancellationToken ct)

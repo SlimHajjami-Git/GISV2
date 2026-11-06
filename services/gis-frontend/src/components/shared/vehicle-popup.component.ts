@@ -11,6 +11,7 @@ import { environment } from '../../environments/environment';
 import { fuelSensorModeForChosenDevice } from '../../admin/pages/vehicle-gps-save.helpers';
 import { rangerMarques } from '../../services/marques-courantes';
 import { typeDeLaListe } from '../../services/types-vehicule';
+import { Observable, of } from 'rxjs';
 
 interface Brand {
   id: number;
@@ -79,7 +80,8 @@ export interface CompanyOption {
                 <!-- trackBy obligatoire : sans lui, une liste qui change d'identité
                      détruit et recrée toutes les options, et le select retombe sur sa
                      première entrée en perdant le choix de l'utilisateur (29/09/2026). -->
-                <select id="companyId" name="companyId" [(ngModel)]="formData.companyId" required>
+                <!-- La liste des boîtiers libres suit la société choisie (console admin). -->
+                <select id="companyId" name="companyId" [ngModel]="formData.companyId" (ngModelChange)="formData.companyId = $event; onCompanyChange()" required>
                   <option [value]="null" disabled>-- Sélectionner une société --</option>
                   <option *ngFor="let company of companies; trackBy: suiviSociete" [value]="company.id">{{ company.name }}</option>
                 </select>
@@ -243,7 +245,7 @@ export interface CompanyOption {
                 <option [value]="null">-- Sélectionner un appareil --</option>
                 <option *ngFor="let device of availableGpsDevices" [value]="device.id">
                   {{ device.deviceUid }} {{ device.mat ? '(MAT: ' + device.mat + ')' : '' }}
-                  {{ device.lastCommunication ? '- Dernière comm: ' + formatDate(device.lastCommunication) : '- Jamais connecté' }}
+                  {{ device.actuel ? '- posé sur ce véhicule' : (device.lastCommunication ? '- Dernière comm: ' + formatDate(device.lastCommunication) : '- Jamais connecté') }}
                 </option>
               </select>
               <p class="help-text" *ngIf="availableGpsDevices.length === 0">
@@ -1345,9 +1347,8 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   ngOnInit() {
     this.loadBrands();
     this.loadFuelTypes();
-    if (this.isSystemAdminContext) {
-      this.loadAvailableDevices();
-    }
+    // Console admin : les boîtiers libres se chargent à l'ouverture (ngOnChanges), une fois la
+    // société du véhicule connue — plus ici, où elle ne l'est pas encore.
     if (this.vehicle) {
       this.hydrateFormFromVehicle(this.vehicle);
       this.contractSnapshot = this.contractKey();
@@ -1363,9 +1364,6 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   ngOnChanges(changes: SimpleChanges) {
     if (changes['isOpen'] && changes['isOpen'].currentValue) {
       this.loadFuelTypes();
-      if (this.isSystemAdminContext) {
-        this.loadAvailableDevices();
-      }
       this.resetScheduleState();
       if (this.vehicle) {
         this.hydrateFormFromVehicle(this.vehicle);
@@ -1385,6 +1383,10 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.loadBrands();
         this.resetForm();
         this.contractSnapshot = '';
+      }
+      // Console admin : boîtiers libres de la société du véhicule, une fois la fiche remplie.
+      if (this.isSystemAdminContext) {
+        this.loadAvailableDevices();
       }
     } else if (changes['isOpen'] && !changes['isOpen'].currentValue) {
       this.resetScheduleState();
@@ -1860,10 +1862,19 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
   }
 
   loadAvailableDevices() {
-    this.apiService.getAvailableGpsDevices().subscribe({
+    // Console admin (point 4, 06/11/2026) : la route ADMIN, pour la société DU VÉHICULE — la seule
+    // que l'enregistrement accepte pour un appareil choisi. La route client partait avec la clé
+    // de l'espace client : refusée en session admin, la liste restait toujours vide.
+    const companyId = Number(this.formData?.companyId);
+    const devices$: Observable<any[]> = !this.isSystemAdminContext
+      ? this.apiService.getAvailableGpsDevices()
+      : companyId > 0 ? this.apiService.getAdminAvailableGpsDevices(companyId) : of([]);
+    devices$.subscribe({
       next: (devices) => {
-        this.availableGpsDevices = devices;
-        if (devices.length === 0) {
+        this.availableGpsDevices = this.avecLAppareilActuel(devices);
+        // Rien à choisir : saisie d'un nouvel appareil — sauf pour un véhicule déjà équipé,
+        // dont l'appareil reste affiché.
+        if (devices.length === 0 && !this.formData?.gpsDeviceId) {
           this.gpsMode = 'new';
         }
       },
@@ -1872,6 +1883,39 @@ export class VehiclePopupComponent implements OnInit, OnChanges {
         this.availableGpsDevices = [];
       }
     });
+  }
+
+  /** Console admin : la société change, la liste des boîtiers libres suit. */
+  onCompanyChange(): void {
+    if (!this.isSystemAdminContext) return;
+    // Un appareil choisi dans la liste de l'ancienne société n'est plus valable (l'enregistrement
+    // le refuserait) ; celui déjà posé sur le véhicule, lui, reste.
+    const choisi = Number(this.formData.gpsDeviceId);
+    if (choisi && choisi !== Number((this.vehicle as any)?.gpsDeviceId)) {
+      this.formData.gpsDeviceId = undefined;
+      this.onExistingDeviceSelected();
+    }
+    this.loadAvailableDevices();
+  }
+
+  /**
+   * L'appareil déjà posé sur le véhicule n'est pas « libre » : absent de la liste, le choix restait
+   * vide à l'ouverture d'un véhicule équipé (recette du 06/11/2026). Il est remis en tête, marqué
+   * « posé sur ce véhicule » — tant que la fiche reste dans la société du véhicule.
+   */
+  private avecLAppareilActuel(devices: any[]): any[] {
+    const v: any = this.vehicle;
+    const actuelId = Number(v?.gpsDeviceId);
+    if (!actuelId || Number(this.formData?.companyId) !== Number(v?.companyId)
+        || devices.some(d => Number(d.id) === actuelId)) {
+      return devices;
+    }
+    const actuel = {
+      id: actuelId, deviceUid: v.gpsImei || `#${actuelId}`, mat: v.gpsMat,
+      simNumber: v.gpsSimNumber, simOperator: v.gpsSimOperator, fuelSensorMode: v.gpsFuelSensorMode,
+      actuel: true
+    };
+    return [actuel, ...devices];
   }
 
   onHasGpsChange() {

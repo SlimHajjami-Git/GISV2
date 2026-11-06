@@ -75,6 +75,55 @@ public class GetAdminGpsDevicesQueryHandler : IRequestHandler<GetAdminGpsDevices
     }
 }
 
+// ── Boîtiers libres d'une société : fiche véhicule de la console (point 4, 06/11/2026) ──
+
+/// <summary>
+/// Même forme que la liste de l'espace client (<c>GET /api/gps/devices/available</c>) : la fiche
+/// véhicule recopie l'IMEI, le MAT, la SIM et le mode capteur de l'appareil choisi.
+/// </summary>
+public record AdminAvailableGpsDeviceDto(
+    int Id, string DeviceUid, string? Label, string? SimNumber, string? SimOperator,
+    string? Brand, string? Model, string Status, DateTime? LastCommunication,
+    string? Mat, string FuelSensorMode);
+
+/// <summary>
+/// La fiche véhicule de la console appelait la liste de l'espace CLIENT, qui part avec la clé
+/// client : refusée en session admin (liste toujours vide), ou, si une session client traînait
+/// dans le navigateur, remplie avec le stock de la société de CE compte, quel que soit le
+/// véhicule. Ici : la société DU VÉHICULE, la seule que l'enregistrement accepte pour un appareil
+/// choisi (GpsDeviceResolver : « appartient à une autre société »). « Libre » comme côté
+/// client : statut « unassigned » (ou vide) et aucun véhicule rattaché.
+/// </summary>
+public record GetAdminAvailableGpsDevicesQuery(int CompanyId) : IRequest<List<AdminAvailableGpsDeviceDto>>;
+
+public class GetAdminAvailableGpsDevicesQueryHandler : IRequestHandler<GetAdminAvailableGpsDevicesQuery, List<AdminAvailableGpsDeviceDto>>
+{
+    private readonly IGisDbContext _context;
+    public GetAdminAvailableGpsDevicesQueryHandler(IGisDbContext context) => _context = context;
+
+    public async Task<List<AdminAvailableGpsDeviceDto>> Handle(GetAdminAvailableGpsDevicesQuery r, CancellationToken ct)
+    {
+        var libres = await _context.GpsDevices.AsNoTracking().IgnoreQueryFilters()
+            .Where(d => d.CompanyId == r.CompanyId
+                        && (d.Status == "unassigned" || d.Status == null)
+                        && !_context.Vehicles.Any(v => v.GpsDeviceId == d.Id))
+            .OrderByDescending(d => d.LastCommunication)
+            .Select(d => new AdminAvailableGpsDeviceDto(
+                d.Id, d.DeviceUid, d.Label, d.SimNumber, d.SimOperator, d.Brand, d.Model,
+                d.Status, d.LastCommunication, d.Mat, d.FuelSensorMode))
+            .ToListAsync(ct);
+
+        // Fiches « fantômes » (constat du 06/11/2026, 13 en production chez BELIVE) : l'ingestion
+        // créait une fiche quand un boîtier NEMS collait à son IMEI l'écho d'une commande d'heure
+        // (« 860141076681403at+cclk="26/10/25 »). Ce ne sont pas des boîtiers : jamais proposées.
+        // Un vrai identifiant n'a que des chiffres et des lettres (IMEI, ou MAT pour certains modèles).
+        return libres.Where(d => IdentifiantPropre(d.DeviceUid)).ToList();
+    }
+
+    private static bool IdentifiantPropre(string? uid) =>
+        !string.IsNullOrEmpty(uid) && uid.All(char.IsAsciiLetterOrDigit);
+}
+
 // ── Liste de blocage ──
 
 public record GpsDeviceBlocklistDto(

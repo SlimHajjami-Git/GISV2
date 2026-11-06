@@ -102,6 +102,8 @@ public static class AdminScreenAccess
         R("POST", "/api/admin/vehicles", Vehicles),
         R("PUT", $"/api/admin/vehicles/{Id}", Vehicles),
         R("POST", $"/api/admin/vehicles/{Id}/replace-device", Vehicles),
+        // Fiche véhicule : boîtiers libres de la société du véhicule (point 4 du 06/11/2026).
+        R("GET", "/api/admin/gps-devices/available", Vehicles),
 
         // Monitoring de la console : carte de toute la flotte et historique d'un véhicule.
         R("GET", $"/api/admin/vehicles(/with-positions|/{Id}/history)", Monitoring),

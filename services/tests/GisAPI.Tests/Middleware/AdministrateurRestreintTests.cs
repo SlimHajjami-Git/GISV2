@@ -29,6 +29,7 @@ public class AdministrateurRestreintTests
     [InlineData("POST", "/api/admin/users/5/reset-password")]
     [InlineData("POST", "/api/admin/vehicles")]
     [InlineData("POST", "/api/admin/vehicles/8/replace-device")]
+    [InlineData("GET", "/api/admin/gps-devices/available")]     // fiche véhicule : boîtiers libres
     [InlineData("POST", "/api/admin/fichiers")]
     [InlineData("GET", "/api/vehicles/with-positions")]
     [InlineData("POST", "/api/hubs/gps/negotiate")]
