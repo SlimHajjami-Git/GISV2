@@ -238,6 +238,17 @@ builder.Services.AddSingleton<GisAPI.Services.IGpsInterpolationService, GisAPI.S
 // HttpClient for health checks (GPS ingest, RabbitMQ, Frontend)
 builder.Services.AddHttpClient();
 
+// Paiement par carte des commandes d'abonnement, par ClicToPay (migration 067). Identifiants
+// marchand en variables d'environnement (ClicToPay__UserName, ClicToPay__Password,
+// ClicToPay__Enabled=true), jamais dans le dépôt ; sans eux, le paiement par carte est fermé.
+var clicToPayOptions = builder.Configuration.GetSection("ClicToPay").Get<GisAPI.Application.Features.Payments.ClicToPayOptions>()
+    ?? new GisAPI.Application.Features.Payments.ClicToPayOptions();
+builder.Services.AddSingleton(clicToPayOptions);
+builder.Services.AddHttpClient<GisAPI.Application.Features.Payments.IClicToPayClient, GisAPI.Services.ClicToPayClient>(
+    c => c.Timeout = TimeSpan.FromSeconds(25));
+builder.Services.AddScoped<GisAPI.Application.Features.Payments.OnlinePaymentProcessor>();
+builder.Services.AddHostedService<GisAPI.Services.OnlinePaymentReconciliationService>();
+
 // Rust command pusher — POST http://gps-ingest:3000/commands/push for
 // instant over-the-socket delivery of operator commands (immobilisation, go)
 builder.Services.AddScoped<IRustCommandPusher, GisAPI.Services.RustCommandPusher>();

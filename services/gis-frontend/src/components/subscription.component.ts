@@ -3,9 +3,11 @@ import { CommonModule } from '@angular/common';
 import { Subject, takeUntil } from 'rxjs';
 import { AppLayoutComponent } from './shared/app-layout.component';
 import { USER_PREF_PIPES } from '../pipes/user-preference-pipes';
-import { ApiService, SubscriptionOrder } from '../services/api.service';
+import { Router } from '@angular/router';
+import { ApiService, OnlinePaymentConfig, SubscriptionOrder } from '../services/api.service';
 import { AuthService } from '../services/auth.service';
 import { environment } from '../environments/environment';
+import { isClicToPayPage, pageViewFor, paymentErrorMessage } from './paiement.helpers';
 
 /** Cycles de facturation connus du serveur ; semiannual = 6 mois. */
 type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
@@ -13,12 +15,12 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
 /**
  * Abonnement & paiement.
  *
- * CE QUE CETTE PAGE PROMET — rien qu'elle ne puisse tenir. Le paiement en ligne
- * n'est branché sur AUCUN prestataire : le bouton est donc inactif et le dit. On
- * ne montre ni historique de facturation ni reçu, parce qu'aucune trace de
- * paiement n'existe en base (la société ne porte que son dernier règlement et le
- * montant du prochain). Un tableau vide « Historique » laisserait croire à une
- * fonctionnalité en panne plutôt qu'absente.
+ * CE QUE CETTE PAGE PROMET — rien qu'elle ne puisse tenir. Le paiement par carte
+ * (ClicToPay, migration 067) n'apparaît que si le serveur le déclare ouvert
+ * (/api/subscriptions/payment/config : identifiants marchand posés) ; sinon le
+ * règlement reste hors ligne et la page le dit. Le paiement par carte ne fait
+ * qu'envoyer le client sur la page ClicToPay : c'est le serveur qui vérifie le
+ * résultat et valide la commande (écran /paiement/retour).
  *
  * TOUT VIENT DU SERVEUR — le plan courant, l'échéance et le montant dû sortent de
  * /api/subscriptions/current ; la grille des offres de /api/subscriptions. Aucun
@@ -138,14 +140,33 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                     <strong>{{ pendingOrder.amount | appCurrency }}</strong>
                     <span class="order-date">passée le {{ pendingOrder.createdAt | date:'dd/MM/yyyy' }}</span>
                   </p>
-                  <p class="order-hint">
-                    Nous activerons votre abonnement dès réception du règlement, sous 24&nbsp;h ouvrées.
-                    Vous serez averti dans l'application.
-                  </p>
+                  @if (cardPaymentEnabled) {
+                    <p class="order-hint">
+                      Réglez-la par carte bancaire : votre abonnement est activé dès que la banque confirme le paiement.
+                      Vous pouvez aussi régler par virement, nous validons sous 24&nbsp;h ouvrées.
+                    </p>
+                  } @else {
+                    <p class="order-hint">
+                      Nous activerons votre abonnement dès réception du règlement, sous 24&nbsp;h ouvrées.
+                      Vous serez averti dans l'application.
+                    </p>
+                  }
                   <p class="order-hint">Pour changer de formule, choisissez-en une autre ci-dessous : elle remplacera cette commande.</p>
                 </div>
-                <button class="btn-cancel-order" [disabled]="busy" (click)="cancelPending()">Annuler</button>
+                <div class="order-buttons">
+                  @if (cardPaymentEnabled) {
+                    <button class="btn-pay" [disabled]="busy" (click)="payPending()">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                      {{ busy && paying ? 'Redirection…' : 'Payer par carte' }}
+                    </button>
+                  }
+                  <button class="btn-cancel-order" [disabled]="busy" (click)="cancelPending()">Annuler</button>
+                </div>
               </div>
+              @if (payError) { <p class="purchase-error">{{ payError }}</p> }
+              @if (cardPaymentEnabled && cardPayment?.testMode) {
+                <p class="test-note">Paiement en environnement de test ClicToPay : aucun débit réel.</p>
+              }
             </section>
           }
 
@@ -355,15 +376,33 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
                   </p>
                 }
                 <div class="purchase-actions">
-                  <button class="btn-plan buy" [disabled]="busy || selectionIsPending" (click)="confirmPurchase()">
-                    {{ busy ? 'Envoi…' : (pendingOrder ? 'Remplacer ma commande' : 'Confirmer ma commande') }}
-                  </button>
+                  @if (cardPaymentEnabled) {
+                    <!-- Commande (ou remplacement) PUIS page ClicToPay : le montant payé est
+                         celui que le serveur fige sur la commande, jamais celui de l'écran. -->
+                    <button class="btn-plan buy" [disabled]="busy || selectionIsPending" (click)="payNow()">
+                      {{ busy && paying ? 'Redirection vers le paiement…' : 'Payer par carte' }}
+                    </button>
+                    <button class="btn-transfer" [disabled]="busy || selectionIsPending" (click)="confirmPurchase()">
+                      {{ busy && !paying ? 'Envoi…' : (pendingOrder ? 'Remplacer, régler par virement' : 'Commander, régler par virement') }}
+                    </button>
+                  } @else {
+                    <button class="btn-plan buy" [disabled]="busy || selectionIsPending" (click)="confirmPurchase()">
+                      {{ busy ? 'Envoi…' : (pendingOrder ? 'Remplacer ma commande' : 'Confirmer ma commande') }}
+                    </button>
+                  }
                   <button class="btn-cancel-order" [disabled]="busy" (click)="purchasePlan = null">Retour</button>
                 </div>
-                <p class="order-hint">
-                  Après votre commande, nous vous contactons pour le règlement
-                  (virement ou autre) et activons l'abonnement dès réception.
-                </p>
+                @if (cardPaymentEnabled) {
+                  <p class="order-hint">
+                    Par carte, vous réglez sur la page sécurisée ClicToPay et l'abonnement est activé dès la
+                    confirmation de la banque. Par virement, nous l'activons à réception, sous 24&nbsp;h ouvrées.
+                  </p>
+                } @else {
+                  <p class="order-hint">
+                    Après votre commande, nous vous contactons pour le règlement
+                    (virement ou autre) et activons l'abonnement dès réception.
+                  </p>
+                }
                 @if (purchaseError) { <p class="purchase-error">{{ purchaseError }}</p> }
               </div>
             }
@@ -372,10 +411,17 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
               </svg>
-              <div>
-                <strong>Le règlement se fait hors ligne pour l'instant.</strong>
-                <p>Votre commande est enregistrée immédiatement&nbsp;; l'abonnement est activé dès réception du règlement, sous 24&nbsp;h ouvrées.</p>
-              </div>
+              @if (cardPaymentEnabled) {
+                <div>
+                  <strong>Paiement par carte bancaire sécurisé par ClicToPay (3-D Secure).</strong>
+                  <p>Vos données de carte sont saisies chez ClicToPay, jamais dans {{ brand }}. Le règlement par virement reste possible.</p>
+                </div>
+              } @else {
+                <div>
+                  <strong>Le règlement se fait hors ligne pour l'instant.</strong>
+                  <p>Votre commande est enregistrée immédiatement&nbsp;; l'abonnement est activé dès réception du règlement, sous 24&nbsp;h ouvrées.</p>
+                </div>
+              }
             </div>
           </section>
         }
@@ -484,6 +530,33 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
       color: #b91c1c; font-size: 13px; font-weight: 600; cursor: pointer;
     }
     .btn-cancel-order:disabled { opacity: .5; cursor: default; }
+    /* Paiement par carte (ClicToPay) sur la commande en attente. */
+    .order-buttons { margin-left: auto; display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; justify-content: flex-end; }
+    .order-buttons .btn-cancel-order { margin-left: 0; }
+    /* Commander et régler par virement : un moyen de paiement, pas une annulation (pas de rouge). */
+    .btn-transfer {
+      padding: 8px 16px; border-radius: 9px; background: transparent;
+      border: 1px solid var(--border-color, #e6eaf2); color: var(--text-primary, #0f172a);
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-transfer:hover:not(:disabled) { background: var(--bg-hover, #eef2f7); }
+    .btn-transfer:disabled { opacity: .5; cursor: default; }
+    .btn-pay {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 16px; border-radius: 9px; border: 1px solid #4f46e5;
+      background: #4f46e5; color: #fff; font-size: 13px; font-weight: 650; cursor: pointer; white-space: nowrap;
+    }
+    .btn-pay:hover:not(:disabled) { background: #4338ca; }
+    .btn-pay:disabled { opacity: .6; cursor: default; }
+    .btn-pay:focus-visible { outline: 3px solid rgba(79,70,229,.4); outline-offset: 2px; }
+    .test-note {
+      margin: 10px 0 0; padding: 6px 10px; border-radius: 8px; font-size: 12px;
+      color: #92400e; background: #fef3c7; border: 1px solid #fcd34d;
+    }
+    @media (max-width: 600px) {
+      .order-head { flex-wrap: wrap; }
+      .order-buttons { margin-left: 0; width: 100%; justify-content: flex-start; }
+    }
 
     .order-rejected {
       border-color: #fca5a5; font-size: 13.5px; color: var(--text-primary, #0f172a);
@@ -532,6 +605,8 @@ type BillingCycle = 'monthly' | 'quarterly' | 'semiannual' | 'yearly';
       color: #3730a3;
     }
     .notice strong { display: block; font-size: 13.5px; margin-bottom: 3px; }
+    /* Indigo foncé illisible sur le fond sombre : un indigo clair en thème sombre. */
+    :host-context([data-theme="dark"]) .notice { color: #c7d2fe; border-color: rgba(129,140,248,.35); }
     .notice p { margin: 0; font-size: 13px; color: var(--text-secondary, #64748b); line-height: 1.5; }
 
     @media (max-width: 720px) {
@@ -566,6 +641,13 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   busy = false;
   purchaseError: string | null = null;
 
+  // ── Paiement par carte (ClicToPay, migration 067) ──
+  /** Ouvert seulement si le serveur le déclare (identifiants marchand posés). */
+  cardPayment: OnlinePaymentConfig | null = null;
+  /** Le bouton occupé est celui du paiement (et non la commande par virement). */
+  paying = false;
+  payError: string | null = null;
+
   // Miroir de CreateSubscriptionOrderCommand.SelfPurchasablePlanCodes : seule
   // l'offre GPA (sans matériel) s'achète sans humain. Le serveur fait foi ;
   // ici on évite juste d'afficher un bouton qui échouera.
@@ -576,7 +658,8 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
   constructor(
     private apiService: ApiService,
     private authService: AuthService,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private router: Router
   ) {}
 
   ngOnInit(): void {
@@ -602,6 +685,87 @@ export class SubscriptionComponent implements OnInit, OnDestroy {
     });
 
     this.loadOrders();
+
+    // Paiement par carte : bouton affiché seulement si le serveur l'a ouvert. En cas d'échec
+    // de la lecture, il reste masqué : le règlement par virement fonctionne toujours.
+    this.apiService.getPaymentConfig().pipe(takeUntil(this.destroy$)).subscribe({
+      next: (cfg) => { this.cardPayment = cfg; this.cdr.detectChanges(); },
+      error: () => { this.cardPayment = null; }
+    });
+  }
+
+  get cardPaymentEnabled(): boolean {
+    return !!this.cardPayment?.enabled;
+  }
+
+  /** Payer par carte la commande déjà en attente. */
+  payPending(): void {
+    const order = this.pendingOrder;
+    if (!order || this.busy) return;
+    this.busy = true;
+    this.paying = true;
+    this.payError = null;
+    this.startCardPayment(order.id, (msg) => { this.payError = msg; });
+  }
+
+  /**
+   * Panneau d'achat : commander (ou remplacer la commande en attente) PUIS payer par carte.
+   * La commande est créée d'abord : c'est elle qui fige le montant que ClicToPay débitera.
+   */
+  payNow(): void {
+    if (!this.purchasePlan || this.busy) return;
+    this.busy = true;
+    this.paying = true;
+    this.purchaseError = null;
+    this.apiService.createSubscriptionOrder(this.purchasePlan.id, this.selectedCycle, this.pendingOrder?.id)
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: (order) => this.startCardPayment(order.id, (msg) => {
+          // La commande existe : le client la retrouve en attente et peut payer plus tard.
+          this.purchasePlan = null;
+          this.payError = msg;
+          this.loadOrders();
+        }),
+        error: (err) => {
+          this.busy = false;
+          this.paying = false;
+          this.purchaseError = paymentErrorMessage(err, 'La commande n\'a pas pu être enregistrée. Réessayez ou contactez-nous.');
+          this.loadOrders();
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  /** Demande la page ClicToPay pour la commande, puis y envoie le client. */
+  private startCardPayment(orderId: number, onError: (message: string) => void): void {
+    this.apiService.paySubscriptionOrder(orderId, pageViewFor(window.innerWidth))
+      .pipe(takeUntil(this.destroy$)).subscribe({
+        next: (start) => {
+          // Une tentative précédente était déjà payée (autre onglet) : le résultat, pas une 2e page.
+          if (start.alreadyPaid) {
+            this.router.navigate(['/paiement/retour'], { queryParams: { ref: start.reference } });
+            return;
+          }
+          if (!isClicToPayPage(start.formUrl)) {
+            this.busy = false;
+            this.paying = false;
+            onError('Le service de paiement a renvoyé une adresse inattendue. Contactez-nous.');
+            this.cdr.detectChanges();
+            return;
+          }
+          this.redirectTo(start.formUrl as string);
+        },
+        error: (err) => {
+          this.busy = false;
+          this.paying = false;
+          onError(paymentErrorMessage(err, 'Le paiement n\'a pas pu être préparé. Réessayez ou contactez-nous.'));
+          this.cdr.detectChanges();
+        }
+      });
+  }
+
+  /** Quitte Calypso pour la page de paiement ClicToPay (isolé pour les tests). */
+  redirectTo(url: string): void {
+    window.location.assign(url);
   }
 
   private loadOrders(): void {

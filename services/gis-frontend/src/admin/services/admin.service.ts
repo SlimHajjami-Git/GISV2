@@ -4,6 +4,39 @@ import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { catchError, map, tap } from 'rxjs/operators';
 import { estServeurIndisponible } from '../../services/auth.service';
 import { environment } from '../../environments/environment';
+import { OnlinePaymentResult, OnlinePaymentStart, OnlinePaymentStatus } from '../../services/api.service';
+
+/** Ce que le serveur a de ClicToPay, sans aucun identifiant. */
+export interface ClicToPayStatus {
+  configured: boolean;
+  testEnvironment: boolean;
+  host: string | null;
+  clientCheckoutEnabled: boolean;
+  pilotCompanyIds: string | null;
+  mobilePageView: boolean;
+  minAmount: number;
+  maxAmount: number;
+}
+
+/** Une tentative de paiement, toutes sociétés (console). kind : subscription | admin_test. */
+export interface AdminOnlinePayment {
+  id: number;
+  reference: string;
+  kind: 'subscription' | 'admin_test';
+  companyId: number;
+  companyName: string;
+  orderId: number | null;
+  amount: number;
+  currency: string;
+  status: OnlinePaymentStatus;
+  providerOrderStatus: number | null;
+  actionDescription: string | null;
+  cardPanMasked: string | null;
+  approvalCode: string | null;
+  note: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
 
 export interface AdminUser {
   id: string;
@@ -758,6 +791,22 @@ export class AdminService {
   setApiAccess(id: number, enabled: boolean): Observable<{ apiAccessEnabled: boolean }> {
     return this.http.put<{ apiAccessEnabled: boolean }>(
       `${this.apiUrl}/admin/company/${id}/api-access`, { enabled }, { headers: this.getHeaders() });
+  }
+
+  // ── Paiement ClicToPay (migration 067) : test depuis la console + suivi des tentatives ──
+  getClicToPayStatus(): Observable<ClicToPayStatus> {
+    return this.http.get<ClicToPayStatus>(`${this.apiUrl}/admin/payments/clictopay/status`, { headers: this.getHeaders() });
+  }
+  startClicToPayTest(amount: number, currency: string): Observable<OnlinePaymentStart> {
+    return this.http.post<OnlinePaymentStart>(`${this.apiUrl}/admin/payments/clictopay/test`, { amount, currency }, { headers: this.getHeaders() });
+  }
+  verifyAdminPayment(reference: string): Observable<OnlinePaymentResult> {
+    return this.http.post<OnlinePaymentResult>(
+      `${this.apiUrl}/admin/payments/${encodeURIComponent(reference)}/verify`, {}, { headers: this.getHeaders() });
+  }
+  getAdminPayments(limit = 50, kind?: 'subscription' | 'admin_test'): Observable<AdminOnlinePayment[]> {
+    const q = `limit=${limit}` + (kind ? `&kind=${kind}` : '');
+    return this.http.get<AdminOnlinePayment[]>(`${this.apiUrl}/admin/payments?${q}`, { headers: this.getHeaders() });
   }
 
   setAutoSuspend(id: number, enabled: boolean): Observable<{ autoSuspendEnabled: boolean }> {

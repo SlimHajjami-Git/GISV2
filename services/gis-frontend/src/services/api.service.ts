@@ -1423,6 +1423,27 @@ export class ApiService {
     return this.http.delete<any>(`${this.API_URL}/subscriptions/orders/${orderId}`, { headers: this.getHeaders() });
   }
 
+  // ==================== PAIEMENT PAR CARTE (ClicToPay, migration 067) ====================
+  // Aucun montant ne part de l'écran : celui de la commande, figé côté serveur. Le retour du
+  // client sur /paiement/retour ne prouve rien ; c'est verifyOnlinePayment qui fait foi.
+
+  getPaymentConfig(): Observable<OnlinePaymentConfig> {
+    return this.http.get<OnlinePaymentConfig>(`${this.API_URL}/subscriptions/payment/config`, { headers: this.getHeaders() });
+  }
+
+  paySubscriptionOrder(orderId: number, pageView: 'DESKTOP' | 'MOBILE'): Observable<OnlinePaymentStart> {
+    return this.http.post<OnlinePaymentStart>(`${this.API_URL}/subscriptions/orders/${orderId}/pay`, { pageView }, { headers: this.getHeaders() });
+  }
+
+  verifyOnlinePayment(reference: string): Observable<OnlinePaymentResult> {
+    return this.http.post<OnlinePaymentResult>(
+      `${this.API_URL}/subscriptions/payments/${encodeURIComponent(reference)}/verify`, {}, { headers: this.getHeaders() });
+  }
+
+  getMyOnlinePayments(): Observable<OnlinePaymentItem[]> {
+    return this.http.get<OnlinePaymentItem[]>(`${this.API_URL}/subscriptions/payments/mine`, { headers: this.getHeaders() });
+  }
+
   // upgradeSubscription() supprimée en même temps que l'endpoint serveur
   // POST /api/subscriptions/upgrade : il changeait le plan et repoussait
   // l'expiration sans contrôle de rôle ni preuve de paiement. Elle n'était
@@ -4822,6 +4843,54 @@ export interface CreateFuelEntryRequest {
 }
 
 /** Une commande d'abonnement du libre-service, telle que le serveur la renvoie. */
+/** Le paiement par carte est-il ouvert sur ce déploiement ? */
+export interface OnlinePaymentConfig {
+  enabled: boolean;
+  provider: string;
+  testMode: boolean;
+}
+
+/** Préparation d'un paiement : la page ClicToPay où envoyer le client (null si déjà payé). */
+export interface OnlinePaymentStart {
+  paymentId: number;
+  reference: string;
+  formUrl: string | null;
+  alreadyPaid: boolean;
+  testMode: boolean;
+}
+
+/** pending | paid | failed | error | expired | anomaly */
+export type OnlinePaymentStatus = 'pending' | 'paid' | 'failed' | 'error' | 'expired' | 'anomaly';
+
+/** Résultat VÉRIFIÉ auprès de ClicToPay (écran de retour). */
+export interface OnlinePaymentResult {
+  reference: string;
+  status: OnlinePaymentStatus;
+  message: string;
+  /** null pour un paiement de test de la console admin. */
+  orderId: number | null;
+  amount: number;
+  currency: string;
+  cardPanMasked: string | null;
+  approvalCode: string | null;
+  paidAt: string | null;
+  orderConfirmed: boolean;
+  subscriptionExpiresAt: string | null;
+  testMode: boolean;
+}
+
+export interface OnlinePaymentItem {
+  id: number;
+  reference: string;
+  orderId: number;
+  amount: number;
+  currency: string;
+  status: OnlinePaymentStatus;
+  cardPanMasked: string | null;
+  createdAt: string;
+  paidAt: string | null;
+}
+
 export interface SubscriptionOrder {
   id: number;
   companyId: number;

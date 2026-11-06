@@ -362,7 +362,8 @@ public class GetSubscriptionOrdersQueryHandler
 /// de paiement confirmera par webhook au lieu de l'opérateur ; ce chemin ne
 /// bougera pas.
 /// </summary>
-public record ConfirmSubscriptionOrderCommand(int OrderId) : ICommand<SubscriptionOrderDto>;
+/// <param name="Note">Trace posée sur la commande (paiement en ligne : sa référence) ; null en validation manuelle.</param>
+public record ConfirmSubscriptionOrderCommand(int OrderId, string? Note = null) : ICommand<SubscriptionOrderDto>;
 
 public class ConfirmSubscriptionOrderCommandHandler
     : IRequestHandler<ConfirmSubscriptionOrderCommand, SubscriptionOrderDto>
@@ -411,7 +412,7 @@ public class ConfirmSubscriptionOrderCommandHandler
             await using var tx = await _context.Database.BeginTransactionAsync(ct);
             var now = DateTime.UtcNow;
             if (!await SubscriptionOrderTransitions.TryLeavePendingAsync(_context, current.Id, null,
-                    "confirmed", null, _tenant.UserId, now, ct))
+                    "confirmed", request.Note, _tenant.UserId, now, ct))
             {
                 await tx.RollbackAsync(ct);
                 var status = await SubscriptionOrderTransitions.StatusAsync(_context, current.Id, ct);
@@ -427,6 +428,7 @@ public class ConfirmSubscriptionOrderCommandHandler
             current.ProcessedAt = now;
             current.ProcessedByUserId = _tenant.UserId;
             current.UpdatedAt = now;
+            if (request.Note != null) current.Note = request.Note;
             _logger.LogInformation(
                 "Commande #{OrderId} confirmée : société {CompanyId}, plan {Plan}, {Amount}",
                 current.Id, current.CompanyId, current.SubscriptionType?.Code, current.Amount);

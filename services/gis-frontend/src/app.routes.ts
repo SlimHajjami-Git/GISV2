@@ -40,6 +40,7 @@ import { CarburantComponent } from './components/carburant.component';
 import { ToursComponent } from './components/tours.component';
 import { DeviceCheckComponent } from './components/device-check.component';
 import { SubscriptionBlockedComponent } from './components/subscription-blocked.component';
+import { PaymentReturnComponent } from './components/payment-return.component';
 import { SecuriteComponent } from './components/securite.component';
 import { adminRoutes } from './admin/admin.routes';
 import { AuthGuard } from './guards/auth.guard';
@@ -144,6 +145,9 @@ export const routes: Routes = [
   { path: 'device-check', component: DeviceCheckComponent },
   // Écran pleine page hors layout : abonnement de la société suspendu/expiré.
   { path: 'abonnement-suspendu', component: SubscriptionBlockedComponent },
+  // Retour de ClicToPay (migration 067) : pleine page, AuthGuard seul. Une société bloquée y revient
+  // après avoir payé ; c'est la vérification serveur, pas l'arrivée ici, qui valide la commande.
+  { path: 'paiement/retour', component: PaymentReturnComponent, canActivate: [AuthGuard] },
   { path: 'politique-de-confidentialite', component: PrivacyPolicyComponent },
   { path: 'privacy-policy', redirectTo: 'politique-de-confidentialite', pathMatch: 'full' },
   // Cible du QR "Partager la position" du monitoring: tente d'ouvrir l'appli

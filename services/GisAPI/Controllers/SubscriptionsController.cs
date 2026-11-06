@@ -179,6 +179,54 @@ public class SubscriptionsController : ControllerBase
         return Ok(new { message = "Commande annulée." });
     }
 
+    // ── Paiement par carte (ClicToPay, migration 067) ──
+    //
+    // Sous /api/subscriptions : joignable par une société bloquée, comme les commandes
+    // (SubscriptionExpirationMiddleware). Payer engage la société : administrateur seulement.
+    // Vérifier un retour ne fait que lire le résultat chez ClicToPay : tout compte de la société.
+
+    /// <summary>Le paiement par carte est-il ouvert sur ce déploiement ? (l'écran en dépend)</summary>
+    [HttpGet("payment/config")]
+    public ActionResult GetPaymentConfig(
+        [FromServices] GisAPI.Application.Features.Payments.ClicToPayOptions options)
+    {
+        // Sociétés pilotes (ClicToPay__PilotCompanyIds) : les autres ne voient pas le bouton.
+        var enabled = options.IsEnabledFor(GetCompanyId());
+        return Ok(new
+        {
+            enabled,
+            provider = "clictopay",
+            testMode = enabled && options.IsTestEnvironment
+        });
+    }
+
+    /// <summary>Prépare le paiement d'une commande en attente : renvoie la page ClicToPay.</summary>
+    [HttpPost("orders/{id}/pay")]
+    [RequireCompanyAdmin]
+    public async Task<ActionResult> PayOrder(
+        int id, [FromBody] PayOrderRequest? request, [FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Payments.StartSubscriptionOrderPaymentCommand(id, request?.PageView));
+        Response.Headers.CacheControl = "no-store";
+        return Ok(result);
+    }
+
+    /// <summary>Vérifie auprès de ClicToPay le résultat d'un paiement (écran de retour).</summary>
+    [HttpPost("payments/{reference}/verify")]
+    public async Task<ActionResult> VerifyPayment(string reference, [FromServices] MediatR.IMediator mediator)
+    {
+        var result = await mediator.Send(
+            new GisAPI.Application.Features.Payments.VerifyOnlinePaymentCommand(reference));
+        Response.Headers.CacheControl = "no-store";
+        return Ok(result);
+    }
+
+    /// <summary>Les dernières tentatives de paiement de ma société.</summary>
+    [HttpGet("payments/mine")]
+    public async Task<ActionResult> GetMyPayments([FromServices] MediatR.IMediator mediator) =>
+        Ok(await mediator.Send(new GisAPI.Application.Features.Payments.GetMyOnlinePaymentsQuery()));
+
     // SUPPRIMÉ — POST /api/subscriptions/upgrade
     //
     // Cette action changeait le plan de la société et repoussait la date
@@ -200,3 +248,6 @@ public class SubscriptionsController : ControllerBase
 
 /// <summary>Corps de commande : AUCUN montant — il est calculé côté serveur.</summary>
 public record CreateOrderRequest(int SubscriptionTypeId, string BillingCycle, int? ReplaceOrderId = null);
+
+/// <summary>Paiement par carte : AUCUN montant — celui de la commande, figé côté serveur.</summary>
+public record PayOrderRequest(string? PageView);

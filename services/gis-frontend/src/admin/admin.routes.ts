@@ -22,6 +22,7 @@ import { AdminAutoRecoveryComponent } from './pages/admin-auto-recovery.componen
 import { AdminDatabaseComponent } from './pages/admin-database.component';
 import { AdminDeviceCommandsComponent } from './pages/admin-device-commands.component';
 import { AdminGpsDevicesComponent } from './pages/admin-gps-devices.component';
+import { AdminPaiementTestComponent } from './pages/admin-paiement-test.component';
 import { AdminGuard } from './guards/admin.guard';
 
 export const adminRoutes: Routes = [
@@ -52,4 +53,6 @@ export const adminRoutes: Routes = [
   { path: 'auto-recovery', component: AdminAutoRecoveryComponent, canActivate: [AdminGuard] },
   { path: 'database', component: AdminDatabaseComponent, canActivate: [AdminGuard] },
   { path: 'device-commands', component: AdminDeviceCommandsComponent, canActivate: [AdminGuard] },
+  // Éprouver ClicToPay depuis la console (migration 067) ; ClicToPay revient ici avec ?ref=…
+  { path: 'paiement-test', component: AdminPaiementTestComponent, canActivate: [AdminGuard] },
 ];

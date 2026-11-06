@@ -15,7 +15,8 @@ describe('Écran Abonnement — changer de formule remplace la commande en atten
 
   const ecran = () => {
     const api: any = { createSubscriptionOrder: jest.fn(() => of({})), getMySubscriptionOrders: jest.fn(() => of([])) };
-    const c = new SubscriptionComponent(api, { getCurrentUserSync: () => null } as any, { detectChanges: () => {} } as any);
+    const c = new SubscriptionComponent(api, { getCurrentUserSync: () => null } as any, { detectChanges: () => {} } as any,
+      { navigate: jest.fn() } as any);
     c.orders = [enAttente];
     return { c, api };
   };
