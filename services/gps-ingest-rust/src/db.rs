@@ -347,6 +347,14 @@ impl Database {
             .trim()
             .to_string();
 
+        // Jamais de fiche pour un identifiant qui n'en est pas un (06/11/2026) : un IMEI abîmé
+        // (« 860141076681403at+cclk="26/10/25 ») créait une fiche fantôme chez BELIVE, qui captait
+        // les positions du vrai véhicule. Le lecteur de trame (hh.rs) ramène l'IMEI à ses
+        // chiffres ; ce garde-fou couvre tout autre chemin.
+        if imei.is_empty() || !imei.chars().all(|c| c.is_ascii_alphanumeric()) {
+            anyhow::bail!("info frame identifier is not a device id: {imei:?}");
+        }
+
         let firmware = info
             .firmware_version
             .trim()

@@ -34,6 +34,23 @@ pub fn is_system_frame(payload: &str) -> bool {
     payload.starts_with("HH07") || payload.starts_with("AA07")
 }
 
+/// IMEI lu après « IMEI: » dans une trame d'identification : les chiffres du début, 14 à 17 (un
+/// IMEI en fait 15), comme `extract_imei` dans transport.rs.
+///
+/// Constat du 06/11/2026 : des boîtiers NEMS collent à leur IMEI l'écho d'une commande de
+/// réglage d'heure (« IMEI:860141076681403at+cclk="26/10/25,… »). Tout le texte jusqu'à la
+/// virgule était pris pour l'IMEI : l'ingestion créait une fiche « fantôme » chez BELIVE, et les
+/// positions de la connexion s'y rangeaient au lieu du vrai véhicule (13 fiches en production,
+/// 140 positions manquantes à l'historique de 5 véhicules Hertz).
+fn imei_de_la_trame(value: &str) -> Option<String> {
+    let chiffres: String = value.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+    if (14..=17).contains(&chiffres.len()) {
+        Some(chiffres)
+    } else {
+        None
+    }
+}
+
 /// Parses HH00/AA00 connect frames or HH01/AA01 info frames (firmware/ICC/IMEI).
 /// Also extracts MAT prefix if present (e.g., "NR08G0663 AA00...")
 pub fn parse_info_frame(payload: &str) -> Result<HhInfoFrame> {
@@ -75,10 +92,7 @@ pub fn parse_info_frame(payload: &str) -> Result<HhInfoFrame> {
                 icc_id = Some(trimmed.to_string());
             }
         } else if let Some(value) = part.strip_prefix("IMEI:") {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                imei = Some(trimmed.to_string());
-            }
+            imei = imei_de_la_trame(value);
         }
     }
 
@@ -112,10 +126,7 @@ fn parse_connect_frame_with_mat(payload: &str, mat: Option<String>) -> Result<Hh
                 icc_id = Some(trimmed.to_string());
             }
         } else if let Some(value) = part.strip_prefix("IMEI:") {
-            let trimmed = value.trim();
-            if !trimmed.is_empty() {
-                imei = Some(trimmed.to_string());
-            }
+            imei = imei_de_la_trame(value);
         }
     }
 
@@ -455,6 +466,36 @@ mod tests {
         assert_eq!(info.firmware_version, "1.0.103R10");
         assert_eq!(info.icc_id.as_deref(), Some("8921602050440128136F"));
         assert_eq!(info.imei.as_deref(), Some("861001002935274"));
+    }
+
+    // ==================== IMEI ABÎMÉ (constat du 06/11/2026) ====================
+    // L'écho d'une commande de réglage d'heure collé à l'IMEI créait une fiche « fantôme ».
+
+    #[test]
+    fn imei_suivi_de_l_echo_d_une_commande_d_heure_est_ramene_a_ses_chiffres() {
+        // La virgule de l'heure coupe le champ : l'ancien code lisait « 860141076681403at+cclk="26/10/25 ».
+        let payload = "HH011.0.103R10, ICC:8921602050440128136F, IMEI:860141076681403at+cclk=\"26/10/25,14:53:00+04\"";
+        let info = parse_info_frame(payload).expect("info frame should parse");
+        assert_eq!(info.imei.as_deref(), Some("860141076681403"));
+    }
+
+    #[test]
+    fn trame_de_connexion_avec_imei_abime_garde_le_vrai_imei_et_le_mat() {
+        let payload = "NR08G0849 AA00123634281125@25/11/28,12:36:31+00 ,ICC:89216020803464581196F, IMEI:860141076681403at+cclk=\"26/10/25";
+        let info = parse_info_frame(payload).expect("connect frame should parse");
+        assert_eq!(info.imei.as_deref(), Some("860141076681403"));
+        assert_eq!(info.mat.as_deref(), Some("NR08G0849"));
+    }
+
+    #[test]
+    fn un_texte_qui_ne_commence_pas_par_un_imei_n_est_pas_un_imei() {
+        let info = parse_info_frame("HH011.0.103R10, ICC:8921602050440128136F, IMEI:at+cclk=\"26/10/25")
+            .expect("info frame should parse");
+        assert!(info.imei.is_none(), "ni fiche ni connexion pour un IMEI absent");
+        assert!(
+            parse_info_frame("AA00123634281125@25/11/28,12:36:31+00 ,ICC:89216020803464581196F, IMEI:12345").is_err(),
+            "une trame de connexion sans IMEI valable est refusée"
+        );
     }
 
     // ==================== REAL PRODUCTION FRAMES ====================
