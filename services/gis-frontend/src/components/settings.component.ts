@@ -243,16 +243,6 @@ import { AppLayoutComponent } from './shared/app-layout.component';
                 </div>
                 <div class="setting-item">
                   <div class="setting-info">
-                    <span class="setting-label">Afficher les noms des véhicules</span>
-                    <span class="setting-desc">Labels sur les marqueurs de la carte</span>
-                  </div>
-                  <label class="toggle">
-                    <input type="checkbox" [(ngModel)]="settings.display.showVehicleLabels">
-                    <span class="slider"></span>
-                  </label>
-                </div>
-                <div class="setting-item">
-                  <div class="setting-info">
                     <span class="setting-label">Clustering des véhicules</span>
                     <span class="setting-desc">Regrouper les véhicules proches sur la carte</span>
                   </div>

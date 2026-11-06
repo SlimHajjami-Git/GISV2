@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { decocherNouveauxVehicules, replierNouvellesSocietes } from './monitoring-visibilite';
 import { ApiService } from '../services/api.service';
 import { SignalRService, PositionUpdate } from '../services/signalr.service';
 import { GeocodingService } from '../services/geocoding.service';
@@ -36,7 +37,11 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
 
   // Company-grouped "layers" panel — show/hide vehicles by société or individually.
   hiddenVehicleIds = new Set<string>();
+  /** Console admin : véhicules déjà vus, pour ne décocher que les nouveaux (monitoring-visibilite.ts). */
+  private knownVehicleIds = new Set<string>();
   collapsedCompanies = new Set<string>();
+  /** Console admin : sociétés déjà vues, pour ne replier que les nouvelles (monitoring-visibilite.ts). */
+  private knownCompanyKeys = new Set<string>();
   showLayersPanel = false;
   vehicleGroups: { key: string; name: string; vehicles: any[] }[] = [];
 
@@ -222,6 +227,10 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
       this.router.navigate(['/login']);
       return;
     }
+
+    // Console admin : la liste par société s'ouvre d'emblée, puisque tout y arrive décoché
+    // (sinon la carte vide resterait inexpliquée).
+    if (this.embedded) this.showLayersPanel = true;
 
     // Calypso 9 p5 — pick up the operator's persisted map style before the
     // map is initialised so the first tile layer matches their preference.
@@ -749,26 +758,13 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   /**
-   * Bind (or unbind) a permanent tooltip showing the vehicle's plate/name.
-   * Called on first marker creation and again whenever the operator flips
-   * "Afficher les noms des véhicules" in /settings.
+   * Plus d'étiquette sombre au-dessus du véhicule (Karim, 05/11/2026) : la plaque est déjà
+   * écrite sous l'icône (createVehicleIcon) et apparaissait donc deux fois. L'option
+   * « Afficher les noms des véhicules » a été retirée des Paramètres ; on retire ici
+   * l'étiquette des comptes qui l'avaient activée (c'était le réglage par défaut).
    */
-  private applyVehicleLabel(marker: L.Marker, vehicle: any): void {
-    const show = this.userPrefs.current.showVehicleLabels;
-    if (!show) {
-      marker.unbindTooltip();
-      return;
-    }
-    const label = vehicle?.plate || vehicle?.name || '';
-    if (!label) return;
-    // Re-binding overrides the previous tooltip, no need to unbind first.
-    marker.bindTooltip(label, {
-      permanent: true,
-      direction: 'top',
-      offset: [0, -28],
-      className: 'vehicle-label-tooltip',
-      interactive: false,
-    });
+  private applyVehicleLabel(marker: L.Marker, _vehicle: any): void {
+    marker.unbindTooltip();
   }
 
   /** Iterate over every existing marker and (re)apply the label tooltip. */
@@ -1013,6 +1009,9 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
             const cmp = nameA.localeCompare(nameB, 'fr', { numeric: true });
             return cmp !== 0 ? cmp : (a.id || 0) - (b.id || 0);
           });
+
+          // Console admin : les véhicules jamais vus arrivent décochés (carte vide au départ).
+          if (this.embedded) decocherNouveauxVehicules(mappedVehicles, this.knownVehicleIds, this.hiddenVehicleIds);
 
           // Assign to trigger change detection
           this.vehicles = [...mappedVehicles];
@@ -1372,10 +1371,16 @@ export class MonitoringComponent implements OnInit, AfterViewInit, OnDestroy {
     }
     this.vehicleGroups = Array.from(groups.values())
       .sort((a, b) => a.name.localeCompare(b.name, 'fr', { numeric: true }));
+    // Console admin : les sociétés arrivent repliées.
+    if (this.embedded) replierNouvellesSocietes(this.vehicleGroups.map(g => g.key), this.knownCompanyKeys, this.collapsedCompanies);
   }
 
   toggleLayersPanel(): void { this.showLayersPanel = !this.showLayersPanel; }
   trackByGroupKey(_i: number, g: { key: string }): string { return g.key; }
+  /** Société dépliée ? Dans la console admin, une recherche ouvre les sociétés pour montrer les véhicules trouvés. */
+  isCompanyExpanded(key: string): boolean {
+    return !this.collapsedCompanies.has(key) || (this.embedded && !!this.searchQuery?.trim());
+  }
   toggleCompanyCollapsed(key: string): void {
     if (this.collapsedCompanies.has(key)) this.collapsedCompanies.delete(key);
     else this.collapsedCompanies.add(key);
