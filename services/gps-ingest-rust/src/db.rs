@@ -46,6 +46,8 @@ pub struct Database {
     /// IMEI supprimés par l'administration (table gps_device_blocklist, migration 057) :
     /// instant du dernier contrôle, pour ne pas relire la base à chaque trame.
     blocked_cache: Mutex<HashMap<String, Instant>>,
+    /// device_id -> (données CAN non fiables ?, instant du dernier contrôle) — migration 068.
+    fms_untrusted_cache: Mutex<HashMap<i32, (bool, Instant)>>,
 }
 
 pub struct LastKnownPosition {
@@ -617,6 +619,37 @@ impl TelemetryStore for Database {
         .await?;
 
         Ok(row.map(|r| r.get::<i32, _>("id")))
+    }
+
+    /// Drapeau gps_devices.fms_untrusted (migration 068, incident NEMS L du 09/11/2026), relu
+    /// au plus toutes les FMS_UNTRUSTED_TTL : un boîtier émet toutes les 30 s, on ne relit pas
+    /// la base à chaque trame. Lever ou baisser le drapeau prend donc effet sous 5 minutes.
+    /// Colonne absente ou base indisponible : faux (on ne vide pas les trames à l'aveugle).
+    async fn is_fms_untrusted(&self, device_id: i32) -> Result<bool> {
+        const FMS_UNTRUSTED_TTL: Duration = Duration::from_secs(300);
+        {
+            let cache = self.fms_untrusted_cache.lock().unwrap();
+            if let Some((flag, seen)) = cache.get(&device_id) {
+                if seen.elapsed() < FMS_UNTRUSTED_TTL {
+                    return Ok(*flag);
+                }
+            }
+        }
+
+        let flag = match sqlx::query_scalar::<_, bool>("SELECT fms_untrusted FROM gps_devices WHERE id = $1")
+            .bind(device_id)
+            .fetch_optional(&self.pool)
+            .await
+        {
+            Ok(row) => row.unwrap_or(false),
+            Err(e) => {
+                tracing::warn!(device_id, error = %e, "fms_untrusted lookup failed; CAN data kept");
+                false
+            }
+        };
+
+        self.fms_untrusted_cache.lock().unwrap().insert(device_id, (flag, Instant::now()));
+        Ok(flag)
     }
 
     async fn get_device_mat(&self, device_id: i32) -> Result<Option<String>> {
@@ -1337,6 +1370,7 @@ impl Database {
             last_position_cache: Mutex::new(HashMap::new()),
             odometer_reject_tracker: Mutex::new(HashMap::new()),
             blocked_cache: Mutex::new(HashMap::new()),
+            fms_untrusted_cache: Mutex::new(HashMap::new()),
         }
     }
 

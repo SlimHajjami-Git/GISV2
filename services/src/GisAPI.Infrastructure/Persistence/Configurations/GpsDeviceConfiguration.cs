@@ -28,6 +28,9 @@ public class GpsDeviceConfiguration : IEntityTypeConfiguration<GpsDevice>
         builder.Property(e => e.LastVoltageHealthAlertAt).HasColumnName("last_voltage_health_alert_at");
         builder.Property(e => e.LastOfflineAlertAt).HasColumnName("last_offline_alert_at");
         builder.Property(e => e.VoltageSensorReliable).HasColumnName("voltage_sensor_reliable");
+        builder.Property(e => e.FmsUntrusted).HasColumnName("fms_untrusted");
+        builder.Property(e => e.FmsUntrustedReason).HasColumnName("fms_untrusted_reason").HasMaxLength(256);
+        builder.Property(e => e.FmsUntrustedAt).HasColumnName("fms_untrusted_at");
         builder.Property(e => e.VoltageSensorCheckedAt).HasColumnName("voltage_sensor_checked_at");
         builder.Property(e => e.BatteryStartRaw).HasColumnName("battery_start_raw");
         builder.Property(e => e.BatteryStartAt).HasColumnName("battery_start_at");

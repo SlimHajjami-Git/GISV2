@@ -102,6 +102,16 @@ public class GpsDevice : TenantEntity
     /// </summary>
     public bool? VoltageSensorReliable { get; set; }
 
+    /// <summary>
+    /// Données CAN (compteur, carburant, régime) NON FIABLES pour ce boîtier (migration 068,
+    /// incident NEMS L du 09/11/2026 : logiciel R00C32b mal décodé, compteur ×3 à ×100 par pas
+    /// de 256 km, carburant figé à 4 ou 20). L'ingestion les enregistre vides et la
+    /// synchronisation du kilométrage refuse ce boîtier, tant que le drapeau est levé.
+    /// </summary>
+    public bool FmsUntrusted { get; set; }
+    public string? FmsUntrustedReason { get; set; }
+    public DateTime? FmsUntrustedAt { get; set; }
+
     /// <summary>Dernier passage de l'audit pour ce boîtier.</summary>
     public DateTime? VoltageSensorCheckedAt { get; set; }
 

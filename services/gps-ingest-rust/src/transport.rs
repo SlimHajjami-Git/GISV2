@@ -1142,6 +1142,16 @@ async fn process_single_frame(
                 // Get device_id for services processing
                 let device_id_opt = database.get_device_id(&resolved_uid).await?;
 
+                // Données CAN déclarées non fiables (migration 068, incident NEMS L du 09/11/2026 :
+                // logiciel R00C32b mal décodé, compteur ×3 à ×100, carburant faux). Vidées ICI,
+                // avant la base, Redis, RabbitMQ, le suivi carburant et les trajets : rien de faux
+                // n'entre nulle part. La position GPS est gardée ; la fiche avance à la distance GPS.
+                if let Some(device_id) = device_id_opt {
+                    if database.is_fms_untrusted(device_id).await.unwrap_or(false) {
+                        strip_untrusted_fms(&mut frame);
+                    }
+                }
+
                 // Log mat received for easy tracking
                 if let Some(device_id) = device_id_opt {
                     if let Ok(Some(mat)) = database.get_device_mat(device_id).await {
@@ -2772,6 +2782,74 @@ fn starts_with_valid_header(s: &str) -> bool {
     s.starts_with("HH") || s.starts_with("AA") || s.contains(" AA") || s.contains(" HH")
 }
 
+/// Vide les champs CAN (FMS) d'une trame dont le boîtier est déclaré non fiable
+/// (gps_devices.fms_untrusted, migration 068). Zéro / None partout : c'est la valeur
+/// « pas de mesure » que l'insertion, le suivi carburant, le cache Redis et la publication
+/// savent déjà ignorer (fuel_raw > 0, odometer_km > 0 exigés). Position, vitesse, contact
+/// et batterie (octet 34-36, lu à part) sont conservés.
+fn strip_untrusted_fms(frame: &mut telemetry::model::HhFrame) {
+    frame.odometer_km = 0;
+    frame.fuel_raw = 0;
+    frame.rpm = None;
+    frame.fuel_rate_l_per_100km = None;
+    frame.fms_temperature_c = None;
+}
+
+#[cfg(test)]
+mod fms_non_fiable_tests {
+    use super::*;
+
+    /// Incident NEMS L du 09/11/2026 : trame R00C32b mal décodée (compteur ×100, carburant 4).
+    #[test]
+    fn les_champs_can_sont_vides_et_la_position_gardee() {
+        use crate::telemetry::model::{FrameKind, FrameVersion, HhFrame};
+        let mut frame = HhFrame {
+            kind: FrameKind::RealTime,
+            version: FrameVersion::V3,
+            recorded_at: chrono::NaiveDateTime::parse_from_str("2026-11-09 15:23:00", "%Y-%m-%d %H:%M:%S").unwrap(),
+            latitude: 36.8,
+            longitude: 10.18,
+            speed_kph: 54.0,
+            heading_deg: 0.0,
+            power_voltage: 12,
+            battery_raw: 82,
+            power_source_rescue: false,
+            fuel_raw: 4,
+            ignition_on: true,
+            mems_x: 0,
+            mems_y: 0,
+            mems_z: 0,
+            temperature_raw: 80,
+            odometer_km: 1_048_298,
+            send_flag: 0,
+            added_info: 0,
+            signal_quality: Some(20),
+            satellites_in_view: Some(10),
+            rpm: Some(1800),
+            fuel_rate_l_per_100km: Some(31.0),
+            fms_temperature_c: Some(90),
+            is_valid: true,
+            is_real_time: true,
+            flags_raw: 0,
+            raw_payload: String::new(),
+            remaining_payload: None,
+            address: None,
+        };
+
+        strip_untrusted_fms(&mut frame);
+
+        assert_eq!(frame.odometer_km, 0);
+        assert_eq!(frame.fuel_raw, 0);
+        assert_eq!(frame.rpm, None);
+        assert_eq!(frame.fuel_rate_l_per_100km, None);
+        assert_eq!(frame.fms_temperature_c, None);
+        assert_eq!(frame.latitude, 36.8);
+        assert_eq!(frame.speed_kph, 54.0);
+        assert!(frame.ignition_on);
+        assert_eq!(frame.battery_raw, 82);
+    }
+}
+
 
 #[cfg(test)]
 mod identite_boitier_tests {
@@ -2869,6 +2947,10 @@ mod tests {
 
         async fn get_device_id(&self, _imei: &str) -> anyhow::Result<Option<i32>> {
             Ok(Some(1)) // Mock device_id
+        }
+
+        async fn is_fms_untrusted(&self, _device_id: i32) -> anyhow::Result<bool> {
+            Ok(false)
         }
 
         async fn get_device_mat(&self, _device_id: i32) -> anyhow::Result<Option<String>> {

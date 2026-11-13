@@ -3191,6 +3191,11 @@ export class VehiclesComponent implements OnInit, OnDestroy {
     this.apiService.syncVehicleMileage(vehicleId).pipe(takeUntil(this.destroy$)).subscribe({
       next: (result: any) => {
         this.syncingMileage = false;
+        // Compteur refusé par le serveur (incident NEMS L du 09/11/2026 : plafond, recul, saut
+        // invraisemblable, ou boîtier en vérification) : la fiche reste inchangée, on dit pourquoi.
+        if (!result.updated && result.message) {
+          window.alert(result.message);
+        }
         if (result.updated && this.selectedDetailVehicle) {
           this.selectedDetailVehicle.mileage = result.newMileage;
           // Update in the lists too

@@ -23,6 +23,10 @@ pub trait TelemetryStore: Send + Sync {
     /// Get device_id from IMEI
     async fn get_device_id(&self, imei: &str) -> anyhow::Result<Option<i32>>;
 
+    /// Données CAN (compteur, carburant, régime) de ce boîtier déclarées non fiables
+    /// (gps_devices.fms_untrusted, migration 068) : la trame en est vidée avant tout traitement.
+    async fn is_fms_untrusted(&self, device_id: i32) -> anyhow::Result<bool>;
+
     /// Get device mat (GPS identifier) from device_id
     async fn get_device_mat(&self, device_id: i32) -> anyhow::Result<Option<String>>;
 
