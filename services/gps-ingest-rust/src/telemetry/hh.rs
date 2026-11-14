@@ -119,8 +119,13 @@ fn parse_connect_frame_with_mat(payload: &str, mat: Option<String>) -> Result<Hh
         }
     }
 
-    if imei.is_none() {
-        bail!("connect frame missing IMEI");
+    // Une AA00 de NEMS_LITE ne porte PAS d'IMEI : seulement le MAT (devant) et l'ICC
+    // (« NR08G0223 AA00100052260307@07/03/26,10:00:51+00 ,ICC:8921603926180319697f »).
+    // On la rend quand même, IMEI vide : c'est à l'appelant de décider si son MAT suffit
+    // à identifier le boîtier (transport.rs, identify_by_mat_only). Sans MAT ni IMEI, la
+    // trame n'identifie rien du tout.
+    if imei.is_none() && mat.is_none() {
+        bail!("connect frame missing IMEI and MAT");
     }
 
     Ok(HhInfoFrame {
@@ -455,6 +460,21 @@ mod tests {
         assert_eq!(info.firmware_version, "1.0.103R10");
         assert_eq!(info.icc_id.as_deref(), Some("8921602050440128136F"));
         assert_eq!(info.imei.as_deref(), Some("861001002935274"));
+    }
+
+    #[test]
+    fn aa00_nems_lite_sans_imei_rend_son_mat() {
+        // AA00 réelle d'un NEMS_LITE (206 TU 7038, 09/11/2026) : MAT + ICC, pas d'IMEI.
+        let info = parse_info_frame("NR08G0223 AA00100052260307@07/03/26,10:00:51+00 ,ICC:8921603926180319697f")
+            .expect("une AA00 sans IMEI mais avec MAT se lit");
+        assert_eq!(info.mat.as_deref(), Some("NR08G0223"));
+        assert!(info.imei.is_none());
+        assert_eq!(info.icc_id.as_deref(), Some("8921603926180319697f"));
+    }
+
+    #[test]
+    fn aa00_sans_imei_ni_mat_refusee() {
+        assert!(parse_info_frame("AA00100052260307@07/03/26,10:00:51+00 ,ICC:8921603926180319697f").is_err());
     }
 
     // ==================== REAL PRODUCTION FRAMES ====================

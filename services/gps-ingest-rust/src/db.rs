@@ -694,6 +694,44 @@ impl TelemetryStore for Database {
         Ok(rows.into_iter().next().map(|r| r.get::<String, _>("device_uid")))
     }
 
+    async fn lookup_device_by_mat_strict(&self, mat: &str) -> Result<crate::ports::MatLookup> {
+        use crate::ports::MatLookup;
+
+        let rows = sqlx::query(
+            r#"SELECT device_uid FROM gps_devices
+               WHERE mat = $1 AND device_uid != 'UNKNOWN_DEVICE'
+               LIMIT 2"#,
+        )
+        .bind(mat)
+        .fetch_all(&self.pool)
+        .await?;
+
+        if rows.len() > 1 {
+            return Ok(MatLookup::Ambigu);
+        }
+        let Some(row) = rows.into_iter().next() else {
+            return Ok(MatLookup::Inconnu);
+        };
+        let uid: String = row.get("device_uid");
+
+        // Un boîtier supprimé (liste de blocage, migration 057) qui portait ce MAT peut
+        // émettre encore : sans IMEI dans la trame, rien ne distingue ses positions de
+        // celles du remplaçant. Une erreur de lecture remonte en Err : l'appelant refuse
+        // l'identification plutôt que de deviner.
+        let porte_par_un_supprime: bool = sqlx::query_scalar(
+            r#"SELECT EXISTS (SELECT 1 FROM gps_device_blocklist WHERE mat = $1 AND device_uid <> $2)"#,
+        )
+        .bind(mat)
+        .bind(&uid)
+        .fetch_one(&self.pool)
+        .await?;
+        if porte_par_un_supprime {
+            return Ok(MatLookup::PorteParUnBoitierSupprime);
+        }
+
+        Ok(MatLookup::Unique(uid))
+    }
+
     async fn insert_vehicle_stop(
         &self,
         stop: &crate::services::stop_detector::CompletedStop,

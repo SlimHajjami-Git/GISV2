@@ -8,6 +8,20 @@ use crate::services::stop_detector::CompletedStop;
 use crate::services::trip_detector::CompletedTrip;
 use crate::telemetry::model::{HhFrame, HhInfoFrame};
 
+/// Issue d'une identification par le seul MAT (voir `lookup_device_by_mat_strict`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MatLookup {
+    /// Un seul boîtier porte ce MAT, et aucun boîtier supprimé ne l'a porté : son IMEI.
+    Unique(String),
+    /// Aucun boîtier en base ne porte ce MAT.
+    Inconnu,
+    /// Plusieurs boîtiers portent ce MAT : on n'attribue jamais (incident HERTZ/BELIVE).
+    Ambigu,
+    /// Un boîtier supprimé par l'administration portait ce MAT : son remplaçant peut le
+    /// partager, et le boîtier supprimé peut émettre encore. On ne choisit pas.
+    PorteParUnBoitierSupprime,
+}
+
 #[async_trait]
 pub trait TelemetryStore: Send + Sync {
     async fn ingest_info_frame(&self, protocol_type: &str, info: &HhInfoFrame) -> anyhow::Result<String>;
@@ -32,6 +46,17 @@ pub trait TelemetryStore: Send + Sync {
 
     /// Get device_uid (IMEI) from MAT prefix
     async fn get_device_uid_by_mat(&self, mat: &str) -> anyhow::Result<Option<String>>;
+
+    /// Identification STRICTE par le seul MAT, pour une trame de connexion qui ne porte pas
+    /// d'IMEI (AA00 de NEMS_LITE). Distingue « inconnu », « en double » et « porté par un
+    /// boîtier supprimé » pour que le rejet soit tracé avec sa vraie cause. Implémentation
+    /// par défaut : repli sur get_device_uid_by_mat (qui rend déjà None sur un MAT en double).
+    async fn lookup_device_by_mat_strict(&self, mat: &str) -> anyhow::Result<MatLookup> {
+        Ok(match self.get_device_uid_by_mat(mat).await? {
+            Some(uid) => MatLookup::Unique(uid),
+            None => MatLookup::Inconnu,
+        })
+    }
 
     /// Insert a completed vehicle stop
     async fn insert_vehicle_stop(&self, stop: &CompletedStop, vehicle_id: Option<i32>, company_id: i32) -> anyhow::Result<i64>;
