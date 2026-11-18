@@ -31,15 +31,31 @@ public static class RateLimitPolicies
 
     // Génération d'un jeton d'API (migration 064) : la route vérifie un MOT DE PASSE. Sans plafond,
     // un jeton de session volé servirait à deviner le mot de passe du compte à la chaîne. Seul le
-    // POST est compté : la liste des jetons (GET) n'entame pas le quota.
+    // POST est compté : la liste des jetons (GET) n'entame pas le quota. La création et la révocation
+    // d'une clé d'automatisation (migration 069) vérifient elles aussi la session et, pour la création,
+    // un mot de passe : même plafond. L'échange d'une clé a le sien (IsApiKeyExchange).
     public static bool IsApiTokenGeneration(HttpContext c) =>
-        HttpMethods.IsPost(c.Request.Method) && c.Request.Path.StartsWithSegments("/api/api-tokens");
+        HttpMethods.IsPost(c.Request.Method)
+        && ((c.Request.Path.StartsWithSegments("/api/api-tokens") && !IsApiKeyExchange(c))
+            || c.Request.Path.StartsWithSegments("/api/api-keys"));
 
     public const string TooManyApiTokenAttemptsMessage =
         "Trop de tentatives de génération de jeton depuis ce réseau. Patientez une minute avant de réessayer.";
 
     /// <summary>Essais de génération de jeton par minute et par adresse IP.</summary>
     public const int ApiTokenAttemptsPerMinutePerIp = 5;
+
+    // Échange d'une clé d'automatisation contre un jeton (migration 069), ouvert SANS session. La
+    // clé (256 bits) ne se devine pas ; le plafond protège la base d'une tâche qui boucle. Il est plus
+    // large que la génération : une tâche qui pagine échange une clé par page, à la suite.
+    public static bool IsApiKeyExchange(HttpContext c) =>
+        HttpMethods.IsPost(c.Request.Method) && c.Request.Path.StartsWithSegments("/api/api-tokens/echange");
+
+    public const string TooManyApiKeyExchangesMessage =
+        "Trop d'échanges de clé d'automatisation depuis ce réseau. Patientez une minute avant de réessayer.";
+
+    /// <summary>Échanges de clé par minute et par adresse IP.</summary>
+    public const int ApiKeyExchangesPerMinutePerIp = 30;
 
     // Invoice scan hits the paid Groq VISION model per request — throttle per IP
     // so an authenticated user (or a runaway client retry) can't drain cost/disk.
@@ -99,6 +115,18 @@ public static class RateLimitPolicies
                         _ => new FixedWindowRateLimiterOptions
                         {
                             PermitLimit = ApiTokenAttemptsPerMinutePerIp,
+                            Window = TimeSpan.FromMinutes(1),
+                            QueueLimit = 0
+                        })
+                    : RateLimitPartition.GetNoLimiter("open")),
+            // -2,4) échange d'une clé d'automatisation : 30 par minute et par IP (sans session)
+            PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                IsApiKeyExchange(ctx)
+                    ? RateLimitPartition.GetFixedWindowLimiter(
+                        "apikey:" + GisAPI.Controllers.AssistantController.ResolveClientIp(ctx),
+                        _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = ApiKeyExchangesPerMinutePerIp,
                             Window = TimeSpan.FromMinutes(1),
                             QueueLimit = 0
                         })
@@ -210,7 +238,11 @@ public static class RateLimitPolicies
     /// s'inscrit, et « quelques instants » quand la reprise n'arrive qu'une heure plus tard.
     /// </summary>
     public static string RejectionMessage(HttpContext http) =>
-        GisAPI.Controllers.AuthController.IsLoginAttempt(http)
+        IsApiKeyExchange(http)
+            ? TooManyApiKeyExchangesMessage
+            : IsApiTokenGeneration(http)
+                ? TooManyApiTokenAttemptsMessage
+        : GisAPI.Controllers.AuthController.IsLoginAttempt(http)
             ? GisAPI.Controllers.AuthController.TooManyLoginAttemptsMessage
             : GisAPI.Controllers.AuthController.IsPasswordResetRequest(http)
                 ? GisAPI.Controllers.AuthController.TooManyPasswordResetRequestsMessage

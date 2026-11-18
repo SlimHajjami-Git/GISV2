@@ -56,10 +56,54 @@ export function curlExample(token: string, origin: string, today: Date = new Dat
 }
 
 /** Message affiché pour une erreur de génération (400 métier, 429 limiteur, autre). */
-export function apiTokenErrorMessage(err: any): string {
+export function apiTokenErrorMessage(err: any, fallback = 'Impossible de générer le jeton.'): string {
   if (err?.status === 429) {
     return err?.error?.message || 'Trop de tentatives. Patientez une minute avant de réessayer.';
   }
   const apiMessage = err?.error?.message || err?.error?.Message || err?.error?.title;
-  return apiMessage || 'Impossible de générer le jeton.';
+  return apiMessage || fallback;
+}
+
+// ==================== Clés d'automatisation (migration 069) ====================
+
+/** Libellé français du statut d'une clé. */
+export function apiKeyStatusLabel(status: string): string {
+  switch (status) {
+    case 'active': return 'Active';
+    case 'revoked': return 'Révoquée';
+    case 'expired': return 'Expirée';
+    default: return status;
+  }
+}
+
+/** Clés encore utilisables (le plafond de la société porte sur elles seules). */
+export function activeKeyCount(keys: { status: string }[]): number {
+  return keys.filter(k => k.status === 'active').length;
+}
+
+/** Ligne de crontab : tous les jours à 6 h 30. */
+export const CRON_LINE_EXAMPLE = '30 6 * * * /chemin/vers/arrets-calypso.sh';
+
+/**
+ * Script prêt à copier pour une tâche planifiée (Linux) : échange la clé contre un jeton, puis lit
+ * les arrêts de la veille de tous les véhicules dans un fichier JSON. Sans dépendance (pas de jq) :
+ * le jeton est extrait de la réponse par sed. L'adresse est celle du site ouvert.
+ */
+export function cronScriptExample(key: string, origin: string): string {
+  const url = origin.replace(/\/+$/, '');
+  return [
+    '#!/bin/sh',
+    '# Calypso : arrêts de la veille, tous les véhicules du compte',
+    `CLE="${key}"`,
+    `URL="${url}"`,
+    'JOUR=$(date -d yesterday +%F)',
+    '',
+    '# 1. La clé s\'échange contre un jeton à usage unique (15 minutes)',
+    'JETON=$(curl -fsS -X POST "$URL/api/api-tokens/echange" -H "X-Api-Key: $CLE" \\',
+    '  | sed -E \'s/.*"token":"([^"]+)".*/\\1/\')',
+    '',
+    '# 2. Le jeton lit les arrêts (un seul appel)',
+    'curl -fsS "$URL/api/reports/stops?startDate=$JOUR&endDate=$JOUR" \\',
+    '  -H "X-Api-Token: $JETON" -o "arrets-$JOUR.json"',
+  ].join('\n');
 }

@@ -36,6 +36,7 @@ public class GisDbContext : DbContext, IGisDbContext
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();   // clés d'automatisation (migration 069)
     public DbSet<OnlinePayment> OnlinePayments => Set<OnlinePayment>();
 
     // Vehicles
@@ -208,6 +209,7 @@ public class GisDbContext : DbContext, IGisDbContext
         modelBuilder.Entity<AlertEmail>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<AuditLog>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<ApiToken>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
+        modelBuilder.Entity<ApiKey>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
         modelBuilder.Entity<OnlinePayment>().HasQueryFilter(e => _tenantService == null || _tenantService.CompanyId == null || _tenantService.IsSystemAdmin || e.CompanyId == _tenantService.CompanyId);
 
         // Configure composite keys

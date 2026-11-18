@@ -3,9 +3,10 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
-import { ApiService, ApiTokenCreated, ApiTokenListItem } from '../services/api.service';
+import { ApiKeyCreated, ApiKeyListItem, ApiService, ApiTokenCreated, ApiTokenListItem } from '../services/api.service';
 import {
-  apiTokenErrorMessage, apiTokenStatusLabel, curlExample, formatCountdown, secondsUntil
+  CRON_LINE_EXAMPLE, activeKeyCount, apiKeyStatusLabel, apiTokenErrorMessage, apiTokenStatusLabel,
+  cronScriptExample, curlExample, formatCountdown, secondsUntil
 } from './api-token.helpers';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PermissionService } from '../services/permission.service';
@@ -482,6 +483,101 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                 <span>{{ t.createdAt | date:'dd/MM/yyyy HH:mm' }}</span>
                 <span class="api-badge" [ngClass]="'api-badge-' + t.status">{{ statusLabel(t.status) }}</span>
                 <span *ngIf="t.usedAt" class="api-token-used">utilisé le {{ t.usedAt | date:'dd/MM HH:mm' }}</span>
+              </div>
+            </div>
+
+            <!-- Clé d'automatisation (migration 069) : une tâche planifiée ne peut pas générer un jeton
+                 à la main chaque jour. La clé ne lit rien elle-même : elle s'échange contre un jeton. -->
+            <div class="api-keys">
+              <h3>Automatiser avec une tâche planifiée</h3>
+              <p class="api-note">
+                Pour un logiciel qui lit les arrêts tout seul (crontab, tâche planifiée…), créez une
+                <strong>clé d'automatisation</strong> une seule fois. Elle ne donne accès à aucune donnée par elle-même :
+                avant chaque appel, votre logiciel l'échange contre un jeton à usage unique, avec les mêmes règles
+                qu'un jeton généré ici. Valable {{ lifetimeMonths }} mois, révocable à tout moment,
+                {{ apiKeyRules.maxActive }} clés actives au plus, {{ apiKeyRules.maxExchangesPer24Hours }} échanges par 24 heures.
+              </p>
+
+              <div *ngIf="apiKeys.length" class="api-token-list">
+                <div class="api-token-list-title">Clés de la société</div>
+                <div class="api-key-row" *ngFor="let k of apiKeys; trackBy: trackKey">
+                  <div class="api-key-main">
+                    <strong>{{ k.label }}</strong>
+                    <code>{{ k.keyPrefix }}…</code>
+                    <span class="api-badge" [ngClass]="'api-badge-key-' + k.status">{{ keyStatusLabel(k.status) }}</span>
+                  </div>
+                  <div class="api-key-meta">
+                    Créée le {{ k.createdAt | date:'dd/MM/yyyy' }}<span *ngIf="k.createdBy"> par {{ k.createdBy }}</span>
+                    <span *ngIf="k.status === 'active'"> · expire le {{ k.expiresAt | date:'dd/MM/yyyy' }}</span>
+                    <span *ngIf="k.status === 'revoked' && k.revokedAt"> · révoquée le {{ k.revokedAt | date:'dd/MM/yyyy HH:mm' }}</span>
+                    <span *ngIf="k.status === 'expired'"> · expirée le {{ k.expiresAt | date:'dd/MM/yyyy' }}</span>
+                    <br>
+                    <span *ngIf="k.lastUsedAt; else jamaisUtilisee">
+                      Dernier échange le {{ k.lastUsedAt | date:'dd/MM/yyyy HH:mm' }}<span *ngIf="k.lastUsedIp"> depuis {{ k.lastUsedIp }}</span>
+                      · {{ k.exchanges24Hours }} sur les dernières 24 h
+                    </span>
+                    <ng-template #jamaisUtilisee>Jamais utilisée</ng-template>
+                  </div>
+                  <button *ngIf="k.status === 'active'" type="button" class="btn-ghost btn-danger-ghost"
+                          (click)="revokeApiKey(k)" [disabled]="revokingKeyId !== null">
+                    {{ revokingKeyId === k.id ? 'Révocation...' : 'Révoquer' }}
+                  </button>
+                </div>
+              </div>
+
+              <ng-container *ngIf="canCreateKey; else plafondCles">
+                <div class="field-row">
+                  <div class="field">
+                    <label>Nom de la clé</label>
+                    <input type="text" [(ngModel)]="apiKeyForm.label" maxlength="100" placeholder="ex. : serveur de paie">
+                  </div>
+                </div>
+                <div class="field-row">
+                  <div class="field">
+                    <label>E-mail</label>
+                    <input type="email" [(ngModel)]="apiKeyForm.email" placeholder="vous@exemple.com" autocomplete="username">
+                  </div>
+                  <div class="field">
+                    <label>Mot de passe</label>
+                    <input type="password" [(ngModel)]="apiKeyForm.password" placeholder="••••••••" autocomplete="current-password"
+                           (keydown.enter)="createApiKey()">
+                  </div>
+                </div>
+                <div class="pwd-actions">
+                  <button class="btn-save" (click)="createApiKey()" [disabled]="creatingKey">
+                    <span *ngIf="!creatingKey" class="save-content">Créer une clé</span>
+                    <span *ngIf="creatingKey" class="save-content"><span class="spinner"></span> Création...</span>
+                  </button>
+                </div>
+              </ng-container>
+              <ng-template #plafondCles>
+                <p class="api-note">
+                  Votre société a déjà {{ apiKeyRules.maxActive }} clés actives : révoquez-en une pour en créer une autre.
+                </p>
+              </ng-template>
+
+              <div *ngIf="apiKeyMessage" class="inline-feedback" [class.error]="apiKeyMessage.type === 'error'">
+                {{ apiKeyMessage.text }}
+              </div>
+
+              <div *ngIf="newApiKey" class="api-token-box">
+                <div class="api-token-head">
+                  <strong>Votre clé « {{ newApiKey.label }} »</strong>
+                  <span class="api-token-timer">valable jusqu'au {{ newApiKey.expiresAt | date:'dd/MM/yyyy' }}</span>
+                </div>
+                <code class="api-token-value">{{ newApiKey.key }}</code>
+                <div class="api-token-actions">
+                  <button type="button" class="btn-ghost" (click)="copyKeyText(newApiKey.key, 'cle')">Copier la clé</button>
+                  <button type="button" class="btn-ghost" (click)="copyKeyText(cronScript, 'script')">Copier le script</button>
+                  <button type="button" class="btn-ghost" (click)="hideApiKey()">Masquer</button>
+                </div>
+                <p class="api-note">
+                  Elle ne sera plus affichée : copiez-la maintenant et conservez-la comme un mot de passe.
+                  Script prêt à l'emploi pour un serveur Linux (arrêts de la veille, tous vos véhicules) :
+                </p>
+                <pre class="api-token-curl">{{ cronScript }}</pre>
+                <p class="api-note api-cron-line">Ligne de crontab (tous les jours à 6 h 30) : <code>{{ cronLine }}</code></p>
+                <div *ngIf="keyCopyMessage" class="api-copy">{{ keyCopyMessage }}</div>
               </div>
             </div>
           </div>
@@ -979,6 +1075,35 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
     .api-badge-used { background: #ecfdf5; color: #047857; }
     .api-badge-expired { background: #f1f5f9; color: #64748b; }
 
+    /* Clés d'automatisation (migration 069) */
+    .api-keys { margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--line, #e2e8f0); }
+    .api-keys h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--ink-900); }
+    .api-key-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center;
+      padding: 9px 0; border-top: 1px solid var(--line, #e2e8f0); font-size: 12px; color: var(--ink-700);
+    }
+    .api-key-main { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+    .api-key-main strong { color: var(--ink-900); overflow-wrap: anywhere; }
+    .api-key-main code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .api-key-meta { grid-column: 1; color: var(--ink-500); line-height: 1.5; }
+    /* Sélecteurs plus précis que les .btn-ghost de la barre d'action, déclarés plus bas. */
+    .api-key-row > .btn-ghost.btn-danger-ghost {
+      grid-column: 2; grid-row: 1 / span 2;
+      padding: 7px 12px; font-size: 12px;
+      background: #fff; border: 1px solid #fecaca; color: #b91c1c;
+    }
+    .api-key-row > .btn-ghost.btn-danger-ghost:hover { background: #fef2f2; }
+    .api-key-row > .btn-ghost.btn-danger-ghost:disabled { opacity: .6; cursor: default; }
+    .api-badge-key-active { background: #ecfdf5; color: #047857; }
+    .api-badge-key-revoked { background: #fef2f2; color: #b91c1c; }
+    .api-badge-key-expired { background: #f1f5f9; color: #64748b; }
+    .api-cron-line { margin: 10px 0 0; }
+    .api-cron-line code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
+      padding: 2px 6px; border-radius: 6px; background: #fff; border: 1px solid #bae6fd; color: #0f172a;
+      overflow-wrap: anywhere;
+    }
+
     @media (max-width: 720px) {
       .alert-grid { grid-template-columns: 1fr; }
     }
@@ -1212,6 +1337,21 @@ export class ProfileComponent implements OnInit, OnDestroy {
   readonly formatCountdown = formatCountdown;
   readonly statusLabel = apiTokenStatusLabel;
 
+  // Clés d'automatisation (migration 069). La clé en clair n'existe QUE dans newApiKey, le temps
+  // de l'écran : jamais dans localStorage, jamais dans une URL, effacée en quittant la page.
+  apiKeys: ApiKeyListItem[] = [];
+  /** Règles renvoyées par le serveur avec la liste (valeurs de repli tant qu'il n'a pas répondu). */
+  apiKeyRules = { maxActive: 2, maxExchangesPer24Hours: 100, lifetimeDays: 365 };
+  apiKeyForm = { label: '', email: '', password: '' };
+  creatingKey = false;
+  revokingKeyId: number | null = null;
+  apiKeyMessage: { type: 'success' | 'error'; text: string } | null = null;
+  newApiKey: ApiKeyCreated | null = null;
+  keyCopyMessage = '';
+  readonly keyStatusLabel = apiKeyStatusLabel;
+  readonly cronLine = CRON_LINE_EXAMPLE;
+  readonly trackKey = (_: number, k: ApiKeyListItem) => k.id;
+
   // Alert preferences (local-only right now; read by notification bell to filter types)
   // `geofencingDocsTow` (ancienne case groupée) est remplacée par deux réglages
   // distincts : `documents` (échéances, cœur de l'offre GPA) et `geofencing`
@@ -1270,23 +1410,120 @@ export class ProfileComponent implements OnInit, OnDestroy {
     }
     this.loadProfile();
     this.apiTokenForm.email = this.profile.email;
+    this.apiKeyForm.email = this.profile.email;
     this.loadApiAccess();
   }
 
-  /** La section « Accès API » et la liste des jetons, seulement si l'accès est ouvert. */
+  /** La section « Accès API », la liste des jetons et des clés, seulement si l'accès est ouvert. */
   loadApiAccess() {
     this.apiService.getApiTokenAccess().subscribe({
       next: (access) => {
         this.apiAccess = access;
-        if (access?.allowed) this.loadApiTokens();
+        if (access?.allowed) {
+          this.loadApiTokens();
+          this.loadApiKeys();
+        }
       },
       error: () => { this.apiAccess = null; }
     });
   }
 
   ngOnDestroy() {
-    // Le jeton en clair ne survit pas à l'écran.
+    // Le jeton et la clé en clair ne survivent pas à l'écran.
     this.hideApiToken();
+    this.hideApiKey();
+  }
+
+  // ── Clés d'automatisation (migration 069) ──
+
+  get canCreateKey(): boolean {
+    return activeKeyCount(this.apiKeys) < this.apiKeyRules.maxActive;
+  }
+
+  get lifetimeMonths(): number {
+    return Math.round(this.apiKeyRules.lifetimeDays / 30.4);
+  }
+
+  get cronScript(): string {
+    return this.newApiKey ? cronScriptExample(this.newApiKey.key, window.location.origin) : '';
+  }
+
+  loadApiKeys() {
+    this.apiService.getApiKeys().subscribe({
+      next: (list) => {
+        this.apiKeys = list?.keys || [];
+        if (list) {
+          this.apiKeyRules = {
+            maxActive: list.maxActive,
+            maxExchangesPer24Hours: list.maxExchangesPer24Hours,
+            lifetimeDays: list.lifetimeDays
+          };
+        }
+      },
+      error: () => { /* liste facultative : l'écran reste utilisable sans elle */ }
+    });
+  }
+
+  createApiKey() {
+    if (this.creatingKey) return;
+    this.apiKeyMessage = null;
+    const { label, email, password } = this.apiKeyForm;
+    if (!email.trim() || !password) {
+      this.apiKeyMessage = { type: 'error', text: 'Saisissez votre e-mail et votre mot de passe.' };
+      return;
+    }
+
+    this.creatingKey = true;
+    this.apiService.createApiKey({ label: label.trim(), email: email.trim(), password }).subscribe({
+      next: (created) => {
+        this.creatingKey = false;
+        this.apiKeyForm.password = '';
+        this.apiKeyForm.label = '';
+        this.keyCopyMessage = '';
+        this.newApiKey = created;
+        this.loadApiKeys();
+      },
+      error: (err: any) => {
+        this.creatingKey = false;
+        this.apiKeyForm.password = '';
+        this.apiKeyMessage = { type: 'error', text: apiTokenErrorMessage(err, 'Impossible de créer la clé.') };
+      }
+    });
+  }
+
+  revokeApiKey(key: ApiKeyListItem) {
+    if (this.revokingKeyId !== null) return;
+    if (!confirm(`Révoquer la clé « ${key.label} » ? Les tâches planifiées qui l'utilisent s'arrêteront aussitôt.`)) return;
+
+    this.apiKeyMessage = null;
+    this.revokingKeyId = key.id;
+    this.apiService.revokeApiKey(key.id).subscribe({
+      next: () => {
+        this.revokingKeyId = null;
+        if (this.newApiKey?.id === key.id) this.hideApiKey();
+        this.apiKeyMessage = { type: 'success', text: `Clé « ${key.label} » révoquée.` };
+        this.loadApiKeys();
+      },
+      error: (err: any) => {
+        this.revokingKeyId = null;
+        this.apiKeyMessage = { type: 'error', text: apiTokenErrorMessage(err, 'Impossible de révoquer la clé.') };
+      }
+    });
+  }
+
+  hideApiKey() {
+    this.newApiKey = null;
+    this.keyCopyMessage = '';
+  }
+
+  async copyKeyText(text: string, what: 'cle' | 'script') {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.keyCopyMessage = what === 'cle' ? 'Clé copiée.' : 'Script copié.';
+    } catch {
+      this.keyCopyMessage = 'Copie impossible : sélectionnez le texte et copiez-le à la main.';
+    }
+    setTimeout(() => { this.keyCopyMessage = ''; }, 3000);
   }
 
   get curlCommand(): string {

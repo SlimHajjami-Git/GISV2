@@ -1,5 +1,6 @@
 import {
-  apiTokenErrorMessage, apiTokenStatusLabel, curlExample, formatCountdown, isoDay, secondsUntil
+  CRON_LINE_EXAMPLE, activeKeyCount, apiKeyStatusLabel, apiTokenErrorMessage, apiTokenStatusLabel,
+  cronScriptExample, curlExample, formatCountdown, isoDay, secondsUntil
 } from './api-token.helpers';
 
 /**
@@ -51,5 +52,44 @@ describe('api-token.helpers', () => {
     expect(apiTokenErrorMessage({ status: 429 })).toContain('Patientez');
     expect(apiTokenErrorMessage({ status: 500 })).toBe('Impossible de générer le jeton.');
     expect(apiTokenErrorMessage(null)).toBe('Impossible de générer le jeton.');
+    expect(apiTokenErrorMessage({ status: 500 }, 'Impossible de créer la clé.')).toBe('Impossible de créer la clé.');
+  });
+});
+
+/** Clés d'automatisation de l'API (migration 069), pour une tâche planifiée. */
+describe('api-token.helpers — clés d’automatisation', () => {
+  it('traduit les statuts d’une clé', () => {
+    expect(apiKeyStatusLabel('active')).toBe('Active');
+    expect(apiKeyStatusLabel('revoked')).toBe('Révoquée');
+    expect(apiKeyStatusLabel('expired')).toBe('Expirée');
+    expect(apiKeyStatusLabel('autre')).toBe('autre');
+  });
+
+  it('ne compte que les clés actives pour le plafond de la société', () => {
+    expect(activeKeyCount([{ status: 'active' }, { status: 'revoked' }, { status: 'expired' }, { status: 'active' }])).toBe(2);
+    expect(activeKeyCount([])).toBe(0);
+  });
+
+  it('prépare un script qui échange la clé puis lit les arrêts de la veille avec le jeton', () => {
+    const script = cronScriptExample('clyk_abc', 'https://belive-calypso.com/');
+    const lignes = script.split('\n');
+
+    expect(lignes[0]).toBe('#!/bin/sh');
+    expect(script).toContain('CLE="clyk_abc"');
+    expect(script).toContain('URL="https://belive-calypso.com"');
+    // 1. échange de la clé (en-tête X-Api-Key, sans session) …
+    expect(script).toContain('-X POST "$URL/api/api-tokens/echange" -H "X-Api-Key: $CLE"');
+    // … dont on extrait le jeton sans dépendance (sed, pas jq) …
+    expect(script).toContain(`sed -E 's/.*"token":"([^"]+)".*/\\1/'`);
+    // 2. … qui lit les arrêts de la veille, un seul appel.
+    expect(script).toContain('"$URL/api/reports/stops?startDate=$JOUR&endDate=$JOUR"');
+    expect(script).toContain('-H "X-Api-Token: $JETON"');
+    expect(script).toContain('JOUR=$(date -d yesterday +%F)');
+    // La clé n'est jamais envoyée en jeton.
+    expect(script).not.toContain('X-Api-Token: $CLE');
+  });
+
+  it('propose une ligne de crontab quotidienne', () => {
+    expect(CRON_LINE_EXAMPLE).toMatch(/^\d+ \d+ \* \* \* \S+$/);
   });
 });

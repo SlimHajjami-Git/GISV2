@@ -12,7 +12,7 @@ namespace GisAPI.Application.Features.ApiTokens.Commands.GenerateApiToken;
 public class GenerateApiTokenCommandHandler : IRequestHandler<GenerateApiTokenCommand, ApiTokenCreatedDto>
 {
     /// <summary>Même message pour un e-mail qui n'est pas le sien et pour un mauvais mot de passe.</summary>
-    public const string WrongCredentialsMessage = "E-mail ou mot de passe incorrect.";
+    public const string WrongCredentialsMessage = ReenteredCredentials.WrongCredentialsMessage;
 
     public static readonly string TooManyPendingMessage =
         $"Vous avez déjà {ApiTokenAccess.MaxPendingPerUser} jetons en attente. "
@@ -40,27 +40,11 @@ public class GenerateApiTokenCommandHandler : IRequestHandler<GenerateApiTokenCo
         var userId = _tenant.UserId ?? throw new DomainException("Utilisateur non identifié");
         var companyId = _tenant.CompanyId ?? throw new DomainException("Société non identifiée");
 
-        if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrEmpty(request.Password))
-            throw new DomainException("Saisissez votre e-mail et votre mot de passe.");
-
-        // Filtre société explicite : le filtre global est contourné pour un administrateur système.
-        var user = await _context.Users.IgnoreQueryFilters().AsNoTracking()
-            .Include(u => u.Role)
-            .FirstOrDefaultAsync(u => u.Id == userId && u.CompanyId == companyId, ct)
-            ?? throw new NotFoundException("Utilisateur", userId);
-
         // Le jeton emprunte les droits de la session ouverte : l'e-mail ressaisi doit être CELUI de
-        // cette session, pas celui d'un autre compte dont on connaîtrait le mot de passe. Le mot de
-        // passe est vérifié dans tous les cas, pour que les deux refus coûtent pareil et disent pareil.
-        var emailMatches = string.Equals(request.Email.Trim(), user.Email, StringComparison.OrdinalIgnoreCase);
-        var passwordMatches = _passwordHasher.VerifyPassword(request.Password, user.PasswordHash);
-        if (!emailMatches || !passwordMatches)
-        {
-            // Pas d'adresse dans le journal : le champ reçoit parfois un mot de passe tapé au mauvais endroit.
-            _logger.LogWarning("Génération de jeton d'API refusée pour l'utilisateur {UserId} depuis {Ip} : identifiants incorrects",
-                userId, request.IpAddress ?? "adresse inconnue");
-            throw new DomainException(WrongCredentialsMessage);
-        }
+        // cette session (règle partagée avec la création d'une clé d'automatisation, migration 069).
+        var user = await ReenteredCredentials.VerifyAsync(_context, _passwordHasher, _logger,
+            userId, companyId, request.Email, request.Password, request.IpAddress,
+            "Génération de jeton d'API", ct);
 
         var refusal = ApiTokenAccess.AccountRefusal(user,
             await ApiTokenAccess.CompanyApiAccessEnabledAsync(_context, companyId, ct));
@@ -73,18 +57,7 @@ public class GenerateApiTokenCommandHandler : IRequestHandler<GenerateApiTokenCo
         if (pending >= ApiTokenAccess.MaxPendingPerUser)
             throw new DomainException(TooManyPendingMessage);
 
-        var token = ApiTokenAccess.Generate();
-        var entity = new ApiToken
-        {
-            CompanyId = companyId,
-            UserId = userId,
-            TokenPrefix = ApiTokenAccess.DisplayPrefix(token),
-            TokenHash = ApiTokenAccess.Hash(token),
-            ExpiresAt = now.AddMinutes(ApiTokenAccess.LifetimeMinutes),
-            CreatedIp = request.IpAddress?.Length > 64 ? request.IpAddress[..64] : request.IpAddress,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
+        var (token, entity) = ApiTokenAccess.NewToken(companyId, userId, request.IpAddress, now);
         _context.ApiTokens.Add(entity);
 
         // Trace durable de la génération (qui, quand, d'où), sans le jeton. Écrite avec le jeton :

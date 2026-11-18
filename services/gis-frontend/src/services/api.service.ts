@@ -1552,6 +1552,23 @@ export class ApiService {
     return this.http.get<{ allowed: boolean; reason: string | null }>(`${this.API_URL}/api-tokens/acces`, { headers: this.getHeaders() });
   }
 
+  // ==================== CLÉS D'AUTOMATISATION DE L'API ====================
+  // Migration 069. Une clé ne lit rien elle-même : la tâche planifiée du client l'échange contre un
+  // jeton à usage unique (POST /api-tokens/echange, en-tête X-Api-Key). La création ressaisit
+  // e-mail + mot de passe ; sa réponse est la SEULE occasion de lire la clé en clair.
+
+  getApiKeys(): Observable<ApiKeyList> {
+    return this.http.get<ApiKeyList>(`${this.API_URL}/api-keys`, { headers: this.getHeaders() });
+  }
+
+  createApiKey(payload: { label: string; email: string; password: string }): Observable<ApiKeyCreated> {
+    return this.http.post<ApiKeyCreated>(`${this.API_URL}/api-keys`, payload, { headers: this.getHeaders() });
+  }
+
+  revokeApiKey(id: number): Observable<void> {
+    return this.http.post<void>(`${this.API_URL}/api-keys/${id}/revocation`, {}, { headers: this.getHeaders() });
+  }
+
   // ==================== FUEL RECORDS ====================
 
   getFuelRecords(options: {
@@ -3844,6 +3861,39 @@ export interface ApiTokenListItem {
   expiresAt: string;
   usedAt: string | null;
   status: string;
+}
+
+// ==================== CLÉS D'AUTOMATISATION DE L'API (migration 069) ====================
+
+/** Réponse de la création : la SEULE qui contient la clé en clair. */
+export interface ApiKeyCreated {
+  id: number;
+  key: string;
+  keyPrefix: string;
+  label: string;
+  expiresAt: string;
+}
+
+/** Une clé de la société, sans son secret. status : active | revoked | expired. */
+export interface ApiKeyListItem {
+  id: number;
+  label: string;
+  keyPrefix: string;
+  createdBy: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  exchanges24Hours: number;
+  status: string;
+}
+
+export interface ApiKeyList {
+  keys: ApiKeyListItem[];
+  maxActive: number;
+  maxExchangesPer24Hours: number;
+  lifetimeDays: number;
 }
 
 // ==================== GENERIC PAGINATED RESULT ====================

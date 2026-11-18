@@ -39,6 +39,8 @@ public class GetActivityLogsQueryHandler : IRequestHandler<GetActivityLogsQuery,
         "gps_device_deleted", "gps_device_unblocked",
         // Jeton d'API à usage unique (migration 064) : toujours écrit avec l'utilisateur qui le génère.
         "api_token_generated",
+        // Clé d'automatisation (migration 069) : créée et révoquée par un administrateur connecté.
+        "api_key_created", "api_key_revoked",
     };
 
     private static readonly string[] UserActionPrefixes = { "creation_", "modification_", "suppression_" };

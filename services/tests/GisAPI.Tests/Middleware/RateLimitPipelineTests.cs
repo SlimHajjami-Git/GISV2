@@ -197,4 +197,48 @@ public class RateLimitPipelineTests
         MessageOf(rejected).Should().Be(message);
         rejected.Response.Headers["Retry-After"].ToString().Should().Be(retryAfter);
     }
+
+    // ── Clés d'automatisation de l'API (migration 069) ──
+
+    [Fact]
+    public async Task L_echange_d_une_cle_a_son_propre_plafond_plus_large_que_la_generation()
+    {
+        using var pipeline = new Pipeline();
+
+        // Une tâche qui pagine échange une clé par page : 30 à la suite passent…
+        for (var i = 0; i < RateLimitPolicies.ApiKeyExchangesPerMinutePerIp; i++)
+            (await pipeline.SendAsync("POST", "/api/api-tokens/echange")).Response.StatusCode.Should().Be(400);
+
+        var rejected = await pipeline.SendAsync("POST", "/api/api-tokens/echange");
+        rejected.Response.StatusCode.Should().Be(429);
+        MessageOf(rejected).Should().Be(RateLimitPolicies.TooManyApiKeyExchangesMessage);
+
+        // … et elles n'ont pas entamé le plafond de la génération à la main (vérifie un mot de passe).
+        (await pipeline.SendAsync("POST", "/api/api-tokens")).Response.StatusCode.Should().Be(400);
+    }
+
+    [Theory]
+    [InlineData("/api/api-tokens")]
+    [InlineData("/api/api-keys")]
+    [InlineData("/api/api-keys/3/revocation")]
+    public async Task La_creation_d_une_cle_partage_le_plafond_de_la_generation_de_jeton(string path)
+    {
+        using var pipeline = new Pipeline();
+
+        for (var i = 0; i < RateLimitPolicies.ApiTokenAttemptsPerMinutePerIp; i++)
+            (await pipeline.SendAsync("POST", path)).Response.StatusCode.Should().Be(400);
+
+        var rejected = await pipeline.SendAsync("POST", path);
+        rejected.Response.StatusCode.Should().Be(429);
+        MessageOf(rejected).Should().Be(RateLimitPolicies.TooManyApiTokenAttemptsMessage);
+    }
+
+    [Fact]
+    public async Task La_liste_des_cles_n_entame_aucun_plafond()
+    {
+        using var pipeline = new Pipeline();
+
+        for (var i = 0; i < 20; i++)
+            (await pipeline.SendAsync("GET", "/api/api-keys")).Response.StatusCode.Should().Be(400);
+    }
 }

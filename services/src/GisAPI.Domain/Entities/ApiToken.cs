@@ -24,5 +24,11 @@ public class ApiToken : TenantEntity
 
     public string? CreatedIp { get; set; }
 
+    /// <summary>
+    /// Clé d'automatisation échangée pour obtenir ce jeton (migration 069) ; null pour un jeton
+    /// généré à la main dans le profil. Sert de journal des échanges et de compteur du quota.
+    /// </summary>
+    public int? ApiKeyId { get; set; }
+
     public bool IsUsable(DateTime nowUtc) => UsedAt == null && ExpiresAt > nowUtc;
 }

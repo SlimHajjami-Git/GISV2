@@ -102,6 +102,7 @@ public class TestGisDbContext : DbContext, IGisDbContext
     // Auth
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();   // clés d'automatisation (migration 069)
     public DbSet<OnlinePayment> OnlinePayments => Set<OnlinePayment>();
 
     // Device Commands

@@ -99,6 +99,7 @@ public interface IGisDbContext
     // Auth
     DbSet<RefreshToken> RefreshTokens { get; }
     DbSet<ApiToken> ApiTokens { get; }
+    DbSet<ApiKey> ApiKeys { get; }   // clés d'automatisation (migration 069)
     DbSet<OnlinePayment> OnlinePayments { get; }
 
     // Reservations / Emprunts

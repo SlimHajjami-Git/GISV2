@@ -67,6 +67,34 @@ public static class ApiTokenAccess
     public static bool LooksLikeToken(string? value) =>
         !string.IsNullOrEmpty(value) && value.StartsWith(TokenPrefix, StringComparison.Ordinal);
 
+    /// <summary>
+    /// Un jeton neuf et sa ligne en base (empreinte seule), valable <see cref="LifetimeMinutes"/>.
+    /// Même forme pour un jeton généré à la main dans le profil et pour un jeton obtenu en échange
+    /// d'une clé d'automatisation (<paramref name="apiKeyId"/>, migration 069).
+    /// </summary>
+    public static (string Token, GisAPI.Domain.Entities.ApiToken Row) NewToken(
+        int companyId, int userId, string? ipAddress, DateTime nowUtc, int? apiKeyId = null)
+    {
+        var token = Generate();
+        var row = new GisAPI.Domain.Entities.ApiToken
+        {
+            CompanyId = companyId,
+            UserId = userId,
+            TokenPrefix = DisplayPrefix(token),
+            TokenHash = Hash(token),
+            ExpiresAt = nowUtc.AddMinutes(LifetimeMinutes),
+            CreatedIp = TruncateIp(ipAddress),
+            ApiKeyId = apiKeyId,
+            CreatedAt = nowUtc,
+            UpdatedAt = nowUtc
+        };
+        return (token, row);
+    }
+
+    /// <summary>Adresse IP bornée à la taille de la colonne (64).</summary>
+    public static string? TruncateIp(string? ipAddress) =>
+        ipAddress?.Length > 64 ? ipAddress[..64] : ipAddress;
+
     private static bool IsRouteOrSubRoute(string path, string route) =>
         string.Equals(path, route, StringComparison.OrdinalIgnoreCase)
         || path.StartsWith(route + "/", StringComparison.OrdinalIgnoreCase);

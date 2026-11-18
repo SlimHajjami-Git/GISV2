@@ -18,6 +18,7 @@ public class ApiTokenConfiguration : IEntityTypeConfiguration<ApiToken>
         builder.Property(e => e.ExpiresAt).HasColumnName("expires_at");
         builder.Property(e => e.UsedAt).HasColumnName("used_at");
         builder.Property(e => e.CreatedIp).HasColumnName("created_ip").HasMaxLength(64);
+        builder.Property(e => e.ApiKeyId).HasColumnName("api_key_id");   // migration 069
         builder.Property(e => e.CreatedAt).HasColumnName("created_at");
         builder.Property(e => e.UpdatedAt).HasColumnName("updated_at");
         builder.HasIndex(e => e.TokenHash).IsUnique();
