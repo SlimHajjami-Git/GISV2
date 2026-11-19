@@ -5,8 +5,8 @@ import { Router, RouterLink } from '@angular/router';
 import { AuthService } from '../services/auth.service';
 import { ApiKeyCreated, ApiKeyListItem, ApiService, ApiTokenCreated, ApiTokenListItem } from '../services/api.service';
 import {
-  CRON_LINE_EXAMPLE, activeKeyCount, apiKeyStatusLabel, apiTokenErrorMessage, apiTokenStatusLabel,
-  cronScriptExample, curlExample, formatCountdown, secondsUntil
+  activeKeyCount, apiKeyExample, apiKeyStatusLabel, apiTokenErrorMessage, apiTokenStatusLabel,
+  curlExample, formatCountdown, secondsUntil
 } from './api-token.helpers';
 import { UserPreferencesService } from '../services/user-preferences.service';
 import { PermissionService } from '../services/permission.service';
@@ -486,15 +486,14 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
               </div>
             </div>
 
-            <!-- Clé d'automatisation (migration 069) : une tâche planifiée ne peut pas générer un jeton
-                 à la main chaque jour. La clé ne lit rien elle-même : elle s'échange contre un jeton. -->
+            <!-- Clés d'API (migration 069) : la clé ne lit rien elle-même, elle s'échange contre un jeton
+                 à usage unique, sans ressaisir d'identifiants. -->
             <div class="api-keys">
-              <h3>Automatiser avec une tâche planifiée</h3>
+              <h3>Clés d'API</h3>
               <p class="api-note">
-                Pour un logiciel qui lit les arrêts tout seul (crontab, tâche planifiée…), créez une
-                <strong>clé d'automatisation</strong> une seule fois. Elle ne donne accès à aucune donnée par elle-même :
-                avant chaque appel, votre logiciel l'échange contre un jeton à usage unique, avec les mêmes règles
-                qu'un jeton généré ici. Valable {{ lifetimeMonths }} mois, révocable à tout moment,
+                Une <strong>clé d'API</strong> permet à votre application d'obtenir elle-même ses jetons à usage unique,
+                sans ressaisir vos identifiants. Elle ne donne accès à aucune donnée par elle-même : chaque jeton obtenu
+                suit les mêmes règles qu'un jeton généré ici. Valable {{ lifetimeMonths }} mois, révocable à tout moment,
                 {{ apiKeyRules.maxActive }} clés actives au plus, {{ apiKeyRules.maxExchangesPer24Hours }} échanges par 24 heures.
               </p>
 
@@ -529,7 +528,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                 <div class="field-row">
                   <div class="field">
                     <label>Nom de la clé</label>
-                    <input type="text" [(ngModel)]="apiKeyForm.label" maxlength="100" placeholder="ex. : serveur de paie">
+                    <input type="text" [(ngModel)]="apiKeyForm.label" maxlength="100" placeholder="ex. : mon application">
                   </div>
                 </div>
                 <div class="field-row">
@@ -568,15 +567,14 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
                 <code class="api-token-value">{{ newApiKey.key }}</code>
                 <div class="api-token-actions">
                   <button type="button" class="btn-ghost" (click)="copyKeyText(newApiKey.key, 'cle')">Copier la clé</button>
-                  <button type="button" class="btn-ghost" (click)="copyKeyText(cronScript, 'script')">Copier le script</button>
+                  <button type="button" class="btn-ghost" (click)="copyKeyText(keyExample, 'exemple')">Copier l'exemple</button>
                   <button type="button" class="btn-ghost" (click)="hideApiKey()">Masquer</button>
                 </div>
                 <p class="api-note">
                   Elle ne sera plus affichée : copiez-la maintenant et conservez-la comme un mot de passe.
-                  Script prêt à l'emploi pour un serveur Linux (arrêts de la veille, tous vos véhicules) :
+                  Exemple d'utilisation :
                 </p>
-                <pre class="api-token-curl">{{ cronScript }}</pre>
-                <p class="api-note api-cron-line">Ligne de crontab (tous les jours à 6 h 30) : <code>{{ cronLine }}</code></p>
+                <pre class="api-token-curl">{{ keyExample }}</pre>
                 <div *ngIf="keyCopyMessage" class="api-copy">{{ keyCopyMessage }}</div>
               </div>
             </div>
@@ -1075,7 +1073,7 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
     .api-badge-used { background: #ecfdf5; color: #047857; }
     .api-badge-expired { background: #f1f5f9; color: #64748b; }
 
-    /* Clés d'automatisation (migration 069) */
+    /* Clés d'API (migration 069) */
     .api-keys { margin-top: 22px; padding-top: 18px; border-top: 1px dashed var(--line, #e2e8f0); }
     .api-keys h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--ink-900); }
     .api-key-row {
@@ -1097,12 +1095,6 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
     .api-badge-key-active { background: #ecfdf5; color: #047857; }
     .api-badge-key-revoked { background: #fef2f2; color: #b91c1c; }
     .api-badge-key-expired { background: #f1f5f9; color: #64748b; }
-    .api-cron-line { margin: 10px 0 0; }
-    .api-cron-line code {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px;
-      padding: 2px 6px; border-radius: 6px; background: #fff; border: 1px solid #bae6fd; color: #0f172a;
-      overflow-wrap: anywhere;
-    }
 
     @media (max-width: 720px) {
       .alert-grid { grid-template-columns: 1fr; }
@@ -1337,7 +1329,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   readonly formatCountdown = formatCountdown;
   readonly statusLabel = apiTokenStatusLabel;
 
-  // Clés d'automatisation (migration 069). La clé en clair n'existe QUE dans newApiKey, le temps
+  // Clés d'API (migration 069). La clé en clair n'existe QUE dans newApiKey, le temps
   // de l'écran : jamais dans localStorage, jamais dans une URL, effacée en quittant la page.
   apiKeys: ApiKeyListItem[] = [];
   /** Règles renvoyées par le serveur avec la liste (valeurs de repli tant qu'il n'a pas répondu). */
@@ -1349,7 +1341,6 @@ export class ProfileComponent implements OnInit, OnDestroy {
   newApiKey: ApiKeyCreated | null = null;
   keyCopyMessage = '';
   readonly keyStatusLabel = apiKeyStatusLabel;
-  readonly cronLine = CRON_LINE_EXAMPLE;
   readonly trackKey = (_: number, k: ApiKeyListItem) => k.id;
 
   // Alert preferences (local-only right now; read by notification bell to filter types)
@@ -1434,7 +1425,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
     this.hideApiKey();
   }
 
-  // ── Clés d'automatisation (migration 069) ──
+  // ── Clés d'API (migration 069) ──
 
   get canCreateKey(): boolean {
     return activeKeyCount(this.apiKeys) < this.apiKeyRules.maxActive;
@@ -1444,8 +1435,8 @@ export class ProfileComponent implements OnInit, OnDestroy {
     return Math.round(this.apiKeyRules.lifetimeDays / 30.4);
   }
 
-  get cronScript(): string {
-    return this.newApiKey ? cronScriptExample(this.newApiKey.key, window.location.origin) : '';
+  get keyExample(): string {
+    return this.newApiKey ? apiKeyExample(this.newApiKey.key, window.location.origin) : '';
   }
 
   loadApiKeys() {
@@ -1493,7 +1484,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
 
   revokeApiKey(key: ApiKeyListItem) {
     if (this.revokingKeyId !== null) return;
-    if (!confirm(`Révoquer la clé « ${key.label} » ? Les tâches planifiées qui l'utilisent s'arrêteront aussitôt.`)) return;
+    if (!confirm(`Révoquer la clé « ${key.label} » ? Les applications qui l'utilisent ne pourront plus obtenir de jeton.`)) return;
 
     this.apiKeyMessage = null;
     this.revokingKeyId = key.id;
@@ -1516,10 +1507,10 @@ export class ProfileComponent implements OnInit, OnDestroy {
     this.keyCopyMessage = '';
   }
 
-  async copyKeyText(text: string, what: 'cle' | 'script') {
+  async copyKeyText(text: string, what: 'cle' | 'exemple') {
     try {
       await navigator.clipboard.writeText(text);
-      this.keyCopyMessage = what === 'cle' ? 'Clé copiée.' : 'Script copié.';
+      this.keyCopyMessage = what === 'cle' ? 'Clé copiée.' : 'Exemple copié.';
     } catch {
       this.keyCopyMessage = 'Copie impossible : sélectionnez le texte et copiez-le à la main.';
     }

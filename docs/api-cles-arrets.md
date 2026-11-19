@@ -104,11 +104,11 @@ jeton généré à la main (mêmes règles qu'en section 3).
 
 ### Créer la clé (une seule fois, dans Calypso)
 
-1. **Profil** > **Accès API** > **Automatiser avec une tâche planifiée**.
-2. Donner un nom à la clé (par exemple « serveur de paie »), ressaisir son **e-mail** et son
+1. **Profil** > **Accès API** > **Clés d'API**.
+2. Donner un nom à la clé (par exemple « mon application »), ressaisir son **e-mail** et son
    **mot de passe**, puis **Créer une clé**.
 3. Copier la clé : elle n'est affichée **qu'une seule fois**. La conserver comme un mot de passe. La
-   page propose aussi un script prêt à l'emploi et une ligne de crontab.
+   page propose aussi un exemple d'appel prêt à copier.
 
 Seul l'administrateur de la société peut créer une clé, si Belive a activé l'accès API de la
 société. Les jetons obtenus reprennent **ses droits et ses véhicules**.
