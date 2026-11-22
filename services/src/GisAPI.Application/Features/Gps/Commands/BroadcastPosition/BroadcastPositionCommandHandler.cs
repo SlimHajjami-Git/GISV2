@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Features.Notifications.Events;
 using GisAPI.Domain.Common;
@@ -163,23 +164,11 @@ public class BroadcastPositionCommandHandler : IRequestHandler<BroadcastPosition
         // Round speed to whole number, set to 0 if ignition off
         var displaySpeed = ignitionOn ? Math.Round(speed) : 0;
 
-        // Convert fuelRaw → percent based on fuel_sensor_mode (same logic as monitoring query)
-        int? fuelLevel = null;
-        if (request.FuelRaw.HasValue && request.FuelRaw.Value > 0)
-        {
-            var raw = request.FuelRaw.Value;
-            var tank = cached.FuelTankCapacity;
-            fuelLevel = cached.FuelSensorMode switch
-            {
-                "percent" => raw,
-                "raw_255" => (int)Math.Round(raw / 255.0 * 100.0),
-                "liters" => tank > 0 ? (int)Math.Round(raw * 100.0 / tank) : raw,
-                "half_liter" => tank > 0 ? (int)Math.Round(raw * 0.5 * 100.0 / tank) : (int)Math.Round(raw * 0.5),
-                _ => raw
-            };
-            if (fuelLevel > 100) fuelLevel = 100;
-            if (fuelLevel < 0) fuelLevel = 0;
-        }
+        // fuelRaw → % selon fuel_sensor_mode (règle unique, voir FuelLevel). Le champ
+        // FuelRaw du DTO diffusé porte donc un POURCENTAGE, malgré son nom.
+        int? fuelLevel = request.FuelRaw.HasValue && request.FuelRaw.Value > 0
+            ? FuelLevel.ToPercent(request.FuelRaw.Value, cached.FuelSensorMode, cached.FuelTankCapacity)
+            : null;
 
         var (liveBatteryVoltage, liveBatteryPercent) = LiveBattery(
             cached.ProtocolType, cached.VoltageSensorReliable,

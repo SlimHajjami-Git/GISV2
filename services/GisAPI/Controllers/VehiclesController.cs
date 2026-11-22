@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MediatR;
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehicles;
 using GisAPI.Application.Features.Vehicles.Queries.GetVehicleDetails;
 using GisAPI.Application.Features.Vehicles.Commands.CreateVehicle;
@@ -249,12 +250,17 @@ public class VehiclesController : ControllerBase
                                     var idx = vehicles.IndexOf(vehicle);
                                     if (vehicle.Stats != null)
                                     {
-                                        // Update fuel level from Redis cache if available
+                                        // Le cache porte la valeur BRUTE du boîtier (litres pour
+                                        // 482 boîtiers sur 580 à TN) : on la convertit comme la
+                                        // requête convertit celle de la base. La prendre telle
+                                        // quelle affichait 19 L pour 19 % (recette du 20/11/2026,
+                                        // Ibiza 237 TU 4672, réservoir de 40 L → 48 %).
                                         var cachedFuel = updatedPosition.FuelRaw;
                                         int? updatedFuelLevel = vehicle.Stats.FuelLevel;
                                         if (cachedFuel.HasValue && cachedFuel.Value > 0)
                                         {
-                                            updatedFuelLevel = cachedFuel.Value; // Already raw %, will be refined by sensor mode if needed
+                                            updatedFuelLevel = FuelLevel.ToPercent(
+                                                cachedFuel.Value, vehicle.FuelSensorMode, vehicle.FuelTankCapacity);
                                         }
 
                                         vehicles[idx] = vehicle with {

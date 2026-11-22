@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Common;
 using GisAPI.Domain.Interfaces;
@@ -313,25 +314,11 @@ GROUP BY device_id;
                 temperature = null;
             }
 
-            // Convert fuel raw value based on fuel_sensor_mode
+            // Valeur brute → % selon fuel_sensor_mode (règle unique, voir FuelLevel).
             var fuelRaw = position?.FuelRaw;
-            int? fuelLevel = null;
-            if (fuelRaw.HasValue)
-            {
-                var fuelMode = v.GpsDevice?.FuelSensorMode ?? "raw_255";
-                var tankCapacity = v.FuelTankCapacity ?? 60; // Default 60L if not set
-                fuelLevel = fuelMode switch
-                {
-                    "percent" => fuelRaw.Value, // Already 0-100%
-                    "raw_255" => (int)Math.Round(fuelRaw.Value / 255.0 * 100.0), // 0-255 -> 0-100%
-                    "liters" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 100.0 / tankCapacity) : fuelRaw.Value, // Liters -> %
-                    "half_liter" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 0.5 * 100.0 / tankCapacity) : (int)Math.Round(fuelRaw.Value * 0.5), // Half-liters -> %
-                    _ => fuelRaw.Value // Default: keep as-is
-                };
-                // Clamp to 0-100
-                if (fuelLevel > 100) fuelLevel = 100;
-                if (fuelLevel < 0) fuelLevel = 0;
-            }
+            int? fuelLevel = fuelRaw.HasValue
+                ? FuelLevel.ToPercent(fuelRaw.Value, v.GpsDevice?.FuelSensorMode, v.FuelTankCapacity)
+                : null;
 
             // Accurate moving/stopped time from time-gap calculation
             var movingMinutes = stats.MovingMinutes;
@@ -399,7 +386,9 @@ GROUP BY device_id;
                 hasBatteryHealthAlert,
                 v.IsImmobilized,
                 v.ImmobilizationReason,
-                v.ImmobilizationStartedAt
+                v.ImmobilizationStartedAt,
+                FuelSensorMode: v.GpsDevice?.FuelSensorMode,
+                FuelTankCapacity: v.FuelTankCapacity
             );
         }).ToList();
 

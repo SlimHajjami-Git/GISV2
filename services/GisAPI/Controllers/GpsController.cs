@@ -7,6 +7,7 @@ using GisAPI.Domain.Entities;
 using GisAPI.Domain.Interfaces;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Application.Common;
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Common.Security;
 using GisAPI.Services;
 using GisAPI.Application.Features.Gps.Commands.BroadcastPosition;
@@ -481,25 +482,12 @@ public class GpsController : ControllerBase
             .OrderBy(p => p.RecordedAt)
             .ToList();
 
-        // Convert fuel_raw → percentage based on fuel_sensor_mode (same logic as monitoring)
-        var fuelMode = vehicle.GpsDevice?.FuelSensorMode ?? "raw_255";
-        var tankCapacity = vehicle.FuelTankCapacity ?? 60;
+        // fuel_raw → % selon fuel_sensor_mode (règle unique, voir FuelLevel).
+        var fuelMode = vehicle.GpsDevice?.FuelSensorMode;
         foreach (var pos in positions)
         {
             if (pos.FuelRaw.HasValue && pos.FuelRaw.Value > 0)
-            {
-                var raw = pos.FuelRaw.Value;
-                pos.FuelRaw = fuelMode switch
-                {
-                    "percent" => raw,
-                    "raw_255" => (int)Math.Round(raw / 255.0 * 100.0),
-                    "liters" => tankCapacity > 0 ? (int)Math.Round(raw * 100.0 / tankCapacity) : raw,
-                    "half_liter" => tankCapacity > 0 ? (int)Math.Round(raw * 0.5 * 100.0 / tankCapacity) : (int)Math.Round(raw * 0.5),
-                    _ => raw
-                };
-                if (pos.FuelRaw > 100) pos.FuelRaw = 100;
-                if (pos.FuelRaw < 0) pos.FuelRaw = 0;
-            }
+                pos.FuelRaw = FuelLevel.ToPercent(pos.FuelRaw.Value, fuelMode, vehicle.FuelTankCapacity);
         }
 
         // Filter GPS drift if requested

@@ -29,6 +29,7 @@ using GisAPI.Application.Features.Admin.Subscriptions.Commands.UpdateSubscriptio
 using GisAPI.Application.Features.Admin.Subscriptions.Commands.DeleteSubscription;
 using GisAPI.Application.Features.Admin.Dashboard;
 using GisAPI.Application.Features.FleetManagement.SpeedLimits.Commands;
+using GisAPI.Application.Common.FuelCalibration;
 using GisAPI.Application.Common.Interfaces;
 using GisAPI.Domain.Interfaces;
 
@@ -589,24 +590,11 @@ public class AdminController : ControllerBase
 
             var currentSpeed = ignitionOn ? Math.Round(rawSpeed) : 0.0;
 
-            // Fuel conversion
-            int? fuelLevel = null;
+            // fuel_raw → % selon fuel_sensor_mode (règle unique, voir FuelLevel).
             var fuelRaw = (int?)position?.FuelRaw;
-            if (fuelRaw.HasValue)
-            {
-                var fuelMode = v.GpsDevice?.FuelSensorMode ?? "raw_255";
-                var tankCapacity = v.FuelTankCapacity ?? 60;
-                fuelLevel = fuelMode switch
-                {
-                    "percent" => fuelRaw.Value,
-                    "raw_255" => (int)Math.Round(fuelRaw.Value / 255.0 * 100.0),
-                    "liters" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 100.0 / tankCapacity) : fuelRaw.Value,
-                    "half_liter" => tankCapacity > 0 ? (int)Math.Round(fuelRaw.Value * 0.5 * 100.0 / tankCapacity) : (int)Math.Round(fuelRaw.Value * 0.5),
-                    _ => fuelRaw.Value
-                };
-                if (fuelLevel > 100) fuelLevel = 100;
-                if (fuelLevel < 0) fuelLevel = 0;
-            }
+            int? fuelLevel = fuelRaw.HasValue
+                ? FuelLevel.ToPercent(fuelRaw.Value, v.GpsDevice?.FuelSensorMode, v.FuelTankCapacity)
+                : null;
 
             // Temperature filter
             var temperature = (short?)position?.TemperatureC;

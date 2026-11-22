@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace GisAPI.Application.Features.Vehicles.Queries.GetVehiclesWithPositions;
@@ -36,7 +37,12 @@ public record VehicleWithPositionDto(
     // are deliberately muted from the alert pipeline.
     bool IsImmobilized,
     string? ImmobilizationReason,
-    DateTime? ImmobilizationStartedAt
+    DateTime? ImmobilizationStartedAt,
+    // Réglage carburant du boîtier et capacité du réservoir : le contrôleur en a besoin
+    // pour convertir la valeur BRUTE du cache Redis comme la requête convertit celle de la
+    // base (FuelLevel.ToPercent). Usage interne, jamais sérialisé vers le client.
+    [property: JsonIgnore] string? FuelSensorMode = null,
+    [property: JsonIgnore] int? FuelTankCapacity = null
 );
 
 public record PositionDto(
