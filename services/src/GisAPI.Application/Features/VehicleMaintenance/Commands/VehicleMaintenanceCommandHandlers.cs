@@ -314,6 +314,12 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
                       "vérifiez la valeur ou la date.");
         }
 
+        // Relevé trop HAUT (chiffre en trop) : même contrôle que les pleins, sinon la fiche
+        // avance pour toujours et l'échéance suivante part de la valeur fausse.
+        if (await VehicleMileage.ControlerReleveAsync(_context, companyId, vehicle, request.Date,
+                request.Mileage, cancellationToken) is { } invraisemblable)
+            throw new GisAPI.Domain.Exceptions.DomainException(invraisemblable);
+
         // Le fournisseur doit appartenir à la société de l'appelant : le filtre
         // multi-tenant est contourné pour l'administrateur système, et un
         // identifiant périmé (fournisseur supprimé depuis l'ouverture de l'écran)
@@ -436,11 +442,7 @@ public class MarkMaintenanceDoneCommandHandler : IRequestHandler<MarkMaintenance
         _context.MaintenanceLogs.Add(log);
 
         // Update vehicle mileage if higher
-        if (request.Mileage > vehicle.Mileage)
-        {
-            vehicle.Mileage = request.Mileage;
-            vehicle.UpdatedAt = DateTime.UtcNow;
-        }
+        VehicleMileage.Advance(vehicle, request.Mileage);
 
         await _context.SaveChangesAsync(cancellationToken);
 

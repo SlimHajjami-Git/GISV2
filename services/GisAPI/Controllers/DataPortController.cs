@@ -429,7 +429,7 @@ public class DataPortController : ControllerBase
                     // accepte le kilométrage du fichier s'il fait avancer le compteur.
                     // Auparavant la ligne était purement ignorée, si bien que corriger
                     // la colonne « km » et ré-importer ne changeait rien (recette du 08/09/2026).
-                    if (VehicleMileage.Advance(known, Int(row.Cell(8))))
+                    if (VehicleMileage.AdvanceDeclared(known, Int(row.Cell(8))))
                     {
                         result.VehiclesUpdated++;
                         result.AddNote($"Véhicule « {plate} » : kilométrage porté à {FormatFr.N(known.Mileage, 0)} km.");
@@ -664,6 +664,9 @@ public class DataPortController : ControllerBase
                 // véhicule, sauf pour une réparation annulée (aucun passage à l'atelier).
                 if (mileage != null && analysis.AdvancesMileage)
                 {
+                    if (mileage > vehicle.Mileage
+                        && VehicleMileage.EcartInvraisemblable(vehicle, mileage.Value, DateTime.UtcNow) is { } motif)
+                        result.AddNote($"{label} : réparation enregistrée, kilométrage du véhicule inchangé. {motif}");
                     VehicleMileage.Advance(vehicle, mileage);
                     touchedVehicleIds.Add(vehicle.Id);
                 }
@@ -729,7 +732,12 @@ public class DataPortController : ControllerBase
                 // kilométrage figé (recette du 08/09/2026). On ne refuse RIEN ici :
                 // un import est de l'historique, ses relevés sont normalement INFÉRIEURS
                 // au compteur courant — appliquer la garde de la saisie manuelle
-                // rejetterait la quasi-totalité des lignes légitimes.
+                // rejetterait la quasi-totalité des lignes légitimes. Seul un relevé
+                // invraisemblablement HAUT (chiffre en trop) est signalé : il reste sur
+                // la ligne mais ne touche pas la fiche (VehicleMileage.Advance).
+                if (odometer > vehicle.Mileage
+                    && VehicleMileage.EcartInvraisemblable(vehicle, odometer.Value, DateTime.UtcNow) is { } motif)
+                    result.AddNote($"Plein « {plate} » du {date.Value:dd/MM/yyyy} enregistré, kilométrage du véhicule inchangé. {motif}");
                 VehicleMileage.Advance(vehicle, odometer);
                 touchedVehicleIds.Add(vehicle.Id);
             }

@@ -157,6 +157,14 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
                           $"enregistré au {invoiceDate:dd/MM/yyyy} ou avant ({FormatFr.N(plancher, 0)} km). Un compteur ne recule pas : " +
                           "vérifiez la valeur ou la date.");
             }
+
+            // Et dans l'autre sens : un relevé trop HAUT (chiffre en trop, chiffres
+            // permutés) faisait avancer la fiche pour toujours — import du 20/11/2026,
+            // une Caddy à 3 900 km portée à 1 525 727 km. Refusé avec son motif ; dans
+            // l'import, la ligne apparaît dans le bilan des erreurs.
+            if (await VehicleMileage.ControlerReleveAsync(_context, companyId, vehicle, invoiceDate,
+                    request.OdometerKm.Value, cancellationToken) is { } invraisemblable)
+                throw new GisAPI.Domain.Exceptions.DomainException(invraisemblable);
         }
 
         _context.FuelEntries.Add(entry);
@@ -173,11 +181,7 @@ public class CreateFuelEntryCommandHandler : IRequestHandler<CreateFuelEntryComm
         //
         // On ne recule jamais : un relevé inférieur (erreur de frappe, ticket
         // ancien saisi après coup) ne doit pas faire baisser le compteur.
-        if (vehicle != null && request.OdometerKm.HasValue && request.OdometerKm.Value > vehicle.Mileage)
-        {
-            vehicle.Mileage = (int)request.OdometerKm.Value;
-            vehicle.UpdatedAt = DateTime.UtcNow;
-        }
+        VehicleMileage.Advance(vehicle, request.OdometerKm);
 
         await _context.SaveChangesAsync(cancellationToken);
 

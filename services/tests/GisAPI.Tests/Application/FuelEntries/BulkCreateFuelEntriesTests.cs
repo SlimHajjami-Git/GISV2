@@ -91,7 +91,9 @@ public class BulkCreateFuelEntriesTests
         var result = await handler.Handle(new BulkCreateFuelEntriesCommand(new[]
         {
             Ligne(notes: "L1", odometerKm: 51_000),
-            Ligne(notes: MarqueRefusBase, odometerKm: 60_000),
+            // Plus haut que L3 pour qu'une fuite se voie, mais vraisemblable le même jour
+            // (VehicleMileage.ControlerReleveAsync refuserait +9 000 km en un jour).
+            Ligne(notes: MarqueRefusBase, odometerKm: 52_500),
             Ligne(notes: "L3", odometerKm: 52_000),
         }), CancellationToken.None);
 
@@ -109,7 +111,7 @@ public class BulkCreateFuelEntriesTests
         var notes = await context.FuelEntries.AsNoTracking().OrderBy(f => f.Id).Select(f => f.Notes).ToListAsync();
         notes.Should().Equal("L1", "L3");
 
-        // Le kilométrage avancé par la ligne refusée (60 000) n'a pas fui dans l'enregistrement suivant.
+        // Le kilométrage avancé par la ligne refusée (52 500) n'a pas fui dans l'enregistrement suivant.
         var mileage = await context.Vehicles.AsNoTracking().Where(v => v.Id == 1).Select(v => v.Mileage).SingleAsync();
         mileage.Should().Be(52_000);
     }
