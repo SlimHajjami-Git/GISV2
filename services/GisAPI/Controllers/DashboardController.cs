@@ -747,17 +747,11 @@ public class DashboardController : ControllerBase
 
         if (gpsDeviceIds.Any())
         {
-            var latestPosIds = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => gpsDeviceIds.Contains(p.DeviceId))
-                .GroupBy(p => p.DeviceId)
-                .Select(g => g.Max(p => p.Id))
-                .ToListAsync();
-
-            var latestPositions = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => latestPosIds.Contains(p.Id))
-                .ToDictionaryAsync(p => p.DeviceId);
+            // Dernière trame par boîtier sur recorded_at, une lecture d'index par boîtier.
+            // Le « max(id) par boîtier » parcourait tout l'historique (tableau de bord de
+            // l'application mobile en attente) et choisissait une trame renvoyée en retard
+            // plutôt que la plus récente (voir LatestPositions).
+            var latestPositions = await GisAPI.Application.Common.LatestPositions.LoadAsync(_context, gpsDeviceIds, ct);
 
             foreach (var v in gpsVehicles)
             {

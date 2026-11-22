@@ -57,18 +57,16 @@ public class GetMaintenanceAlertsQueryHandler : IRequestHandler<GetMaintenanceAl
             .Distinct()
             .ToList();
 
-        var odometerMap = new Dictionary<int, long>();
-        if (firmwareLDeviceIds.Any())
-        {
-            var latestOdometers = await _context.GpsPositions
-                .Where(p => firmwareLDeviceIds.Contains(p.DeviceId)
-                         && p.OdometerKm.HasValue && p.OdometerKm > 0
-                         && p.OdometerKm != 1048574)
-                .GroupBy(p => p.DeviceId)
-                .Select(g => new { DeviceId = g.Key, OdometerKm = g.OrderByDescending(p => p.RecordedAt).First().OdometerKm })
-                .ToListAsync(cancellationToken);
-            odometerMap = latestOdometers.ToDictionary(x => x.DeviceId, x => x.OdometerKm ?? 0);
-        }
+        // Compteur de la DERNIÈRE trame, une lecture d'index par boîtier. Le GroupBy précédent
+        // relisait tout l'historique de chaque boîtier (minutes sur la prod, voir
+        // LatestPositions), et chercher « le dernier compteur non nul » coûte autant pour un
+        // boîtier sans CAN (56 s mesurées pour 78 boîtiers sur une semaine). Sans compteur
+        // dans la dernière trame, la fiche véhicule — que l'ingestion aligne sur ce même
+        // compteur CAN — prend le relais.
+        var odometerMap = (await GisAPI.Application.Common.LatestPositions.LoadAsync(
+                _context, firmwareLDeviceIds, cancellationToken))
+            .Where(kv => kv.Value.OdometerKm is > 0 and not 1048574)
+            .ToDictionary(kv => kv.Key, kv => kv.Value.OdometerKm!.Value);
 
         return schedules.Select(s =>
         {

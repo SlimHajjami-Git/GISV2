@@ -175,15 +175,8 @@ public class GpsController : ControllerBase
 
         var deviceIds = vehicles.Where(v => v.GpsDeviceId.HasValue).Select(v => v.GpsDeviceId!.Value).ToList();
 
-        // Single query: get latest position per device using GroupBy
-        var latestPositions = await _context.GpsPositions
-            .AsNoTracking()
-            .Where(p => deviceIds.Contains(p.DeviceId))
-            .GroupBy(p => p.DeviceId)
-            .Select(g => g.OrderByDescending(p => p.RecordedAt).First())
-            .ToListAsync();
-
-        var positionMap = latestPositions.ToDictionary(p => p.DeviceId);
+        // Une lecture d'index par boîtier (le GroupBy relisait tout l'historique, voir LatestPositions).
+        var positionMap = await LatestPositions.LoadAsync(_context, deviceIds, HttpContext.RequestAborted);
 
         var dbPositions = vehicles.Select(v =>
         {
@@ -237,33 +230,23 @@ public class GpsController : ControllerBase
             .Select(v => v.GpsDevice!.Id)
             .ToList();
 
-        // Step 2: Get latest position per device — ONE grouped query instead of N correlated subqueries
-        var latestPositions = new Dictionary<int, PositionDto>();
-        if (deviceIds.Any())
-        {
-            var latestPosIds = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => deviceIds.Contains(p.DeviceId))
-                .GroupBy(p => p.DeviceId)
-                .Select(g => g.OrderByDescending(p => p.RecordedAt).Select(p => p.Id).First())
-                .ToListAsync();
-
-            latestPositions = await _context.GpsPositions
-                .AsNoTracking()
-                .Where(p => latestPosIds.Contains(p.Id))
-                .Select(p => new { p.DeviceId, Dto = new PositionDto
-                {
-                    Id = p.Id,
-                    Latitude = p.Latitude,
-                    Longitude = p.Longitude,
-                    SpeedKph = p.SpeedKph,
-                    CourseDeg = p.CourseDeg,
-                    IgnitionOn = p.IgnitionOn,
-                    RecordedAt = p.RecordedAt,
-                    Address = p.Address
-                }})
-                .ToDictionaryAsync(x => x.DeviceId, x => x.Dto);
-        }
+        // Step 2: dernière trame de chaque boîtier, une lecture d'index par boîtier.
+        // Le GroupBy précédent parcourait TOUT l'historique de chaque boîtier : plus de
+        // 180 s pour les 86 boîtiers de PARENIN, au-delà des 30 s où l'API abandonne —
+        // carte, liste Véhicules et tableau de bord de l'application mobile restaient
+        // vides ou en retard (voir LatestPositions).
+        var latestPositions = (await LatestPositions.LoadAsync(_context, deviceIds, HttpContext.RequestAborted))
+            .ToDictionary(kv => kv.Key, kv => new PositionDto
+            {
+                Id = kv.Value.Id,
+                Latitude = kv.Value.Latitude,
+                Longitude = kv.Value.Longitude,
+                SpeedKph = kv.Value.SpeedKph,
+                CourseDeg = kv.Value.CourseDeg,
+                IgnitionOn = kv.Value.IgnitionOn,
+                RecordedAt = kv.Value.RecordedAt,
+                Address = kv.Value.Address
+            });
 
         // Step 3: Join in memory
         var positions = vehicles.Select(v => new VehiclePositionDto
