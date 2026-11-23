@@ -51,7 +51,7 @@ public class RevokeApiKeyCommandHandler : IRequestHandler<RevokeApiKeyCommand, b
             EntityType = "ApiKey",
             EntityId = key.Id,
             EntityName = key.KeyPrefix,
-            Description = $"Clé d'automatisation de l'API révoquée : {key.Label}",
+            Description = $"Clé d'API révoquée : {key.Label}",
             IpAddress = request.IpAddress,
             Timestamp = now
         });

@@ -52,7 +52,7 @@ public static class RateLimitPolicies
         HttpMethods.IsPost(c.Request.Method) && c.Request.Path.StartsWithSegments("/api/api-tokens/echange");
 
     public const string TooManyApiKeyExchangesMessage =
-        "Trop d'échanges de clé d'automatisation depuis ce réseau. Patientez une minute avant de réessayer.";
+        "Trop d'échanges de clé d'API depuis ce réseau. Patientez une minute avant de réessayer.";
 
     /// <summary>Échanges de clé par minute et par adresse IP.</summary>
     public const int ApiKeyExchangesPerMinutePerIp = 30;

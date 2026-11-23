@@ -11,7 +11,8 @@ namespace GisAPI.Middleware;
 
 /// <summary>
 /// Authentifie une requête portant un jeton d'API à usage unique (migration 064) : en-tête
-/// <c>X-Api-Token</c>, ou <c>Authorization: Bearer cly_…</c>. L'identité construite reprend les claims
+/// <c>X-Api-Token</c>, ou <c>Authorization: Bearer cly_…</c> — ou une clé d'API utilisée directement
+/// (en-tête <c>X-Api-Key</c>, ou <c>Bearer clyk_…</c>, voir AuthenticateKeyAsync). L'identité construite reprend les claims
 /// d'un jeton de session de l'utilisateur qui l'a généré, pour que le contrôle des droits, l'abonnement
 /// et la portée des véhicules s'appliquent tels quels ; elle porte en plus le claim
 /// <c>auth_method=api_token</c>, que <see cref="ApiTokenScopeMiddleware"/> utilise pour la restreindre.
@@ -59,11 +60,57 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
         return null;
     }
 
+    /// <summary>
+    /// La clé d'API présentée pour un appel DIRECT (en-tête X-Api-Key, ou Bearer clyk_…), ou null. La
+    /// route d'échange lit elle-même l'en-tête X-Api-Key, anonymement : elle n'est jamais authentifiée ici.
+    /// </summary>
+    public static string? ExtractKey(HttpRequest request)
+    {
+        if (IsExchangeRoute(request.Path.Value))
+            return null;
+
+        var header = request.Headers[ApiKeyAccess.HeaderName].FirstOrDefault()?.Trim();
+        if (ApiKeyAccess.LooksLikeKey(header))
+            return header;
+
+        var authorization = request.Headers.Authorization.FirstOrDefault();
+        if (authorization != null && authorization.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        {
+            var key = authorization["Bearer ".Length..].Trim();
+            if (ApiKeyAccess.LooksLikeKey(key))
+                return key;
+        }
+
+        return null;
+    }
+
+    private static bool IsExchangeRoute(string? path) =>
+        string.Equals(path?.TrimEnd('/'), "/api/api-tokens/echange", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Refus d'une clé à répondre tel quel au défi (statut et motif).</summary>
+    private const string KeyRefusalItem = "api_key_refusal";
+
+    protected override async Task HandleChallengeAsync(AuthenticationProperties properties)
+    {
+        // Une clé refusée dit sa cause, comme à l'échange : celui qui la lit détient déjà la clé,
+        // et c'est ce qui permet à l'exploitant du client de réagir (clé expirée, quota…).
+        if (Context.Items.TryGetValue(KeyRefusalItem, out var item) && item is ApiTokenAccess.Refusal r)
+        {
+            Response.StatusCode = r.StatusCode;
+            await Response.WriteAsJsonAsync(new { status = r.StatusCode, message = r.Message });
+            return;
+        }
+        await base.HandleChallengeAsync(properties);
+    }
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
         var presented = ExtractToken(Request);
         if (presented == null)
-            return AuthenticateResult.NoResult();
+        {
+            var key = ExtractKey(Request);
+            return key == null ? AuthenticateResult.NoResult() : await AuthenticateKeyAsync(key);
+        }
 
         var hash = ApiTokenAccess.Hash(presented);
         var now = DateTime.UtcNow;
@@ -101,6 +148,82 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
                 return AuthenticateResult.Fail("Jeton d'API invalide.");
         }
 
+        return Success(user, new Claim("api_token_id", token.Id.ToString()));
+    }
+
+    /// <summary>
+    /// Appel DIRECT avec une clé d'API (demande client du 23/11/2026 : une clé utilisable telle quelle
+    /// pendant un mois, sans l'échanger contre un jeton à chaque appel). Même identité et même verrou
+    /// qu'un jeton (<see cref="ApiTokenScopeMiddleware"/> : lecture des arrêts seule, 31 jours au plus) ;
+    /// chaque appel permis est consigné comme un jeton créé et utilisé aussitôt, ce qui garde la trace
+    /// (adresse IP, heure) et le plafond de la clé sur 24 heures, échanges et appels directs confondus.
+    /// </summary>
+    private async Task<AuthenticateResult> AuthenticateKeyAsync(string presented)
+    {
+        var hash = ApiKeyAccess.Hash(presented);
+        var now = DateTime.UtcNow;
+
+        var key = await _db.ApiKeys.IgnoreQueryFilters().AsNoTracking()
+            .FirstOrDefaultAsync(k => k.KeyHash == hash, Context.RequestAborted);
+        if (key == null)
+            return RefuseKey(401, ApiKeyAccess.InvalidKeyMessage);
+        if (key.RevokedAt != null)
+            return RefuseKey(401, ApiKeyAccess.RevokedMessage);
+        if (key.ExpiresAt <= now)
+            return RefuseKey(401, ApiKeyAccess.ExpiredMessage);
+
+        var user = await _db.Users.IgnoreQueryFilters().AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.Id == key.UserId && u.CompanyId == key.CompanyId, Context.RequestAborted);
+        if (user == null)
+            return RefuseKey(403, ApiKeyAccess.OwnerCannotMessage);
+        var ownerRefusal = ApiKeyAccess.OwnerRefusal(user,
+            await ApiTokenAccess.CompanyApiAccessEnabledAsync(_db, key.CompanyId, Context.RequestAborted));
+        if (ownerRefusal != null)
+            return RefuseKey(403, ownerRefusal);
+
+        // Appel hors périmètre : identité posée SANS rien compter, le verrou répond le motif exact.
+        var query = Request.Query;
+        var refusal = ApiTokenAccess.Evaluate(
+            Request.Method,
+            Request.Path.Value ?? "",
+            query["startDate"].FirstOrDefault(),
+            query["endDate"].FirstOrDefault(),
+            query["pageSize"].FirstOrDefault());
+
+        if (refusal == null)
+        {
+            var since = now.AddHours(-24);
+            var calls = await _db.ApiTokens.IgnoreQueryFilters()
+                .CountAsync(t => t.ApiKeyId == key.Id && t.CreatedAt > since, Context.RequestAborted);
+            if (calls >= ApiKeyAccess.MaxExchangesPer24Hours)
+                return RefuseKey(429, ApiKeyAccess.QuotaMessage);
+
+            var ip = GisAPI.Controllers.AssistantController.ResolveClientIp(Context);
+            var (_, row) = ApiTokenAccess.NewToken(key.CompanyId, key.UserId, ip, now, key.Id);
+            row.UsedAt = now;
+            _db.ApiTokens.Add(row);
+            await _db.SaveChangesAsync(Context.RequestAborted);
+            await _db.ApiKeys.IgnoreQueryFilters()
+                .Where(k => k.Id == key.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(k => k.LastUsedAt, now)
+                    .SetProperty(k => k.LastUsedIp, ApiTokenAccess.TruncateIp(ip))
+                    .SetProperty(k => k.UpdatedAt, now), Context.RequestAborted);
+        }
+
+        return Success(user, new Claim("api_key_id", key.Id.ToString()));
+    }
+
+    private AuthenticateResult RefuseKey(int statusCode, string message)
+    {
+        Context.Items[KeyRefusalItem] = new ApiTokenAccess.Refusal(statusCode, message);
+        return AuthenticateResult.Fail(message);
+    }
+
+    /// <summary>Identité d'un appel par API : les claims d'une session de l'utilisateur, plus le marqueur du verrou.</summary>
+    private static AuthenticateResult Success(User user, Claim origin)
+    {
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -110,7 +233,7 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
             new("roleId", user.RoleId.ToString()),
             new(JwtClaims.AccountType, user.AccountType),
             new(ApiTokenAccess.AuthMethodClaim, ApiTokenAccess.AuthMethodValue),
-            new("api_token_id", token.Id.ToString())
+            origin
         };
         if (user.Role != null)
         {

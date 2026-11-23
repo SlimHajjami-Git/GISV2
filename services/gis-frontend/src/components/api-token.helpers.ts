@@ -82,16 +82,10 @@ export function activeKeyCount(keys: { status: string }[]): number {
 }
 
 /**
- * Exemple d'utilisation d'une clé : l'échanger contre un jeton à usage unique, puis appeler l'API
- * avec ce jeton. L'adresse est celle du site ouvert.
+ * Exemple d'utilisation d'une clé : l'envoyer telle quelle à chaque appel, dans l'en-tête X-Api-Key
+ * (elle se réutilise jusqu'à son expiration). L'adresse est celle du site ouvert.
  */
 export function apiKeyExample(key: string, origin: string): string {
   const url = origin.replace(/\/+$/, '');
-  return [
-    '# 1. Obtenir un jeton à usage unique (valable 15 minutes)',
-    `curl -X POST "${url}/api/api-tokens/echange" -H "X-Api-Key: ${key}"`,
-    '',
-    '# 2. Appeler l\'API avec le jeton reçu (champ "token" de la réponse)',
-    `curl "${url}/api/reports/stops?startDate=AAAA-MM-JJ&endDate=AAAA-MM-JJ" -H "X-Api-Token: cly_..."`,
-  ].join('\n');
+  return `curl "${url}/api/reports/stops?startDate=AAAA-MM-JJ&endDate=AAAA-MM-JJ" \\\n  -H "X-Api-Key: ${key}"`;
 }

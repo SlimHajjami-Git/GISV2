@@ -486,15 +486,16 @@ const DEFAULT_PREFERENCES: Partial<ProfileModel> = {
               </div>
             </div>
 
-            <!-- Clés d'API (migration 069) : la clé ne lit rien elle-même, elle s'échange contre un jeton
-                 à usage unique, sans ressaisir d'identifiants. -->
+            <!-- Clés d'API (migration 069) : la clé s'envoie telle quelle à chaque appel (en-tête X-Api-Key),
+                 avec les mêmes limites qu'un jeton ; elle se réutilise jusqu'à son expiration. -->
             <div class="api-keys">
               <h3>Clés d'API</h3>
               <p class="api-note">
-                Une <strong>clé d'API</strong> permet à votre application d'obtenir elle-même ses jetons à usage unique,
-                sans ressaisir vos identifiants. Elle ne donne accès à aucune donnée par elle-même : chaque jeton obtenu
-                suit les mêmes règles qu'un jeton généré ici. Valable {{ lifetimeMonths }} mois, révocable à tout moment,
-                {{ apiKeyRules.maxActive }} clés actives au plus, {{ apiKeyRules.maxExchangesPer24Hours }} échanges par 24 heures.
+                Une <strong>clé d'API</strong> permet à votre application de lire les arrêts de vos véhicules sans
+                ressaisir vos identifiants : envoyez-la dans l'en-tête <code>X-Api-Key</code> de chaque appel. Mêmes
+                limites qu'un jeton (lecture des arrêts uniquement, 31 jours au plus par appel). Valable
+                {{ lifetimeMonths }} mois, révocable à tout moment, {{ apiKeyRules.maxActive }} clés actives au plus,
+                {{ apiKeyRules.maxExchangesPer24Hours }} appels par 24 heures.
               </p>
 
               <div *ngIf="apiKeys.length" class="api-token-list">
@@ -1333,7 +1334,7 @@ export class ProfileComponent implements OnInit, OnDestroy {
   // de l'écran : jamais dans localStorage, jamais dans une URL, effacée en quittant la page.
   apiKeys: ApiKeyListItem[] = [];
   /** Règles renvoyées par le serveur avec la liste (valeurs de repli tant qu'il n'a pas répondu). */
-  apiKeyRules = { maxActive: 2, maxExchangesPer24Hours: 100, lifetimeDays: 365 };
+  apiKeyRules = { maxActive: 2, maxExchangesPer24Hours: 100, lifetimeDays: 30 };
   apiKeyForm = { label: '', email: '', password: '' };
   creatingKey = false;
   revokingKeyId: number | null = null;

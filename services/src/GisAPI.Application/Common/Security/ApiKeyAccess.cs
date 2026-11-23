@@ -4,13 +4,15 @@ using GisAPI.Domain.Entities;
 namespace GisAPI.Application.Common.Security;
 
 /// <summary>
-/// Clé d'automatisation de l'API (migration 069) : format de la clé, plafonds et messages.
+/// Clé d'API (migration 069) : format de la clé, plafonds et messages.
 ///
-/// <para>Une tâche planifiée ne peut pas générer à la main un jeton à usage unique chaque jour. La clé
-/// la remplace dans ce rôle, et SEULEMENT dans ce rôle : elle ne lit aucune donnée, elle s'échange
-/// contre un jeton de 15 minutes (<see cref="ApiTokenAccess"/>), qui reste le seul à pouvoir lire
-/// les arrêts. Une clé volée se révoque en un clic ; elle ne donne jamais plus qu'un flux de jetons
-/// bornés, comptés et journalisés.</para>
+/// <para>Une application ne peut pas générer à la main un jeton à usage unique à chaque appel. La clé
+/// s'utilise de deux façons : envoyée telle quelle (en-tête X-Api-Key) sur les routes des arrêts —
+/// demande client du 23/11/2026, une clé utilisable pendant un mois sans étape intermédiaire —, ou
+/// échangée contre un jeton de 15 minutes (<see cref="ApiTokenAccess"/>, route d'échange conservée).
+/// Dans les deux cas elle n'ouvre QUE ce qu'ouvre un jeton : lecture des arrêts, 31 jours au plus par
+/// appel, chaque appel compté et journalisé. Une clé volée se révoque en un clic et expire d'elle-même
+/// au bout de <see cref="LifetimeDays"/> jours.</para>
 /// </summary>
 public static class ApiKeyAccess
 {
@@ -19,29 +21,30 @@ public static class ApiKeyAccess
 
     public const string HeaderName = "X-Api-Key";
 
-    /// <summary>Durée de vie d'une clé (12 mois) : au-delà, l'administrateur en recrée une.</summary>
-    public const int LifetimeDays = 365;
+    /// <summary>Durée de vie d'une clé (un mois, décision du 23/11/2026) : au-delà, l'administrateur en recrée une.</summary>
+    public const int LifetimeDays = 30;
 
     /// <summary>Clés actives par société : deux pour pouvoir en changer sans coupure.</summary>
     public const int MaxActivePerCompany = 2;
 
     /// <summary>
-    /// Échanges par clé sur 24 heures glissantes. Un jeton ne sert qu'à un appel, donc qu'à une page
-    /// de résultats : le plafond laisse de la place à une tâche qui pagine ou lit véhicule par véhicule.
+    /// Utilisations par clé sur 24 heures glissantes, appels directs et échanges confondus. Un appel ne
+    /// lit qu'une page de résultats : le plafond laisse de la place à une application qui pagine ou lit
+    /// véhicule par véhicule.
     /// </summary>
     public const int MaxExchangesPer24Hours = 100;
 
     public const int LabelMaxLength = 100;
-    public const string DefaultLabel = "Clé d'automatisation";
+    public const string DefaultLabel = "Clé d'API";
 
     // ── Messages ──
 
     public const string InvalidKeyMessage =
-        "Clé d'automatisation absente ou inconnue. Envoyez-la dans l'en-tête X-Api-Key.";
+        "Clé d'API absente ou inconnue. Envoyez-la dans l'en-tête X-Api-Key.";
     public const string RevokedMessage =
-        "Cette clé d'automatisation a été révoquée. Créez-en une nouvelle dans Profil > Accès API.";
+        "Cette clé d'API a été révoquée. Créez-en une nouvelle dans Profil > Accès API > Clés d'API.";
     public const string ExpiredMessage =
-        "Cette clé d'automatisation a expiré. Créez-en une nouvelle dans Profil > Accès API.";
+        "Cette clé d'API a expiré. Créez-en une nouvelle dans Profil > Accès API > Clés d'API.";
     public const string OwnerInactiveMessage =
         "Le compte qui a créé cette clé n'est plus actif : la clé ne fonctionne plus.";
     public const string OwnerNotAdminMessage =

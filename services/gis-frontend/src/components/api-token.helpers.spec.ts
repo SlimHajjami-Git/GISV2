@@ -70,14 +70,15 @@ describe('api-token.helpers — clés d’API', () => {
     expect(activeKeyCount([])).toBe(0);
   });
 
-  it('montre l’échange de la clé puis l’appel avec le jeton reçu', () => {
+  it('montre l’appel direct des arrêts avec la clé dans l’en-tête X-Api-Key', () => {
     const exemple = apiKeyExample('clyk_abc', 'https://belive-calypso.com/');
 
-    // 1. échange de la clé (en-tête X-Api-Key, sans session), adresse sans barre finale …
-    expect(exemple).toContain('curl -X POST "https://belive-calypso.com/api/api-tokens/echange" -H "X-Api-Key: clyk_abc"');
-    // 2. … puis appel avec le JETON, jamais avec la clé.
-    expect(exemple).toContain('-H "X-Api-Token: cly_..."');
-    expect(exemple).not.toContain('X-Api-Token: clyk_abc');
+    // Adresse sans barre finale, période à compléter, clé envoyée telle quelle.
+    expect(exemple).toContain('curl "https://belive-calypso.com/api/reports/stops?startDate=AAAA-MM-JJ&endDate=AAAA-MM-JJ"');
+    expect(exemple).toContain('-H "X-Api-Key: clyk_abc"');
+    // Plus d'étape d'échange, et la clé n'est jamais présentée comme un jeton.
+    expect(exemple).not.toContain('echange');
+    expect(exemple).not.toContain('X-Api-Token');
     // Rien qui évoque une tâche planifiée.
     expect(exemple).not.toMatch(/cron|planifi|#!\/bin\/sh|yesterday/i);
   });

@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Controllers;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -163,22 +164,90 @@ public class ApiKeyServeurTests : IAsyncLifetime
         (await Echanger(cle)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    // ── Appel direct avec la clé (demande client du 23/11/2026) ─────────────────
+
     [Fact]
-    public async Task La_cle_n_ouvre_aucune_donnee_elle_meme()
+    public async Task La_cle_lit_les_arrets_directement_a_chaque_appel_et_chaque_appel_est_consigne()
     {
         var cle = await NouvelleCleAsync();
 
-        var enCle = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Key", cle));
-        var enJeton = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Token", cle));
+        var premier = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Key", cle));
+        var second = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Key", cle));
         var enBearer = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode,
             r => r.Headers.Authorization = new AuthenticationHeaderValue("Bearer", cle));
 
-        enCle.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        enJeton.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
-        enBearer.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        premier.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await premier.Content.ReadAsStringAsync()).Should().Be("stops de 10");
+        second.StatusCode.Should().Be(HttpStatusCode.OK, "contrairement au jeton, la clé resservira tout le mois");
+        enBearer.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Ces essais ne l'ont pas abîmée.
+        var consignes = _db.ApiTokens.Where(t => t.ApiKeyId != null).ToList();
+        consignes.Should().HaveCount(3).And.OnlyContain(t => t.UsedAt != null && t.UserId == 10);
+        _db.ApiKeys.AsNoTracking().Single().LastUsedAt.Should().NotBeNull("écrit en base, hors du suivi EF");
+
+        // L'échange reste possible avec la même clé.
         (await Echanger(cle)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Une_cle_n_est_pas_un_jeton()
+    {
+        var cle = await NouvelleCleAsync();
+
+        var rep = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Token", cle));
+
+        rep.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Hors_des_arrets_la_cle_est_refusee_sans_etre_comptee()
+    {
+        var cle = await NouvelleCleAsync();
+
+        var autreRoute = await Appeler(HttpMethod.Get, "/api/vehicles" + Periode, r => r.Headers.Add("X-Api-Key", cle));
+        var sansPeriode = await Appeler(HttpMethod.Get, "/api/vehiclestops", r => r.Headers.Add("X-Api-Key", cle));
+
+        autreRoute.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await MessageAsync(autreRoute)).Should().Be(ApiTokenAccess.RouteMessage);
+        sansPeriode.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        _db.ApiTokens.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Une_cle_expiree_dit_qu_elle_a_expire()
+    {
+        var cle = await NouvelleCleAsync(k => k.ExpiresAt = DateTime.UtcNow.AddMinutes(-1));
+
+        var rep = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Key", cle));
+
+        rep.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        (await MessageAsync(rep)).Should().Be(ApiKeyAccess.ExpiredMessage);
+    }
+
+    [Fact]
+    public async Task Le_plafond_de_24_heures_compte_aussi_les_appels_directs()
+    {
+        var cle = await NouvelleCleAsync();
+        var keyId = _db.ApiKeys.Single().Id;
+        var maintenant = DateTime.UtcNow;
+        for (var i = 0; i < ApiKeyAccess.MaxExchangesPer24Hours; i++)
+        {
+            var (_, row) = ApiTokenAccess.NewToken(1, 10, "203.0.113.7", maintenant.AddMinutes(-i), keyId);
+            row.UsedAt = row.CreatedAt;
+            _db.ApiTokens.Add(row);
+        }
+        await _db.SaveChangesAsync();
+
+        var rep = await Appeler(HttpMethod.Get, "/api/vehiclestops" + Periode, r => r.Headers.Add("X-Api-Key", cle));
+
+        rep.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        (await MessageAsync(rep)).Should().Be(ApiKeyAccess.QuotaMessage);
+    }
+
+    [Fact]
+    public void Une_cle_neuve_vaut_un_mois()
+    {
+        ApiKeyAccess.LifetimeDays.Should().Be(30);
     }
 
     [Fact]

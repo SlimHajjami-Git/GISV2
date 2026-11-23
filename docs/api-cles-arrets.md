@@ -4,9 +4,9 @@ Un jeton d'API permet à un système externe de lire les arrêts des véhicules 
 transmettre de mot de passe. Le jeton est **à usage unique** : il ne sert qu'**une seule fois**,
 expire au bout de **15 minutes**, et ne donne accès **qu'à la lecture des arrêts**.
 
-Pour un logiciel qui lit les arrêts **tout seul** (tâche planifiée, crontab), créer plutôt une
-**clé d'automatisation** une seule fois : le logiciel l'échange lui-même contre un jeton avant chaque
-appel. Voir la section 4.
+Pour une application qui lit les arrêts **toute seule**, créer plutôt une **clé d'API** : elle
+s'envoie telle quelle à chaque appel pendant **un mois**, avec les mêmes limites qu'un jeton. Voir la
+section 4.
 
 ## 1. Générer un jeton (dans Calypso)
 
@@ -95,12 +95,12 @@ Toutes les heures sont en UTC.
 | 403 | Appel autre qu'une lecture d'arrêts, ou rapport « arrêts » non inclus dans l'abonnement ou non autorisé au compte. |
 | 429 | Trop de tentatives de génération depuis ce réseau (5 par minute). |
 
-## 4. Automatiser : la clé d'automatisation (tâche planifiée)
+## 4. La clé d'API (appels répétés pendant un mois)
 
-Une tâche planifiée ne peut pas générer un jeton à la main chaque jour. La **clé d'automatisation**
-(`clyk_…`) la remplace dans ce rôle, et seulement dans ce rôle : elle **ne lit aucune donnée** par
-elle-même. Avant chaque appel, le logiciel l'échange contre un jeton à usage unique, identique à un
-jeton généré à la main (mêmes règles qu'en section 3).
+Une application ne peut pas générer un jeton à la main avant chaque appel. La **clé d'API**
+(`clyk_…`) s'envoie **telle quelle** à chaque appel, pendant **un mois**. Elle n'ouvre que ce
+qu'ouvre un jeton (section 3) : lecture des arrêts, 31 jours au plus par appel. Elle peut aussi,
+comme avant, s'échanger contre un jeton à usage unique.
 
 ### Créer la clé (une seule fois, dans Calypso)
 
@@ -111,56 +111,40 @@ jeton généré à la main (mêmes règles qu'en section 3).
    page propose aussi un exemple d'appel prêt à copier.
 
 Seul l'administrateur de la société peut créer une clé, si Belive a activé l'accès API de la
-société. Les jetons obtenus reprennent **ses droits et ses véhicules**.
+société. Les appels faits avec la clé reprennent **ses droits et ses véhicules**.
 
-### L'échanger puis lire les arrêts (dans le logiciel)
+### Lire les arrêts avec la clé (dans l'application)
+
+Envoyer la clé dans l'en-tête `X-Api-Key` (ou `Authorization: Bearer clyk_…`), à chaque appel :
 
 ```bash
-# 1. Échanger la clé contre un jeton (sans session, en-tête X-Api-Key)
-curl -X POST "https://belive-calypso.com/api/api-tokens/echange" -H "X-Api-Key: clyk_xxxxxxxx"
-# → {"id":…,"token":"cly_…","tokenPrefix":"…","expiresAt":"…","expiresInSeconds":900}
-
-# 2. Lire les arrêts avec le jeton obtenu (un seul appel)
 curl "https://belive-calypso.com/api/reports/stops?startDate=2026-11-17&endDate=2026-11-17" \
-  -H "X-Api-Token: cly_…"
+  -H "X-Api-Key: clyk_xxxxxxxx"
 ```
 
-Script complet pour un serveur Linux (arrêts de la veille de tous les véhicules) :
+Les routes, paramètres et réponses sont ceux de la section 2. La même clé resert à chaque appel
+jusqu'à son expiration.
 
-```bash
-#!/bin/sh
-CLE="clyk_xxxxxxxx"
-URL="https://belive-calypso.com"
-JOUR=$(date -d yesterday +%F)
-
-JETON=$(curl -fsS -X POST "$URL/api/api-tokens/echange" -H "X-Api-Key: $CLE" \
-  | sed -E 's/.*"token":"([^"]+)".*/\1/')
-
-curl -fsS "$URL/api/reports/stops?startDate=$JOUR&endDate=$JOUR" \
-  -H "X-Api-Token: $JETON" -o "arrets-$JOUR.json"
-```
-
-Ligne de crontab (tous les jours à 6 h 30) : `30 6 * * * /chemin/vers/arrets-calypso.sh`
-
-Un jeton ne sert qu'à **un** appel, donc à une page de résultats : pour paginer ou lire véhicule par
-véhicule, échanger la clé une fois par appel.
+Pour qui préfère ne faire circuler qu'un jeton éphémère, l'échange reste possible :
+`curl -X POST "https://belive-calypso.com/api/api-tokens/echange" -H "X-Api-Key: clyk_xxxxxxxx"`
+renvoie `{"token":"cly_…","expiresInSeconds":900,…}`, à utiliser une fois comme en section 2.
 
 ### Règles de la clé
 
-- **Valable 12 mois**, puis en recréer une. **Révocable** à tout moment dans le profil, par tout
+- **Valable 1 mois**, puis en recréer une. **Révocable** à tout moment dans le profil, par tout
   administrateur de la société.
 - **2 clés actives au plus** par société, pour pouvoir en changer sans coupure.
-- **100 échanges par 24 heures** glissantes et par clé ; au plus 5 jetons obtenus et pas encore
-  utilisés à la fois.
+- **100 appels par 24 heures** glissantes et par clé, appels directs et échanges confondus.
+- **Lecture des arrêts uniquement**, 31 jours au plus par appel, `pageSize` ≤ 1000 (comme un jeton).
 - La clé cesse de fonctionner d'elle-même si le compte qui l'a créée est désactivé ou n'est plus
   administrateur, ou si Belive coupe l'accès API de la société.
-- La clé ne fonctionne **que** sur la route d'échange : présentée à toute autre route, elle répond 401.
 
-| Code (échange) | Cause, donnée dans le champ `message` de la réponse |
+| Code | Cause, donnée dans le champ `message` de la réponse |
 |---|---|
+| 400 | `startDate` ou `endDate` manquant, période de plus de 31 jours, ou `pageSize` supérieur à 1000. |
 | 401 | Clé absente, inconnue, révoquée ou expirée. |
-| 403 | Le compte qui a créé la clé ne peut plus utiliser l'API, ou l'accès API de la société est coupé. |
-| 429 | 100 échanges atteints sur 24 heures, 5 jetons en attente, ou plus de 30 échanges par minute depuis ce réseau. |
+| 403 | Appel autre qu'une lecture d'arrêts, ou compte / accès API de la société qui ne le permet plus. |
+| 429 | 100 appels atteints sur 24 heures (ou, à l'échange, 5 jetons en attente ou trop d'échanges depuis ce réseau). |
 
 ## 5. Pour l'exploitation
 
@@ -169,6 +153,9 @@ véhicule, échanger la clé une fois par appel.
   jouer **avant** le pod API qui la mappe.
 - Chaque génération est inscrite dans le journal d'audit (`api_token_generated`), sans le jeton ;
   chaque création et révocation de clé aussi (`api_key_created`, `api_key_revoked`), sans la clé.
-- Chaque échange laisse une ligne dans `api_tokens` (`api_key_id`, `created_ip`, `created_at`) : c'est
-  le journal des échanges et le compteur du quota.
+- Chaque échange ET chaque appel direct avec une clé laisse une ligne dans `api_tokens` (`api_key_id`,
+  `created_ip`, `created_at` ; `used_at` renseigné d'emblée pour un appel direct) : c'est le journal
+  des utilisations et le compteur du quota.
+- Durée de vie des clés : 30 jours pour toute clé créée à partir du 23/11/2026 ; les clés créées avant
+  gardent leur date d'expiration d'origine.
 - Ni un jeton ni une clé ne sont conservés en clair : seule leur empreinte SHA-256 est en base.

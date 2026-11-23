@@ -40,7 +40,7 @@ public class CreateApiKeyCommandHandler : IRequestHandler<CreateApiKeyCommand, A
 
         var user = await ReenteredCredentials.VerifyAsync(_context, _passwordHasher, _logger,
             userId, companyId, request.Email, request.Password, request.IpAddress,
-            "Création de clé d'automatisation", ct);
+            "Création de clé d'API", ct);
 
         var refusal = ApiTokenAccess.AccountRefusal(user,
             await ApiTokenAccess.CompanyApiAccessEnabledAsync(_context, companyId, ct));
@@ -80,7 +80,7 @@ public class CreateApiKeyCommandHandler : IRequestHandler<CreateApiKeyCommand, A
             Action = "api_key_created",
             EntityType = "ApiKey",
             EntityName = entity.KeyPrefix,
-            Description = $"Clé d'automatisation de l'API créée : {label}",
+            Description = $"Clé d'API créée : {label}",
             IpAddress = request.IpAddress,
             Timestamp = now
         });
