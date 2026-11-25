@@ -615,8 +615,11 @@ public class ReportsController : ControllerBase
         if (!vehicleExists)
             return VehiculeIntrouvable();
 
+        // Appel par clé ou jeton d'API : adresse et code postal calculés ici, une application
+        // tierce n'a pas l'enrichissement de l'écran (StopAddresses).
         var result = await _mediator.Send(new GetStopsReportQuery(
-            vehicleId, start, end, minStopDurationSeconds));
+            vehicleId, start, end, minStopDurationSeconds,
+            WithAddresses: ApiTokenAccess.IsApiCall(User)), HttpContext.RequestAborted);
 
         return Ok(result);
     }
@@ -637,7 +640,8 @@ public class ReportsController : ControllerBase
             return PeriodeInversee();
 
         var result = await _mediator.Send(new GetStopsReportAllVehiclesQuery(
-            start, end, vehicleIds, minStopDurationSeconds));
+            start, end, vehicleIds, minStopDurationSeconds,
+            WithAddresses: ApiTokenAccess.IsApiCall(User)), HttpContext.RequestAborted);
 
         return Ok(result);
     }

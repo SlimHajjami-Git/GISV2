@@ -10,11 +10,14 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
 {
     private readonly IGisDbContext _context;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IGeocodingService? _geocoding;
 
-    public GetStopsReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService)
+    public GetStopsReportQueryHandler(IGisDbContext context, ICurrentTenantService tenantService,
+        IGeocodingService? geocoding = null)
     {
         _context = context;
         _tenantService = tenantService;
+        _geocoding = geocoding;
     }
 
     public async Task<StopsReportDto> Handle(GetStopsReportQuery request, CancellationToken ct)
@@ -70,7 +73,8 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
             .ToListAsync(ct);
 
         var allStops = DetectStops(positions, request.MinStopDurationSeconds);
-        // No geocoding here — frontend handles address enrichment via enrichAllAddresses()
+        // L'écran géocode lui-même (enrichAllAddresses) ; les appels par API demandent
+        // WithAddresses et sont géocodés à la fin, une fois les arrêts découpés par jour.
 
         // Fix boundary stops: if vehicle was already stopped at range start, extend to midnight
         if (allStops.Count > 0 && positions.Count > 0)
@@ -157,6 +161,9 @@ public class GetStopsReportQueryHandler : IRequestHandler<GetStopsReportQuery, S
         var avgStopSeconds = allStops.Count > 0 ? totalStopSeconds / allStops.Count : 0;
         var maxStopSeconds = allStops.Count > 0 ? allStops.Max(s => s.DurationSeconds) : 0;
         var minStopSeconds = allStops.Count > 0 ? allStops.Min(s => s.DurationSeconds) : 0;
+
+        if (request.WithAddresses && _geocoding != null)
+            await StopAddresses.EnrichStopsAsync(_geocoding, days.SelectMany(d => d.Stops), StopAddresses.Budget, ct);
 
         return new StopsReportDto
         {
@@ -309,15 +316,18 @@ public class GetStopsReportAllVehiclesQueryHandler : IRequestHandler<GetStopsRep
     private readonly IGisDbContext _context;
     private readonly IMediator _mediator;
     private readonly ICurrentTenantService _tenantService;
+    private readonly IGeocodingService? _geocoding;
 
     public GetStopsReportAllVehiclesQueryHandler(
         IGisDbContext context,
         IMediator mediator,
-        ICurrentTenantService tenantService)
+        ICurrentTenantService tenantService,
+        IGeocodingService? geocoding = null)
     {
         _context = context;
         _mediator = mediator;
         _tenantService = tenantService;
+        _geocoding = geocoding;
     }
 
     public async Task<List<StopsReportDto>> Handle(GetStopsReportAllVehiclesQuery request, CancellationToken ct)
@@ -356,6 +366,12 @@ public class GetStopsReportAllVehiclesQueryHandler : IRequestHandler<GetStopsRep
                 request.MinStopDurationSeconds), ct);
             results.Add(report);
         }
+
+        // Géocodage en UNE passe pour toute la flotte : les points communs à plusieurs
+        // véhicules (dépôt, client) ne sont résolus qu'une fois, sous un seul budget de temps.
+        if (request.WithAddresses && _geocoding != null)
+            await StopAddresses.EnrichAsync(_geocoding, results, ct);
+
         return results;
     }
 }

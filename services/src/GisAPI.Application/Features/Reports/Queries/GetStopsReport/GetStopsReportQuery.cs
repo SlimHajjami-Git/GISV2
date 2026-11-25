@@ -5,21 +5,26 @@ namespace GisAPI.Application.Features.Reports.Queries.GetStopsReport;
 /// <summary>
 /// Query for a single vehicle stops report
 /// </summary>
+/// <param name="WithAddresses">Géocoder chaque arrêt côté serveur (adresse + code postal) :
+/// appels par clé ou jeton d'API, qui n'ont pas l'enrichissement de l'écran.</param>
 public record GetStopsReportQuery(
     int VehicleId,
     DateTime StartDate,
     DateTime EndDate,
-    int MinStopDurationSeconds = 60
+    int MinStopDurationSeconds = 60,
+    bool WithAddresses = false
 ) : IQuery<StopsReportDto>;
 
 /// <summary>
 /// Query for all vehicles stops report
 /// </summary>
+/// <param name="WithAddresses">Voir <see cref="GetStopsReportQuery"/>.</param>
 public record GetStopsReportAllVehiclesQuery(
     DateTime StartDate,
     DateTime EndDate,
     int[]? VehicleIds = null,
-    int MinStopDurationSeconds = 60
+    int MinStopDurationSeconds = 60,
+    bool WithAddresses = false
 ) : IQuery<List<StopsReportDto>>;
 
 // ==================== DTOs ====================
@@ -52,7 +57,13 @@ public class StopEntryDto
     public string DurationFormatted { get; set; } = string.Empty;
     public double Latitude { get; set; }
     public double Longitude { get; set; }
+    /// <summary>
+    /// Adresse du lieu d'arrêt. Renseignée par le serveur pour les appels par clé ou jeton
+    /// d'API (<see cref="StopAddresses"/>) ; l'écran Calypso la calcule lui-même et la reçoit nulle.
+    /// </summary>
     public string? Address { get; set; }
+    /// <summary>Code postal du lieu d'arrêt, mêmes règles que <see cref="Address"/>.</summary>
+    public string? PostalCode { get; set; }
 }
 
 public class StopsSummaryDto

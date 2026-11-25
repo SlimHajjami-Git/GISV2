@@ -67,6 +67,10 @@ public static class ApiTokenAccess
     public static bool LooksLikeToken(string? value) =>
         !string.IsNullOrEmpty(value) && value.StartsWith(TokenPrefix, StringComparison.Ordinal);
 
+    /// <summary>La requête vient-elle d'une application tierce (jeton ou clé d'API), et non d'une session Calypso ?</summary>
+    public static bool IsApiCall(System.Security.Claims.ClaimsPrincipal? user) =>
+        user?.FindFirst(AuthMethodClaim)?.Value == AuthMethodValue;
+
     /// <summary>
     /// Un jeton neuf et sa ligne en base (empreinte seule), valable <see cref="LifetimeMinutes"/>.
     /// Même forme pour un jeton généré à la main dans le profil et pour un jeton obtenu en échange

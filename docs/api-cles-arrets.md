@@ -67,7 +67,8 @@ Exemple de réponse du rapport (extrait) :
       "totalStopSeconds": 5400,
       "stops": [
         { "startTime": "2026-10-01T07:12:00Z", "endTime": "2026-10-01T07:57:00Z",
-          "durationSeconds": 2700, "latitude": 36.8, "longitude": 10.18, "address": "…" }
+          "durationSeconds": 2700, "latitude": 36.80612, "longitude": 10.18114,
+          "address": "Rue Taïeb Mhiri, Tunis", "postalCode": "2015" }
       ]
     }
   ],
@@ -76,6 +77,12 @@ Exemple de réponse du rapport (extrait) :
 ```
 
 Toutes les heures sont en UTC.
+
+`address` et `postalCode` sont calculés par Calypso à partir des coordonnées de l'arrêt (géocodage
+inverse, à une dizaine de mètres près). Ils valent `null` quand le lieu n'a pas d'adresse connue
+(piste, zone non cartographiée) ou, sur un très gros volume d'arrêts jamais vus, quand le calcul
+dépasse le temps imparti à la réponse (20 secondes) : les adresses trouvées restent en mémoire, un
+nouvel appel les renvoie. `latitude` et `longitude` sont toujours renseignés.
 
 ## 3. Règles du jeton
 

@@ -14,8 +14,19 @@ public interface IGeocodingService
     /// </summary>
     Task<GeocodedLocation?> ReverseGeocodeStructuredAsync(double latitude, double longitude);
 
+    /// <summary>
+    /// Adresse lisible ET code postal d'un point, par le même cache que
+    /// <see cref="ReverseGeocodeAsync"/> (clé arrondie à ~11 m). <c>null</c> si le
+    /// fournisseur ne répond pas ; <see cref="ReverseAddress.Address"/> est <c>null</c>
+    /// quand le point n'a aucune adresse connue (jamais un texte « Adresse inconnue »).
+    /// </summary>
+    Task<ReverseAddress?> ReverseGeocodeAddressAsync(double latitude, double longitude, CancellationToken ct = default);
+
     (int CacheHits, int CacheMisses, int CacheSize) GetCacheStats();
 }
+
+/// <summary>Adresse d'un point et son code postal ; l'un ou l'autre peut manquer.</summary>
+public record ReverseAddress(string? Address, string? PostalCode);
 
 /// <summary>
 /// Structured reverse-geocoding result. Every field is nullable: a rural crash

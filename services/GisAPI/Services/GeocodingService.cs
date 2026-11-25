@@ -16,9 +16,13 @@ public class GeocodingService : IGeocodingService
 
     private class CacheEntry
     {
-        public string Address { get; set; } = "";
+        /// <summary>Adresse formatée, null si le point n'en a aucune (repli « Adresse inconnue » à la lecture).</summary>
+        public string? Address { get; set; }
+        public string? PostalCode { get; set; }
         public DateTime ExpiresAt { get; set; }
     }
+
+    private const string UnknownAddress = "Adresse inconnue";
 
     public GeocodingService(IConfiguration configuration)
     {
@@ -30,31 +34,40 @@ public class GeocodingService : IGeocodingService
 
     public async Task<string?> ReverseGeocodeAsync(double latitude, double longitude)
     {
+        var result = await ReverseGeocodeAddressAsync(latitude, longitude);
+        return result == null ? null : result.Address ?? UnknownAddress;
+    }
+
+    public async Task<ReverseAddress?> ReverseGeocodeAddressAsync(double latitude, double longitude, CancellationToken ct = default)
+    {
         // Round to 4 decimal places for cache key (~11m precision)
-        var cacheKey = $"{latitude:F4},{longitude:F4}";
+        var cacheKey = CacheKey(latitude, longitude);
 
         // Check cache first
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
         {
             Interlocked.Increment(ref _cacheHits);
-            return cached.Address;
+            return new ReverseAddress(cached.Address, cached.PostalCode);
         }
 
         Interlocked.Increment(ref _cacheMisses);
 
         try
         {
-            var url = $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18&accept-language=fr";
-            var response = await _httpClient.GetAsync(url);
-            
+            // Culture invariante : en fr-FR, « 36,8 » partirait dans l'URL et Nominatim lirait 36.
+            var url = FormattableString.Invariant(
+                $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18&addressdetails=1&accept-language=fr");
+            var response = await _httpClient.GetAsync(url, ct);
+
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            var json = await response.Content.ReadAsStringAsync();
-            var data = JsonDocument.Parse(json);
-            
+            var json = await response.Content.ReadAsStringAsync(ct);
+            using var data = JsonDocument.Parse(json);
+
             var address = FormatAddress(data);
-            
+            var postalCode = PostalCode(data);
+
             // Add to cache (evict old entries if needed)
             if (_cache.Count >= _maxCacheSize)
             {
@@ -72,16 +85,29 @@ public class GeocodingService : IGeocodingService
             _cache[cacheKey] = new CacheEntry
             {
                 Address = address,
+                PostalCode = postalCode,
                 ExpiresAt = DateTime.UtcNow.Add(_cacheDuration)
             };
 
-            return address;
+            return new ReverseAddress(address, postalCode);
         }
         catch
         {
+            // Délai dépassé, annulation ou réponse illisible : rien en cache, on retentera.
             return null;
         }
     }
+
+    private static string CacheKey(double latitude, double longitude) =>
+        FormattableString.Invariant($"{latitude:F4},{longitude:F4}");
+
+    private static string? PostalCode(JsonDocument data) =>
+        data.RootElement.TryGetProperty("address", out var address)
+        && address.TryGetProperty("postcode", out var postcode)
+        && postcode.ValueKind == JsonValueKind.String
+        && !string.IsNullOrWhiteSpace(postcode.GetString())
+            ? postcode.GetString()!.Trim()
+            : null;
 
     /// <summary>
     /// Structured reverse geocoding — pulls commune (city/town/village/…),
@@ -133,7 +159,8 @@ public class GeocodingService : IGeocodingService
         }
     }
 
-    private string FormatAddress(JsonDocument data)
+    /// <summary>Adresse lisible du point, ou null s'il n'en a aucune (l'appelant choisit le libellé de repli).</summary>
+    private static string? FormatAddress(JsonDocument data)
     {
         var root = data.RootElement;
         var parts = new List<string>();
@@ -177,10 +204,11 @@ public class GeocodingService : IGeocodingService
         {
             var display = displayName.GetString() ?? "";
             var displayParts = display.Split(',').Take(3);
-            return string.Join(",", displayParts).Trim();
+            var joined = string.Join(",", displayParts).Trim();
+            return joined.Length > 0 ? joined : null;
         }
 
-        return "Adresse inconnue";
+        return null;
     }
 
     public (int CacheHits, int CacheMisses, int CacheSize) GetCacheStats()
