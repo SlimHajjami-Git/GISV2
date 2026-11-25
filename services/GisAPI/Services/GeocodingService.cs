@@ -17,8 +17,12 @@ public class GeocodingService : IGeocodingService
     private class CacheEntry
     {
         public string Address { get; set; } = "";
+        public string? PostalCode { get; set; }
         public DateTime ExpiresAt { get; set; }
     }
+
+    /// <summary>Libellé de <see cref="FormatAddress"/> quand Nominatim ne rend rien d'exploitable.</summary>
+    internal const string UnknownAddress = "Adresse inconnue";
 
     public GeocodingService(IConfiguration configuration)
     {
@@ -29,32 +33,59 @@ public class GeocodingService : IGeocodingService
     }
 
     public async Task<string?> ReverseGeocodeAsync(double latitude, double longitude)
+        => (await LookupAsync(latitude, longitude, CancellationToken.None))?.Address;
+
+    public async Task<GeocodedAddress?> ReverseGeocodeWithPostcodeAsync(
+        double latitude, double longitude, CancellationToken ct = default)
     {
-        // Round to 4 decimal places for cache key (~11m precision)
-        var cacheKey = $"{latitude:F4},{longitude:F4}";
+        var entry = await LookupAsync(latitude, longitude, ct);
+
+        // « Adresse inconnue » est un libellé d'écran : un client de l'API reçoit null, pas ce texte.
+        if (entry is null || string.IsNullOrWhiteSpace(entry.Address) || entry.Address == UnknownAddress)
+            return null;
+
+        return new GeocodedAddress(entry.Address, entry.PostalCode);
+    }
+
+    /// <summary>
+    /// Recherche partagée par l'écran (adresse seule) et l'API (adresse + code postal) : un seul appel
+    /// à Nominatim et une seule entrée de cache par point arrondi à ~11 m. Un échec n'est pas mis en cache.
+    /// </summary>
+    private async Task<CacheEntry?> LookupAsync(double latitude, double longitude, CancellationToken ct)
+    {
+        // Round to 4 decimal places for cache key (~11m precision). Culture invariante : sous une
+        // culture française, « 36,8059,10,1610 » rendait la clé ambiguë et l'URL fausse.
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var cacheKey = string.Create(inv, $"{latitude:F4},{longitude:F4}");
 
         // Check cache first
         if (_cache.TryGetValue(cacheKey, out var cached) && cached.ExpiresAt > DateTime.UtcNow)
         {
             Interlocked.Increment(ref _cacheHits);
-            return cached.Address;
+            return cached;
         }
 
         Interlocked.Increment(ref _cacheMisses);
 
         try
         {
-            var url = $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18&accept-language=fr";
-            var response = await _httpClient.GetAsync(url);
-            
+            var url = string.Create(inv,
+                $"{_nominatimUrl}/reverse?lat={latitude}&lon={longitude}&format=json&zoom=18&accept-language=fr");
+            using var response = await _httpClient.GetAsync(url, ct);
+
             if (!response.IsSuccessStatusCode)
                 return null;
 
-            var json = await response.Content.ReadAsStringAsync();
-            var data = JsonDocument.Parse(json);
-            
-            var address = FormatAddress(data);
-            
+            var json = await response.Content.ReadAsStringAsync(ct);
+            using var data = JsonDocument.Parse(json);
+
+            var entry = new CacheEntry
+            {
+                Address = FormatAddress(data),
+                PostalCode = ExtractPostcode(data),
+                ExpiresAt = DateTime.UtcNow.Add(_cacheDuration)
+            };
+
             // Add to cache (evict old entries if needed)
             if (_cache.Count >= _maxCacheSize)
             {
@@ -64,23 +95,38 @@ public class GeocodingService : IGeocodingService
                     .Select(kv => kv.Key)
                     .Take(1000)
                     .ToList();
-                
+
                 foreach (var key in expiredKeys)
                     _cache.TryRemove(key, out _);
             }
 
-            _cache[cacheKey] = new CacheEntry
-            {
-                Address = address,
-                ExpiresAt = DateTime.UtcNow.Add(_cacheDuration)
-            };
+            // Borne mémoire : cache encore plein après la purge (beaucoup de points distincts en
+            // moins de 24 h, par exemple un appel API sur 31 jours) => le résultat est rendu sans
+            // être gardé, au lieu de faire grossir le cache sans limite.
+            if (_cache.Count < _maxCacheSize)
+                _cache[cacheKey] = entry;
 
-            return address;
+            return entry;
         }
         catch
         {
             return null;
         }
+    }
+
+    /// <summary>Code postal de la réponse Nominatim (<c>address.postcode</c>), ou <c>null</c>.</summary>
+    internal static string? ExtractPostcode(JsonDocument data)
+    {
+        if (data.RootElement.ValueKind == JsonValueKind.Object
+            && data.RootElement.TryGetProperty("address", out var address)
+            && address.ValueKind == JsonValueKind.Object
+            && address.TryGetProperty("postcode", out var postcode)
+            && postcode.ValueKind == JsonValueKind.String)
+        {
+            var value = postcode.GetString()?.Trim();
+            return string.IsNullOrEmpty(value) ? null : value;
+        }
+        return null;
     }
 
     /// <summary>
@@ -180,7 +226,7 @@ public class GeocodingService : IGeocodingService
             return string.Join(",", displayParts).Trim();
         }
 
-        return "Adresse inconnue";
+        return UnknownAddress;
     }
 
     public (int CacheHits, int CacheMisses, int CacheSize) GetCacheStats()

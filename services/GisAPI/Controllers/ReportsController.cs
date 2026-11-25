@@ -601,7 +601,8 @@ public class ReportsController : ControllerBase
         int vehicleId,
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
-        [FromQuery] int minStopDurationSeconds = 60)
+        [FromQuery] int minStopDurationSeconds = 60,
+        [FromServices] IGeocodingService? geocoder = null)
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date;
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
@@ -618,7 +619,21 @@ public class ReportsController : ControllerBase
         var result = await _mediator.Send(new GetStopsReportQuery(
             vehicleId, start, end, minStopDurationSeconds));
 
+        await AdressesPourApiAsync(new[] { result }, geocoder);
+
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Appel par clé ou jeton d'API : l'adresse et le code postal sont calculés ici, l'écran le fait
+    /// lui-même dans le navigateur (plainte client du 25/11/2026, voir StopAddressEnricher).
+    /// </summary>
+    private async Task AdressesPourApiAsync(IEnumerable<StopsReportDto> reports, IGeocodingService? geocoder)
+    {
+        if (geocoder is null || !ApiTokenAccess.IsApiCall(User))
+            return;
+
+        await StopAddressEnricher.EnrichAsync(reports, geocoder, HttpContext.RequestAborted);
     }
 
     /// <summary>
@@ -629,7 +644,8 @@ public class ReportsController : ControllerBase
         [FromQuery] DateTime? startDate = null,
         [FromQuery] DateTime? endDate = null,
         [FromQuery] int[]? vehicleIds = null,
-        [FromQuery] int minStopDurationSeconds = 60)
+        [FromQuery] int minStopDurationSeconds = 60,
+        [FromServices] IGeocodingService? geocoder = null)
     {
         var start = startDate?.Date ?? DateTime.UtcNow.Date;
         var end = endDate?.Date ?? DateTime.UtcNow.Date;
@@ -638,6 +654,8 @@ public class ReportsController : ControllerBase
 
         var result = await _mediator.Send(new GetStopsReportAllVehiclesQuery(
             start, end, vehicleIds, minStopDurationSeconds));
+
+        await AdressesPourApiAsync(result, geocoder);
 
         return Ok(result);
     }

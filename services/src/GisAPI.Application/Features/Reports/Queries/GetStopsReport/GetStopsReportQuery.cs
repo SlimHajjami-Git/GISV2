@@ -53,6 +53,12 @@ public class StopEntryDto
     public double Latitude { get; set; }
     public double Longitude { get; set; }
     public string? Address { get; set; }
+
+    /// <summary>
+    /// Code postal du lieu d'arrêt. Rempli, comme <see cref="Address"/>, seulement pour un appel
+    /// par clé ou jeton d'API (voir <c>StopAddressEnricher</c>) ; l'écran calcule l'adresse lui-même.
+    /// </summary>
+    public string? PostalCode { get; set; }
 }
 
 public class StopsSummaryDto

@@ -25,6 +25,11 @@ public static class ApiTokenAccess
     public const string AuthMethodClaim = "auth_method";
     public const string AuthMethodValue = "api_token";
 
+    /// <summary>Requête authentifiée par jeton ou clé d'API (même marqueur pour les deux).</summary>
+    public static bool IsApiCall(System.Security.Claims.ClaimsPrincipal? user) =>
+        user?.Identity?.IsAuthenticated == true
+        && user.FindFirst(AuthMethodClaim)?.Value == AuthMethodValue;
+
     /// <summary>Durée de vie d'un jeton non utilisé.</summary>
     public const int LifetimeMinutes = 15;
 

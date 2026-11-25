@@ -67,7 +67,8 @@ Exemple de réponse du rapport (extrait) :
       "totalStopSeconds": 5400,
       "stops": [
         { "startTime": "2026-10-01T07:12:00Z", "endTime": "2026-10-01T07:57:00Z",
-          "durationSeconds": 2700, "latitude": 36.8, "longitude": 10.18, "address": "…" }
+          "durationSeconds": 2700, "latitude": 36.80587, "longitude": 10.16099,
+          "address": "Boulevard du 9 Avril 1938, Bab Saadoun", "postalCode": "1029" }
       ]
     }
   ],
@@ -76,6 +77,13 @@ Exemple de réponse du rapport (extrait) :
 ```
 
 Toutes les heures sont en UTC.
+
+**Adresse et code postal.** Chaque arrêt porte son adresse (`address`, « rue, localité ») et son code
+postal (`postalCode`), calculés à partir de sa position. Ils valent `null` quand la carte ne connaît
+pas d'adresse ou de code postal à cet endroit, ou quand l'appel en demande trop d'un coup : au plus
+500 lieux différents sont recherchés par appel, en 20 secondes au plus. Pour une longue période, il
+vaut mieux appeler jour par jour ; un nouvel appel retrouve les adresses déjà calculées, gardées
+24 heures. La latitude et la longitude restent toujours la référence exacte.
 
 ## 3. Règles du jeton
 
