@@ -67,20 +67,17 @@ public class ExchangeApiKeyCommandHandler : IRequestHandler<ExchangeApiKeyComman
         if (ownerRefusal != null)
             return Refuse(403, ownerRefusal, key.KeyPrefix, request.IpAddress);
 
-        var since = now.AddHours(-24);
-        var exchanges = await _context.ApiTokens.IgnoreQueryFilters()
-            .CountAsync(t => t.ApiKeyId == key.Id && t.CreatedAt > since, ct);
-        if (exchanges >= ApiKeyAccess.MaxExchangesPer24Hours)
-            return Refuse(429, ApiKeyAccess.QuotaMessage, key.KeyPrefix, request.IpAddress);
-
         // Même plafond qu'à la main : une tâche qui échange sans jamais appeler s'arrête vite.
         var pending = await _context.ApiTokens.IgnoreQueryFilters()
             .CountAsync(t => t.UserId == key.UserId && t.UsedAt == null && t.ExpiresAt > now, ct);
         if (pending >= ApiTokenAccess.MaxPendingPerUser)
             return Refuse(429, ApiKeyAccess.TooManyPendingMessage, key.KeyPrefix, request.IpAddress);
 
+        // Plafond sur 24 heures compté et consommé de façon atomique (ApiKeyQuota).
         var (token, row) = ApiTokenAccess.NewToken(key.CompanyId, key.UserId, request.IpAddress, now, key.Id);
-        _context.ApiTokens.Add(row);
+        if (!await ApiKeyQuota.TryConsumeAsync(_context, key.Id, row, now, ct))
+            return Refuse(429, ApiKeyAccess.QuotaMessage, key.KeyPrefix, request.IpAddress);
+
         key.LastUsedAt = now;
         key.LastUsedIp = ApiTokenAccess.TruncateIp(request.IpAddress);
         key.UpdatedAt = now;

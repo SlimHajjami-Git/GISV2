@@ -193,17 +193,14 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
 
         if (refusal == null)
         {
-            var since = now.AddHours(-24);
-            var calls = await _db.ApiTokens.IgnoreQueryFilters()
-                .CountAsync(t => t.ApiKeyId == key.Id && t.CreatedAt > since, Context.RequestAborted);
-            if (calls >= ApiKeyAccess.MaxExchangesPer24Hours)
-                return RefuseKey(429, ApiKeyAccess.QuotaMessage);
-
             var ip = GisAPI.Controllers.AssistantController.ResolveClientIp(Context);
             var (_, row) = ApiTokenAccess.NewToken(key.CompanyId, key.UserId, ip, now, key.Id);
             row.UsedAt = now;
-            _db.ApiTokens.Add(row);
-            await _db.SaveChangesAsync(Context.RequestAborted);
+            // Comptage et enregistrement atomiques (ApiKeyQuota) : des appels simultanés ne
+            // dépassent plus le plafond.
+            if (!await ApiKeyQuota.TryConsumeAsync(_db, key.Id, row, now, Context.RequestAborted))
+                return RefuseKey(429, ApiKeyAccess.QuotaMessage);
+
             await _db.ApiKeys.IgnoreQueryFilters()
                 .Where(k => k.Id == key.Id)
                 .ExecuteUpdateAsync(s => s
